@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinDash – Financial Dashboard</title>
+  <meta name="description" content="Professional financial dashboard with Yahoo Finance data, SQLite storage, and technical analysis charts." />
+  <link rel="stylesheet" href="styles/main.css" />
+  <!-- TradingView Lightweight Charts -->
+  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ═══════════════════ TOP BAR ═══════════════════ -->
+  <header class="topbar">
+    <div class="topbar-logo">
+      <div class="logo-icon">📈</div>
+      FinDash
+    </div>
+
+    <div class="topbar-spacer"></div>
+
+    <div class="status-dot" title="Connected"></div>
+    <span id="market-time" class="market-time">--</span>
+  </header>
+
+  <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">Watchlist</div>
+      <div class="add-symbol-form">
+        <input
+          id="new-symbol-input"
+          type="text"
+          placeholder="AAPL, TSLA…"
+          maxlength="10"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add Symbol">+</button>
+      </div>
+    </div>
+
+    <div id="symbol-list" class="symbol-list">
+      <!-- Rendered by app.js -->
+    </div>
+
+    <div class="sidebar-actions">
+      <button id="btn-refresh-all" class="btn btn-ghost">⟳ Refresh All</button>
+    </div>
+  </aside>
+
+  <!-- ═══════════════════ MAIN CONTENT ═══════════════════ -->
+  <main class="main">
+
+    <!-- Symbol Header -->
+    <div class="symbol-header">
+      <div class="symbol-header-name">
+        <span id="sym-title" class="sym-title">--</span>
+        <span id="sym-subtitle" class="sym-subtitle"></span>
+      </div>
+
+      <div class="sym-price-block">
+        <span id="sym-price" class="sym-price">--</span>
+        <span id="sym-change-badge" class="sym-change-badge"></span>
+      </div>
+
+      <div class="ohlcv-strip">
+        <div class="ohlcv-item">
+          <span class="ohlcv-label">Open</span>
+          <span id="ohlcv-open" class="ohlcv-val">--</span>
+        </div>
+        <div class="ohlcv-item">
+          <span class="ohlcv-label">High</span>
+          <span id="ohlcv-high" class="ohlcv-val">--</span>
+        </div>
+        <div class="ohlcv-item">
+          <span class="ohlcv-label">Low</span>
+          <span id="ohlcv-low" class="ohlcv-val">--</span>
+        </div>
+        <div class="ohlcv-item">
+          <span class="ohlcv-label">Close</span>
+          <span id="ohlcv-close" class="ohlcv-val">--</span>
+        </div>
+        <div class="ohlcv-item">
+          <span class="ohlcv-label">Volume</span>
+          <span id="ohlcv-volume" class="ohlcv-val">--</span>
+        </div>
+      </div>
+
+      <div class="header-spacer"></div>
+    </div>
+
+    <!-- Tab Bar + Indicator Toggles -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-freq="daily">Daily</button>
+      <button class="tab-btn" data-freq="weekly">Weekly</button>
+
+      <div class="tab-spacer"></div>
+
+      <div class="indicator-toggles">
+        <span style="font-size:10px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin-right:4px;">Overlays</span>
+        <button class="ind-pill active-sma20" data-ind="sma20">SMA 20</button>
+        <button class="ind-pill active-sma50" data-ind="sma50">SMA 50</button>
+        <button class="ind-pill" data-ind="sma200">SMA 200</button>
+        <button class="ind-pill" data-ind="ema12">EMA 12</button>
+        <button class="ind-pill" data-ind="ema26">EMA 26</button>
+        <button class="ind-pill active-bb" data-ind="bb">Bol. Bands</button>
+      </div>
+    </div>
+
+    <!-- ── Empty State ── -->
+    <div id="empty-state" class="empty-state" style="display:flex;">
+      <div class="empty-icon">📊</div>
+      <h2>No Symbol Selected</h2>
+      <p>Add a ticker symbol to your watchlist using the sidebar, then click it to load its chart.</p>
+    </div>
+
+    <!-- ── Chart Area ── -->
+    <div id="chart-area" class="charts-container" style="display:none; position:relative;">
+
+      <!-- Loading overlay -->
+      <div id="chart-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span>
+        Loading chart data…
+      </div>
+
+      <!-- Main candlestick chart -->
+      <div class="chart-wrapper chart-wrapper-main">
+        <div class="chart-label">PRICE</div>
+        <div id="chart-main" style="width:100%;height:100%;"></div>
+      </div>
+
+      <div class="chart-divider"></div>
+
+      <!-- RSI sub-chart -->
+      <div class="chart-wrapper chart-wrapper-rsi">
+        <div class="chart-label">RSI (14)</div>
+        <div id="chart-rsi" style="width:100%;height:100%;"></div>
+      </div>
+
+      <div class="chart-divider"></div>
+
+      <!-- MACD sub-chart -->
+      <div class="chart-wrapper chart-wrapper-macd">
+        <div class="chart-label">MACD (12/26/9)</div>
+        <div id="chart-macd" style="width:100%;height:100%;"></div>
+      </div>
+
+      <div class="chart-divider"></div>
+
+      <!-- Volume sub-chart -->
+      <div class="chart-wrapper chart-wrapper-vol">
+        <div class="chart-label">VOLUME</div>
+        <div id="chart-vol" style="width:100%;height:100%;"></div>
+      </div>
+
+    </div><!-- #chart-area -->
+
+  </main>
+
+</div><!-- .app -->
+
+<!-- Toast container -->
+<div id="toast-container" class="toast-container"></div>
+
+<!-- Scripts -->
+<script src="scripts/charts.js"></script>
+<script src="scripts/app.js"></script>
+
+</body>
+</html>
