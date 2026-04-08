@@ -33,7 +33,7 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     # Fetch daily OHLCV
     raw = ticker.history(period=period, interval="1d", auto_adjust=True)
     if raw.empty:
-        return {"error": f"No data returned for {sym}"}
+        return {"symbol": sym, "error": f"No data returned for {sym}"}
 
     daily_df = _clean_df(raw)
 
@@ -57,14 +57,7 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     except Exception:
         name, sector = "", ""
 
-    # Update symbol metadata
-    conn = db.get_connection()
-    conn.execute(
-        "UPDATE symbols SET name = ?, sector = ? WHERE symbol = ?",
-        (name, sector, sym)
-    )
-    conn.commit()
-    conn.close()
+    db.update_symbol_info(sym, name, sector)
 
     db.update_last_fetch(sym)
 

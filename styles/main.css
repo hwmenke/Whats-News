@@ -412,21 +412,81 @@ html, body {
 
 .ind-pill:hover { border-color: var(--accent); color: var(--accent); }
 
-.ind-pill.active-sma20   { background: rgba(59,130,246,0.18); border-color: #3b82f6; color: #3b82f6; }
-.ind-pill.active-sma50   { background: rgba(234,179,8,0.18);  border-color: #eab308; color: #eab308; }
-.ind-pill.active-sma200  { background: rgba(168,85,247,0.18); border-color: #a855f7; color: #a855f7; }
-.ind-pill.active-ema12   { background: rgba(6,182,212,0.18);  border-color: #06b6d4; color: #06b6d4; }
-.ind-pill.active-ema26   { background: rgba(249,115,22,0.18); border-color: #f97316; color: #f97316; }
-.ind-pill.active-bb      { background: rgba(34,197,94,0.18);  border-color: #22c55e; color: #22c55e; }
+.ind-pill.active-bb { background: rgba(34,197,94,0.18); border-color: #22c55e; color: #22c55e; }
+
+/* KAMA period active state is applied via inline style (dynamic colors) */
+
+/* ── Overlay toolbar helpers ───────────────────────────────── */
+.overlay-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+.kama-add-form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kama-input {
+  width: 60px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 7px;
+  outline: none;
+  transition: border-color 0.2s;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.kama-input::-webkit-outer-spin-button,
+.kama-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.kama-input:focus { border-color: var(--accent); }
 
 /* ── Chart Area ───────────────────────────────────────────── */
 .charts-container {
   flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   overflow: hidden;
   padding: 0;
   gap: 0;
+}
+
+/* ── Side-by-side panels (Daily / Weekly) ─────────────────── */
+.chart-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.panel-header {
+  padding: 5px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Vertical divider between panels */
+.panel-divider {
+  width: 1px;
+  background: var(--border);
+  flex-shrink: 0;
 }
 
 .chart-wrapper {
@@ -455,9 +515,9 @@ html, body {
   flex-shrink: 0;
 }
 
-.chart-wrapper-rsi   { height: 120px; flex-shrink: 0; }
-.chart-wrapper-macd  { height: 120px; flex-shrink: 0; }
-.chart-wrapper-vol   { height: 90px;  flex-shrink: 0; }
+.chart-wrapper-rsi   { height: 110px; flex-shrink: 0; }
+.chart-wrapper-macd  { height: 100px; flex-shrink: 0; }
+.chart-wrapper-trend { height: 80px;  flex-shrink: 0; }
 
 /* ── Empty State ──────────────────────────────────────────── */
 .empty-state {
@@ -556,4 +616,112 @@ html, body {
   }
   :root { --sidebar-w: 200px; }
   .ohlcv-strip { display: none; }
+}
+
+/* ═══════════════════ MAIN TABS ═══════════════════ */
+.main-nav-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 0 24px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  color: #8a8a98;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-btn:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.05);
+}
+
+.tab-btn.active {
+  color: #4facfe;
+  border-bottom-color: #4facfe;
+}
+
+.tab-icon {
+  font-size: 16px;
+}
+
+/* ═══════════════════ STATISTICS VIEW ═══════════════════ */
+.stats-container {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.stats-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.kpi-card {
+  background: #1e1e24;
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+.kpi-label {
+  font-size: 12px;
+  color: #8a8a98;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.kpi-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px;
+}
+
+.stats-card {
+  background: #1e1e24;
+  padding: 24px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+.stats-card-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding-bottom: 12px;
+}
+
+.chart-container-js {
+  position: relative;
+  height: 300px;
+  width: 100%;
 }

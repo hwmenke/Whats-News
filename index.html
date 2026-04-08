@@ -8,6 +8,8 @@
   <link rel="stylesheet" href="styles/main.css" />
   <!-- TradingView Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+  <!-- Chart.js for statistics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -93,21 +95,28 @@
       <div class="header-spacer"></div>
     </div>
 
-    <!-- Tab Bar + Indicator Toggles -->
+    <!-- ═══════════════════ MAIN TABS ═══════════════════ -->
+    <nav class="main-nav-tabs">
+      <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')">
+        <span class="tab-icon">📈</span> Charts
+      </button>
+      <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">
+        <span class="tab-icon">📊</span> Statistics
+      </button>
+    </nav>
     <div class="tab-bar">
-      <button class="tab-btn active" data-freq="daily">Daily</button>
-      <button class="tab-btn" data-freq="weekly">Weekly</button>
-
-      <div class="tab-spacer"></div>
-
       <div class="indicator-toggles">
-        <span style="font-size:10px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin-right:4px;">Overlays</span>
-        <button class="ind-pill active-sma20" data-ind="sma20">SMA 20</button>
-        <button class="ind-pill active-sma50" data-ind="sma50">SMA 50</button>
-        <button class="ind-pill" data-ind="sma200">SMA 200</button>
-        <button class="ind-pill" data-ind="ema12">EMA 12</button>
-        <button class="ind-pill" data-ind="ema26">EMA 26</button>
-        <button class="ind-pill active-bb" data-ind="bb">Bol. Bands</button>
+        <span class="overlay-section-label">KAMA</span>
+        <div id="kama-pills"></div>
+        <div class="kama-add-form">
+          <input id="kama-period-input" type="number" min="2" max="500" placeholder="Period" class="kama-input" />
+          <button id="btn-add-kama" class="btn btn-primary btn-icon" title="Add KAMA period">+</button>
+        </div>
+      </div>
+      <div class="tab-spacer"></div>
+      <div class="indicator-toggles">
+        <span class="overlay-section-label">Overlays</span>
+        <button id="pill-bb" class="ind-pill active-bb">Bol. Bands</button>
       </div>
     </div>
 
@@ -127,37 +136,111 @@
         Loading chart data…
       </div>
 
-      <!-- Main candlestick chart -->
-      <div class="chart-wrapper chart-wrapper-main">
-        <div class="chart-label">PRICE</div>
-        <div id="chart-main" style="width:100%;height:100%;"></div>
+      <!-- ── Daily Panel ── -->
+      <div class="chart-panel">
+        <div class="panel-header">Daily</div>
+        <div class="chart-wrapper chart-wrapper-main">
+          <div class="chart-label">PRICE</div>
+          <div id="chart-daily-main" style="width:100%;height:100%;"></div>
+        </div>
+        <div class="chart-divider"></div>
+        <div class="chart-wrapper chart-wrapper-rsi">
+          <div class="chart-label">RSI (7 / 14 / 21)</div>
+          <div id="chart-daily-rsi" style="width:100%;height:100%;"></div>
+        </div>
+        <div class="chart-divider"></div>
+        <div class="chart-wrapper chart-wrapper-macd">
+          <div class="chart-label">MACD (12/26/9)</div>
+          <div id="chart-daily-macd" style="width:100%;height:100%;"></div>
+        </div>
+        <div class="chart-divider"></div>
+        <div class="chart-wrapper chart-wrapper-trend">
+          <div class="chart-label">TREND SCORE</div>
+          <div id="chart-daily-trend" style="width:100%;height:100%;"></div>
+        </div>
       </div>
 
-      <div class="chart-divider"></div>
+      <!-- ── Panel Divider ── -->
+      <div class="panel-divider"></div>
 
-      <!-- RSI sub-chart -->
-      <div class="chart-wrapper chart-wrapper-rsi">
-        <div class="chart-label">RSI (14)</div>
-        <div id="chart-rsi" style="width:100%;height:100%;"></div>
-      </div>
-
-      <div class="chart-divider"></div>
-
-      <!-- MACD sub-chart -->
-      <div class="chart-wrapper chart-wrapper-macd">
-        <div class="chart-label">MACD (12/26/9)</div>
-        <div id="chart-macd" style="width:100%;height:100%;"></div>
-      </div>
-
-      <div class="chart-divider"></div>
-
-      <!-- Volume sub-chart -->
-      <div class="chart-wrapper chart-wrapper-vol">
-        <div class="chart-label">VOLUME</div>
-        <div id="chart-vol" style="width:100%;height:100%;"></div>
+      <!-- ── Weekly Panel ── -->
+      <div class="chart-panel">
+        <div class="panel-header">Weekly</div>
+        <div class="chart-wrapper chart-wrapper-main">
+          <div class="chart-label">PRICE</div>
+          <div id="chart-weekly-main" style="width:100%;height:100%;"></div>
+        </div>
+        <div class="chart-divider"></div>
+        <div class="chart-wrapper chart-wrapper-rsi">
+          <div class="chart-label">RSI (7 / 14 / 21)</div>
+          <div id="chart-weekly-rsi" style="width:100%;height:100%;"></div>
+        </div>
+        <div class="chart-divider"></div>
+        <div class="chart-wrapper chart-wrapper-macd">
+          <div class="chart-label">MACD (12/26/9)</div>
+          <div id="chart-weekly-macd" style="width:100%;height:100%;"></div>
+        </div>
+        <div class="chart-divider"></div>
+        <div class="chart-wrapper chart-wrapper-trend">
+          <div class="chart-label">TREND SCORE</div>
+          <div id="chart-weekly-trend" style="width:100%;height:100%;"></div>
+        </div>
       </div>
 
     </div><!-- #chart-area -->
+
+    <!-- ── Statistics Area ── -->
+    <div id="stats-area" class="stats-container" style="display:none;">
+      
+      <!-- KPI Row -->
+      <div class="stats-row kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label">Volatility (Ann.)</div>
+          <div id="stat-vol" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Sharpe Ratio</div>
+          <div id="stat-sharpe" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Max Drawdown</div>
+          <div id="stat-drawdown" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Win Rate</div>
+          <div id="stat-winrate" class="kpi-value">--</div>
+        </div>
+      </div>
+
+      <!-- Feature Analysis Row -->
+      <div class="stats-grid">
+        <div class="stats-card">
+          <div class="stats-card-header">RSI Deciles vs 1D Fwd Return</div>
+          <div class="chart-container-js">
+            <canvas id="chart-rsi-1d"></canvas>
+          </div>
+        </div>
+        <div class="stats-card">
+          <div class="stats-card-header">RSI Deciles vs 5D Fwd Return</div>
+          <div class="chart-container-js">
+            <canvas id="chart-rsi-5d"></canvas>
+          </div>
+        </div>
+        <div class="stats-card">
+          <div class="stats-card-header">Returns Distribution</div>
+          <div class="chart-container-js">
+            <canvas id="chart-dist"></canvas>
+          </div>
+        </div>
+        <div class="stats-card">
+          <div class="stats-card-header">Avg Monthly Returns (Seasonality)</div>
+          <div class="chart-container-js">
+            <canvas id="chart-seasonality"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- #stats-area -->
 
   </main>
 

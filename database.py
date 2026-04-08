@@ -5,10 +5,13 @@ Tables:
   - ohlcv    : OHLCV bars (daily + weekly)
 """
 
+import logging
 import sqlite3
 import os
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "finance.db")
 
@@ -50,6 +53,10 @@ def init_db():
         )
     """)
 
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_ohlcv ON ohlcv(symbol, freq, date)
+    """)
+
     conn.commit()
     conn.close()
 
@@ -65,7 +72,7 @@ def list_symbols():
 
 def add_symbol(symbol: str, name: str = "", sector: str = ""):
     conn = get_connection()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     try:
         conn.execute(
             "INSERT INTO symbols (symbol, name, sector, added_at) VALUES (?,?,?,?)",
@@ -91,7 +98,18 @@ def update_last_fetch(symbol: str):
     conn = get_connection()
     conn.execute(
         "UPDATE symbols SET last_fetch = ? WHERE symbol = ?",
-        (datetime.utcnow().isoformat(), symbol.upper())
+        (datetime.now(timezone.utc).isoformat(), symbol.upper())
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_symbol_info(symbol: str, name: str, sector: str):
+    """Update the name and sector metadata for an existing symbol."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE symbols SET name = ?, sector = ? WHERE symbol = ?",
+        (name, sector, symbol.upper())
     )
     conn.commit()
     conn.close()
@@ -107,32 +125,36 @@ def upsert_ohlcv(symbol: str, freq: str, df: pd.DataFrame):
     """
     conn = get_connection()
     sym = symbol.upper()
-    rows_inserted = 0
+    params = []
     for date_idx, row in df.iterrows():
         date_str = date_idx.strftime("%Y-%m-%d")
         try:
-            conn.execute(
-                """
-                INSERT INTO ohlcv (symbol, freq, date, open, high, low, close, volume)
-                VALUES (?,?,?,?,?,?,?,?)
-                ON CONFLICT(symbol, freq, date) DO UPDATE SET
-                    open   = excluded.open,
-                    high   = excluded.high,
-                    low    = excluded.low,
-                    close  = excluded.close,
-                    volume = excluded.volume
-                """,
-                (sym, freq, date_str,
-                 float(row["open"]), float(row["high"]),
-                 float(row["low"]),  float(row["close"]),
-                 float(row["volume"]))
-            )
-            rows_inserted += 1
-        except Exception:
-            pass
+            params.append((
+                sym, freq, date_str,
+                float(row["open"]), float(row["high"]),
+                float(row["low"]),  float(row["close"]),
+                float(row["volume"])
+            ))
+        except Exception as exc:
+            logger.warning("upsert_ohlcv skipped row %s %s %s: %s", sym, freq, date_str, exc)
+
+    if params:
+        conn.executemany(
+            """
+            INSERT INTO ohlcv (symbol, freq, date, open, high, low, close, volume)
+            VALUES (?,?,?,?,?,?,?,?)
+            ON CONFLICT(symbol, freq, date) DO UPDATE SET
+                open   = excluded.open,
+                high   = excluded.high,
+                low    = excluded.low,
+                close  = excluded.close,
+                volume = excluded.volume
+            """,
+            params
+        )
     conn.commit()
     conn.close()
-    return rows_inserted
+    return len(params)
 
 
 def get_ohlcv(symbol: str, freq: str = "daily", limit: int = 500) -> list:

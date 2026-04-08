@@ -1,62 +1,73 @@
 /**
  * charts.js — TradingView Lightweight Charts renderer
- * Handles candlestick chart, indicator overlays, and sub-charts.
+ * Two side-by-side panels: Daily and Weekly, each with Price / RSI / MACD / Trend Score.
+ * Dynamic KAMA periods and Bollinger Bands as overlays.
  */
 
 const LWC = LightweightCharts;
 
-// Shared chart instances
-let mainChart = null;
-let rsiChart = null;
-let macdChart = null;
-let volChart = null;
+// ── KAMA period management ──────────────────────────────────
+// Maps period → { color, seriesDaily, seriesWeekly }
+const kamaPeriods = {};
 
-// Series references
-let candleSeries = null;
-let smaSeries = {};
-let emaSeries = {};
-let bbSeries = {};
-let rsiSeries = null;
-let macdLineSeries = null;
-let macdSignalSeries = null;
-let macdHistSeries = null;
-let obsSeries = null;
-let volSeries = null;
-let volSmaSeries = null;
+// Colour pool for dynamically added KAMA lines
+const KAMA_COLORS = [
+    '#3b82f6', '#eab308', '#a855f7', '#06b6d4',
+    '#f97316', '#ec4899', '#14b8a6', '#f43f5e',
+];
+let kamaColorIdx = 0;
+function nextKamaColor() {
+    const c = KAMA_COLORS[kamaColorIdx % KAMA_COLORS.length];
+    kamaColorIdx++;
+    return c;
+}
 
-// Active overlay flags
-const activeOverlays = {
-    sma20: true, sma50: true, sma200: false,
-    ema12: false, ema26: false, bb: true
+// Overlay state
+const activeOverlays = { bb: true };
+
+// ── Chart instances ─────────────────────────────────────────
+let charts = {
+    daily:  { main: null, rsi: null, macd: null, trend: null },
+    weekly: { main: null, rsi: null, macd: null, trend: null },
 };
 
-// Chart color palette
-const COLORS = {
-    sma20: '#3b82f6',
-    sma50: '#eab308',
-    sma200: '#a855f7',
-    ema12: '#06b6d4',
-    ema26: '#f97316',
-    bb_upper: '#22c55e',
-    bb_middle: '#22c55e',
-    bb_lower: '#22c55e',
-    rsi: '#f97316',
-    macd_line: '#3b82f6',
-    macd_signal: '#ef4444',
+// ── Series references ────────────────────────────────────────
+let series = {
+    daily: {
+        candle: null, bb: {}, rsi: {}, macdLine: null,
+        macdSig: null, macdHist: null, trend: null,
+    },
+    weekly: {
+        candle: null, bb: {}, rsi: {}, macdLine: null,
+        macdSig: null, macdHist: null, trend: null,
+    },
+};
+
+// ── Colours ──────────────────────────────────────────────────
+const C = {
+    bb_upper:      '#22c55e',
+    bb_middle:     '#22c55e',
+    bb_lower:      '#22c55e',
+    rsi7:          '#06b6d4',
+    rsi14:         '#f97316',
+    rsi21:         '#a855f7',
+    macd_line:     '#3b82f6',
+    macd_signal:   '#ef4444',
     macd_hist_pos: '#22c55e',
     macd_hist_neg: '#ef4444',
-    vol: '#3b82f6',
-    vol_sma: '#f97316',
+    trend_pos:     '#22c55e',
+    trend_neg:     '#ef4444',
+    trend_zero:    '#4a5568',
 };
 
-// Default chart options
-function baseChartOpts(container) {
+// ── Base chart options ────────────────────────────────────────
+function baseOpts() {
     return {
         layout: {
             background: { color: '#0d1117' },
             textColor: '#8b949e',
             fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 11,
+            fontSize: 10,
         },
         grid: {
             vertLines: { color: '#1c2230' },
@@ -67,15 +78,13 @@ function baseChartOpts(container) {
             vertLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
             horzLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
         },
-        rightPriceScale: {
-            borderColor: '#30363d',
-        },
+        rightPriceScale: { borderColor: '#30363d' },
         timeScale: {
             borderColor: '#30363d',
             timeVisible: true,
             secondsVisible: false,
-            rightOffset: 8,
-            barSpacing: 8,
+            rightOffset: 6,
+            barSpacing: 6,
             fixLeftEdge: true,
         },
         handleScroll: true,
@@ -83,238 +92,300 @@ function baseChartOpts(container) {
     };
 }
 
+// ── Destroy all charts ────────────────────────────────────────
 function destroyCharts() {
-    if (mainChart) { mainChart.remove(); mainChart = null; }
-    if (rsiChart) { rsiChart.remove(); rsiChart = null; }
-    if (macdChart) { macdChart.remove(); macdChart = null; }
-    if (volChart) { volChart.remove(); volChart = null; }
-    smaSeries = {}; emaSeries = {}; bbSeries = {};
-    candleSeries = rsiSeries = macdLineSeries = macdSignalSeries =
-        macdHistSeries = volSeries = volSmaSeries = null;
+    ['daily', 'weekly'].forEach(freq => {
+        Object.values(charts[freq]).forEach(c => { if (c) c.remove(); });
+        charts[freq] = { main: null, rsi: null, macd: null, trend: null };
+        series[freq] = {
+            candle: null, bb: {}, rsi: {}, macdLine: null,
+            macdSig: null, macdHist: null, trend: null,
+        };
+        // Clear kama series refs
+        Object.values(kamaPeriods).forEach(p => {
+            p[`series_${freq}`] = null;
+        });
+    });
+}
+
+// ── Build one panel (daily or weekly) ────────────────────────
+function buildPanel(freq) {
+    const pfx   = `chart-${freq}`;
+    const mainEl  = document.getElementById(`${pfx}-main`);
+    const rsiEl   = document.getElementById(`${pfx}-rsi`);
+    const macdEl  = document.getElementById(`${pfx}-macd`);
+    const trendEl = document.getElementById(`${pfx}-trend`);
+
+    // Price chart
+    charts[freq].main = LWC.createChart(mainEl, {
+        ...baseOpts(), width: mainEl.clientWidth, height: mainEl.clientHeight,
+    });
+    series[freq].candle = charts[freq].main.addCandlestickSeries({
+        upColor: '#22c55e', downColor: '#ef4444',
+        borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+        wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+    });
+
+    // BB overlay series
+    series[freq].bb.upper  = charts[freq].main.addLineSeries({ color: C.bb_upper,  lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+    series[freq].bb.middle = charts[freq].main.addLineSeries({ color: C.bb_middle, lineWidth: 1, lineStyle: 0, priceLineVisible: false, lastValueVisible: false });
+    series[freq].bb.lower  = charts[freq].main.addLineSeries({ color: C.bb_lower,  lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+
+    // KAMA overlay series for this panel
+    Object.values(kamaPeriods).forEach(meta => {
+        meta[`series_${freq}`] = charts[freq].main.addLineSeries({
+            color: meta.color, lineWidth: 1.5,
+            priceLineVisible: false, lastValueVisible: false,
+        });
+    });
+
+    // RSI chart
+    charts[freq].rsi = LWC.createChart(rsiEl, {
+        ...baseOpts(), width: rsiEl.clientWidth, height: rsiEl.clientHeight,
+        rightPriceScale: { borderColor: '#30363d', autoScale: false, scaleMargins: { top: 0.05, bottom: 0.05 } },
+    });
+    charts[freq].rsi.priceScale('right').applyOptions({ autoScale: false });
+
+    series[freq].rsi[7]  = charts[freq].rsi.addLineSeries({ color: C.rsi7,  lineWidth: 1,   lineStyle: 2, priceLineVisible: false, lastValueVisible: true });
+    series[freq].rsi[14] = charts[freq].rsi.addLineSeries({ color: C.rsi14, lineWidth: 1.5, lineStyle: 0, priceLineVisible: false, lastValueVisible: true });
+    series[freq].rsi[21] = charts[freq].rsi.addLineSeries({ color: C.rsi21, lineWidth: 1,   lineStyle: 2, priceLineVisible: false, lastValueVisible: true });
+    series[freq].rsi[14].createPriceLine({ price: 80, color: '#ef444488', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OB' });
+    series[freq].rsi[14].createPriceLine({ price: 50, color: '#4a556888', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
+    series[freq].rsi[14].createPriceLine({ price: 20, color: '#22c55e88', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OS' });
+
+    // MACD chart
+    charts[freq].macd = LWC.createChart(macdEl, {
+        ...baseOpts(), width: macdEl.clientWidth, height: macdEl.clientHeight,
+    });
+    series[freq].macdHist = charts[freq].macd.addHistogramSeries({ color: C.macd_hist_pos, priceLineVisible: false, lastValueVisible: false });
+    series[freq].macdLine = charts[freq].macd.addLineSeries({ color: C.macd_line,   lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
+    series[freq].macdSig  = charts[freq].macd.addLineSeries({ color: C.macd_signal, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
+
+    // Trend score chart
+    charts[freq].trend = LWC.createChart(trendEl, {
+        ...baseOpts(), width: trendEl.clientWidth, height: trendEl.clientHeight,
+        rightPriceScale: { borderColor: '#30363d', autoScale: false, scaleMargins: { top: 0.1, bottom: 0.1 } },
+    });
+    charts[freq].trend.priceScale('right').applyOptions({ autoScale: false });
+
+    series[freq].trend = charts[freq].trend.addHistogramSeries({
+        priceLineVisible: false, lastValueVisible: true,
+    });
+    // Reference line at 0
+    series[freq].trend.createPriceLine({ price: 0, color: '#30363d', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
+
+    // Sync sub-charts to main
+    syncTo(charts[freq].main, charts[freq].rsi, charts[freq].macd, charts[freq].trend);
+    syncTo(charts[freq].rsi,   charts[freq].main);
+    syncTo(charts[freq].macd,  charts[freq].main);
+    syncTo(charts[freq].trend, charts[freq].main);
 }
 
 function initCharts() {
     destroyCharts();
-
-    const mainEl = document.getElementById('chart-main');
-    const rsiEl = document.getElementById('chart-rsi');
-    const macdEl = document.getElementById('chart-macd');
-    const volEl = document.getElementById('chart-vol');
-
-    // ── Main price chart ──────────────────────────────────────
-    mainChart = LWC.createChart(mainEl, {
-        ...baseChartOpts(mainEl),
-        width: mainEl.clientWidth,
-        height: mainEl.clientHeight,
-    });
-
-    candleSeries = mainChart.addCandlestickSeries({
-        upColor: '#22c55e',
-        downColor: '#ef4444',
-        borderUpColor: '#22c55e',
-        borderDownColor: '#ef4444',
-        wickUpColor: '#22c55e',
-        wickDownColor: '#ef4444',
-    });
-
-    // Overlay series (hidden until activated)
-    ['sma20', 'sma50', 'sma200'].forEach(k => {
-        smaSeries[k] = mainChart.addLineSeries({ color: COLORS[k], lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
-    });
-    ['ema12', 'ema26'].forEach(k => {
-        emaSeries[k] = mainChart.addLineSeries({ color: COLORS[k], lineWidth: 1.5, lineStyle: 1, priceLineVisible: false, lastValueVisible: false });
-    });
-    bbSeries.upper = mainChart.addLineSeries({ color: COLORS.bb_upper, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-    bbSeries.middle = mainChart.addLineSeries({ color: COLORS.bb_middle, lineWidth: 1, lineStyle: 0, priceLineVisible: false, lastValueVisible: false });
-    bbSeries.lower = mainChart.addLineSeries({ color: COLORS.bb_lower, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-
-    // ── RSI sub-chart ─────────────────────────────────────────
-    rsiChart = LWC.createChart(rsiEl, {
-        ...baseChartOpts(rsiEl),
-        width: rsiEl.clientWidth,
-        height: rsiEl.clientHeight,
-        rightPriceScale: { borderColor: '#30363d', autoScale: false, scaleMargins: { top: 0.05, bottom: 0.05 } },
-    });
-    rsiChart.priceScale('right').applyOptions({ autoScale: false });
-
-    rsiSeries = rsiChart.addLineSeries({
-        color: COLORS.rsi, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true,
-    });
-    // OB/OS reference lines
-    rsiChart.addLineSeries({ color: '#ef4444', lineWidth: 1, lineStyle: 3, priceLineVisible: false, lastValueVisible: false })
-        .setData([{ time: '1990-01-01', value: 70 }, { time: '2099-01-01', value: 70 }]);
-    rsiChart.addLineSeries({ color: '#22c55e', lineWidth: 1, lineStyle: 3, priceLineVisible: false, lastValueVisible: false })
-        .setData([{ time: '1990-01-01', value: 30 }, { time: '2099-01-01', value: 30 }]);
-
-    // ── MACD sub-chart ────────────────────────────────────────
-    macdChart = LWC.createChart(macdEl, {
-        ...baseChartOpts(macdEl),
-        width: macdEl.clientWidth,
-        height: macdEl.clientHeight,
-    });
-
-    macdHistSeries = macdChart.addHistogramSeries({
-        color: COLORS.macd_hist_pos,
-        priceLineVisible: false,
-        lastValueVisible: false,
-    });
-    macdLineSeries = macdChart.addLineSeries({
-        color: COLORS.macd_line, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false,
-    });
-    macdSignalSeries = macdChart.addLineSeries({
-        color: COLORS.macd_signal, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false,
-    });
-
-    // ── Volume sub-chart ──────────────────────────────────────
-    volChart = LWC.createChart(volEl, {
-        ...baseChartOpts(volEl),
-        width: volEl.clientWidth,
-        height: volEl.clientHeight,
-    });
-
-    volSeries = volChart.addHistogramSeries({
-        color: COLORS.vol + '99',
-        priceLineVisible: false, lastValueVisible: false,
-        priceFormat: { type: 'volume' },
-    });
-    volSmaSeries = volChart.addLineSeries({
-        color: COLORS.vol_sma, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false,
-    });
-
-    // Sync all sub-charts scroll/scale with main
-    syncCharts(mainChart, rsiChart, macdChart, volChart);
-    syncCharts(rsiChart, mainChart);
-    syncCharts(macdChart, mainChart);
-    syncCharts(volChart, mainChart);
-
-    // Resize observer
+    buildPanel('daily');
+    buildPanel('weekly');
+    syncPanels();
     setupResizeObserver();
 }
 
-// ── Sync time scales ────────────────────────────────────────
-function syncCharts(source, ...targets) {
+// ── Within-panel sync (same freq → logical range by bar index) ──
+function syncTo(source, ...targets) {
     source.timeScale().subscribeVisibleLogicalRangeChange(range => {
         if (!range) return;
         targets.forEach(t => {
             if (t && t !== source) {
-                try { t.timeScale().setVisibleLogicalRange(range); } catch (_) { }
+                try { t.timeScale().setVisibleLogicalRange(range); } catch (_) {}
             }
         });
     });
 }
 
-// ── Resize ──────────────────────────────────────────────────
+// ── Cross-panel sync (daily ↔ weekly by actual date range) ────
+let _crossSyncing = false;
+function syncPanels() {
+    const d = charts.daily.main;
+    const w = charts.weekly.main;
+    if (!d || !w) return;
+
+    d.timeScale().subscribeVisibleTimeRangeChange(range => {
+        if (_crossSyncing || !range) return;
+        _crossSyncing = true;
+        try { w.timeScale().setVisibleRange(range); } catch (_) {}
+        _crossSyncing = false;
+    });
+    w.timeScale().subscribeVisibleTimeRangeChange(range => {
+        if (_crossSyncing || !range) return;
+        _crossSyncing = true;
+        try { d.timeScale().setVisibleRange(range); } catch (_) {}
+        _crossSyncing = false;
+    });
+}
+
+// ── Resize observer ──────────────────────────────────────────
 function setupResizeObserver() {
-    const ids = ['chart-main', 'chart-rsi', 'chart-macd', 'chart-vol'];
-    const charts = [mainChart, rsiChart, macdChart, volChart];
-    ids.forEach((id, i) => {
+    const pairs = [
+        ['chart-daily-main',   charts.daily.main],
+        ['chart-daily-rsi',    charts.daily.rsi],
+        ['chart-daily-macd',   charts.daily.macd],
+        ['chart-daily-trend',  charts.daily.trend],
+        ['chart-weekly-main',  charts.weekly.main],
+        ['chart-weekly-rsi',   charts.weekly.rsi],
+        ['chart-weekly-macd',  charts.weekly.macd],
+        ['chart-weekly-trend', charts.weekly.trend],
+    ];
+    pairs.forEach(([id, chart]) => {
         const el = document.getElementById(id);
-        if (!el) return;
+        if (!el || !chart) return;
         new ResizeObserver(entries => {
-            for (const entry of entries) {
-                const { width, height } = entry.contentRect;
-                if (charts[i]) charts[i].resize(width, height);
+            for (const e of entries) {
+                const { width, height } = e.contentRect;
+                chart.resize(width, height);
             }
         }).observe(el);
     });
 }
 
-// ── Load OHLCV data ────────────────────────────────────────
-function loadOHLCV(rows) {
-    if (!candleSeries || !rows || !rows.length) return;
-
-    const candles = rows.map(r => ({
-        time: r.date,
-        open: r.open,
-        high: r.high,
-        low: r.low,
-        close: r.close,
-    }));
-
-    const volumes = rows.map(r => ({
-        time: r.date,
-        value: r.volume,
-        color: r.close >= r.open ? '#22c55e55' : '#ef444455',
-    }));
-
-    candleSeries.setData(candles);
-    if (volSeries) volSeries.setData(volumes);
+// ── Data loading helpers ─────────────────────────────────────
+function toLineData(arr) {
+    if (!arr) return [];
+    return arr.map(d => (d.value == null ? { time: d.date } : { time: d.date, value: d.value }));
 }
 
-// ── Load indicators ─────────────────────────────────────────
-function loadIndicators(data) {
+function loadOHLCV(freq, rows) {
+    if (!series[freq].candle || !rows?.length) return;
+    series[freq].candle.setData(rows.map(r => ({
+        time: r.date, open: r.open, high: r.high, low: r.low, close: r.close,
+    })));
+}
+
+function loadIndicatorsToPanel(freq, data) {
     if (!data) return;
 
-    function toLineData(arr) {
-        if (!arr) return [];
-        return arr.filter(d => d.value !== null && d.value !== undefined).map(d => ({ time: d.date, value: d.value }));
-    }
-
-    // Moving averages
-    if (smaSeries.sma20) smaSeries.sma20.setData(toLineData(data.sma_20));
-    if (smaSeries.sma50) smaSeries.sma50.setData(toLineData(data.sma_50));
-    if (smaSeries.sma200) smaSeries.sma200.setData(toLineData(data.sma_200));
-    if (emaSeries.ema12) emaSeries.ema12.setData(toLineData(data.ema_12));
-    if (emaSeries.ema26) emaSeries.ema26.setData(toLineData(data.ema_26));
+    // KAMA
+    Object.entries(kamaPeriods).forEach(([p, meta]) => {
+        const s = meta[`series_${freq}`];
+        if (s) s.setData(toLineData(data[`kama_${p}`]));
+    });
 
     // Bollinger Bands
-    if (bbSeries.upper) bbSeries.upper.setData(toLineData(data.bb_upper));
-    if (bbSeries.middle) bbSeries.middle.setData(toLineData(data.bb_middle));
-    if (bbSeries.lower) bbSeries.lower.setData(toLineData(data.bb_lower));
+    if (series[freq].bb.upper)  series[freq].bb.upper.setData(toLineData(data.bb_upper));
+    if (series[freq].bb.middle) series[freq].bb.middle.setData(toLineData(data.bb_middle));
+    if (series[freq].bb.lower)  series[freq].bb.lower.setData(toLineData(data.bb_lower));
 
     // RSI
-    if (rsiSeries) rsiSeries.setData(toLineData(data.rsi));
+    [7, 14, 21].forEach(p => {
+        if (series[freq].rsi[p]) series[freq].rsi[p].setData(toLineData(data[`rsi_${p}`]));
+    });
 
     // MACD
-    if (macdLineSeries) macdLineSeries.setData(toLineData(data.macd_line));
-    if (macdSignalSeries) macdSignalSeries.setData(toLineData(data.macd_signal));
-    if (macdHistSeries && data.macd_hist) {
-        const histData = data.macd_hist
-            .filter(d => d.value !== null && d.value !== undefined)
-            .map(d => ({
-                time: d.date,
-                value: d.value,
-                color: d.value >= 0 ? COLORS.macd_hist_pos + 'cc' : COLORS.macd_hist_neg + 'cc',
-            }));
-        macdHistSeries.setData(histData);
+    if (series[freq].macdLine) series[freq].macdLine.setData(toLineData(data.macd_line));
+    if (series[freq].macdSig)  series[freq].macdSig.setData(toLineData(data.macd_signal));
+    if (series[freq].macdHist && data.macd_hist) {
+        series[freq].macdHist.setData(
+            data.macd_hist.map(d => {
+                if (d.value == null) return { time: d.date };
+                return {
+                    time: d.date, value: d.value,
+                    color: d.value >= 0 ? C.macd_hist_pos + 'cc' : C.macd_hist_neg + 'cc',
+                };
+            })
+        );
     }
 
-    // Volume SMA overlay
-    if (volSmaSeries) volSmaSeries.setData(toLineData(data.vol_sma_20));
+    // Trend score histogram — colour by score value
+    if (series[freq].trend && data.trend_score) {
+        series[freq].trend.setData(
+            data.trend_score.map(d => {
+                if (d.value == null) return { time: d.date };
+                return {
+                    time: d.date, value: d.value,
+                    color: d.value > 0 ? C.trend_pos + 'cc'
+                         : d.value < 0 ? C.trend_neg + 'cc'
+                         : C.trend_zero + 'cc',
+                };
+            })
+        );
+    }
 
-    // Apply visibility based on active toggles
-    applyOverlayVisibility();
+    applyOverlayVisibility(freq);
 }
 
-// ── Overlay visibility toggle ───────────────────────────────
-function applyOverlayVisibility() {
-    const invisible = { color: 'transparent', visible: false };
-    const showHide = (series, show, color, lineWidth = 1.5, lineStyle = 0) => {
-        if (!series) return;
-        series.applyOptions(show
-            ? { color, lineWidth, lineStyle, visible: true }
-            : { visible: false }
-        );
+// ── Overlay visibility ───────────────────────────────────────
+function applyOverlayVisibility(freq) {
+    const showHide = (s, show, color, lw = 1, ls = 0) => {
+        if (!s) return;
+        s.applyOptions(show ? { color, lineWidth: lw, lineStyle: ls, visible: true } : { visible: false });
     };
 
-    showHide(smaSeries.sma20, activeOverlays.sma20, COLORS.sma20, 1.5);
-    showHide(smaSeries.sma50, activeOverlays.sma50, COLORS.sma50, 1.5);
-    showHide(smaSeries.sma200, activeOverlays.sma200, COLORS.sma200, 1.5);
-    showHide(emaSeries.ema12, activeOverlays.ema12, COLORS.ema12, 1.5, 1);
-    showHide(emaSeries.ema26, activeOverlays.ema26, COLORS.ema26, 1.5, 1);
+    // BB
+    const bbOn = activeOverlays.bb;
+    showHide(series[freq].bb.upper,  bbOn, C.bb_upper,  1, 2);
+    showHide(series[freq].bb.middle, bbOn, C.bb_middle, 1, 0);
+    showHide(series[freq].bb.lower,  bbOn, C.bb_lower,  1, 2);
 
-    const bbVisible = activeOverlays.bb;
-    showHide(bbSeries.upper, bbVisible, COLORS.bb_upper, 1, 2);
-    showHide(bbSeries.middle, bbVisible, COLORS.bb_middle, 1, 0);
-    showHide(bbSeries.lower, bbVisible, COLORS.bb_lower, 1, 2);
+    // KAMA
+    Object.values(kamaPeriods).forEach(meta => {
+        const s = meta[`series_${freq}`];
+        showHide(s, meta.active, meta.color, 1.5);
+    });
 }
 
 function toggleOverlay(key) {
     activeOverlays[key] = !activeOverlays[key];
-    applyOverlayVisibility();
+    ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
     return activeOverlays[key];
 }
 
+// ── KAMA period management ────────────────────────────────────
+/**
+ * Add a KAMA period. If charts exist, adds live series to both panels.
+ * Returns the color assigned.
+ */
+function addKamaPeriod(period) {
+    const p = String(period);
+    if (kamaPeriods[p]) return null; // already present
+
+    const color = nextKamaColor();
+    kamaPeriods[p] = { color, active: true, series_daily: null, series_weekly: null };
+
+    // If charts are already built, add the series live
+    if (charts.daily.main) {
+        kamaPeriods[p].series_daily = charts.daily.main.addLineSeries({
+            color, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false,
+        });
+    }
+    if (charts.weekly.main) {
+        kamaPeriods[p].series_weekly = charts.weekly.main.addLineSeries({
+            color, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false,
+        });
+    }
+    return color;
+}
+
+function removeKamaPeriod(period) {
+    const p = String(period);
+    if (!kamaPeriods[p]) return;
+    // Remove series from both charts
+    ['daily', 'weekly'].forEach(freq => {
+        const s = kamaPeriods[p][`series_${freq}`];
+        if (s && charts[freq].main) {
+            try { charts[freq].main.removeSeries(s); } catch (_) {}
+        }
+    });
+    delete kamaPeriods[p];
+}
+
+function toggleKamaPeriod(period) {
+    const p = String(period);
+    if (!kamaPeriods[p]) return;
+    kamaPeriods[p].active = !kamaPeriods[p].active;
+    ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
+    return kamaPeriods[p].active;
+}
+
 function fitContent() {
-    if (mainChart) mainChart.timeScale().fitContent();
+    // Only fit the daily panel — the cross-panel sync propagates the date range to weekly.
+    // Fitting both independently would leave them showing different periods.
+    if (charts.daily.main) charts.daily.main.timeScale().fitContent();
 }

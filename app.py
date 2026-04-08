@@ -4,12 +4,14 @@ Run: python app.py
 """
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 import database as db
 import data_fetcher as fetcher
 import indicators as ind
+import stats as stats
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -56,6 +58,8 @@ def delete_symbol(symbol):
 def fetch_symbol(symbol):
     try:
         result = fetcher.fetch_and_store(symbol.upper())
+        if "error" in result:
+            return jsonify(result), 400
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -65,12 +69,18 @@ def fetch_symbol(symbol):
 def refresh_all():
     symbols = db.list_symbols()
     results = []
-    for s in symbols:
+
+    def _fetch(sym):
         try:
-            res = fetcher.fetch_and_store(s["symbol"])
-            results.append(res)
+            return fetcher.fetch_and_store(sym)
         except Exception as e:
-            results.append({"symbol": s["symbol"], "error": str(e)})
+            return {"symbol": sym, "error": str(e)}
+
+    with ThreadPoolExecutor(max_workers=min(8, len(symbols) or 1)) as pool:
+        futures = {pool.submit(_fetch, s["symbol"]): s["symbol"] for s in symbols}
+        for future in as_completed(futures):
+            results.append(future.result())
+
     return jsonify(results)
 
 
@@ -97,8 +107,30 @@ def get_indicators(symbol):
     freq = request.args.get("freq", "daily")
     if freq not in ("daily", "weekly"):
         return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
-    result = ind.compute_indicators(symbol.upper(), freq)
+
+    kama_param = request.args.get("kama", "10,20,50")
+    try:
+        kama_periods = [int(p) for p in kama_param.split(",") if p.strip()]
+        if not kama_periods:
+            kama_periods = [10, 20, 50]
+    except ValueError:
+        return jsonify({"error": "kama must be comma-separated integers"}), 400
+
+    result = ind.compute_indicators(symbol.upper(), freq, kama_periods)
     return jsonify(result)
+
+
+# -- Stats ----------------------------------------------------------------------
+
+@app.route("/api/stats/<string:symbol>", methods=["GET"])
+def get_stats(symbol):
+    try:
+        result = stats.compute_stats(symbol.upper())
+        if "error" in result:
+            return jsonify(result), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # -- Entry point ----------------------------------------------------------------
