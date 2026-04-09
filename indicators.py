@@ -56,73 +56,86 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
 
 
 def compute_indicators(symbol: str, freq: str = "daily", kama_periods: list = None) -> dict:
-    """
-    Compute a full suite of technical indicators.
-    kama_periods: list of integer window sizes for KAMA (default [10, 20, 50]).
-    Returns a dict with structured data lists for each indicator.
-    """
     if kama_periods is None:
         kama_periods = [10, 20, 50]
 
-    df = db.get_ohlcv_df(symbol, freq)
+    # Increase history to 1000 bars for better indicator padding
+    df = db.get_ohlcv_df(symbol, freq, limit=1000)
     if df.empty:
         return {"error": "No OHLCV data found"}
 
-    close  = df["close"]
-    high   = df["high"]
-    low    = df["low"]
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
 
     result = {}
 
-    # ── Trend: KAMA (Kaufman's Adaptive Moving Average) ───────────
+    # ── Trend: KAMA ───────────────────────────────────────────────
     for period in kama_periods:
-        result[f"kama_{period}"] = _series_to_list(_kama(close, window=period))
+        try:
+            result[f"kama_{period}"] = _series_to_list(_kama(close, window=period))
+        except Exception:
+            result[f"kama_{period}"] = []
 
     # ── Volatility: Bollinger Bands ────────────────────────────────
-    bb = ta.volatility.BollingerBands(close, window=20, window_dev=2)
-    result["bb_upper"]  = _series_to_list(bb.bollinger_hband())
-    result["bb_middle"] = _series_to_list(bb.bollinger_mavg())
-    result["bb_lower"]  = _series_to_list(bb.bollinger_lband())
+    try:
+        bb = ta.volatility.BollingerBands(close, window=20, window_dev=2)
+        result["bb_upper"]  = _series_to_list(bb.bollinger_hband())
+        result["bb_middle"] = _series_to_list(bb.bollinger_mavg())
+        result["bb_lower"]  = _series_to_list(bb.bollinger_lband())
+    except Exception:
+        result["bb_upper"] = result["bb_middle"] = result["bb_lower"] = []
 
     # ── Momentum: RSI (7, 14, 21) ─────────────────────────────────
     rsi_series = {}
     for period in [7, 14, 21]:
-        rsi_ind = ta.momentum.RSIIndicator(close, window=period)
-        rsi_series[period] = rsi_ind.rsi()
-        result[f"rsi_{period}"] = _series_to_list(rsi_series[period])
+        try:
+            rsi_ind = ta.momentum.RSIIndicator(close, window=period)
+            rsi_series[period] = rsi_ind.rsi()
+            result[f"rsi_{period}"] = _series_to_list(rsi_series[period])
+        except Exception:
+            rsi_series[period] = pd.Series(np.nan, index=close.index)
+            result[f"rsi_{period}"] = []
 
     # ── Momentum: MACD ────────────────────────────────────────────
-    macd_ind    = ta.trend.MACD(close, window_slow=26, window_fast=12, window_sign=9)
-    macd_line   = macd_ind.macd()
-    macd_signal = macd_ind.macd_signal()
-    macd_hist   = macd_ind.macd_diff()
-    result["macd_line"]   = _series_to_list(macd_line)
-    result["macd_signal"] = _series_to_list(macd_signal)
-    result["macd_hist"]   = _series_to_list(macd_hist)
+    try:
+        macd_ind    = ta.trend.MACD(close, window_slow=26, window_fast=12, window_sign=9)
+        macd_line   = macd_ind.macd()
+        macd_signal = macd_ind.macd_signal()
+        macd_hist   = macd_ind.macd_diff()
+        result["macd_line"]   = _series_to_list(macd_line)
+        result["macd_signal"] = _series_to_list(macd_signal)
+        result["macd_hist"]   = _series_to_list(macd_hist)
+    except Exception:
+        macd_hist = pd.Series(np.nan, index=close.index) # For trend score calc
+        result["macd_line"] = result["macd_signal"] = result["macd_hist"] = []
 
     # ── Trend: CCI (20) ───────────────────────────────────────────
-    cci_ind  = ta.trend.CCIIndicator(high, low, close, window=20)
-    cci_vals = cci_ind.cci()
-    result["cci"] = _series_to_list(cci_vals)
+    try:
+        cci_ind  = ta.trend.CCIIndicator(high, low, close, window=20)
+        cci_vals = cci_ind.cci()
+        result["cci"] = _series_to_list(cci_vals)
+    except Exception:
+        cci_vals = pd.Series(np.nan, index=close.index)
+        result["cci"] = []
 
-    # Composite Trend Score (-3 to +3)
-    # RSI(14): >80 → 0 (overbought/risky); >50 → +1 (bullish); ≤50 → -1 (bearish)
-    # CCI:     >0  → +1 (uptrend);          ≤0  → -1 (downtrend)
-    # MACD:    hist>0 → +1 (bullish momentum); ≤0 → -1 (bearish)
-    
-    # We use the full index to ensure synchronization with other charts
-    rsi_score  = np.where(rsi_series[14] > 80, 0,
-                 np.where(rsi_series[14] > 50, 1, -1))
-    cci_score  = np.where(cci_vals > 0, 1, -1)
-    macd_score = np.where(macd_hist > 0, 1, -1)
+    # Composite Trend Score
+    try:
+        rsi_ref = rsi_series.get(14, pd.Series(np.nan, index=close.index))
+        macd_ref = macd_hist if 'macd_hist' in locals() else pd.Series(np.nan, index=close.index)
+        cci_ref = cci_vals if 'cci_vals' in locals() else pd.Series(np.nan, index=close.index)
 
-    # Combine scores, keeping NaNs where any component is NaN
-    total_score = rsi_score + cci_score + macd_score
-    
-    # Mask out values where indicators are NaN (lookback period)
-    mask = rsi_series[14].isna() | cci_vals.isna() | macd_hist.isna()
-    total_score = np.where(mask, np.nan, total_score)
+        rsi_score  = np.where(rsi_ref > 80, 0, np.where(rsi_ref > 50, 1, -1))
+        cci_score  = np.where(cci_ref > 0, 1, -1)
+        macd_score = np.where(macd_ref > 0, 1, -1)
 
-    result["trend_score"] = _series_to_list(pd.Series(total_score, index=close.index))
+        total_score = rsi_score + cci_score + macd_score
+        mask = rsi_ref.isna() | cci_ref.isna() | macd_ref.isna()
+        total_score = np.where(mask, np.nan, total_score)
+        result["trend_score"] = _series_to_list(pd.Series(total_score, index=close.index))
+    except Exception:
+        result["trend_score"] = []
+
+    return result
 
     return result

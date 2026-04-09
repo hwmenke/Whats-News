@@ -88,11 +88,16 @@ def refresh_all():
 
 @app.route("/api/ohlcv/<string:symbol>", methods=["GET"])
 def get_ohlcv(symbol):
-    freq  = request.args.get("freq",  "daily")
-    limit = int(request.args.get("limit", 500))
+    freq = request.args.get("freq", "daily")
+    try:
+        limit = int(request.args.get("limit", 500))
+    except (TypeError, ValueError):
+        return jsonify({"error": "limit must be an integer"}), 400
 
     if freq not in ("daily", "weekly"):
         return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if limit <= 0:
+        return jsonify({"error": "limit must be a positive integer"}), 400
 
     rows = db.get_ohlcv(symbol.upper(), freq, limit)
     if not rows:

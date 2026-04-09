@@ -274,11 +274,23 @@ async function loadStatsData(symbol) {
     updateSymbolHeader(symbol, null);
 
     try {
-        // We still need OHLCV for the header price/change
         const [ohlcv, stats] = await Promise.all([
             apiFetch(`${API}/ohlcv/${symbol}?freq=daily&limit=2`),
             apiFetch(`${API}/stats/${symbol}`),
-        ]);
+        ]).catch(async e => {
+            // If it's a 404/No data, try fetching
+            if (e.message.includes('404') || e.message.includes('No data')) {
+                toast(`No data for ${symbol}. Downloading…`, 'info');
+                const ok = await fetchSymbolData(symbol);
+                if (!ok) throw e;
+                await loadSymbols();
+                return Promise.all([
+                    apiFetch(`${API}/ohlcv/${symbol}?freq=daily&limit=2`),
+                    apiFetch(`${API}/stats/${symbol}`),
+                ]);
+            }
+            throw e;
+        });
 
         state.statsData = stats;
         renderStats(stats);
@@ -288,6 +300,11 @@ async function loadStatsData(symbol) {
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
         toast('Stats load failed: ' + e.message, 'error');
+        // Clear old stats if error
+        document.getElementById('stat-vol').textContent = '--';
+        document.getElementById('stat-sharpe').textContent = '--';
+        document.getElementById('stat-drawdown').textContent = '--';
+        document.getElementById('stat-winrate').textContent = '--';
     } finally {
         showLoadingOverlay(false);
     }
@@ -394,7 +411,32 @@ function renderStats(data) {
     const m = data.metrics;
     
     // Update KPI values
-    const fmt = (v, pct=false) => (v != null) ? (pct ? (v*100).toFixed(2)+'%' : v.toFixed(2)) : '--';
+    const fmt = (v, pct = false) => Number.isFinite(v) ? (pct ? (v * 100).toFixed(2) + '%' : v.toFixed(2)) : '--';
+    const pctValue = v => Number.isFinite(v) ? v * 100 : null;
+    const pctColor = v => Number.isFinite(v) && v >= 0 ? '#22c55e' : '#ef4444';
+    const kamaColors = {
+        '10': '#3b82f6',
+        '20': '#f97316',
+        '50': '#a855f7',
+    };
+    const alignedDeciles = series => {
+        const values = Array(10).fill(null);
+        (series || []).forEach(point => {
+            if (Number.isInteger(point.bin) && point.bin >= 0 && point.bin < 10) {
+                values[point.bin] = pctValue(point.value);
+            }
+        });
+        return values;
+    };
+    
+    // Update KPI values
+    const fmt = (v, pct = false) => {
+        if (v === null || v === undefined || !Number.isFinite(v)) return '--';
+        return pct ? (v * 100).toFixed(2) + '%' : v.toFixed(2);
+    };
+    const pctValue = v => (v !== null && Number.isFinite(v)) ? v * 100 : null;
+    const pctColor = v => (v !== null && Number.isFinite(v) && v >= 0) ? '#22c55e' : '#ef4444';
+    
     document.getElementById('stat-vol').textContent      = fmt(m.volatility, true);
     document.getElementById('stat-sharpe').textContent   = fmt(m.sharpe);
     document.getElementById('stat-drawdown').textContent = fmt(m.max_drawdown, true);
@@ -410,6 +452,24 @@ function renderStats(data) {
             x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } }
         }
     };
+    const distanceChartOptions = {
+        ...baseChartOpts,
+        plugins: {
+            legend: {
+                display: true,
+                labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
+            }
+        }
+    };
+    const crossChartOptions = {
+        ...baseChartOpts,
+        plugins: {
+            legend: {
+                display: true,
+                labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
+            }
+        }
+    };
 
     const destroy = (id) => { if (statsCharts[id]) statsCharts[id].destroy(); };
 
@@ -421,11 +481,32 @@ function renderStats(data) {
             labels: data.rsi_analysis.fwd_1d.map(d => `D${d.bin+1}`),
             datasets: [{
                 label: 'Mean 1D Return',
-                data: data.rsi_analysis.fwd_1d.map(d => d.value * 100),
-                backgroundColor: data.rsi_analysis.fwd_1d.map(d => d.value >= 0 ? '#22c55e' : '#ef4444'),
+                data: data.rsi_analysis.fwd_1d.map(d => pctValue(d.value)),
+                backgroundColor: data.rsi_analysis.fwd_1d.map(d => pctColor(d.value)),
             }]
         },
         options: baseChartOpts
+    });
+
+    // 2b. Price vs KAMA distance deciles (1D)
+    destroy('kamaDist1d');
+    statsCharts['kamaDist1d'] = new Chart(document.getElementById('chart-kama-dist-1d'), {
+        type: 'line',
+        data: {
+            labels: Array.from({ length: 10 }, (_, i) => `D${i + 1}`),
+            datasets: Object.entries(data.kama_distance_analysis?.fwd_1d || {}).map(([period, points]) => ({
+                label: `KAMA ${period}`,
+                data: alignedDeciles(points),
+                borderColor: kamaColors[period] || '#4facfe',
+                backgroundColor: kamaColors[period] || '#4facfe',
+                spanGaps: true,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                borderWidth: 2,
+                tension: 0.25,
+            }))
+        },
+        options: distanceChartOptions
     });
 
     // 2. RSI Deciles 5D
@@ -436,11 +517,32 @@ function renderStats(data) {
             labels: data.rsi_analysis.fwd_5d.map(d => `D${d.bin+1}`),
             datasets: [{
                 label: 'Mean 5D Return',
-                data: data.rsi_analysis.fwd_5d.map(d => d.value * 100),
-                backgroundColor: data.rsi_analysis.fwd_5d.map(d => d.value >= 0 ? '#22c55e' : '#ef4444'),
+                data: data.rsi_analysis.fwd_5d.map(d => pctValue(d.value)),
+                backgroundColor: data.rsi_analysis.fwd_5d.map(d => pctColor(d.value)),
             }]
         },
         options: baseChartOpts
+    });
+
+    // 2c. Price vs KAMA distance deciles (5D)
+    destroy('kamaDist5d');
+    statsCharts['kamaDist5d'] = new Chart(document.getElementById('chart-kama-dist-5d'), {
+        type: 'line',
+        data: {
+            labels: Array.from({ length: 10 }, (_, i) => `D${i + 1}`),
+            datasets: Object.entries(data.kama_distance_analysis?.fwd_5d || {}).map(([period, points]) => ({
+                label: `KAMA ${period}`,
+                data: alignedDeciles(points),
+                borderColor: kamaColors[period] || '#4facfe',
+                backgroundColor: kamaColors[period] || '#4facfe',
+                spanGaps: true,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                borderWidth: 2,
+                tension: 0.25,
+            }))
+        },
+        options: distanceChartOptions
     });
 
     // 3. Returns Distribution
@@ -475,8 +577,51 @@ function renderStats(data) {
         data: {
             labels: data.seasonality.map(d => monthNames[d.month-1]),
             datasets: [{
-                data: data.seasonality.map(d => d.value * 100),
-                backgroundColor: data.seasonality.map(d => d.value >= 0 ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'),
+                data: data.seasonality.map(d => pctValue(d.value)),
+                backgroundColor: data.seasonality.map(d => Number.isFinite(d.value) && d.value >= 0 ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'),
+            }]
+        },
+        options: baseChartOpts
+    });
+
+    // 4b. KAMA cross forward returns
+    destroy('kamaCross');
+    statsCharts['kamaCross'] = new Chart(document.getElementById('chart-kama-cross'), {
+        type: 'bar',
+        data: {
+            labels: (data.kama_cross_analysis || []).map(d => d.label),
+            datasets: [
+                {
+                    label: '1D Fwd Return',
+                    data: (data.kama_cross_analysis || []).map(d => pctValue(d.fwd_1d)),
+                    backgroundColor: 'rgba(79, 172, 254, 0.65)',
+                    borderColor: '#4facfe',
+                    borderWidth: 1,
+                },
+                {
+                    label: '5D Fwd Return',
+                    data: (data.kama_cross_analysis || []).map(d => pctValue(d.fwd_5d)),
+                    backgroundColor: 'rgba(249, 115, 22, 0.65)',
+                    borderColor: '#f97316',
+                    borderWidth: 1,
+                }
+            ]
+        },
+        options: crossChartOptions
+    });
+
+    // 4c. KAMA cross event counts
+    destroy('kamaCrossCounts');
+    statsCharts['kamaCrossCounts'] = new Chart(document.getElementById('chart-kama-cross-counts'), {
+        type: 'bar',
+        data: {
+            labels: (data.kama_cross_analysis || []).map(d => d.label),
+            datasets: [{
+                label: '1D Event Count',
+                data: (data.kama_cross_analysis || []).map(d => d.count_1d),
+                backgroundColor: (data.kama_cross_analysis || []).map(d => d.direction === 'bull' ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'),
+                borderColor: (data.kama_cross_analysis || []).map(d => d.direction === 'bull' ? '#22c55e' : '#ef4444'),
+                borderWidth: 1,
             }]
         },
         options: baseChartOpts

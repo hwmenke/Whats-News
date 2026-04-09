@@ -158,23 +158,26 @@ def upsert_ohlcv(symbol: str, freq: str, df: pd.DataFrame):
 
 
 def get_ohlcv(symbol: str, freq: str = "daily", limit: int = 500) -> list:
+    """Fetch the most recent N rows, returned in ascending date order."""
     conn = get_connection()
-    rows = conn.execute(
-        """
-        SELECT date, open, high, low, close, volume
-        FROM ohlcv
-        WHERE symbol = ? AND freq = ?
-        ORDER BY date ASC
-        LIMIT ?
-        """,
-        (symbol.upper(), freq, limit)
-    ).fetchall()
+    # To get the latest rows but keep them in chronological order, 
+    # we select DESC then wrap and sort ASC.
+    query = """
+        SELECT * FROM (
+            SELECT date, open, high, low, close, volume
+            FROM ohlcv
+            WHERE symbol = ? AND freq = ?
+            ORDER BY date DESC
+            LIMIT ?
+        ) ORDER BY date ASC
+    """
+    rows = conn.execute(query, (symbol.upper(), freq, limit)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
-def get_ohlcv_df(symbol: str, freq: str = "daily") -> pd.DataFrame:
-    rows = get_ohlcv(symbol, freq, limit=1000)
+def get_ohlcv_df(symbol: str, freq: str = "daily", limit: int = 1000) -> pd.DataFrame:
+    rows = get_ohlcv(symbol, freq, limit=limit)
     if not rows:
         return pd.DataFrame()
     df = pd.DataFrame(rows)
