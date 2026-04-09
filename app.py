@@ -56,12 +56,16 @@ def delete_symbol(symbol):
 
 @app.route("/api/fetch/<string:symbol>", methods=["POST"])
 def fetch_symbol(symbol):
+    print(f">> API: Fetch request for {symbol}")
     try:
         result = fetcher.fetch_and_store(symbol.upper())
         if "error" in result:
+            print(f"!! API: Error fetching {symbol}: {result['error']}")
             return jsonify(result), 400
+        print(f"<< API: Successfully fetched {symbol}")
         return jsonify(result)
     except Exception as e:
+        print(f"!! API: Exception fetching {symbol}: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 

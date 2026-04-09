@@ -34,9 +34,14 @@ function toast(message, type = 'info', duration = 3500) {
 
 // ── API helpers ──────────────────────────────────────────────
 async function apiFetch(url, opts = {}) {
+    console.log(`>> API Fetch: ${url}`, opts.method || 'GET');
     const res  = await fetch(url, opts);
+    console.log(`<< API Response: ${res.status} ${res.statusText}`);
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (!res.ok) {
+        console.error('!! API Error:', data.error || `HTTP ${res.status}`);
+        throw new Error(data.error || `HTTP ${res.status}`);
+    }
     return data;
 }
 
@@ -225,12 +230,15 @@ async function removeSymbol(symbol) {
 
 // ── Yahoo Finance fetch ───────────────────────────────────────
 async function fetchSymbolData(symbol) {
-    toast(`Downloading ${symbol} from Yahoo Finance…`, 'info');
+    console.log(`[App] Fetching data for ${symbol}...`);
+    toast(`Downloading ${symbol} from Yahoo Finance…`, 'info', 5000);
     try {
         const res = await apiFetch(`${API}/fetch/${symbol}`, { method: 'POST' });
+        console.log(`[App] Fetch complete for ${symbol}:`, res);
         toast(`${symbol}: ${res.daily_rows} daily / ${res.weekly_rows} weekly bars loaded`, 'success', 5000);
         return true;
     } catch (e) {
+        console.error(`[App] Fetch failed for ${symbol}:`, e);
         toast(`${symbol} fetch failed: ` + e.message, 'error');
         return false;
     }
@@ -411,9 +419,13 @@ function renderStats(data) {
     const m = data.metrics;
     
     // Update KPI values
-    const fmt = (v, pct = false) => Number.isFinite(v) ? (pct ? (v * 100).toFixed(2) + '%' : v.toFixed(2)) : '--';
-    const pctValue = v => Number.isFinite(v) ? v * 100 : null;
-    const pctColor = v => Number.isFinite(v) && v >= 0 ? '#22c55e' : '#ef4444';
+    const fmt = (v, pct = false) => {
+        if (v === null || v === undefined || !Number.isFinite(v)) return '--';
+        return pct ? (v * 100).toFixed(2) + '%' : v.toFixed(2);
+    };
+    const pctValue = v => (v !== null && Number.isFinite(v)) ? v * 100 : null;
+    const pctColor = v => (v !== null && Number.isFinite(v) && v >= 0) ? '#22c55e' : '#ef4444';
+
     const kamaColors = {
         '10': '#3b82f6',
         '20': '#f97316',
@@ -428,14 +440,6 @@ function renderStats(data) {
         });
         return values;
     };
-    
-    // Update KPI values
-    const fmt = (v, pct = false) => {
-        if (v === null || v === undefined || !Number.isFinite(v)) return '--';
-        return pct ? (v * 100).toFixed(2) + '%' : v.toFixed(2);
-    };
-    const pctValue = v => (v !== null && Number.isFinite(v)) ? v * 100 : null;
-    const pctColor = v => (v !== null && Number.isFinite(v) && v >= 0) ? '#22c55e' : '#ef4444';
     
     document.getElementById('stat-vol').textContent      = fmt(m.volatility, true);
     document.getElementById('stat-sharpe').textContent   = fmt(m.sharpe);
