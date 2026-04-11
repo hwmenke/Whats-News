@@ -270,8 +270,10 @@ async function selectSymbol(symbol) {
     renderSymbolList();
     if (state.activeTab === 'charts') {
         await loadChartData(symbol);
-    } else {
+    } else if (state.activeTab === 'stats') {
         await loadStatsData(symbol);
+    } else if (state.activeTab === 'trend') {
+        await loadAdaptiveTrendData(symbol);
     }
 }
 
@@ -367,10 +369,55 @@ async function loadChartData(symbol) {
     }
 }
 
+// ── Adaptive Trend loading ────────────────────────────────────
+async function loadAdaptiveTrendData(symbol) {
+    if (!symbol) return;
+    showTrendArea();
+
+    const loadingEl = document.getElementById('trend-loading');
+    if (loadingEl) loadingEl.style.display = 'flex';
+    updateSymbolHeader(symbol, null);
+
+    const freq   = trendState.freq;
+    const method = trendState.method;
+
+    try {
+        let [ohlcv, trendData] = await Promise.all([
+            apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
+            apiFetch(`${API}/adaptive-trend/${symbol}?freq=${freq}&method=${method}`),
+        ]).catch(async e => {
+            if (e.message.includes('404') || e.message.includes('No data')) {
+                toast(`No data for ${symbol}. Downloading…`, 'info');
+                const ok = await fetchSymbolData(symbol);
+                if (!ok) throw e;
+                await loadSymbols();
+                return Promise.all([
+                    apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
+                    apiFetch(`${API}/adaptive-trend/${symbol}?freq=${freq}&method=${method}`),
+                ]);
+            }
+            throw e;
+        });
+
+        buildTrendCharts();
+        loadTrendData(trendData, ohlcv);
+
+        const last = ohlcv[ohlcv.length - 1];
+        const prev = ohlcv[ohlcv.length - 2];
+        updateSymbolHeader(symbol, last, prev);
+    } catch (e) {
+        toast('Adaptive Trend load failed: ' + e.message, 'error');
+    } finally {
+        if (loadingEl) loadingEl.style.display = 'none';
+    }
+}
+
 // ── UI helpers ───────────────────────────────────────────────
 function showEmptyState() {
     document.getElementById('empty-state').style.display = 'flex';
     document.getElementById('chart-area').style.display  = 'none';
+    document.getElementById('stats-area').style.display  = 'none';
+    document.getElementById('trend-area').style.display  = 'none';
 }
 
 function showChartArea() {
@@ -394,9 +441,12 @@ async function switchTab(tabId) {
     if (tabId === 'charts') {
         showChartArea();
         if (state.activeSymbol) loadChartData(state.activeSymbol);
-    } else {
+    } else if (tabId === 'stats') {
         showStatsArea();
         if (state.activeSymbol) loadStatsData(state.activeSymbol);
+    } else if (tabId === 'trend') {
+        showTrendArea();
+        if (state.activeSymbol) loadAdaptiveTrendData(state.activeSymbol);
     }
 }
 
@@ -404,6 +454,7 @@ function showStatsArea() {
     document.getElementById('empty-state').style.display = 'none';
     document.getElementById('chart-area').style.display  = 'none';
     document.getElementById('stats-area').style.display  = 'block';
+    document.getElementById('trend-area').style.display  = 'none';
     document.querySelector('.tab-bar').style.display     = 'none';
 }
 
@@ -411,7 +462,16 @@ function showChartArea() {
     document.getElementById('empty-state').style.display = 'none';
     document.getElementById('stats-area').style.display  = 'none';
     document.getElementById('chart-area').style.display  = 'flex';
+    document.getElementById('trend-area').style.display  = 'none';
     document.querySelector('.tab-bar').style.display     = 'flex';
+}
+
+function showTrendArea() {
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('chart-area').style.display  = 'none';
+    document.getElementById('stats-area').style.display  = 'none';
+    document.getElementById('trend-area').style.display  = 'flex';
+    document.querySelector('.tab-bar').style.display     = 'none';
 }
 
 // ── Stats Rendering ───────────────────────────────────────────

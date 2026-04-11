@@ -103,6 +103,9 @@
       <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">
         <span class="tab-icon">📊</span> Statistics
       </button>
+      <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">
+        <span class="tab-icon">🎯</span> Adaptive Trend
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -266,6 +269,111 @@
 
     </div><!-- #stats-area -->
 
+    <!-- ── Adaptive Trend Area ── -->
+    <div id="trend-area" class="trend-container" style="display:none;">
+
+      <!-- Loading overlay -->
+      <div id="trend-loading" class="chart-loading" style="display:none; position:absolute; inset:0; z-index:20;">
+        <span class="spinner"></span>
+        Computing adaptive trend…
+      </div>
+
+      <!-- Controls bar -->
+      <div class="trend-controls">
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Method</span>
+          <button id="trend-method-kama" class="ind-pill trend-method-active" onclick="setTrendMethod('kama')">KAMA</button>
+          <button id="trend-method-adma" class="ind-pill" onclick="setTrendMethod('adma')">ADMA</button>
+        </div>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Freq</span>
+          <button id="trend-freq-daily"  class="ind-pill trend-freq-active"   onclick="setTrendFreq('daily')">Daily</button>
+          <button id="trend-freq-weekly" class="ind-pill"                     onclick="setTrendFreq('weekly')">Weekly</button>
+        </div>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Show</span>
+          <button id="trend-toggle-lb"  class="ind-pill trend-toggle-active" onclick="toggleTrendLine('lb')">LB</button>
+          <button id="trend-toggle-lrt" class="ind-pill trend-toggle-active" onclick="toggleTrendLine('lrt')">LRT</button>
+          <button id="trend-toggle-ldb" class="ind-pill trend-toggle-active" onclick="toggleTrendLine('ldb')">LDB</button>
+        </div>
+        <div class="trend-legend">
+          <span class="trend-legend-item" style="color:#3b82f6">&#9644; SB</span>
+          <span class="trend-legend-item" style="color:#ef4444">&#9644; MB</span>
+          <span class="trend-legend-item" style="color:#f97316">&#9644; LB</span>
+          <span class="trend-legend-item" style="color:#22c55e; border-style:dashed">&#9148; SDB</span>
+          <span class="trend-legend-item" style="color:#16a34a; border-style:dashed">&#9148; MDB</span>
+          <span class="trend-legend-item" style="color:#06b6d4; border-style:dashed">&#9148; LDB</span>
+          <span class="trend-legend-item" style="color:#374151; border-style:dashed">&#9148; MRT</span>
+          <span class="trend-legend-item" style="color:#6b7280; border-style:dashed">&#9148; LRT</span>
+        </div>
+      </div>
+
+      <!-- Two panels side-by-side -->
+      <div class="trend-panels">
+
+        <!-- ── Trend Panel (main) ── -->
+        <div class="trend-panel" id="trend-panel-main-wrap">
+          <div class="panel-header">Price + Adaptive Bands</div>
+          <div class="chart-wrapper chart-wrapper-main" style="flex:1; min-height:0;">
+            <div id="trend-chart-price" style="width:100%;height:100%;"></div>
+          </div>
+          <div class="chart-divider"></div>
+          <div class="chart-wrapper" style="height:90px; flex-shrink:0; position:relative;">
+            <div class="chart-label">REGIME</div>
+            <div id="trend-chart-regime" style="width:100%;height:100%;"></div>
+          </div>
+        </div>
+
+        <div class="panel-divider"></div>
+
+        <!-- ── Signal Panel ── -->
+        <div class="trend-panel" id="trend-panel-signal-wrap">
+          <div class="panel-header">Signal Summary</div>
+          <div class="trend-signal-grid">
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Short State</div>
+              <div id="trend-sig-short" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Medium State</div>
+              <div id="trend-sig-medium" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Long State</div>
+              <div id="trend-sig-long" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Last Entry</div>
+              <div id="trend-sig-entry" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Stop (MRT)</div>
+              <div id="trend-sig-mrt" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">TP1 (SDB)</div>
+              <div id="trend-sig-sdb" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">TP2 (MDB)</div>
+              <div id="trend-sig-mdb" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">ATR</div>
+              <div id="trend-sig-atr" class="trend-signal-value neutral">—</div>
+            </div>
+          </div>
+
+          <!-- Regime history chart -->
+          <div class="panel-header" style="margin-top:12px;">Regime History</div>
+          <div class="chart-wrapper" style="flex:1; min-height:0; position:relative;">
+            <div id="trend-chart-regimes" style="width:100%;height:100%;"></div>
+          </div>
+        </div>
+
+      </div><!-- .trend-panels -->
+    </div><!-- #trend-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -275,6 +383,7 @@
 
 <!-- Scripts -->
 <script src="scripts/charts.js"></script>
+<script src="scripts/trend_chart.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>
