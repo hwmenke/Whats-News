@@ -728,20 +728,22 @@ html, body {
 
 /* ═══════════════════ ADAPTIVE TREND TAB ═══════════════════ */
 
+/* Outer container — fills main content area, contains loading overlay */
 .trend-container {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  position: relative;
+  position: relative;    /* required for #trend-loading overlay */
+  min-height: 0;
 }
 
-/* Controls bar */
+/* ── Controls bar ──────────────────────────────────────────── */
 .trend-controls {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 8px 20px;
+  padding: 7px 20px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   flex-wrap: wrap;
@@ -754,43 +756,37 @@ html, body {
   gap: 5px;
 }
 
-/* Active states for method/freq/toggle pills */
-.trend-method-active {
+/* Shared active state — used by method, freq, and toggle pills */
+.trend-active {
   background: rgba(59,130,246,0.20);
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
 }
 
-.trend-freq-active {
-  background: rgba(59,130,246,0.20);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.trend-toggle-active {
+.trend-toggle-on {
   background: rgba(34,197,94,0.18);
-  border-color: #22c55e;
-  color: #22c55e;
+  border-color: #22c55e !important;
+  color: #22c55e !important;
 }
 
-/* Legend */
+/* Legend items */
 .trend-legend {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin-left: auto;
   flex-wrap: wrap;
 }
 
-.trend-legend-item {
+.trend-leg {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.3px;
   white-space: nowrap;
+  opacity: 0.9;
 }
 
-/* Panels */
+/* ── Two-panel layout ──────────────────────────────────────── */
 .trend-panels {
   flex: 1;
   display: flex;
@@ -799,47 +795,161 @@ html, body {
   min-height: 0;
 }
 
-.trend-panel {
-  flex: 1;
+/* Main panel (price chart) — 65% of width */
+.trend-panel-main {
+  flex: 2.2;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  min-height: 0;
 }
 
-/* Signal summary grid */
+/* Price chart wrapper — fills remaining space */
+.trend-price-wrap {
+  flex: 1;
+  min-height: 300px;    /* guarantees LWC has a non-zero height at creation */
+  position: relative;
+  background: var(--bg-base);
+}
+
+/* Regime strip wrapper */
+.trend-regime-wrap {
+  height: 130px;
+  flex-shrink: 0;
+  position: relative;
+  background: var(--bg-base);
+}
+
+/* Signal panel — 35% of width, scrolls if needed */
+.trend-panel-signal {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-width: 0;
+  background: var(--bg-base);
+}
+
+/* ── Composite signal badge ────────────────────────────────── */
+.trend-composite-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.trend-composite-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.trend-composite-badge {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 8px 20px;
+  border-radius: var(--radius-lg);
+  border: 2px solid currentColor;
+}
+
+/* Bullish variants */
+.trend-composite-badge.bull-strong {
+  color: #22c55e;
+  background: rgba(34,197,94,0.15);
+  box-shadow: 0 0 20px rgba(34,197,94,0.15);
+}
+.trend-composite-badge.bull {
+  color: #4ade80;
+  background: rgba(74,222,128,0.10);
+}
+.trend-composite-badge.bull-soft {
+  color: #86efac;
+  background: rgba(134,239,172,0.08);
+}
+
+/* Neutral */
+.trend-composite-badge.neutral {
+  color: var(--text-muted);
+  background: rgba(139,148,158,0.08);
+}
+
+/* Bearish variants */
+.trend-composite-badge.bear-soft {
+  color: #fca5a5;
+  background: rgba(252,165,165,0.08);
+}
+.trend-composite-badge.bear {
+  color: #f87171;
+  background: rgba(248,113,113,0.10);
+}
+.trend-composite-badge.bear-strong {
+  color: #ef4444;
+  background: rgba(239,68,68,0.15);
+  box-shadow: 0 0 20px rgba(239,68,68,0.12);
+}
+
+/* Strength dots row  ● ● ○ */
+.trend-strength-bar {
+  font-size: 14px;
+  letter-spacing: 4px;
+}
+.trend-strength-bar.bull { color: var(--green); }
+.trend-strength-bar.bear { color: var(--red);   }
+.trend-strength-bar.neutral { color: var(--text-dim); }
+
+/* Horizon alignment arrows: Short ↑ · Medium ↓ · Long ↑ */
+.trend-align-detail {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+
+/* ── Signal detail grid (2 × 4) ────────────────────────────── */
 .trend-signal-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  padding: 14px;
+  gap: 8px;
+  padding: 12px;
   flex-shrink: 0;
 }
 
 .trend-signal-card {
-  background: var(--bg-card);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 12px 14px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .trend-signal-label {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.7px;
+  letter-spacing: 0.8px;
   color: var(--text-dim);
 }
 
 .trend-signal-value {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .trend-signal-value.bull    { color: var(--green); }
-.trend-signal-value.bear    { color: var(--red); }
+.trend-signal-value.bear    { color: var(--red);   }
 .trend-signal-value.neutral { color: var(--text-muted); }

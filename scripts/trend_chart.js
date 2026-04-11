@@ -1,67 +1,68 @@
 /**
- * trend_chart.js — Adaptive Trend System chart renderer
- * Uses TradingView Lightweight Charts.
+ * trend_chart.js — Adaptive Trend System renderer
  *
- * Renders:
- *   - Price chart: candlesticks + SB/MB/LB baselines + SDB/MRT/MDB/LRT/LDB bands
- *   - Regime chart: short/medium/long state histograms
- *   - Entry markers on price chart
- *   - Signal summary cards (current values)
+ * Architecture:
+ *   Left panel (65%) — price chart with all overlay lines + regime strip
+ *   Right panel (35%) — composite signal badge + 8 detail cards
+ *
+ * Lines rendered on price chart:
+ *   SB  (blue  solid  2px) — fast adaptive baseline
+ *   MB  (red   solid  2px) — medium adaptive baseline  ← master regime
+ *   LB  (orange dashed 1.5px) — long baseline          [toggleable]
+ *   SDB (bright-green dashed 1px) — short TP band
+ *   MDB (dark-green   dashed 1px) — medium TP band
+ *   LDB (cyan         dashed 1px) — long TP band       [toggleable]
+ *   MRT (dark-gray    dashed 1.5px) — medium stop band
+ *   LRT (mid-gray     dashed 1px)  — long stop band    [toggleable]
+ *
+ * Regime strip (3 offset histograms, 130 px):
+ *   Long horizon   plotted at  y = ±1 around base  +3
+ *   Medium horizon plotted at  y = ±1 around base   0
+ *   Short horizon  plotted at  y = ±1 around base  -3
+ *   Reference price-lines label each band: LONG / MED / SHORT
+ *
+ * Signal panel:
+ *   Composite signal  = sum of all 3 states  (-3 … +3)
+ *   8 detail cards: Short/Medium/Long horizon, Last entry,
+ *                   MRT stop, SDB TP1, MDB TP2, R:R ratio
  */
 
 // ── State ────────────────────────────────────────────────────
 const trendState = {
-    method:       'kama',
-    freq:         'daily',
-    visibleLines: { lb: true, lrt: true, ldb: true },
-    data:         null,
+    method: 'kama',
+    freq:   'daily',
+    vis:    { lb: true, lrt: true, ldb: true },
+    data:   null,
 };
 
-// ── Chart instances ──────────────────────────────────────────
-let trendCharts = {
-    price:   null,
-    regime:  null,
-    regimes: null,  // multi-regime history panel
+// ── Instances ─────────────────────────────────────────────────
+let trendCharts    = { price: null, regime: null };
+let trendSeries    = {
+    candle:   null,
+    sb: null, mb: null, lb: null,
+    sdb: null, mrt: null, mdb: null, lrt: null, ldb: null,
+    regLong: null, regMed: null, regShort: null,
 };
-
-// ── Series ───────────────────────────────────────────────────
-let trendSeries = {
-    candle:  null,
-    sb:      null,
-    mb:      null,
-    lb:      null,
-    sdb:     null,
-    mrt:     null,
-    mdb:     null,
-    lrt:     null,
-    ldb:     null,
-    // regime sub-chart (single medium state)
-    regime:  null,
-    // regimes history chart
-    shortReg:  null,
-    medReg:    null,
-    longReg:   null,
-};
+let _trendObservers = [];   // ResizeObserver instances — cleaned up on destroy
+let _regSyncing     = false;
 
 // ── Colors ───────────────────────────────────────────────────
 const TC = {
-    sb:       '#3b82f6',   // blue  — fast baseline
-    mb:       '#ef4444',   // red   — medium baseline
-    lb:       '#f97316',   // orange — long baseline
-    sdb:      '#22c55e',   // bright green — short TP band
-    mdb:      '#16a34a',   // darker green — medium TP band
-    ldb:      '#06b6d4',   // cyan — long TP band
-    mrt:      '#374151',   // dark gray — medium stop
-    lrt:      '#6b7280',   // mid gray — long stop
-    entry_l:  '#22c55e',
-    entry_s:  '#ef4444',
-    reg_long:    '#22c55e',
-    reg_short:   '#ef4444',
-    reg_neutral: '#4a5568',
+    sb:     '#3b82f6',   // blue    — fast baseline
+    mb:     '#ef4444',   // red     — medium baseline
+    lb:     '#f97316',   // orange  — long baseline
+    sdb:    '#22c55e',   // bright-green — short TP
+    mdb:    '#16a34a',   // dark-green   — medium TP
+    ldb:    '#06b6d4',   // cyan         — long TP
+    mrt:    '#475569',   // slate        — medium stop
+    lrt:    '#6b7280',   // gray         — long stop
+    bull:   '#22c55e',
+    bear:   '#ef4444',
+    neut:   '#4a5568',
 };
 
 // ── Base chart options ────────────────────────────────────────
-function trendBaseOpts() {
+function _trendBaseOpts() {
     return {
         layout: {
             background:  { color: '#0d1117' },
@@ -94,206 +95,173 @@ function trendBaseOpts() {
 
 // ── Destroy ───────────────────────────────────────────────────
 function destroyTrendCharts() {
+    // Clean up resize observers first to prevent stale callbacks
+    _trendObservers.forEach(obs => obs.disconnect());
+    _trendObservers = [];
+
     Object.values(trendCharts).forEach(c => { if (c) c.remove(); });
-    trendCharts  = { price: null, regime: null, regimes: null };
-    trendSeries  = {
+    trendCharts = { price: null, regime: null };
+    trendSeries = {
         candle: null, sb: null, mb: null, lb: null,
         sdb: null, mrt: null, mdb: null, lrt: null, ldb: null,
-        regime: null, shortReg: null, medReg: null, longReg: null,
+        regLong: null, regMed: null, regShort: null,
     };
+    _regSyncing = false;
 }
 
-// ── Build charts ──────────────────────────────────────────────
+// ── Observe helper (stores observer for later cleanup) ────────
+function _observe(elId, chart) {
+    const el = document.getElementById(elId);
+    if (!el || !chart) return;
+    const obs = new ResizeObserver(entries => {
+        for (const e of entries) {
+            const { width, height } = e.contentRect;
+            if (width > 0 && height > 0) {
+                try { chart.resize(width, height); } catch (_) {}
+            }
+        }
+    });
+    obs.observe(el);
+    _trendObservers.push(obs);
+}
+
+// ── Build ─────────────────────────────────────────────────────
 function buildTrendCharts() {
     destroyTrendCharts();
 
-    const priceEl   = document.getElementById('trend-chart-price');
-    const regimeEl  = document.getElementById('trend-chart-regime');
-    const regimesEl = document.getElementById('trend-chart-regimes');
+    const priceEl  = document.getElementById('trend-chart-price');
+    const regimeEl = document.getElementById('trend-chart-regime');
+    if (!priceEl || !regimeEl) return;
 
     // ── Price chart ──────────────────────────────────────────
     trendCharts.price = LightweightCharts.createChart(priceEl, {
-        ...trendBaseOpts(), width: priceEl.clientWidth, height: priceEl.clientHeight,
+        ..._trendBaseOpts(),
+        width:  priceEl.clientWidth  || 600,
+        height: priceEl.clientHeight || 400,
     });
 
     // Candlesticks
     trendSeries.candle = trendCharts.price.addCandlestickSeries({
-        upColor:        '#22c55e', downColor:        '#ef4444',
-        borderUpColor:  '#22c55e', borderDownColor:  '#ef4444',
-        wickUpColor:    '#22c55e', wickDownColor:    '#ef4444',
+        upColor:       '#22c55e', downColor:       '#ef4444',
+        borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+        wickUpColor:   '#22c55e', wickDownColor:   '#ef4444',
     });
 
-    // Baseline lines
-    trendSeries.sb = trendCharts.price.addLineSeries({
-        color: TC.sb, lineWidth: 2,
-        lineStyle: LightweightCharts.LineStyle.Solid,
-        priceLineVisible: false, lastValueVisible: true,
-        title: 'SB',
-    });
-    trendSeries.mb = trendCharts.price.addLineSeries({
-        color: TC.mb, lineWidth: 2,
-        lineStyle: LightweightCharts.LineStyle.Solid,
-        priceLineVisible: false, lastValueVisible: true,
-        title: 'MB',
-    });
-    trendSeries.lb = trendCharts.price.addLineSeries({
-        color: TC.lb, lineWidth: 1.5,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        priceLineVisible: false, lastValueVisible: true,
-        title: 'LB',
-    });
-
-    // TP bands (dashed)
-    trendSeries.sdb = trendCharts.price.addLineSeries({
-        color: TC.sdb, lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        priceLineVisible: false, lastValueVisible: false,
-        title: 'SDB',
-    });
-    trendSeries.mdb = trendCharts.price.addLineSeries({
-        color: TC.mdb, lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        priceLineVisible: false, lastValueVisible: false,
-        title: 'MDB',
-    });
-    trendSeries.ldb = trendCharts.price.addLineSeries({
-        color: TC.ldb, lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        priceLineVisible: false, lastValueVisible: false,
-        title: 'LDB',
-    });
-
-    // Stop bands (dashed)
-    trendSeries.mrt = trendCharts.price.addLineSeries({
-        color: TC.mrt, lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        priceLineVisible: false, lastValueVisible: false,
-        title: 'MRT',
-    });
-    trendSeries.lrt = trendCharts.price.addLineSeries({
-        color: TC.lrt, lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        priceLineVisible: false, lastValueVisible: false,
-        title: 'LRT',
-    });
-
-    // ── Regime mini-chart (medium state only) ────────────────
-    trendCharts.regime = LightweightCharts.createChart(regimeEl, {
-        ...trendBaseOpts(), width: regimeEl.clientWidth, height: regimeEl.clientHeight,
-        rightPriceScale: {
-            borderColor: '#30363d',
-            autoScale:   false,
-            scaleMargins: { top: 0.1, bottom: 0.1 },
-        },
-    });
-    trendCharts.regime.priceScale('right').applyOptions({ autoScale: false });
-    trendSeries.regime = trendCharts.regime.addHistogramSeries({
-        priceLineVisible: false, lastValueVisible: false,
-    });
-    trendSeries.regime.createPriceLine({
-        price: 0, color: '#30363d', lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false,
-    });
-
-    // ── Regimes history chart (all three states) ─────────────
-    trendCharts.regimes = LightweightCharts.createChart(regimesEl, {
-        ...trendBaseOpts(), width: regimesEl.clientWidth, height: regimesEl.clientHeight,
-        rightPriceScale: {
-            borderColor: '#30363d',
-            autoScale:   false,
-            scaleMargins: { top: 0.05, bottom: 0.05 },
-        },
-    });
-    trendCharts.regimes.priceScale('right').applyOptions({ autoScale: false });
-    // Plot three offset series so they don't overlap:
-    // long_state at +3, medium_state at 0, short_state at -3
-    trendSeries.longReg  = trendCharts.regimes.addHistogramSeries({
-        base: 3, priceLineVisible: false, lastValueVisible: false,
-    });
-    trendSeries.medReg   = trendCharts.regimes.addHistogramSeries({
-        base: 0, priceLineVisible: false, lastValueVisible: false,
-    });
-    trendSeries.shortReg = trendCharts.regimes.addHistogramSeries({
-        base: -3, priceLineVisible: false, lastValueVisible: false,
-    });
-    // Reference lines
-    [3, 0, -3].forEach(p => {
-        trendSeries.medReg.createPriceLine({
-            price: p, color: '#30363d', lineWidth: 1,
-            lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: p === 3 ? 'L' : p === 0 ? 'M' : 'S',
+    const _line = (color, lw, ls, title, lastVal = false) =>
+        trendCharts.price.addLineSeries({
+            color, lineWidth: lw,
+            lineStyle:        ls,
+            priceLineVisible: false,
+            lastValueVisible: lastVal,
+            title,
         });
+
+    const LS = LightweightCharts.LineStyle;
+
+    // Baselines (lastValueVisible = true for SB + MB only — keep axis clean)
+    trendSeries.sb  = _line(TC.sb,  2,   LS.Solid,  'SB',  true);
+    trendSeries.mb  = _line(TC.mb,  2,   LS.Solid,  'MB',  true);
+    trendSeries.lb  = _line(TC.lb,  1.5, LS.Dashed, 'LB',  false);
+
+    // Bands
+    trendSeries.sdb = _line(TC.sdb, 1,   LS.Dashed, 'SDB', false);
+    trendSeries.mrt = _line(TC.mrt, 1.5, LS.Dashed, 'MRT', false);
+    trendSeries.mdb = _line(TC.mdb, 1,   LS.Dashed, 'MDB', false);
+    trendSeries.lrt = _line(TC.lrt, 1,   LS.Dashed, 'LRT', false);
+    trendSeries.ldb = _line(TC.ldb, 1,   LS.Dashed, 'LDB', false);
+
+    // ── Regime strip (3 offset histograms) ───────────────────
+    trendCharts.regime = LightweightCharts.createChart(regimeEl, {
+        ..._trendBaseOpts(),
+        width:  regimeEl.clientWidth  || 600,
+        height: regimeEl.clientHeight || 130,
+        rightPriceScale: {
+            borderColor:  '#30363d',
+            scaleMargins: { top: 0.08, bottom: 0.08 },
+        },
     });
 
-    // ── Cross-sync: price ↔ regime ───────────────────────────
-    _trendSync(trendCharts.price,   trendCharts.regime, trendCharts.regimes);
-    _trendSync(trendCharts.regime,  trendCharts.price);
-    _trendSync(trendCharts.regimes, trendCharts.price);
+    const _hist = (base) => trendCharts.regime.addHistogramSeries({
+        base,
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+
+    trendSeries.regLong  = _hist(3);
+    trendSeries.regMed   = _hist(0);
+    trendSeries.regShort = _hist(-3);
+
+    // Reference lines anchor the scale and label the three bands.
+    // Use a very transparent color so they don't dominate visually.
+    const _ref = (series, price, title, color) =>
+        series.createPriceLine({
+            price, color, lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true, title,
+        });
+
+    _ref(trendSeries.regLong,  3,   'LONG',  TC.lb  + '60');
+    _ref(trendSeries.regMed,   0,   'MED',   TC.neut + '80');
+    _ref(trendSeries.regShort, -3,  'SHORT', TC.lb  + '60');
+
+    // ── Cross-sync price ↔ regime ─────────────────────────────
+    trendCharts.price.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (_regSyncing || !range) return;
+        _regSyncing = true;
+        try { trendCharts.regime.timeScale().setVisibleLogicalRange(range); } catch (_) {}
+        _regSyncing = false;
+    });
+    trendCharts.regime.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (_regSyncing || !range) return;
+        _regSyncing = true;
+        try { trendCharts.price.timeScale().setVisibleLogicalRange(range); } catch (_) {}
+        _regSyncing = false;
+    });
 
     // ── Resize observers ─────────────────────────────────────
-    [
-        ['trend-chart-price',   trendCharts.price],
-        ['trend-chart-regime',  trendCharts.regime],
-        ['trend-chart-regimes', trendCharts.regimes],
-    ].forEach(([id, chart]) => {
-        const el = document.getElementById(id);
-        if (!el || !chart) return;
-        new ResizeObserver(entries => {
-            for (const e of entries) {
-                const { width, height } = e.contentRect;
-                chart.resize(width, height);
-            }
-        }).observe(el);
-    });
+    _observe('trend-chart-price',  trendCharts.price);
+    _observe('trend-chart-regime', trendCharts.regime);
 }
 
-let _trendSyncing = false;
-function _trendSync(source, ...targets) {
-    source.timeScale().subscribeVisibleLogicalRangeChange(range => {
-        if (_trendSyncing || !range) return;
-        _trendSyncing = true;
-        targets.forEach(t => {
-            if (t) try { t.timeScale().setVisibleLogicalRange(range); } catch (_) {}
-        });
-        _trendSyncing = false;
-    });
-}
-
-// ── Data loading ──────────────────────────────────────────────
-function loadTrendOHLCV(rows) {
-    if (!trendSeries.candle || !rows?.length) return;
-    trendSeries.candle.setData(rows.map(r => ({
-        time: r.date, open: r.open, high: r.high, low: r.low, close: r.close,
-    })));
-}
-
+// ── Data helpers ──────────────────────────────────────────────
 function _toLine(arr) {
-    if (!arr) return [];
+    if (!Array.isArray(arr)) return [];
     return arr
-        .filter(d => d.value != null)
+        .filter(d => d.value != null && isFinite(d.value))
         .map(d => ({ time: d.date, value: d.value }));
 }
 
-function _regimeHistogram(arr, offset) {
-    /**
-     * Convert {date, value} regime array (values: -1, 0, +1) to histogram
-     * data centred around `offset`.
-     */
-    if (!arr) return [];
+/**
+ * Map regime array (+1/-1/0) to histogram data offset around `base`.
+ *   Long  (+1) → base + 1  (bar extends up from base)
+ *   Short (-1) → base - 1  (bar extends down from base)
+ *   Neutral(0) → base      (zero-height bar, invisible)
+ */
+function _regData(arr, base) {
+    if (!Array.isArray(arr)) return [];
     return arr.map(d => {
-        const v = d.value;
-        const color = v > 0 ? TC.reg_long + 'cc'
-                    : v < 0 ? TC.reg_short + 'cc'
-                    : TC.reg_neutral + '44';
-        // Height: 1 bar unit in the direction of the state
-        return { time: d.date, value: offset + v, color };
+        const v = d.value || 0;
+        return {
+            time:  d.date,
+            value: base + v,
+            color: v > 0 ? TC.bull + 'cc'
+                 : v < 0 ? TC.bear + 'cc'
+                 :         TC.neut + '22',
+        };
     });
 }
 
+// ── Load data into charts ─────────────────────────────────────
 function loadTrendData(data, ohlcvRows) {
-    if (!trendSeries.candle) return;
+    if (!data || data.error || !ohlcvRows?.length || !trendSeries.candle) return;
     trendState.data = data;
 
-    loadTrendOHLCV(ohlcvRows);
+    // Candlesticks
+    trendSeries.candle.setData(
+        ohlcvRows.map(r => ({
+            time: r.date, open: r.open, high: r.high, low: r.low, close: r.close,
+        }))
+    );
 
     // Baselines
     trendSeries.sb.setData(_toLine(data.sb));
@@ -302,142 +270,75 @@ function loadTrendData(data, ohlcvRows) {
 
     // Bands
     trendSeries.sdb.setData(_toLine(data.sdb));
-    trendSeries.mdb.setData(_toLine(data.mdb));
-    trendSeries.ldb.setData(_toLine(data.ldb));
     trendSeries.mrt.setData(_toLine(data.mrt));
+    trendSeries.mdb.setData(_toLine(data.mdb));
     trendSeries.lrt.setData(_toLine(data.lrt));
+    trendSeries.ldb.setData(_toLine(data.ldb));
 
-    // Entry markers
+    // Entry markers (long ▲ below bar, short ▼ above bar)
     const markers = [];
     (data.entry_long  || []).forEach(d => {
-        if (d.value) markers.push({ time: d.date, position: 'belowBar', color: TC.entry_l, shape: 'arrowUp',   text: 'L' });
+        if (d.value) markers.push({
+            time: d.date, position: 'belowBar', color: TC.bull,
+            shape: 'arrowUp', text: 'L',
+        });
     });
     (data.entry_short || []).forEach(d => {
-        if (d.value) markers.push({ time: d.date, position: 'aboveBar', color: TC.entry_s, shape: 'arrowDown', text: 'S' });
+        if (d.value) markers.push({
+            time: d.date, position: 'aboveBar', color: TC.bear,
+            shape: 'arrowDown', text: 'S',
+        });
     });
-    markers.sort((a, b) => a.time < b.time ? -1 : 1);
+    // ISO date strings sort lexicographically — safe for YYYY-MM-DD
+    markers.sort((a, b) => a.time.localeCompare(b.time));
     trendSeries.candle.setMarkers(markers);
 
-    // Regime mini-chart (medium_state mapped to +1/0/-1 with colours)
-    if (trendSeries.regime && data.medium_state) {
-        trendSeries.regime.setData(
-            data.medium_state.map(d => ({
-                time: d.date, value: d.value,
-                color: d.value > 0 ? TC.reg_long + 'cc'
-                     : d.value < 0 ? TC.reg_short + 'cc'
-                     : TC.reg_neutral + '44',
-            }))
-        );
-    }
+    // Regime histograms
+    trendSeries.regLong.setData(_regData(data.long_state,   3));
+    trendSeries.regMed.setData(_regData(data.medium_state,  0));
+    trendSeries.regShort.setData(_regData(data.short_state, -3));
 
-    // Multi-regime history (all three)
-    if (trendSeries.longReg && data.long_state) {
-        trendSeries.longReg.setData(_regimeHistogram(data.long_state, 3));
-    }
-    if (trendSeries.medReg && data.medium_state) {
-        trendSeries.medReg.setData(_regimeHistogram(data.medium_state, 0));
-    }
-    if (trendSeries.shortReg && data.short_state) {
-        trendSeries.shortReg.setData(_regimeHistogram(data.short_state, -3));
-    }
+    // Apply overlay visibility toggles
+    _applyVis();
 
-    // Apply visibility toggles
-    applyTrendLineVisibility();
+    // Fit to full history
+    trendCharts.price.timeScale().fitContent();
 
-    // Fit content
-    if (trendCharts.price) trendCharts.price.timeScale().fitContent();
-
-    // Update signal summary cards
-    updateTrendSignalCards(data, ohlcvRows);
-}
-
-// ── Signal summary cards ──────────────────────────────────────
-function updateTrendSignalCards(data, ohlcvRows) {
-    const last = arr => arr && arr.length ? arr[arr.length - 1] : null;
-    const fmt  = v => (v != null && isFinite(v)) ? v.toFixed(4) : '—';
-
-    const lastClose = ohlcvRows?.length ? ohlcvRows[ohlcvRows.length - 1].close : null;
-    const fmtPrice  = v => {
-        if (v == null) return '—';
-        // Show 2 dp for large values, 4 for small (FX)
-        return lastClose && lastClose > 100 ? v.toFixed(2) : v.toFixed(4);
-    };
-
-    const stateLabel = v => v === 1 ? 'LONG' : v === -1 ? 'SHORT' : 'NEUTRAL';
-    const stateClass = v => v === 1 ? 'bull' : v === -1 ? 'bear' : 'neutral';
-
-    const setCard = (id, text, cls) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.textContent = text;
-        el.className = `trend-signal-value ${cls}`;
-    };
-
-    const ss = last(data.short_state);
-    const ms = last(data.medium_state);
-    const ls = last(data.long_state);
-    setCard('trend-sig-short',  stateLabel(ss?.value), stateClass(ss?.value));
-    setCard('trend-sig-medium', stateLabel(ms?.value), stateClass(ms?.value));
-    setCard('trend-sig-long',   stateLabel(ls?.value), stateClass(ls?.value));
-
-    // Last entry signal
-    let lastEntry = '—';
-    let entryClass = 'neutral';
-    const allEntries = [
-        ...(data.entry_long  || []).filter(d => d.value).map(d => ({ date: d.date, dir: 'LONG' })),
-        ...(data.entry_short || []).filter(d => d.value).map(d => ({ date: d.date, dir: 'SHORT' })),
-    ].sort((a, b) => a.date < b.date ? -1 : 1);
-    if (allEntries.length) {
-        const e = allEntries[allEntries.length - 1];
-        lastEntry = `${e.dir} ${e.date}`;
-        entryClass = e.dir === 'LONG' ? 'bull' : 'bear';
-    }
-    setCard('trend-sig-entry', lastEntry, entryClass);
-
-    // Band values
-    const mrtLast = last(data.mrt);
-    const sdbLast = last(data.sdb);
-    const mdbLast = last(data.mdb);
-    const atrLast = last(data.atr);
-    setCard('trend-sig-mrt', fmtPrice(mrtLast?.value), 'neutral');
-    setCard('trend-sig-sdb', fmtPrice(sdbLast?.value), 'neutral');
-    setCard('trend-sig-mdb', fmtPrice(mdbLast?.value), 'neutral');
-    setCard('trend-sig-atr', fmtPrice(atrLast?.value), 'neutral');
+    // Update signal panel cards
+    _updateSignalPanel(data, ohlcvRows);
 }
 
 // ── Visibility toggles ────────────────────────────────────────
-function applyTrendLineVisibility() {
-    const vis = trendState.visibleLines;
-    const hide = s => { if (s) s.applyOptions({ visible: false }); };
+function _applyVis() {
+    const LS = LightweightCharts.LineStyle;
     const show = (s, color, lw, ls) => {
         if (s) s.applyOptions({ visible: true, color, lineWidth: lw, lineStyle: ls });
     };
+    const hide = s => { if (s) s.applyOptions({ visible: false }); };
 
-    if (vis.lb)  show(trendSeries.lb,  TC.lb,  1.5, LightweightCharts.LineStyle.Dashed);
-    else          hide(trendSeries.lb);
+    if (trendState.vis.lb)  show(trendSeries.lb,  TC.lb,  1.5, LS.Dashed);
+    else                    hide(trendSeries.lb);
 
-    if (vis.lrt) show(trendSeries.lrt, TC.lrt, 1, LightweightCharts.LineStyle.Dashed);
-    else          hide(trendSeries.lrt);
+    if (trendState.vis.lrt) show(trendSeries.lrt, TC.lrt, 1,   LS.Dashed);
+    else                    hide(trendSeries.lrt);
 
-    if (vis.ldb) show(trendSeries.ldb, TC.ldb, 1, LightweightCharts.LineStyle.Dashed);
-    else          hide(trendSeries.ldb);
+    if (trendState.vis.ldb) show(trendSeries.ldb, TC.ldb, 1,   LS.Dashed);
+    else                    hide(trendSeries.ldb);
 }
 
 function toggleTrendLine(key) {
-    trendState.visibleLines[key] = !trendState.visibleLines[key];
+    trendState.vis[key] = !trendState.vis[key];
     const btn = document.getElementById(`trend-toggle-${key}`);
-    if (btn) btn.classList.toggle('trend-toggle-active', trendState.visibleLines[key]);
-    applyTrendLineVisibility();
+    if (btn) btn.classList.toggle('trend-toggle-on', trendState.vis[key]);
+    _applyVis();
 }
 
-// ── Method / freq controls ────────────────────────────────────
+// ── Method / freq selectors ───────────────────────────────────
 function setTrendMethod(method) {
     trendState.method = method;
-    ['kama', 'adma'].forEach(m => {
-        const btn = document.getElementById(`trend-method-${m}`);
-        if (btn) btn.classList.toggle('trend-method-active', m === method);
+    document.querySelectorAll('.trend-method-btn').forEach(btn => {
+        btn.classList.toggle('trend-active', btn.dataset.val === method);
     });
-    // Reload if we have a symbol
     if (typeof state !== 'undefined' && state.activeSymbol) {
         loadAdaptiveTrendData(state.activeSymbol);
     }
@@ -445,11 +346,116 @@ function setTrendMethod(method) {
 
 function setTrendFreq(freq) {
     trendState.freq = freq;
-    ['daily', 'weekly'].forEach(f => {
-        const btn = document.getElementById(`trend-freq-${f}`);
-        if (btn) btn.classList.toggle('trend-freq-active', f === freq);
+    document.querySelectorAll('.trend-freq-btn').forEach(btn => {
+        btn.classList.toggle('trend-active', btn.dataset.val === freq);
     });
     if (typeof state !== 'undefined' && state.activeSymbol) {
         loadAdaptiveTrendData(state.activeSymbol);
+    }
+}
+
+// ── Signal panel ──────────────────────────────────────────────
+function _updateSignalPanel(data, ohlcvRows) {
+    const lastOf = arr => Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null;
+    const close  = ohlcvRows[ohlcvRows.length - 1].close;
+
+    // Format price: 2 dp for large values (indices), 4 dp for FX
+    const fmtP = v => {
+        if (v == null || !isFinite(v)) return '—';
+        return close > 100 ? v.toFixed(2) : v.toFixed(4);
+    };
+
+    const setCard = (id, text, cls) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent  = text;
+        el.className    = `trend-signal-value ${cls}`;
+    };
+
+    // Current regime states
+    const ss = lastOf(data.short_state)?.value  || 0;
+    const ms = lastOf(data.medium_state)?.value || 0;
+    const ls = lastOf(data.long_state)?.value   || 0;
+
+    // ── Composite signal (-3 … +3) ────────────────────────────
+    const comp = ss + ms + ls;
+    const compMap = {
+         3: ['STRONG LONG',  'bull-strong'],
+         2: ['LONG',         'bull'],
+         1: ['LEAN LONG',    'bull-soft'],
+         0: ['NEUTRAL',      'neutral'],
+        '-1': ['LEAN SHORT', 'bear-soft'],
+        '-2': ['SHORT',      'bear'],
+        '-3': ['STRONG SHORT','bear-strong'],
+    };
+    const [compLabel, compCls] = compMap[String(comp)] || ['—', 'neutral'];
+    const compEl = document.getElementById('trend-composite');
+    if (compEl) {
+        compEl.textContent = compLabel;
+        compEl.className   = `trend-composite-badge ${compCls}`;
+    }
+
+    const arrow = s => s > 0 ? '↑' : s < 0 ? '↓' : '–';
+    const alignEl = document.getElementById('trend-align');
+    if (alignEl) {
+        alignEl.textContent =
+            `Short ${arrow(ss)}  ·  Medium ${arrow(ms)}  ·  Long ${arrow(ls)}`;
+    }
+
+    // Strength bar (filled dots 0-3)
+    const strengthEl = document.getElementById('trend-strength');
+    if (strengthEl) {
+        const abs  = Math.abs(comp);
+        const dot  = '●';  const empty = '○';
+        strengthEl.textContent = Array.from({ length: 3 }, (_, i) => i < abs ? dot : empty).join(' ');
+        strengthEl.className   = `trend-strength-bar ${comp >= 0 ? 'bull' : 'bear'}`;
+    }
+
+    // ── Individual states ─────────────────────────────────────
+    const stateLabel = v => v > 0 ? 'LONG' : v < 0 ? 'SHORT' : 'NEUTRAL';
+    const stateClass = v => v > 0 ? 'bull'  : v < 0 ? 'bear'  : 'neutral';
+    setCard('trend-sig-short',  stateLabel(ss), stateClass(ss));
+    setCard('trend-sig-medium', stateLabel(ms), stateClass(ms));
+    setCard('trend-sig-long',   stateLabel(ls), stateClass(ls));
+
+    // ── Last entry signal ─────────────────────────────────────
+    const allEntries = [
+        ...(data.entry_long  || []).filter(d => d.value).map(d => ({ date: d.date, dir: 'LONG'  })),
+        ...(data.entry_short || []).filter(d => d.value).map(d => ({ date: d.date, dir: 'SHORT' })),
+    ].sort((a, b) => a.date.localeCompare(b.date));
+
+    if (allEntries.length) {
+        const e = allEntries[allEntries.length - 1];
+        setCard('trend-sig-entry', `${e.dir}  ${e.date}`, e.dir === 'LONG' ? 'bull' : 'bear');
+    } else {
+        setCard('trend-sig-entry', '—', 'neutral');
+    }
+
+    // ── Band levels ───────────────────────────────────────────
+    const mrtV = lastOf(data.mrt)?.value;
+    const sdbV = lastOf(data.sdb)?.value;
+    const mdbV = lastOf(data.mdb)?.value;
+    const atrV = lastOf(data.atr)?.value;
+
+    setCard('trend-sig-mrt', fmtP(mrtV), 'neutral');
+    setCard('trend-sig-sdb', fmtP(sdbV), 'neutral');
+    setCard('trend-sig-mdb', fmtP(mdbV), 'neutral');
+
+    // ── R:R ratio ─────────────────────────────────────────────
+    // Only meaningful when in an active medium-state regime
+    if (close > 0 && mrtV != null && mdbV != null && isFinite(mrtV) && isFinite(mdbV) && ms !== 0) {
+        const risk   = Math.abs(close - mrtV);
+        const reward = Math.abs(mdbV - close);
+        if (risk > 1e-10) {
+            const rr  = reward / risk;
+            const cls = rr >= 2.0 ? 'bull'
+                      : rr >= 1.0 ? 'neutral'
+                      :             'bear';
+            setCard('trend-sig-rr', `${rr.toFixed(2)} : 1  (ATR ${fmtP(atrV)})`, cls);
+        } else {
+            setCard('trend-sig-rr', `ATR ${fmtP(atrV)}`, 'neutral');
+        }
+    } else {
+        setCard('trend-sig-rr', atrV != null ? `ATR ${fmtP(atrV)}` : '—', 'neutral');
     }
 }
