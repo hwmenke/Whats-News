@@ -12,6 +12,7 @@ import database as db
 import data_fetcher as fetcher
 import indicators as ind
 import stats as stats
+import adaptive_trend as adaptive
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -135,6 +136,25 @@ def get_indicators(symbol):
 def get_stats(symbol):
     try:
         result = stats.compute_stats(symbol.upper())
+        if "error" in result:
+            return jsonify(result), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -- Adaptive Trend -------------------------------------------------------------
+
+@app.route("/api/adaptive-trend/<string:symbol>", methods=["GET"])
+def get_adaptive_trend(symbol):
+    freq   = request.args.get("freq", "daily")
+    method = request.args.get("method", "kama")
+    if freq not in ("daily", "weekly"):
+        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if method not in ("kama", "adma"):
+        return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
+    try:
+        result = adaptive.compute_adaptive_trend(symbol.upper(), freq, method)
         if "error" in result:
             return jsonify(result), 404
         return jsonify(result)

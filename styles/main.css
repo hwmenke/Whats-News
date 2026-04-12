@@ -725,3 +725,367 @@ html, body {
   height: 300px;
   width: 100%;
 }
+
+/* ═══════════════════ ADAPTIVE TREND TAB ═══════════════════ */
+
+/* Outer container — fills main content area, contains loading overlay */
+.trend-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;    /* required for #trend-loading overlay */
+  min-height: 0;
+}
+
+/* ── Controls bar ──────────────────────────────────────────── */
+.trend-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.trend-controls-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Shared active state — used by method, freq, and toggle pills */
+.trend-active {
+  background: rgba(59,130,246,0.20);
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
+.trend-toggle-on {
+  background: rgba(34,197,94,0.18);
+  border-color: #22c55e !important;
+  color: #22c55e !important;
+}
+
+/* Legend items */
+.trend-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.trend-leg {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0.9;
+}
+
+/* ── Two-panel layout ──────────────────────────────────────── */
+.trend-panels {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Main panel (price chart) — 65% of width */
+.trend-panel-main {
+  flex: 2.2;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Price chart wrapper — fills remaining space */
+.trend-price-wrap {
+  flex: 1;
+  min-height: 300px;    /* guarantees LWC has a non-zero height at creation */
+  position: relative;
+  background: var(--bg-base);
+}
+
+/* Regime strip wrapper */
+.trend-regime-wrap {
+  height: 130px;
+  flex-shrink: 0;
+  position: relative;
+  background: var(--bg-base);
+}
+
+/* Signal panel — 35% of width, scrolls if needed */
+.trend-panel-signal {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-width: 240px;
+  background: var(--bg-base);
+}
+
+/* ── Composite signal badge ────────────────────────────────── */
+.trend-composite-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.trend-composite-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.trend-composite-badge {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 8px 20px;
+  border-radius: var(--radius-lg);
+  border: 2px solid currentColor;
+}
+
+/* Bullish variants */
+.trend-composite-badge.bull-strong {
+  color: #22c55e;
+  background: rgba(34,197,94,0.15);
+  box-shadow: 0 0 20px rgba(34,197,94,0.15);
+}
+.trend-composite-badge.bull {
+  color: #4ade80;
+  background: rgba(74,222,128,0.10);
+}
+.trend-composite-badge.bull-soft {
+  color: #86efac;
+  background: rgba(134,239,172,0.08);
+}
+
+/* Neutral */
+.trend-composite-badge.neutral {
+  color: var(--text-muted);
+  background: rgba(139,148,158,0.08);
+}
+
+/* Bearish variants */
+.trend-composite-badge.bear-soft {
+  color: #fca5a5;
+  background: rgba(252,165,165,0.08);
+}
+.trend-composite-badge.bear {
+  color: #f87171;
+  background: rgba(248,113,113,0.10);
+}
+.trend-composite-badge.bear-strong {
+  color: #ef4444;
+  background: rgba(239,68,68,0.15);
+  box-shadow: 0 0 20px rgba(239,68,68,0.12);
+}
+
+/* Strength dots row  ● ● ○ */
+.trend-strength-bar {
+  font-size: 14px;
+  letter-spacing: 4px;
+}
+.trend-strength-bar.bull { color: var(--green); }
+.trend-strength-bar.bear { color: var(--red);   }
+.trend-strength-bar.neutral { color: var(--text-dim); }
+
+/* Horizon alignment arrows: Short ↑ · Medium ↓ · Long ↑ */
+.trend-align-detail {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+
+/* ── Signal detail grid (2 × 4) ────────────────────────────── */
+.trend-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 12px;
+  flex-shrink: 0;
+}
+
+.trend-signal-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.trend-signal-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+}
+
+.trend-signal-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trend-signal-value.bull    { color: var(--green); }
+.trend-signal-value.bear    { color: var(--red);   }
+.trend-signal-value.neutral { color: var(--text-muted); }
+
+/* ── Bulk Import Modal ─────────────────────────────────────── */
+.bulk-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.bulk-modal-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-lg);
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.65);
+  animation: bulk-modal-in 0.15s ease;
+}
+
+@keyframes bulk-modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);    }
+}
+
+.bulk-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--text-primary);
+}
+
+.bulk-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+.bulk-modal-close:hover { color: var(--text-primary); }
+
+.bulk-modal-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bulk-textarea {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 150px;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+.bulk-textarea:focus        { border-color: var(--accent); }
+.bulk-textarea:disabled     { opacity: 0.5; cursor: not-allowed; }
+
+.bulk-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* Progress indicator */
+.bulk-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.bulk-progress-bar {
+  height: 3px;
+  background: var(--bg-card);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.bulk-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 99px;
+  width: 0%;
+  transition: width 0.25s ease;
+}
+
+.bulk-progress-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.bulk-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+
+/* ≡ bulk button sits beside + in the sidebar */
+#btn-bulk-add {
+  flex-shrink: 0;
+  font-size: 15px;
+  padding: 0 8px;
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+#btn-bulk-add:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}

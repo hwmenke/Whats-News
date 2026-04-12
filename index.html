@@ -37,11 +37,12 @@
           id="new-symbol-input"
           type="text"
           placeholder="AAPL, TSLA…"
-          maxlength="10"
+          maxlength="60"
           autocomplete="off"
           spellcheck="false"
         />
-        <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add Symbol">+</button>
+        <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add symbol (or type comma-separated)">+</button>
+        <button id="btn-bulk-add"   class="btn btn-ghost   btn-icon" title="Bulk import a list of tickers">≡</button>
       </div>
     </div>
 
@@ -102,6 +103,9 @@
       </button>
       <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">
         <span class="tab-icon">📊</span> Statistics
+      </button>
+      <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">
+        <span class="tab-icon">🎯</span> Adaptive Trend
       </button>
     </nav>
     <div class="tab-bar">
@@ -266,6 +270,121 @@
 
     </div><!-- #stats-area -->
 
+    <!-- ── Adaptive Trend Area ── -->
+    <div id="trend-area" class="trend-container" style="display:none;">
+
+      <!-- Full-area loading overlay — sits over the whole trend container -->
+      <div id="trend-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span>
+        Computing adaptive trend…
+      </div>
+
+      <!-- Controls bar -->
+      <div class="trend-controls">
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Method</span>
+          <button class="ind-pill trend-active trend-method-btn" data-val="kama" onclick="setTrendMethod('kama')">KAMA</button>
+          <button class="ind-pill trend-method-btn"              data-val="adma" onclick="setTrendMethod('adma')">ADMA</button>
+        </div>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Freq</span>
+          <button class="ind-pill trend-active trend-freq-btn" data-val="daily"  onclick="setTrendFreq('daily')">Daily</button>
+          <button class="ind-pill trend-freq-btn"              data-val="weekly" onclick="setTrendFreq('weekly')">Weekly</button>
+        </div>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Overlays</span>
+          <button id="trend-toggle-lb"  class="ind-pill trend-toggle-on" onclick="toggleTrendLine('lb')">LB</button>
+          <button id="trend-toggle-lrt" class="ind-pill trend-toggle-on" onclick="toggleTrendLine('lrt')">LRT</button>
+          <button id="trend-toggle-ldb" class="ind-pill trend-toggle-on" onclick="toggleTrendLine('ldb')">LDB</button>
+        </div>
+        <div class="trend-legend">
+          <span class="trend-leg" style="color:#3b82f6">— SB</span>
+          <span class="trend-leg" style="color:#ef4444">— MB</span>
+          <span class="trend-leg" style="color:#f97316">╌ LB</span>
+          <span class="trend-leg" style="color:#22c55e">╌ SDB</span>
+          <span class="trend-leg" style="color:#16a34a">╌ MDB</span>
+          <span class="trend-leg" style="color:#06b6d4">╌ LDB</span>
+          <span class="trend-leg" style="color:#475569">╌ MRT</span>
+          <span class="trend-leg" style="color:#6b7280">╌ LRT</span>
+        </div>
+      </div>
+
+      <!-- Two-panel layout -->
+      <div class="trend-panels">
+
+        <!-- ── Main chart panel ── -->
+        <div class="trend-panel-main">
+          <div class="panel-header">Price · Adaptive Bands</div>
+
+          <!-- Price chart — flex:1 fills remaining height -->
+          <div class="trend-price-wrap">
+            <div id="trend-chart-price" style="width:100%;height:100%;"></div>
+          </div>
+
+          <div class="chart-divider"></div>
+
+          <!-- Regime strip — fixed height, shows all 3 horizons -->
+          <div class="trend-regime-wrap">
+            <div class="chart-label">S / M / L REGIME</div>
+            <div id="trend-chart-regime" style="width:100%;height:100%;"></div>
+          </div>
+        </div>
+
+        <div class="panel-divider"></div>
+
+        <!-- ── Signal panel ── -->
+        <div class="trend-panel-signal">
+          <div class="panel-header">Signal Summary</div>
+
+          <!-- Composite signal badge (most prominent element) -->
+          <div class="trend-composite-wrap">
+            <div class="trend-composite-label">Composite Signal</div>
+            <div id="trend-composite" class="trend-composite-badge neutral">—</div>
+            <div id="trend-strength"  class="trend-strength-bar neutral">○ ○ ○</div>
+            <div id="trend-align"     class="trend-align-detail">—</div>
+          </div>
+
+          <!-- 2 × 4 signal detail grid -->
+          <div class="trend-signal-grid">
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Short Horizon</div>
+              <div id="trend-sig-short" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Medium Horizon</div>
+              <div id="trend-sig-medium" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Long Horizon</div>
+              <div id="trend-sig-long" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Last Entry</div>
+              <div id="trend-sig-entry" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Stop · MRT</div>
+              <div id="trend-sig-mrt" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">TP1 · SDB</div>
+              <div id="trend-sig-sdb" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">TP2 · MDB</div>
+              <div id="trend-sig-mdb" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">R : R  ·  ATR</div>
+              <div id="trend-sig-rr" class="trend-signal-value neutral">—</div>
+            </div>
+          </div>
+
+        </div><!-- .trend-panel-signal -->
+
+      </div><!-- .trend-panels -->
+    </div><!-- #trend-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -273,8 +392,46 @@
 <!-- Toast container -->
 <div id="toast-container" class="toast-container"></div>
 
+<!-- ══ Bulk Add Modal ══════════════════════════════════════════ -->
+<div id="bulk-modal" class="bulk-modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeBulkModal()">
+  <div class="bulk-modal-card" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title">
+
+    <div class="bulk-modal-header">
+      <span id="bulk-modal-title">Bulk Import Tickers</span>
+      <button class="bulk-modal-close" onclick="closeBulkModal()" title="Close">×</button>
+    </div>
+
+    <div class="bulk-modal-body">
+      <textarea
+        id="bulk-symbols-input"
+        class="bulk-textarea"
+        placeholder="AAPL, TSLA, MSFT&#10;GOOGL&#10;AMZN SPY QQQ&#10;&#10;Separate with commas, spaces, or newlines."
+        rows="9"
+        spellcheck="false"
+      ></textarea>
+      <p class="bulk-hint">Duplicates and already-tracked symbols are skipped automatically.</p>
+
+      <!-- Progress (hidden until import starts) -->
+      <div id="bulk-progress" class="bulk-progress" style="display:none;">
+        <div class="bulk-progress-bar">
+          <div id="bulk-progress-fill" class="bulk-progress-fill"></div>
+        </div>
+        <div id="bulk-progress-label" class="bulk-progress-label">Starting…</div>
+      </div>
+    </div>
+
+    <div class="bulk-modal-footer">
+      <button class="btn btn-ghost" onclick="closeBulkModal()">Cancel</button>
+      <button id="btn-bulk-submit" class="btn btn-primary" onclick="bulkAddSymbols()">Import Tickers</button>
+    </div>
+
+  </div>
+</div>
+
 <!-- Scripts -->
 <script src="scripts/charts.js"></script>
+<script src="scripts/trend_chart.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>
