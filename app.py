@@ -13,6 +13,7 @@ import data_fetcher as fetcher
 import indicators as ind
 import stats as stats
 import adaptive_trend as adaptive
+import scanner as scan
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -158,6 +159,19 @@ def get_adaptive_trend(symbol):
         if "error" in result:
             return jsonify(result), 404
         return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/scanner", methods=["GET"])
+def get_scanner():
+    """Compute multi-timeframe scanner metrics for every watched symbol."""
+    try:
+        symbols = [s['symbol'] for s in db.list_symbols()]
+        if not symbols:
+            return jsonify([])
+        data = scan.compute_scanner(symbols)
+        return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

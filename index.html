@@ -107,6 +107,9 @@
       <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">
         <span class="tab-icon">🎯</span> Adaptive Trend
       </button>
+      <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">
+        <span class="tab-icon">📡</span> Scanner
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -385,6 +388,46 @@
       </div><!-- .trend-panels -->
     </div><!-- #trend-area -->
 
+    <!-- ── Scanner Area ── -->
+    <div id="scanner-area" class="scanner-container" style="display:none;">
+
+      <!-- Loading overlay -->
+      <div id="scanner-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span>
+        Scanning watchlist…
+      </div>
+
+      <!-- Controls bar -->
+      <div class="scanner-controls">
+        <div class="scanner-controls-left">
+          <button id="btn-scan" class="btn btn-primary" onclick="loadScannerData()">⟳ Scan All</button>
+          <span id="scanner-ts" class="scanner-ts"></span>
+        </div>
+        <div class="scanner-controls-right">
+          <span class="overlay-section-label">Groups</span>
+          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="rsi"  onclick="toggleScanGroup('rsi')">RSI</button>
+          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="kama" onclick="toggleScanGroup('kama')">KAMA Ratios</button>
+          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="mom"  onclick="toggleScanGroup('mom')">Momentum</button>
+          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="vol"  onclick="toggleScanGroup('vol')">Volatility</button>
+        </div>
+      </div>
+
+      <!-- Scrollable table -->
+      <div class="scanner-table-wrap">
+        <table id="scanner-table" class="scanner-table">
+          <thead id="scanner-thead"></thead>
+          <tbody id="scanner-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Empty state -->
+      <div id="scanner-empty" class="scanner-empty" style="display:none;">
+        <div class="empty-icon">📡</div>
+        <p>No symbols in watchlist, or data not yet fetched.<br>Add tickers, then click <strong>⟳ Scan All</strong>.</p>
+      </div>
+
+    </div><!-- #scanner-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -432,6 +475,7 @@
 <!-- Scripts -->
 <script src="scripts/charts.js"></script>
 <script src="scripts/trend_chart.js"></script>
+<script src="scripts/scanner.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

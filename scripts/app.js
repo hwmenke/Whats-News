@@ -543,10 +543,11 @@ async function loadAdaptiveTrendData(symbol) {
 
 // ── UI helpers ───────────────────────────────────────────────
 function showEmptyState() {
-    document.getElementById('empty-state').style.display = 'flex';
-    document.getElementById('chart-area').style.display  = 'none';
-    document.getElementById('stats-area').style.display  = 'none';
-    document.getElementById('trend-area').style.display  = 'none';
+    document.getElementById('empty-state').style.display  = 'flex';
+    document.getElementById('chart-area').style.display   = 'none';
+    document.getElementById('stats-area').style.display   = 'none';
+    document.getElementById('trend-area').style.display   = 'none';
+    document.getElementById('scanner-area').style.display = 'none';
 }
 
 function showChartArea() {
@@ -576,31 +577,46 @@ async function switchTab(tabId) {
     } else if (tabId === 'trend') {
         showTrendArea();
         if (state.activeSymbol) loadAdaptiveTrendData(state.activeSymbol);
+    } else if (tabId === 'scanner') {
+        showScannerArea();
+        loadScannerData();
     }
 }
 
 function showStatsArea() {
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('chart-area').style.display  = 'none';
-    document.getElementById('stats-area').style.display  = 'block';
-    document.getElementById('trend-area').style.display  = 'none';
-    document.querySelector('.tab-bar').style.display     = 'none';
+    document.getElementById('empty-state').style.display  = 'none';
+    document.getElementById('chart-area').style.display   = 'none';
+    document.getElementById('stats-area').style.display   = 'block';
+    document.getElementById('trend-area').style.display   = 'none';
+    document.getElementById('scanner-area').style.display = 'none';
+    document.querySelector('.tab-bar').style.display      = 'none';
 }
 
 function showChartArea() {
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('stats-area').style.display  = 'none';
-    document.getElementById('chart-area').style.display  = 'flex';
-    document.getElementById('trend-area').style.display  = 'none';
-    document.querySelector('.tab-bar').style.display     = 'flex';
+    document.getElementById('empty-state').style.display  = 'none';
+    document.getElementById('stats-area').style.display   = 'none';
+    document.getElementById('chart-area').style.display   = 'flex';
+    document.getElementById('trend-area').style.display   = 'none';
+    document.getElementById('scanner-area').style.display = 'none';
+    document.querySelector('.tab-bar').style.display      = 'flex';
 }
 
 function showTrendArea() {
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('chart-area').style.display  = 'none';
-    document.getElementById('stats-area').style.display  = 'none';
-    document.getElementById('trend-area').style.display  = 'flex';
-    document.querySelector('.tab-bar').style.display     = 'none';
+    document.getElementById('empty-state').style.display   = 'none';
+    document.getElementById('chart-area').style.display    = 'none';
+    document.getElementById('stats-area').style.display    = 'none';
+    document.getElementById('trend-area').style.display    = 'flex';
+    document.getElementById('scanner-area').style.display  = 'none';
+    document.querySelector('.tab-bar').style.display       = 'none';
+}
+
+function showScannerArea() {
+    document.getElementById('empty-state').style.display   = 'none';
+    document.getElementById('chart-area').style.display    = 'none';
+    document.getElementById('stats-area').style.display    = 'none';
+    document.getElementById('trend-area').style.display    = 'none';
+    document.getElementById('scanner-area').style.display  = 'flex';
+    document.querySelector('.tab-bar').style.display       = 'none';
 }
 
 // ── Stats Rendering ───────────────────────────────────────────
