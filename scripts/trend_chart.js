@@ -38,9 +38,13 @@ const trendState = {
 // ── Instances ─────────────────────────────────────────────────
 let trendCharts    = { price: null, regime: null };
 let trendSeries    = {
+    // Background regime fills (on hidden left scale)
+    bgLong: null, bgShort: null,
+    // Price overlays
     candle:   null,
     sb: null, mb: null, lb: null,
     sdb: null, mrt: null, mdb: null, lrt: null, ldb: null,
+    // Regime strip
     regLong: null, regMed: null, regShort: null,
 };
 let _trendObservers = [];   // ResizeObserver instances — cleaned up on destroy
@@ -102,6 +106,7 @@ function destroyTrendCharts() {
     Object.values(trendCharts).forEach(c => { if (c) c.remove(); });
     trendCharts = { price: null, regime: null };
     trendSeries = {
+        bgLong: null, bgShort: null,
         candle: null, sb: null, mb: null, lb: null,
         sdb: null, mrt: null, mdb: null, lrt: null, ldb: null,
         regLong: null, regMed: null, regShort: null,
@@ -138,6 +143,31 @@ function buildTrendCharts() {
         ..._trendBaseOpts(),
         width:  priceEl.clientWidth  || 600,
         height: priceEl.clientHeight || 400,
+        // Hidden left scale used exclusively for full-height background fills
+        leftPriceScale: {
+            visible:      false,
+            scaleMargins: { top: 0, bottom: 0 },
+        },
+    });
+
+    // ── Background regime fills (added BEFORE candles → renders behind) ──
+    // Both series live on the hidden left scale, which auto-fits to [-1, +1].
+    // Long  regime → bgLong  bar: base=-1 → value=+1  (full height green)
+    // Short regime → bgShort bar: base=+1 → value=-1  (full height red)
+    // Neutral      → value equals base (zero-height, invisible)
+    trendSeries.bgLong = trendCharts.price.addHistogramSeries({
+        priceScaleId:     'left',
+        color:            'rgba(34,197,94,0.07)',
+        base:             -1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    trendSeries.bgShort = trendCharts.price.addHistogramSeries({
+        priceScaleId:     'left',
+        color:            'rgba(239,68,68,0.07)',
+        base:             1,
+        priceLineVisible: false,
+        lastValueVisible: false,
     });
 
     // Candlesticks
@@ -262,6 +292,26 @@ function loadTrendData(data, ohlcvRows) {
             time: r.date, open: r.open, high: r.high, low: r.low, close: r.close,
         }))
     );
+
+    // Background regime shading — driven by medium_state (master regime)
+    // bgLong fills green  when medium is long;  invisible otherwise
+    // bgShort fills red   when medium is short; invisible otherwise
+    if (Array.isArray(data.medium_state) && trendSeries.bgLong && trendSeries.bgShort) {
+        trendSeries.bgLong.setData(
+            data.medium_state.map(d => ({
+                time:  d.date,
+                value: d.value > 0 ? 1 : -1,
+                color: 'rgba(34,197,94,0.07)',
+            }))
+        );
+        trendSeries.bgShort.setData(
+            data.medium_state.map(d => ({
+                time:  d.date,
+                value: d.value < 0 ? -1 : 1,
+                color: 'rgba(239,68,68,0.07)',
+            }))
+        );
+    }
 
     // Baselines
     trendSeries.sb.setData(_toLine(data.sb));

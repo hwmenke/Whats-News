@@ -827,7 +827,7 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  min-width: 0;
+  min-width: 240px;
   background: var(--bg-base);
 }
 
