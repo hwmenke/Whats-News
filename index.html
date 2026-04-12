@@ -37,11 +37,12 @@
           id="new-symbol-input"
           type="text"
           placeholder="AAPL, TSLA…"
-          maxlength="10"
+          maxlength="60"
           autocomplete="off"
           spellcheck="false"
         />
-        <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add Symbol">+</button>
+        <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add symbol (or type comma-separated)">+</button>
+        <button id="btn-bulk-add"   class="btn btn-ghost   btn-icon" title="Bulk import a list of tickers">≡</button>
       </div>
     </div>
 
@@ -390,6 +391,43 @@
 
 <!-- Toast container -->
 <div id="toast-container" class="toast-container"></div>
+
+<!-- ══ Bulk Add Modal ══════════════════════════════════════════ -->
+<div id="bulk-modal" class="bulk-modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeBulkModal()">
+  <div class="bulk-modal-card" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title">
+
+    <div class="bulk-modal-header">
+      <span id="bulk-modal-title">Bulk Import Tickers</span>
+      <button class="bulk-modal-close" onclick="closeBulkModal()" title="Close">×</button>
+    </div>
+
+    <div class="bulk-modal-body">
+      <textarea
+        id="bulk-symbols-input"
+        class="bulk-textarea"
+        placeholder="AAPL, TSLA, MSFT&#10;GOOGL&#10;AMZN SPY QQQ&#10;&#10;Separate with commas, spaces, or newlines."
+        rows="9"
+        spellcheck="false"
+      ></textarea>
+      <p class="bulk-hint">Duplicates and already-tracked symbols are skipped automatically.</p>
+
+      <!-- Progress (hidden until import starts) -->
+      <div id="bulk-progress" class="bulk-progress" style="display:none;">
+        <div class="bulk-progress-bar">
+          <div id="bulk-progress-fill" class="bulk-progress-fill"></div>
+        </div>
+        <div id="bulk-progress-label" class="bulk-progress-label">Starting…</div>
+      </div>
+    </div>
+
+    <div class="bulk-modal-footer">
+      <button class="btn btn-ghost" onclick="closeBulkModal()">Cancel</button>
+      <button id="btn-bulk-submit" class="btn btn-primary" onclick="bulkAddSymbols()">Import Tickers</button>
+    </div>
+
+  </div>
+</div>
 
 <!-- Scripts -->
 <script src="scripts/charts.js"></script>

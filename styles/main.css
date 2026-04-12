@@ -953,3 +953,139 @@ html, body {
 .trend-signal-value.bull    { color: var(--green); }
 .trend-signal-value.bear    { color: var(--red);   }
 .trend-signal-value.neutral { color: var(--text-muted); }
+
+/* ── Bulk Import Modal ─────────────────────────────────────── */
+.bulk-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.bulk-modal-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-lg);
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.65);
+  animation: bulk-modal-in 0.15s ease;
+}
+
+@keyframes bulk-modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);    }
+}
+
+.bulk-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--text-primary);
+}
+
+.bulk-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+.bulk-modal-close:hover { color: var(--text-primary); }
+
+.bulk-modal-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bulk-textarea {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 150px;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+.bulk-textarea:focus        { border-color: var(--accent); }
+.bulk-textarea:disabled     { opacity: 0.5; cursor: not-allowed; }
+
+.bulk-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* Progress indicator */
+.bulk-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.bulk-progress-bar {
+  height: 3px;
+  background: var(--bg-card);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.bulk-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 99px;
+  width: 0%;
+  transition: width 0.25s ease;
+}
+
+.bulk-progress-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.bulk-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+
+/* ≡ bulk button sits beside + in the sidebar */
+#btn-bulk-add {
+  flex-shrink: 0;
+  font-size: 15px;
+  padding: 0 8px;
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+#btn-bulk-add:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}

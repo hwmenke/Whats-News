@@ -191,10 +191,20 @@ function renderSymbolList() {
 }
 
 async function addSymbol() {
-    const input  = document.getElementById('new-symbol-input');
-    const symbol = input.value.trim().toUpperCase();
-    if (!symbol) return;
+    const input = document.getElementById('new-symbol-input');
+    const raw   = input.value.trim();
+    if (!raw) return;
 
+    // Multiple tickers (comma / space separated) → route to bulk modal
+    const parts = raw.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+    if (parts.length > 1) {
+        input.value = '';
+        document.getElementById('bulk-symbols-input').value = parts.join('\n');
+        openBulkModal();
+        return;
+    }
+
+    const symbol = parts[0];
     input.disabled = true;
     try {
         await apiFetch(`${API}/symbols`, {
@@ -229,19 +239,138 @@ async function removeSymbol(symbol) {
 }
 
 // ── Yahoo Finance fetch ───────────────────────────────────────
-async function fetchSymbolData(symbol) {
+// silent=true suppresses per-symbol toasts (used during bulk import)
+async function fetchSymbolData(symbol, silent = false) {
     console.log(`[App] Fetching data for ${symbol}...`);
-    toast(`Downloading ${symbol} from Yahoo Finance…`, 'info', 5000);
+    if (!silent) toast(`Downloading ${symbol} from Yahoo Finance…`, 'info', 5000);
     try {
         const res = await apiFetch(`${API}/fetch/${symbol}`, { method: 'POST' });
         console.log(`[App] Fetch complete for ${symbol}:`, res);
-        toast(`${symbol}: ${res.daily_rows} daily / ${res.weekly_rows} weekly bars loaded`, 'success', 5000);
+        if (!silent) toast(`${symbol}: ${res.daily_rows} daily / ${res.weekly_rows} weekly bars loaded`, 'success', 5000);
         return true;
     } catch (e) {
         console.error(`[App] Fetch failed for ${symbol}:`, e);
-        toast(`${symbol} fetch failed: ` + e.message, 'error');
+        if (!silent) toast(`${symbol} fetch failed: ` + e.message, 'error');
         return false;
     }
+}
+
+// ── Bulk Import ───────────────────────────────────────────────
+function openBulkModal() {
+    const modal = document.getElementById('bulk-modal');
+    modal.style.display = 'flex';
+    // Reset progress state from any previous run
+    document.getElementById('bulk-progress').style.display        = 'none';
+    document.getElementById('bulk-progress-fill').style.width     = '0%';
+    document.getElementById('bulk-progress-label').style.color    = '';
+    document.getElementById('btn-bulk-submit').disabled           = false;
+    document.getElementById('bulk-symbols-input').disabled        = false;
+    setTimeout(() => document.getElementById('bulk-symbols-input').focus(), 50);
+}
+
+function closeBulkModal() {
+    // Only close if not in the middle of an import
+    if (document.getElementById('btn-bulk-submit').disabled) return;
+    document.getElementById('bulk-modal').style.display = 'none';
+    document.getElementById('bulk-symbols-input').value = '';
+    document.getElementById('bulk-progress').style.display = 'none';
+}
+
+async function bulkAddSymbols() {
+    const raw = document.getElementById('bulk-symbols-input').value;
+
+    // Parse: split on any combination of commas, semicolons, spaces, newlines
+    // Validate: must start with a letter, 1-10 chars, only A-Z 0-9 . - ^
+    const symbols = [...new Set(
+        raw.split(/[\s,;\n\r]+/)
+           .map(s => s.trim().toUpperCase())
+           .filter(s => /^[A-Z][A-Z0-9.\-\^]{0,9}$/.test(s))
+    )];
+
+    if (!symbols.length) {
+        toast('No valid ticker symbols found', 'warning');
+        return;
+    }
+
+    const submitBtn  = document.getElementById('btn-bulk-submit');
+    const textarea   = document.getElementById('bulk-symbols-input');
+    const progressEl = document.getElementById('bulk-progress');
+    const fillEl     = document.getElementById('bulk-progress-fill');
+    const labelEl    = document.getElementById('bulk-progress-label');
+
+    // Lock UI
+    submitBtn.disabled  = true;
+    textarea.disabled   = true;
+    progressEl.style.display = 'block';
+    labelEl.style.color = '';
+
+    const existing = new Set(state.symbols.map(s => s.symbol));
+    let added = 0, failed = 0, skipped = 0;
+    const failedSymbols = [];
+
+    for (let i = 0; i < symbols.length; i++) {
+        const sym = symbols[i];
+
+        // Update progress bar
+        fillEl.style.width  = `${Math.round((i / symbols.length) * 100)}%`;
+        labelEl.textContent = `${i + 1} / ${symbols.length}  ·  ${sym}`;
+
+        if (existing.has(sym)) {
+            skipped++;
+            continue;
+        }
+
+        // Register symbol in DB (may already exist — ignore that error)
+        try {
+            await apiFetch(`${API}/symbols`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ symbol: sym }),
+            });
+        } catch (_) { /* already exists or other — still try data fetch */ }
+
+        // Download market data
+        const ok = await fetchSymbolData(sym, true);
+        if (ok) {
+            added++;
+            existing.add(sym);
+        } else {
+            failed++;
+            failedSymbols.push(sym);
+        }
+    }
+
+    // Finalise progress bar
+    fillEl.style.width = '100%';
+    const parts = [
+        added   ? `${added} added`   : null,
+        skipped ? `${skipped} skipped` : null,
+        failed  ? `${failed} failed`  : null,
+    ].filter(Boolean);
+    const summary = parts.join(', ');
+    labelEl.textContent = `Done — ${summary}`;
+    labelEl.style.color = failed ? 'var(--red)' : 'var(--green)';
+
+    // Unlock UI
+    submitBtn.disabled = false;
+    textarea.disabled  = false;
+
+    // Refresh sidebar
+    await loadSymbols();
+
+    // If something was added, select the first new one
+    const firstNew = symbols.find(s => existing.has(s) && !state.symbols.find(x => x.symbol === s));
+    if (added && !state.activeSymbol) selectSymbol(symbols[0]);
+
+    // Toast summary
+    toast(
+        `Bulk import: ${summary}` + (failedSymbols.length ? ` (${failedSymbols.join(', ')})` : ''),
+        failed ? 'warning' : 'success',
+        6000
+    );
+
+    // Auto-close after 2 s if everything succeeded
+    if (failed === 0) setTimeout(closeBulkModal, 2000);
 }
 
 async function refreshAll() {
@@ -746,9 +875,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Buttons
     document.getElementById('btn-add-symbol').addEventListener('click', addSymbol);
+    document.getElementById('btn-bulk-add').addEventListener('click', openBulkModal);
     document.getElementById('btn-refresh-all').addEventListener('click', refreshAll);
     document.getElementById('new-symbol-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') addSymbol();
+    });
+
+    // Close bulk modal on Escape
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeBulkModal();
     });
 
     await loadSymbols();
