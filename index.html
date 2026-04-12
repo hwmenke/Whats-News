@@ -110,6 +110,9 @@
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">
         <span class="tab-icon">📡</span> Scanner
       </button>
+      <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
+        <span class="tab-icon">🗄️</span> Data Manager
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -428,6 +431,93 @@
 
     </div><!-- #scanner-area -->
 
+    <!-- ── Data Manager Area ── -->
+    <div id="data-manager-area" class="dm-container" style="display:none;">
+
+      <!-- ── Left panel: category browser ── -->
+      <div class="dm-left">
+        <div class="dm-panel-header">Ticker Library</div>
+
+        <!-- Search / filter -->
+        <div class="dm-search-wrap">
+          <input id="dm-search" type="text" class="dm-search" placeholder="Search tickers…" oninput="dmFilterTickers()" />
+        </div>
+
+        <!-- Category grid -->
+        <div id="dm-categories" class="dm-categories">
+          <!-- Rendered by data_manager.js -->
+        </div>
+
+        <!-- Select / deselect controls -->
+        <div class="dm-select-controls">
+          <button class="btn btn-ghost btn-sm" onclick="dmSelectAll()">Select All</button>
+          <button class="btn btn-ghost btn-sm" onclick="dmSelectNone()">Deselect All</button>
+          <span id="dm-selected-count" class="dm-sel-count">0 selected</span>
+        </div>
+      </div>
+
+      <!-- ── Right panel: settings + progress ── -->
+      <div class="dm-right">
+        <div class="dm-panel-header">Batch Fetch Settings</div>
+
+        <div class="dm-settings">
+
+          <div class="dm-field">
+            <label class="dm-label" for="dm-start-date">Start Date</label>
+            <input id="dm-start-date" type="date" class="dm-input" value="2000-01-01" />
+          </div>
+
+          <div class="dm-field">
+            <label class="dm-label" for="dm-delay">Delay Between Requests</label>
+            <select id="dm-delay" class="dm-select">
+              <option value="0.5">0.5 s — fastest (may hit rate limits)</option>
+              <option value="1.5" selected>1.5 s — recommended</option>
+              <option value="3.0">3.0 s — conservative</option>
+              <option value="5.0">5.0 s — very safe</option>
+            </select>
+          </div>
+
+          <div class="dm-field dm-field-row">
+            <label class="dm-label dm-label-inline">
+              <input id="dm-add-watchlist" type="checkbox" checked />
+              Also add to watchlist
+            </label>
+          </div>
+
+        </div>
+
+        <!-- Action buttons -->
+        <div class="dm-actions">
+          <button id="btn-dm-fetch" class="btn btn-primary" onclick="dmStartBatch()">
+            ▶ Fetch Selected
+          </button>
+          <button id="btn-dm-abort" class="btn btn-danger" style="display:none;" onclick="dmAbortBatch()">
+            ■ Abort
+          </button>
+        </div>
+
+        <!-- Progress section -->
+        <div id="dm-progress-section" class="dm-progress-section" style="display:none;">
+          <div class="dm-progress-header">
+            <span id="dm-progress-label">Starting…</span>
+            <span id="dm-progress-pct" class="dm-pct">0%</span>
+          </div>
+          <div class="dm-progress-bar">
+            <div id="dm-progress-fill" class="dm-progress-fill"></div>
+          </div>
+          <div id="dm-summary" class="dm-summary"></div>
+        </div>
+
+        <!-- Log -->
+        <div class="dm-log-header">Log</div>
+        <div id="dm-log" class="dm-log">
+          <div class="dm-log-hint">Select tickers and click <strong>Fetch Selected</strong> to begin.</div>
+        </div>
+
+      </div><!-- .dm-right -->
+
+    </div><!-- #data-manager-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -476,6 +566,7 @@
 <script src="scripts/charts.js"></script>
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
+<script src="scripts/data_manager.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>
