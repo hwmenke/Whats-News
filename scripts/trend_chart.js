@@ -31,7 +31,7 @@
 const trendState = {
     method: 'kama',
     freq:   'daily',
-    vis:    { lb: true, lrt: true, ldb: true },
+    vis:    { lb: true, lrt: true, ldb: true, sdb: true, mrt: true, mdb: true },
     data:   null,
 };
 
@@ -374,6 +374,15 @@ function _applyVis() {
 
     if (trendState.vis.ldb) show(trendSeries.ldb, TC.ldb, 1,   LS.Dashed);
     else                    hide(trendSeries.ldb);
+
+    if (trendState.vis.sdb) show(trendSeries.sdb, TC.sdb, 1,   LS.Dashed);
+    else                    hide(trendSeries.sdb);
+
+    if (trendState.vis.mrt) show(trendSeries.mrt, TC.mrt, 1.5, LS.Dashed);
+    else                    hide(trendSeries.mrt);
+
+    if (trendState.vis.mdb) show(trendSeries.mdb, TC.mdb, 1,   LS.Dashed);
+    else                    hide(trendSeries.mdb);
 }
 
 function toggleTrendLine(key) {
