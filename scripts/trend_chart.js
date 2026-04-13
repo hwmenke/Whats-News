@@ -31,8 +31,60 @@
 const trendState = {
     method: 'kama',
     freq:   'daily',
-    vis:    { lb: true, lrt: true, ldb: true, sdb: true, mrt: true, mdb: true },
+    vis:    { sb: true, mb: true, lb: true, lrt: true, ldb: true, sdb: true, mrt: true, mdb: true },
     data:   null,
+};
+
+// ── Line metadata (descriptions + colors) ─────────────────────
+const LINE_META = {
+    sb:  {
+        color: '#3b82f6',
+        label: 'SB — Short Baseline',
+        params: 'KAMA · ER=10 · fast=2 · slow=15 · source=HLC/3',
+        desc:  'Fast-adapting baseline. Tracks near-term momentum and is the primary input for the short-horizon regime. Turns quickly in trending markets, stays flat in chop.',
+    },
+    mb:  {
+        color: '#ef4444',
+        label: 'MB — Medium Baseline',
+        params: 'KAMA · ER=20 · fast=2 · slow=30 · source=HLC/3',
+        desc:  'Master trend line. Drives the medium-horizon regime that governs all trade management bands (MRT, MDB). When SB crosses above MB, a long regime entry fires.',
+    },
+    lb:  {
+        color: '#f97316',
+        label: 'LB — Long Baseline',
+        params: 'KAMA · ER=40 · fast=2 · slow=60 · source=HLC/3',
+        desc:  'Macro structure line. Very slow to react — only flips on sustained multi-month directional moves. Provides the long-horizon regime context for LRT / LDB bands.',
+    },
+    sdb: {
+        color: '#22c55e',
+        label: 'SDB — Short Deviation Band  (TP1)',
+        params: 'Center=SB · +2.0 × ATR(20) · ratchets UP in long regime',
+        desc:  'First take-profit target. Ratcheting band anchored to SB — moves only in the direction of the trade and never pulls back. Reset on regime flip.',
+    },
+    mrt: {
+        color: '#475569',
+        label: 'MRT — Medium Retracement  (Stop)',
+        params: 'Center=MB · −2.25 × ATR(20) · ratchets UP in long regime',
+        desc:  'Trailing stop level. Sits 2.25 ATR on the loss side of MB and tightens as MB advances. Exit here on an adverse move. Never retreats against the trade.',
+    },
+    mdb: {
+        color: '#16a34a',
+        label: 'MDB — Medium Deviation Band  (TP2)',
+        params: 'Center=MB · +4.5 × ATR(20) · ratchets UP in long regime',
+        desc:  'Main take-profit target. Exactly 2× the stop distance, giving a built-in 2:1 R:R. Ratchets in the direction of the trade; resets on medium-regime flip.',
+    },
+    lrt: {
+        color: '#6b7280',
+        label: 'LRT — Long Retracement  (Wide Stop)',
+        params: 'Center=LB · −2.25 × ATR(20) · ratchets in long-horizon regime',
+        desc:  'Wide trailing stop for long-horizon positions. Based on LB so it only tightens on sustained macro trends. Use for position-level sizing against macro structure.',
+    },
+    ldb: {
+        color: '#06b6d4',
+        label: 'LDB — Long Deviation Band  (Extended Target)',
+        params: 'Center=LB · +4.5 × ATR(20) · ratchets in long-horizon regime',
+        desc:  'Extended target for multi-month positions. Only meaningful in confirmed long-horizon regimes. Gives a sense of how far macro momentum can carry the move.',
+    },
 };
 
 // ── Instances ─────────────────────────────────────────────────
@@ -366,14 +418,14 @@ function _applyVis() {
     };
     const hide = s => { if (s) s.applyOptions({ visible: false }); };
 
+    if (trendState.vis.sb)  show(trendSeries.sb,  TC.sb,  2,   LS.Solid);
+    else                    hide(trendSeries.sb);
+
+    if (trendState.vis.mb)  show(trendSeries.mb,  TC.mb,  2,   LS.Solid);
+    else                    hide(trendSeries.mb);
+
     if (trendState.vis.lb)  show(trendSeries.lb,  TC.lb,  1.5, LS.Dashed);
     else                    hide(trendSeries.lb);
-
-    if (trendState.vis.lrt) show(trendSeries.lrt, TC.lrt, 1,   LS.Dashed);
-    else                    hide(trendSeries.lrt);
-
-    if (trendState.vis.ldb) show(trendSeries.ldb, TC.ldb, 1,   LS.Dashed);
-    else                    hide(trendSeries.ldb);
 
     if (trendState.vis.sdb) show(trendSeries.sdb, TC.sdb, 1,   LS.Dashed);
     else                    hide(trendSeries.sdb);
@@ -383,6 +435,12 @@ function _applyVis() {
 
     if (trendState.vis.mdb) show(trendSeries.mdb, TC.mdb, 1,   LS.Dashed);
     else                    hide(trendSeries.mdb);
+
+    if (trendState.vis.lrt) show(trendSeries.lrt, TC.lrt, 1,   LS.Dashed);
+    else                    hide(trendSeries.lrt);
+
+    if (trendState.vis.ldb) show(trendSeries.ldb, TC.ldb, 1,   LS.Dashed);
+    else                    hide(trendSeries.ldb);
 }
 
 function toggleTrendLine(key) {
@@ -390,6 +448,26 @@ function toggleTrendLine(key) {
     const btn = document.getElementById(`trend-toggle-${key}`);
     if (btn) btn.classList.toggle('trend-toggle-on', trendState.vis[key]);
     _applyVis();
+}
+
+// ── Line description strip ────────────────────────────────────
+function showLineDesc(key) {
+    const el   = document.getElementById('trend-line-desc');
+    const meta = LINE_META[key];
+    if (!el || !meta) return;
+    el.innerHTML =
+        `<span class="tld-dot" style="background:${meta.color}"></span>` +
+        `<span class="tld-label">${meta.label}</span>` +
+        `<span class="tld-sep">·</span>` +
+        `<span class="tld-params">${meta.params}</span>` +
+        `<span class="tld-sep">—</span>` +
+        `<span class="tld-desc">${meta.desc}</span>`;
+    el.style.opacity = '1';
+}
+
+function clearLineDesc() {
+    const el = document.getElementById('trend-line-desc');
+    if (el) el.style.opacity = '0';
 }
 
 // ── Method / freq selectors ───────────────────────────────────

@@ -298,25 +298,55 @@
           <button class="ind-pill trend-freq-btn"              data-val="weekly" onclick="setTrendFreq('weekly')">Weekly</button>
         </div>
         <div class="trend-controls-group">
-          <span class="overlay-section-label">Overlays</span>
-          <button id="trend-toggle-sdb" class="ind-pill trend-toggle-on" onclick="toggleTrendLine('sdb')">SDB</button>
-          <button id="trend-toggle-mrt" class="ind-pill trend-toggle-on" onclick="toggleTrendLine('mrt')">MRT</button>
-          <button id="trend-toggle-mdb" class="ind-pill trend-toggle-on" onclick="toggleTrendLine('mdb')">MDB</button>
-          <button id="trend-toggle-lb"  class="ind-pill trend-toggle-on" onclick="toggleTrendLine('lb')">LB</button>
-          <button id="trend-toggle-lrt" class="ind-pill trend-toggle-on" onclick="toggleTrendLine('lrt')">LRT</button>
-          <button id="trend-toggle-ldb" class="ind-pill trend-toggle-on" onclick="toggleTrendLine('ldb')">LDB</button>
+          <span class="overlay-section-label">Baselines</span>
+          <button id="trend-toggle-sb"  class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('sb')"
+                  onmouseenter="showLineDesc('sb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot" style="--dot:#3b82f6"></span>SB
+          </button>
+          <button id="trend-toggle-mb"  class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('mb')"
+                  onmouseenter="showLineDesc('mb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot" style="--dot:#ef4444"></span>MB
+          </button>
+          <button id="trend-toggle-lb"  class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('lb')"
+                  onmouseenter="showLineDesc('lb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#f97316"></span>LB
+          </button>
         </div>
-        <div class="trend-legend">
-          <span class="trend-leg" style="color:#3b82f6">— SB</span>
-          <span class="trend-leg" style="color:#ef4444">— MB</span>
-          <span class="trend-leg" style="color:#f97316">╌ LB</span>
-          <span class="trend-leg" style="color:#22c55e">╌ SDB</span>
-          <span class="trend-leg" style="color:#16a34a">╌ MDB</span>
-          <span class="trend-leg" style="color:#06b6d4">╌ LDB</span>
-          <span class="trend-leg" style="color:#475569">╌ MRT</span>
-          <span class="trend-leg" style="color:#6b7280">╌ LRT</span>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Bands</span>
+          <button id="trend-toggle-sdb" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('sdb')"
+                  onmouseenter="showLineDesc('sdb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#22c55e"></span>SDB
+          </button>
+          <button id="trend-toggle-mrt" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('mrt')"
+                  onmouseenter="showLineDesc('mrt')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#475569"></span>MRT
+          </button>
+          <button id="trend-toggle-mdb" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('mdb')"
+                  onmouseenter="showLineDesc('mdb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#16a34a"></span>MDB
+          </button>
+          <button id="trend-toggle-lrt" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('lrt')"
+                  onmouseenter="showLineDesc('lrt')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#6b7280"></span>LRT
+          </button>
+          <button id="trend-toggle-ldb" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('ldb')"
+                  onmouseenter="showLineDesc('ldb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#06b6d4"></span>LDB
+          </button>
         </div>
       </div>
+
+      <!-- Description strip — updates on button hover -->
+      <div id="trend-line-desc" class="trend-line-desc"></div>
 
       <!-- Two-panel layout -->
       <div class="trend-panels">
