@@ -194,12 +194,18 @@ def _compute_tf(df: pd.DataFrame, lookback: int):
 # ── monthly resampler ─────────────────────────────────────────────────
 
 def _to_monthly(df: pd.DataFrame) -> pd.DataFrame:
-    """Resample a daily DatetimeIndex DataFrame to month-end bars."""
+    """Resample a daily DatetimeIndex DataFrame to month-end bars.
+    Tries pandas 2.2+ 'ME' alias first, falls back to legacy 'M'.
+    """
     if df is None or df.empty:
         return pd.DataFrame()
-    return df.resample('ME').agg(
-        open='first', high='max', low='min', close='last', volume='sum'
-    ).dropna(subset=['close'])
+    agg = dict(open='first', high='max', low='min', close='last', volume='sum')
+    for alias in ('ME', 'M'):
+        try:
+            return df.resample(alias).agg(**agg).dropna(subset=['close'])
+        except Exception:
+            continue
+    return pd.DataFrame()
 
 
 # ── public API ────────────────────────────────────────────────────────
@@ -214,27 +220,40 @@ def compute_scanner(symbols: list) -> list:
         try:
             d_df = db.get_ohlcv_df(sym, 'daily',  limit=600)
             w_df = db.get_ohlcv_df(sym, 'weekly', limit=200)
-            m_df = _to_monthly(d_df)
 
             if d_df.empty:
                 results.append({
-                    'symbol': sym, 'error': 'No data',
+                    'symbol': sym, 'error': 'No data — fetch first',
                     'price': None, 'chg': None,
                     'd': None, 'w': None, 'm': None,
                 })
                 continue
 
+            # Price / change computed before any further processing
             price = _safe(d_df['close'].iloc[-1])
             prev  = _safe(d_df['close'].iloc[-2]) if len(d_df) > 1 else None
             chg   = round((price - prev) / prev * 100, 2) if price and prev else None
+
+            # Monthly resample — isolated so a failure doesn't kill price/D/W
+            try:
+                m_df = _to_monthly(d_df)
+            except Exception:
+                m_df = pd.DataFrame()
+
+            # Each timeframe is isolated — one failure won't blank the others
+            def _safe_tf(df, lb):
+                try:
+                    return _compute_tf(df, lb)
+                except Exception:
+                    return None
 
             results.append({
                 'symbol': sym,
                 'price':  price,
                 'chg':    chg,
-                'd':      _compute_tf(d_df, lookback=252),
-                'w':      _compute_tf(w_df, lookback=52),
-                'm':      _compute_tf(m_df, lookback=36),
+                'd':      _safe_tf(d_df, 252),
+                'w':      _safe_tf(w_df, 52),
+                'm':      _safe_tf(m_df, 36),
             })
         except Exception as e:
             results.append({
