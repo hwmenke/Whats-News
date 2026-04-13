@@ -5,9 +5,19 @@ stats.py - Compute statistical analysis and factor quintiles for a symbol.
 import numpy as np
 import pandas as pd
 import database as db
-import ta
 
 KAMA_PERIODS = [10, 20, 50]
+
+
+def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
+    """Wilder RSI via exponential moving average."""
+    delta    = close.diff()
+    gain     = delta.clip(lower=0)
+    loss     = (-delta).clip(lower=0)
+    avg_gain = gain.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
+    rs       = avg_gain / avg_loss.replace(0, np.nan)
+    return 100.0 - (100.0 / (1.0 + rs))
 
 
 def _safe(val):
@@ -83,7 +93,7 @@ def compute_stats(symbol: str) -> dict:
         distribution = [{"bin": _finite_or_none((bins[i] + bins[i+1]) / 2), "count": int(counts[i])} for i in range(len(counts))]
 
     # 3. Features for Quintiles
-    df['rsi'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
+    df['rsi'] = _rsi(df['close'], window=14)
     # Volatility Feature (Relative Volatility Index or just standard dev)
     df['vol_20'] = df['ret_1d'].rolling(20).std() * np.sqrt(252)
     
