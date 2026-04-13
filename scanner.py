@@ -106,7 +106,7 @@ def _pct_rank(series: pd.Series, lookback: int) -> pd.Series:
 
 # ── per-timeframe computation ─────────────────────────────────────────
 
-def _compute_tf(df: pd.DataFrame, lookback: int) -> dict | None:
+def _compute_tf(df: pd.DataFrame, lookback: int):
     """Compute all scanner metrics for one symbol × timeframe."""
     min_bars = max(22, lookback // 8)
     if df is None or len(df) < min_bars:

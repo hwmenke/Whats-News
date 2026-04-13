@@ -126,7 +126,7 @@ TICKER_LIBRARY = [
 ]
 
 
-def get_all_tickers() -> list[str]:
+def get_all_tickers() -> list:
     """Return deduplicated flat list of all tickers across categories."""
     seen = set()
     result = []
@@ -138,7 +138,7 @@ def get_all_tickers() -> list[str]:
     return result
 
 
-def get_category(cat_id: str) -> dict | None:
+def get_category(cat_id: str):
     for cat in TICKER_LIBRARY:
         if cat["id"] == cat_id:
             return cat
