@@ -841,6 +841,104 @@ html, body {
 .tld-params { color: var(--accent-bright); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
 .tld-desc   { color: var(--text-muted); font-size: 11px; }
 
+/* ── Optimize button & reset button ───────────────────────── */
+.trend-opt-btn {
+  background: rgba(234,179,8,0.12) !important;
+  border-color: rgba(234,179,8,0.4) !important;
+  color: #eab308 !important;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.trend-opt-btn:hover:not(:disabled) {
+  background: rgba(234,179,8,0.22) !important;
+  border-color: rgba(234,179,8,0.7) !important;
+}
+.trend-opt-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.trend-reset-btn {
+  background: rgba(168,85,247,0.12) !important;
+  border-color: rgba(168,85,247,0.4) !important;
+  color: #a855f7 !important;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+}
+.trend-reset-btn:hover {
+  background: rgba(168,85,247,0.22) !important;
+  border-color: rgba(168,85,247,0.7) !important;
+}
+
+/* ── Optimize result panel ─────────────────────────────────── */
+.trend-opt-panel {
+  display: none;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 8px 20px;
+  background: rgba(234,179,8,0.06);
+  border-bottom: 1px solid rgba(234,179,8,0.25);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.trend-opt-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.opt-score-label  { color: var(--text-muted); }
+.opt-baseline-label { color: var(--text-muted); }
+.opt-score-val    { color: var(--text-primary); font-family: var(--font-mono); }
+.opt-arrow        { color: var(--text-dim); }
+.opt-sep          { color: var(--text-dim); }
+.opt-score        { font-weight: 700; font-family: var(--font-mono); }
+.opt-pos          { color: var(--green); }
+.opt-neg          { color: var(--red); }
+.opt-neut         { color: var(--text-muted); }
+
+.trend-opt-params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+.opt-param-chip {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.opt-param-chip s  { color: var(--text-dim); text-decoration-color: var(--text-dim); }
+.opt-param-chip strong { color: var(--green); }
+.opt-no-change     { color: var(--text-muted); font-style: italic; }
+.trend-opt-error   { color: var(--red); }
+
+.trend-opt-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.trend-opt-apply {
+  background: rgba(34,197,94,0.15) !important;
+  border-color: rgba(34,197,94,0.5) !important;
+  color: var(--green) !important;
+}
+.trend-opt-apply:hover {
+  background: rgba(34,197,94,0.25) !important;
+}
+
 /* ── Two-panel layout ──────────────────────────────────────── */
 .trend-panels {
   flex: 1;

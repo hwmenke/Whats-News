@@ -343,10 +343,22 @@
             <span class="trend-dot trend-dot-dash" style="--dot:#06b6d4"></span>LDB
           </button>
         </div>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Parameters</span>
+          <button id="btn-trend-optimize" class="ind-pill trend-opt-btn" onclick="runTrendOptimize()">
+            ⚡ Optimize
+          </button>
+          <button id="btn-trend-reset-params" class="ind-pill trend-reset-btn" style="display:none;" onclick="resetTrendParams()">
+            ↺ Reset
+          </button>
+        </div>
       </div>
 
       <!-- Description strip — updates on button hover -->
       <div id="trend-line-desc" class="trend-line-desc"></div>
+
+      <!-- Optimize result panel — hidden until optimize completes -->
+      <div id="trend-opt-panel" class="trend-opt-panel" style="display:none;"></div>
 
       <!-- Two-panel layout -->
       <div class="trend-panels">

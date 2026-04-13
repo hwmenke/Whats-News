@@ -510,10 +510,20 @@ async function loadAdaptiveTrendData(symbol) {
     const freq   = trendState.freq;
     const method = trendState.method;
 
+    // Build trend URL — append custom params if set
+    const _trendUrl = () => {
+        let url = `${API}/adaptive-trend/${symbol}?freq=${freq}&method=${method}`;
+        if (trendState.params) {
+            url += '&' + Object.entries(trendState.params)
+                .map(([k, v]) => `${k}=${v}`).join('&');
+        }
+        return url;
+    };
+
     try {
         let [ohlcv, trendData] = await Promise.all([
             apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
-            apiFetch(`${API}/adaptive-trend/${symbol}?freq=${freq}&method=${method}`),
+            apiFetch(_trendUrl()),
         ]).catch(async e => {
             if (e.message.includes('404') || e.message.includes('No data')) {
                 toast(`No data for ${symbol}. Downloading…`, 'info');
@@ -522,7 +532,7 @@ async function loadAdaptiveTrendData(symbol) {
                 await loadSymbols();
                 return Promise.all([
                     apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
-                    apiFetch(`${API}/adaptive-trend/${symbol}?freq=${freq}&method=${method}`),
+                    apiFetch(_trendUrl()),
                 ]);
             }
             throw e;

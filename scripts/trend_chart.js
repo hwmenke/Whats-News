@@ -32,6 +32,7 @@ const trendState = {
     method: 'kama',
     freq:   'daily',
     vis:    { sb: true, mb: true, lb: true, lrt: true, ldb: true, sdb: true, mrt: true, mdb: true },
+    params: null,   // null = use defaults; object = custom optimised params
     data:   null,
 };
 
@@ -595,4 +596,124 @@ function _updateSignalPanel(data, ohlcvRows) {
     } else {
         setCard('trend-sig-rr', atrV != null ? `ATR ${fmtP(atrV)}` : '—', 'neutral');
     }
+}
+
+// ── Parameter optimization ────────────────────────────────
+let _optAbort = null;
+
+async function runTrendOptimize() {
+    const symbol = (typeof state !== 'undefined') ? state.activeSymbol : null;
+    if (!symbol) return;
+
+    const btn = document.getElementById('btn-trend-optimize');
+    const panel = document.getElementById('trend-opt-panel');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Optimizing…'; }
+    if (panel) { panel.style.display = 'none'; panel.innerHTML = ''; }
+
+    try {
+        const res = await fetch(
+            `${typeof API !== 'undefined' ? API : '/api'}/adaptive-trend/${symbol}/optimize`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ freq: trendState.freq, method: trendState.method }),
+            }
+        );
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: res.statusText }));
+            throw new Error(err.error || res.statusText);
+        }
+        const data = await res.json();
+        _renderOptPanel(data);
+    } catch (e) {
+        if (panel) {
+            panel.style.display = 'flex';
+            panel.innerHTML = `<span class="trend-opt-error">Optimize failed: ${e.message}</span>`;
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '⚡ Optimize'; }
+    }
+}
+
+function _renderOptPanel(data) {
+    const panel = document.getElementById('trend-opt-panel');
+    if (!panel) return;
+
+    const imp     = data.improvement_pct ?? 0;
+    const impSign = imp >= 0 ? '+' : '';
+    const impCls  = imp > 1  ? 'opt-pos' : imp < -1 ? 'opt-neg' : 'opt-neut';
+    const changed = data.changed || [];
+
+    // Build changed-params HTML
+    const PARAM_LABELS = {
+        sb_er: 'SB ER', sb_slow: 'SB slow',
+        mb_er: 'MB ER', mb_slow: 'MB slow',
+        lb_er: 'LB ER', lb_slow: 'LB slow',
+        atr_fast: 'ATR fast', atr_slow: 'ATR slow', atr_er: 'ATR ER',
+    };
+    const opt  = data.optimal_params  || {};
+    const def  = data.default_params  || {};
+    const changedHtml = changed.length === 0
+        ? '<span class="opt-no-change">Default params already optimal</span>'
+        : changed.map(k => {
+            const label = PARAM_LABELS[k] || k;
+            const from  = def[k] ?? '?';
+            const to    = opt[k] ?? '?';
+            return `<span class="opt-param-chip">${label}: <s>${from}</s> → <strong>${to}</strong></span>`;
+          }).join('');
+
+    panel.innerHTML = `
+        <div class="trend-opt-summary">
+            <span class="opt-score-label">Score improvement:</span>
+            <span class="opt-score ${impCls}">${impSign}${imp.toFixed(1)}%</span>
+            <span class="opt-sep">·</span>
+            <span class="opt-baseline-label">baseline</span>
+            <span class="opt-score-val">${(data.baseline_score ?? 0).toFixed(4)}</span>
+            <span class="opt-arrow">→</span>
+            <span class="opt-score-val">${(data.best_score ?? 0).toFixed(4)}</span>
+        </div>
+        <div class="trend-opt-params">${changedHtml}</div>
+        <div class="trend-opt-actions">
+            <button class="btn btn-primary btn-sm trend-opt-apply"
+                    onclick="applyOptimizedParams(${JSON.stringify(JSON.stringify(opt))})">
+                ✓ Apply
+            </button>
+            <button class="btn btn-ghost btn-sm" onclick="closeTrendOptPanel()">✕ Dismiss</button>
+        </div>
+    `;
+    panel.style.display = 'flex';
+
+    // Show reset button if already using custom params
+    _syncResetBtn();
+}
+
+function applyOptimizedParams(paramsJson) {
+    const params = typeof paramsJson === 'string' ? JSON.parse(paramsJson) : paramsJson;
+    trendState.params = params;
+    _syncResetBtn();
+    closeTrendOptPanel();
+    const symbol = (typeof state !== 'undefined') ? state.activeSymbol : null;
+    if (symbol && typeof loadAdaptiveTrendData === 'function') {
+        loadAdaptiveTrendData(symbol);
+    }
+}
+
+function resetTrendParams() {
+    trendState.params = null;
+    _syncResetBtn();
+    closeTrendOptPanel();
+    const symbol = (typeof state !== 'undefined') ? state.activeSymbol : null;
+    if (symbol && typeof loadAdaptiveTrendData === 'function') {
+        loadAdaptiveTrendData(symbol);
+    }
+}
+
+function closeTrendOptPanel() {
+    const panel = document.getElementById('trend-opt-panel');
+    if (panel) { panel.style.display = 'none'; panel.innerHTML = ''; }
+}
+
+function _syncResetBtn() {
+    const btn = document.getElementById('btn-trend-reset-params');
+    if (btn) btn.style.display = trendState.params ? 'inline-flex' : 'none';
 }

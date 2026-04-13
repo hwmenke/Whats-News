@@ -157,8 +157,40 @@ def get_adaptive_trend(symbol):
         return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
     if method not in ("kama", "adma"):
         return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
+
+    # Optional parameter overrides (integers only)
+    _int_keys = ("sb_er","sb_slow","mb_er","mb_slow","lb_er","lb_slow",
+                 "atr_fast","atr_slow","atr_er")
+    custom = {}
+    for k in _int_keys:
+        v = request.args.get(k)
+        if v is not None:
+            try:
+                custom[k] = int(v)
+            except ValueError:
+                return jsonify({"error": f"{k} must be an integer"}), 400
+
     try:
-        result = adaptive.compute_adaptive_trend(symbol.upper(), freq, method)
+        result = adaptive.compute_adaptive_trend(
+            symbol.upper(), freq, method, params=custom or None)
+        if "error" in result:
+            return jsonify(result), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/adaptive-trend/<string:symbol>/optimize", methods=["POST"])
+def optimize_trend(symbol):
+    body   = request.get_json(force=True) or {}
+    freq   = body.get("freq", "daily")
+    method = body.get("method", "kama")
+    if freq not in ("daily", "weekly"):
+        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if method not in ("kama", "adma"):
+        return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
+    try:
+        result = adaptive.optimize_adaptive_trend(symbol.upper(), freq, method)
         if "error" in result:
             return jsonify(result), 404
         return jsonify(result)
