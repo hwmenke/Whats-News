@@ -390,47 +390,6 @@
 
     </div><!-- #backtest-area -->
 
-    <!-- ── Scanner Area ── -->
-    <div id="scanner-area" class="stats-container" style="display:none;">
-
-      <!-- Controls -->
-      <div class="scanner-controls">
-        <button id="btn-fetch-sp500" class="btn btn-primary">Fetch S&amp;P 500</button>
-        <span id="scanner-fetch-status" style="color:var(--text-muted); font-size:12px;"></span>
-        <button id="btn-run-scanner" class="btn btn-ghost">Run Scanner</button>
-        <select id="scanner-signal-filter" class="kama-input" style="width:auto; padding:4px 8px;">
-          <option value="">All Signals</option>
-          <option value="RSI_OVERSOLD">RSI_OVERSOLD</option>
-          <option value="RSI_OVERBOUGHT">RSI_OVERBOUGHT</option>
-          <option value="KAMA_BULL_CROSS">KAMA_BULL_CROSS</option>
-          <option value="KAMA_BEAR_CROSS">KAMA_BEAR_CROSS</option>
-          <option value="STRONG_BULL">STRONG_BULL</option>
-          <option value="STRONG_BEAR">STRONG_BEAR</option>
-          <option value="MACD_BULL_CROSS">MACD_BULL_CROSS</option>
-          <option value="MACD_BEAR_CROSS">MACD_BEAR_CROSS</option>
-          <option value="HIGH_VOLUME">HIGH_VOLUME</option>
-          <option value="BB_LOWER_BAND">BB_LOWER_BAND</option>
-          <option value="BB_UPPER_BAND">BB_UPPER_BAND</option>
-        </select>
-        <span id="scanner-count" style="color:var(--text-muted); font-size:12px;"></span>
-      </div>
-
-      <!-- Results table -->
-      <div class="scanner-table-wrap">
-        <table class="scanner-table" id="scanner-table">
-          <thead>
-            <tr>
-              <th>Symbol</th><th>Price</th><th>Week%</th><th>RSI</th>
-              <th>Trend</th><th>KAMA10%</th><th>KAMA20%</th>
-              <th>Vol Ratio</th><th>Signals</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-    </div><!-- #scanner-area (local signal-based) -->
-
     <!-- ── Adaptive Trend Area ── -->
     <div id="trend-area" class="trend-container" style="display:none;">
 
