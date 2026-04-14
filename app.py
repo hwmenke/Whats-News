@@ -3,9 +3,11 @@ app.py - Flask REST API server for the Financial Dashboard
 Run: python app.py
 """
 
+import json
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 
 import database as db
@@ -15,6 +17,8 @@ import stats as stats
 import knn_model
 import backtester
 import scanner
+import adaptive_trend as adaptive
+import ticker_lists as tl
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -166,6 +170,25 @@ def get_backtest(symbol):
     return jsonify(result)
 
 
+# -- Adaptive Trend -------------------------------------------------------------
+
+@app.route("/api/adaptive-trend/<string:symbol>", methods=["GET"])
+def get_adaptive_trend(symbol):
+    freq   = request.args.get("freq", "daily")
+    method = request.args.get("method", "kama")
+    if freq not in ("daily", "weekly"):
+        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if method not in ("kama", "adma"):
+        return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
+    try:
+        result = adaptive.compute_adaptive_trend(symbol.upper(), freq, method)
+        if "error" in result:
+            return jsonify(result), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # -- Scanner --------------------------------------------------------------------
 
 @app.route("/api/scanner/sp500")
@@ -200,6 +223,106 @@ def run_scanner():
     signal_filter = request.args.get("signal")
     results = scanner.run_scanner(signal_filter=signal_filter or None)
     return jsonify(results)
+
+
+@app.route("/api/scanner", methods=["GET"])
+def get_scanner():
+    """Compute multi-timeframe scanner metrics for every watched symbol."""
+    try:
+        symbols = [s['symbol'] for s in db.list_symbols()]
+        if not symbols:
+            return jsonify([])
+        data = scanner.compute_scanner(symbols)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -- Data Manager ---------------------------------------------------------------
+
+@app.route("/api/data-manager/ticker-lists", methods=["GET"])
+def get_ticker_lists():
+    """Return the curated ticker library (categories + tickers)."""
+    return jsonify(tl.TICKER_LIBRARY)
+
+
+@app.route("/api/data-manager/fetch-batch", methods=["POST"])
+def fetch_batch():
+    """
+    SSE streaming endpoint.
+    POST body: {
+        "tickers":      ["AAPL", ...],
+        "start_date":   "2000-01-01",   // optional, default 2000-01-01
+        "delay":        1.5,            // seconds between requests
+        "add_watchlist": true           // whether to add each ticker to watchlist
+    }
+    Streams SSE events:
+        data: {"type":"start",  "total": N}
+        data: {"type":"result", "index": i, "symbol": "...", "ok": bool, "msg": "..."}
+        data: {"type":"done",   "ok": N, "failed": N}
+    """
+    body        = request.get_json(force=True) or {}
+    tickers     = [t.strip().upper() for t in body.get("tickers", []) if t.strip()]
+    start_date  = body.get("start_date", "2000-01-01")
+    delay       = float(body.get("delay", 1.5))
+    add_wl      = bool(body.get("add_watchlist", True))
+
+    if not tickers:
+        return jsonify({"error": "tickers list is empty"}), 400
+
+    # Clamp delay to reasonable range
+    delay = max(0.3, min(delay, 10.0))
+
+    def generate():
+        ok_count = 0
+        fail_count = 0
+        total = len(tickers)
+
+        try:
+            yield f"data: {json.dumps({'type': 'start', 'total': total})}\n\n"
+
+            for i, sym in enumerate(tickers):
+                try:
+                    if add_wl:
+                        db.add_symbol(sym)
+
+                    result = fetcher.fetch_full_history(sym, start=start_date)
+
+                    if "error" in result:
+                        fail_count += 1
+                        msg = result["error"]
+                        ok  = False
+                    else:
+                        ok_count += 1
+                        msg = (f"{result.get('daily_rows', 0)}d / "
+                               f"{result.get('weekly_rows', 0)}w rows stored")
+                        ok  = True
+
+                    yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': ok, 'msg': msg})}\n\n"
+
+                except GeneratorExit:
+                    return
+                except Exception as exc:
+                    fail_count += 1
+                    yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': False, 'msg': str(exc)})}\n\n"
+
+                # Rate-limiting pause (skip after last ticker)
+                if i < total - 1:
+                    time.sleep(delay)
+
+            yield f"data: {json.dumps({'type': 'done', 'ok': ok_count, 'failed': fail_count})}\n\n"
+
+        except GeneratorExit:
+            return
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control":  "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # -- Entry point ----------------------------------------------------------------

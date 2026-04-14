@@ -37,11 +37,12 @@
           id="new-symbol-input"
           type="text"
           placeholder="AAPL, TSLA…"
-          maxlength="10"
+          maxlength="60"
           autocomplete="off"
           spellcheck="false"
         />
-        <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add Symbol">+</button>
+        <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add symbol (or type comma-separated)">+</button>
+        <button id="btn-bulk-add"   class="btn btn-ghost   btn-icon" title="Bulk import a list of tickers">≡</button>
       </div>
     </div>
 
@@ -109,8 +110,14 @@
       <button id="tab-backtest" class="tab-btn" onclick="switchTab('backtest')">
         <span class="tab-icon">⚙️</span> Backtest
       </button>
+      <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">
+        <span class="tab-icon">🎯</span> Adaptive Trend
+      </button>
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">
-        <span class="tab-icon">🔍</span> Scanner
+        <span class="tab-icon">📡</span> Scanner
+      </button>
+      <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
+        <span class="tab-icon">🗄️</span> Data Manager
       </button>
     </nav>
     <div class="tab-bar">
@@ -422,7 +429,282 @@
         </table>
       </div>
 
+    </div><!-- #scanner-area (local signal-based) -->
+
+    <!-- ── Adaptive Trend Area ── -->
+    <div id="trend-area" class="trend-container" style="display:none;">
+
+      <!-- Full-area loading overlay — sits over the whole trend container -->
+      <div id="trend-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span>
+        Computing adaptive trend…
+      </div>
+
+      <!-- Controls bar -->
+      <div class="trend-controls">
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Method</span>
+          <button class="ind-pill trend-active trend-method-btn" data-val="kama" onclick="setTrendMethod('kama')">KAMA</button>
+          <button class="ind-pill trend-method-btn"              data-val="adma" onclick="setTrendMethod('adma')">ADMA</button>
+        </div>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Freq</span>
+          <button class="ind-pill trend-active trend-freq-btn" data-val="daily"  onclick="setTrendFreq('daily')">Daily</button>
+          <button class="ind-pill trend-freq-btn"              data-val="weekly" onclick="setTrendFreq('weekly')">Weekly</button>
+        </div>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Baselines</span>
+          <button id="trend-toggle-sb"  class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('sb')"
+                  onmouseenter="showLineDesc('sb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot" style="--dot:#3b82f6"></span>SB
+          </button>
+          <button id="trend-toggle-mb"  class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('mb')"
+                  onmouseenter="showLineDesc('mb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot" style="--dot:#ef4444"></span>MB
+          </button>
+          <button id="trend-toggle-lb"  class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('lb')"
+                  onmouseenter="showLineDesc('lb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#f97316"></span>LB
+          </button>
+        </div>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Bands</span>
+          <button id="trend-toggle-sdb" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('sdb')"
+                  onmouseenter="showLineDesc('sdb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#22c55e"></span>SDB
+          </button>
+          <button id="trend-toggle-mrt" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('mrt')"
+                  onmouseenter="showLineDesc('mrt')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#475569"></span>MRT
+          </button>
+          <button id="trend-toggle-mdb" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('mdb')"
+                  onmouseenter="showLineDesc('mdb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#16a34a"></span>MDB
+          </button>
+          <button id="trend-toggle-lrt" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('lrt')"
+                  onmouseenter="showLineDesc('lrt')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#6b7280"></span>LRT
+          </button>
+          <button id="trend-toggle-ldb" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('ldb')"
+                  onmouseenter="showLineDesc('ldb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#06b6d4"></span>LDB
+          </button>
+        </div>
+      </div>
+
+      <!-- Description strip — updates on button hover -->
+      <div id="trend-line-desc" class="trend-line-desc"></div>
+
+      <!-- Two-panel layout -->
+      <div class="trend-panels">
+
+        <!-- ── Main chart panel ── -->
+        <div class="trend-panel-main">
+          <div class="panel-header">Price · Adaptive Bands</div>
+
+          <!-- Price chart — flex:1 fills remaining height -->
+          <div class="trend-price-wrap">
+            <div id="trend-chart-price" style="width:100%;height:100%;"></div>
+          </div>
+
+          <div class="chart-divider"></div>
+
+          <!-- Regime strip — fixed height, shows all 3 horizons -->
+          <div class="trend-regime-wrap">
+            <div class="chart-label">S / M / L REGIME</div>
+            <div id="trend-chart-regime" style="width:100%;height:100%;"></div>
+          </div>
+        </div>
+
+        <div class="panel-divider"></div>
+
+        <!-- ── Signal panel ── -->
+        <div class="trend-panel-signal">
+          <div class="panel-header">Signal Summary</div>
+
+          <!-- Composite signal badge (most prominent element) -->
+          <div class="trend-composite-wrap">
+            <div class="trend-composite-label">Composite Signal</div>
+            <div id="trend-composite" class="trend-composite-badge neutral">—</div>
+            <div id="trend-strength"  class="trend-strength-bar neutral">○ ○ ○</div>
+            <div id="trend-align"     class="trend-align-detail">—</div>
+          </div>
+
+          <!-- 2 × 4 signal detail grid -->
+          <div class="trend-signal-grid">
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Short Horizon</div>
+              <div id="trend-sig-short" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Medium Horizon</div>
+              <div id="trend-sig-medium" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Long Horizon</div>
+              <div id="trend-sig-long" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Last Entry</div>
+              <div id="trend-sig-entry" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">Stop · MRT</div>
+              <div id="trend-sig-mrt" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">TP1 · SDB</div>
+              <div id="trend-sig-sdb" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">TP2 · MDB</div>
+              <div id="trend-sig-mdb" class="trend-signal-value neutral">—</div>
+            </div>
+            <div class="trend-signal-card">
+              <div class="trend-signal-label">R : R  ·  ATR</div>
+              <div id="trend-sig-rr" class="trend-signal-value neutral">—</div>
+            </div>
+          </div>
+
+        </div><!-- .trend-panel-signal -->
+
+      </div><!-- .trend-panels -->
+    </div><!-- #trend-area -->
+
+    <!-- ── Scanner Area ── -->
+    <div id="scanner-area" class="scanner-container" style="display:none;">
+
+      <!-- Loading overlay -->
+      <div id="scanner-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span>
+        Scanning watchlist…
+      </div>
+
+      <!-- Controls bar -->
+      <div class="scanner-controls">
+        <div class="scanner-controls-left">
+          <button id="btn-scan" class="btn btn-primary" onclick="loadScannerData()">⟳ Scan All</button>
+          <span id="scanner-ts" class="scanner-ts"></span>
+        </div>
+        <div class="scanner-controls-right">
+          <span class="overlay-section-label">Groups</span>
+          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="rsi"  onclick="toggleScanGroup('rsi')">RSI</button>
+          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="kama" onclick="toggleScanGroup('kama')">KAMA Ratios</button>
+          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="mom"  onclick="toggleScanGroup('mom')">Momentum</button>
+          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="vol"  onclick="toggleScanGroup('vol')">Volatility</button>
+        </div>
+      </div>
+
+      <!-- Scrollable table -->
+      <div class="scanner-table-wrap">
+        <table id="scanner-table" class="scanner-table">
+          <thead id="scanner-thead"></thead>
+          <tbody id="scanner-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Empty state -->
+      <div id="scanner-empty" class="scanner-empty" style="display:none;">
+        <div class="empty-icon">📡</div>
+        <p>No symbols in watchlist, or data not yet fetched.<br>Add tickers, then click <strong>⟳ Scan All</strong>.</p>
+      </div>
+
     </div><!-- #scanner-area -->
+
+    <!-- ── Data Manager Area ── -->
+    <div id="data-manager-area" class="dm-container" style="display:none;">
+
+      <!-- ── Left panel: category browser ── -->
+      <div class="dm-left">
+        <div class="dm-panel-header">Ticker Library</div>
+
+        <!-- Search / filter -->
+        <div class="dm-search-wrap">
+          <input id="dm-search" type="text" class="dm-search" placeholder="Search tickers…" oninput="dmFilterTickers()" />
+        </div>
+
+        <!-- Category grid -->
+        <div id="dm-categories" class="dm-categories">
+          <!-- Rendered by data_manager.js -->
+        </div>
+
+        <!-- Select / deselect controls -->
+        <div class="dm-select-controls">
+          <button class="btn btn-ghost btn-sm" onclick="dmSelectAll()">Select All</button>
+          <button class="btn btn-ghost btn-sm" onclick="dmSelectNone()">Deselect All</button>
+          <span id="dm-selected-count" class="dm-sel-count">0 selected</span>
+        </div>
+      </div>
+
+      <!-- ── Right panel: settings + progress ── -->
+      <div class="dm-right">
+        <div class="dm-panel-header">Batch Fetch Settings</div>
+
+        <div class="dm-settings">
+
+          <div class="dm-field">
+            <label class="dm-label" for="dm-start-date">Start Date</label>
+            <input id="dm-start-date" type="date" class="dm-input" value="2000-01-01" />
+          </div>
+
+          <div class="dm-field">
+            <label class="dm-label" for="dm-delay">Delay Between Requests</label>
+            <select id="dm-delay" class="dm-select">
+              <option value="0.5">0.5 s — fastest (may hit rate limits)</option>
+              <option value="1.5" selected>1.5 s — recommended</option>
+              <option value="3.0">3.0 s — conservative</option>
+              <option value="5.0">5.0 s — very safe</option>
+            </select>
+          </div>
+
+          <div class="dm-field dm-field-row">
+            <label class="dm-label dm-label-inline">
+              <input id="dm-add-watchlist" type="checkbox" checked />
+              Also add to watchlist
+            </label>
+          </div>
+
+        </div>
+
+        <!-- Action buttons -->
+        <div class="dm-actions">
+          <button id="btn-dm-fetch" class="btn btn-primary" onclick="dmStartBatch()">
+            ▶ Fetch Selected
+          </button>
+          <button id="btn-dm-abort" class="btn btn-danger" style="display:none;" onclick="dmAbortBatch()">
+            ■ Abort
+          </button>
+        </div>
+
+        <!-- Progress section -->
+        <div id="dm-progress-section" class="dm-progress-section" style="display:none;">
+          <div class="dm-progress-header">
+            <span id="dm-progress-label">Starting…</span>
+            <span id="dm-progress-pct" class="dm-pct">0%</span>
+          </div>
+          <div class="dm-progress-bar">
+            <div id="dm-progress-fill" class="dm-progress-fill"></div>
+          </div>
+          <div id="dm-summary" class="dm-summary"></div>
+        </div>
+
+        <!-- Log -->
+        <div class="dm-log-header">Log</div>
+        <div id="dm-log" class="dm-log">
+          <div class="dm-log-hint">Select tickers and click <strong>Fetch Selected</strong> to begin.</div>
+        </div>
+
+      </div><!-- .dm-right -->
+
+    </div><!-- #data-manager-area -->
 
   </main>
 
@@ -431,8 +713,48 @@
 <!-- Toast container -->
 <div id="toast-container" class="toast-container"></div>
 
+<!-- ══ Bulk Add Modal ══════════════════════════════════════════ -->
+<div id="bulk-modal" class="bulk-modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeBulkModal()">
+  <div class="bulk-modal-card" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title">
+
+    <div class="bulk-modal-header">
+      <span id="bulk-modal-title">Bulk Import Tickers</span>
+      <button class="bulk-modal-close" onclick="closeBulkModal()" title="Close">×</button>
+    </div>
+
+    <div class="bulk-modal-body">
+      <textarea
+        id="bulk-symbols-input"
+        class="bulk-textarea"
+        placeholder="AAPL, TSLA, MSFT&#10;GOOGL&#10;AMZN SPY QQQ&#10;&#10;Separate with commas, spaces, or newlines."
+        rows="9"
+        spellcheck="false"
+      ></textarea>
+      <p class="bulk-hint">Duplicates and already-tracked symbols are skipped automatically.</p>
+
+      <!-- Progress (hidden until import starts) -->
+      <div id="bulk-progress" class="bulk-progress" style="display:none;">
+        <div class="bulk-progress-bar">
+          <div id="bulk-progress-fill" class="bulk-progress-fill"></div>
+        </div>
+        <div id="bulk-progress-label" class="bulk-progress-label">Starting…</div>
+      </div>
+    </div>
+
+    <div class="bulk-modal-footer">
+      <button class="btn btn-ghost" onclick="closeBulkModal()">Cancel</button>
+      <button id="btn-bulk-submit" class="btn btn-primary" onclick="bulkAddSymbols()">Import Tickers</button>
+    </div>
+
+  </div>
+</div>
+
 <!-- Scripts -->
 <script src="scripts/charts.js"></script>
+<script src="scripts/trend_chart.js"></script>
+<script src="scripts/scanner.js"></script>
+<script src="scripts/data_manager.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

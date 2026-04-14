@@ -4,6 +4,7 @@ Supports incremental fetching: only downloads bars newer than what's in the DB.
 """
 
 import datetime
+import time
 import yfinance as yf
 import pandas as pd
 import database as db
@@ -103,3 +104,70 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
         "daily_rows":   daily_count,
         "weekly_rows":  weekly_count,
     }
+
+
+def fetch_full_history(symbol: str, start: str = "2000-01-01",
+                       max_retries: int = 3) -> dict:
+    """
+    Download full daily history from `start` date to today.
+    Resamples to weekly (W-FRI) and monthly (ME).
+    Retries with exponential back-off (5s, 10s, 20s) on failure.
+    Returns a result dict with keys: symbol, daily_rows, weekly_rows, error (on failure).
+    """
+    sym   = symbol.upper()
+    delay = 5  # initial retry delay seconds
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"++ Fetcher: Full-history fetch for {sym} (attempt {attempt})")
+            ticker = yf.Ticker(sym)
+
+            raw = ticker.history(start=start, interval="1d", auto_adjust=True)
+            if raw.empty:
+                print(f"!! Fetcher: No data for {sym}")
+                return {"symbol": sym, "error": f"No data returned for {sym}"}
+
+            daily_df = _clean_df(raw)
+            print(f"++ Fetcher: {len(daily_df)} daily bars from {start}")
+
+            # Weekly (week ending Friday)
+            weekly_df = daily_df.resample("W-FRI").agg({
+                "open":   "first",
+                "high":   "max",
+                "low":    "min",
+                "close":  "last",
+                "volume": "sum",
+            }).dropna()
+
+            daily_count  = db.upsert_ohlcv(sym, "daily",  daily_df)
+            weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
+            print(f"++ Fetcher: Stored {daily_count}d / {weekly_count}w for {sym}")
+
+            # Metadata (best-effort)
+            name, sector = "", ""
+            try:
+                info   = ticker.info
+                name   = info.get("longName", "")
+                sector = info.get("sector", info.get("industry", "")).strip()
+            except Exception:
+                pass
+
+            db.update_symbol_info(sym, name, sector)
+            db.update_last_fetch(sym)
+
+            return {
+                "symbol":      sym,
+                "name":        name,
+                "sector":      sector,
+                "daily_rows":  daily_count,
+                "weekly_rows": weekly_count,
+            }
+
+        except Exception as exc:
+            print(f"!! Fetcher: Attempt {attempt} failed for {sym}: {exc}")
+            if attempt < max_retries:
+                print(f"   Retrying in {delay}s …")
+                time.sleep(delay)
+                delay *= 2
+            else:
+                return {"symbol": sym, "error": str(exc)}

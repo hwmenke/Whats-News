@@ -193,10 +193,20 @@ function renderSymbolList() {
 }
 
 async function addSymbol() {
-    const input  = document.getElementById('new-symbol-input');
-    const symbol = input.value.trim().toUpperCase();
-    if (!symbol) return;
+    const input = document.getElementById('new-symbol-input');
+    const raw   = input.value.trim();
+    if (!raw) return;
 
+    // Multiple tickers (comma / space separated) → route to bulk modal
+    const parts = raw.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+    if (parts.length > 1) {
+        input.value = '';
+        document.getElementById('bulk-symbols-input').value = parts.join('\n');
+        openBulkModal();
+        return;
+    }
+
+    const symbol = parts[0];
     input.disabled = true;
     try {
         await apiFetch(`${API}/symbols`, {
@@ -231,19 +241,138 @@ async function removeSymbol(symbol) {
 }
 
 // ── Yahoo Finance fetch ───────────────────────────────────────
-async function fetchSymbolData(symbol) {
+// silent=true suppresses per-symbol toasts (used during bulk import)
+async function fetchSymbolData(symbol, silent = false) {
     console.log(`[App] Fetching data for ${symbol}...`);
-    toast(`Downloading ${symbol} from Yahoo Finance…`, 'info', 5000);
+    if (!silent) toast(`Downloading ${symbol} from Yahoo Finance…`, 'info', 5000);
     try {
         const res = await apiFetch(`${API}/fetch/${symbol}`, { method: 'POST' });
         console.log(`[App] Fetch complete for ${symbol}:`, res);
-        toast(`${symbol}: ${res.daily_rows} daily / ${res.weekly_rows} weekly bars loaded`, 'success', 5000);
+        if (!silent) toast(`${symbol}: ${res.daily_rows} daily / ${res.weekly_rows} weekly bars loaded`, 'success', 5000);
         return true;
     } catch (e) {
         console.error(`[App] Fetch failed for ${symbol}:`, e);
-        toast(`${symbol} fetch failed: ` + e.message, 'error');
+        if (!silent) toast(`${symbol} fetch failed: ` + e.message, 'error');
         return false;
     }
+}
+
+// ── Bulk Import ───────────────────────────────────────────────
+function openBulkModal() {
+    const modal = document.getElementById('bulk-modal');
+    modal.style.display = 'flex';
+    // Reset progress state from any previous run
+    document.getElementById('bulk-progress').style.display        = 'none';
+    document.getElementById('bulk-progress-fill').style.width     = '0%';
+    document.getElementById('bulk-progress-label').style.color    = '';
+    document.getElementById('btn-bulk-submit').disabled           = false;
+    document.getElementById('bulk-symbols-input').disabled        = false;
+    setTimeout(() => document.getElementById('bulk-symbols-input').focus(), 50);
+}
+
+function closeBulkModal() {
+    // Only close if not in the middle of an import
+    if (document.getElementById('btn-bulk-submit').disabled) return;
+    document.getElementById('bulk-modal').style.display = 'none';
+    document.getElementById('bulk-symbols-input').value = '';
+    document.getElementById('bulk-progress').style.display = 'none';
+}
+
+async function bulkAddSymbols() {
+    const raw = document.getElementById('bulk-symbols-input').value;
+
+    // Parse: split on any combination of commas, semicolons, spaces, newlines
+    // Validate: must start with a letter, 1-10 chars, only A-Z 0-9 . - ^
+    const symbols = [...new Set(
+        raw.split(/[\s,;\n\r]+/)
+           .map(s => s.trim().toUpperCase())
+           .filter(s => /^[A-Z][A-Z0-9.\-\^]{0,9}$/.test(s))
+    )];
+
+    if (!symbols.length) {
+        toast('No valid ticker symbols found', 'warning');
+        return;
+    }
+
+    const submitBtn  = document.getElementById('btn-bulk-submit');
+    const textarea   = document.getElementById('bulk-symbols-input');
+    const progressEl = document.getElementById('bulk-progress');
+    const fillEl     = document.getElementById('bulk-progress-fill');
+    const labelEl    = document.getElementById('bulk-progress-label');
+
+    // Lock UI
+    submitBtn.disabled  = true;
+    textarea.disabled   = true;
+    progressEl.style.display = 'block';
+    labelEl.style.color = '';
+
+    const existing = new Set(state.symbols.map(s => s.symbol));
+    let added = 0, failed = 0, skipped = 0;
+    const failedSymbols = [];
+
+    for (let i = 0; i < symbols.length; i++) {
+        const sym = symbols[i];
+
+        // Update progress bar
+        fillEl.style.width  = `${Math.round((i / symbols.length) * 100)}%`;
+        labelEl.textContent = `${i + 1} / ${symbols.length}  ·  ${sym}`;
+
+        if (existing.has(sym)) {
+            skipped++;
+            continue;
+        }
+
+        // Register symbol in DB (may already exist — ignore that error)
+        try {
+            await apiFetch(`${API}/symbols`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ symbol: sym }),
+            });
+        } catch (_) { /* already exists or other — still try data fetch */ }
+
+        // Download market data
+        const ok = await fetchSymbolData(sym, true);
+        if (ok) {
+            added++;
+            existing.add(sym);
+        } else {
+            failed++;
+            failedSymbols.push(sym);
+        }
+    }
+
+    // Finalise progress bar
+    fillEl.style.width = '100%';
+    const parts = [
+        added   ? `${added} added`   : null,
+        skipped ? `${skipped} skipped` : null,
+        failed  ? `${failed} failed`  : null,
+    ].filter(Boolean);
+    const summary = parts.join(', ');
+    labelEl.textContent = `Done — ${summary}`;
+    labelEl.style.color = failed ? 'var(--red)' : 'var(--green)';
+
+    // Unlock UI
+    submitBtn.disabled = false;
+    textarea.disabled  = false;
+
+    // Refresh sidebar
+    await loadSymbols();
+
+    // If something was added, select the first new one
+    const firstNew = symbols.find(s => existing.has(s) && !state.symbols.find(x => x.symbol === s));
+    if (added && !state.activeSymbol) selectSymbol(symbols[0]);
+
+    // Toast summary
+    toast(
+        `Bulk import: ${summary}` + (failedSymbols.length ? ` (${failedSymbols.join(', ')})` : ''),
+        failed ? 'warning' : 'success',
+        6000
+    );
+
+    // Auto-close after 2 s if everything succeeded
+    if (failed === 0) setTimeout(closeBulkModal, 2000);
 }
 
 async function refreshAll() {
@@ -279,6 +408,8 @@ async function selectSymbol(symbol) {
     } else if (state.activeTab === 'backtest') {
         // Backtest is triggered manually via the Run button; just update header
         updateSymbolHeader(symbol, null);
+    } else if (state.activeTab === 'trend') {
+        await loadAdaptiveTrendData(symbol);
     }
     // Scanner tab doesn't depend on the selected symbol
 }
@@ -375,10 +506,57 @@ async function loadChartData(symbol) {
     }
 }
 
+// ── Adaptive Trend loading ────────────────────────────────────
+async function loadAdaptiveTrendData(symbol) {
+    if (!symbol) return;
+    showTrendArea();
+
+    const loadingEl = document.getElementById('trend-loading');
+    if (loadingEl) loadingEl.style.display = 'flex';
+    updateSymbolHeader(symbol, null);
+
+    const freq   = trendState.freq;
+    const method = trendState.method;
+
+    try {
+        let [ohlcv, trendData] = await Promise.all([
+            apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
+            apiFetch(`${API}/adaptive-trend/${symbol}?freq=${freq}&method=${method}`),
+        ]).catch(async e => {
+            if (e.message.includes('404') || e.message.includes('No data')) {
+                toast(`No data for ${symbol}. Downloading…`, 'info');
+                const ok = await fetchSymbolData(symbol);
+                if (!ok) throw e;
+                await loadSymbols();
+                return Promise.all([
+                    apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
+                    apiFetch(`${API}/adaptive-trend/${symbol}?freq=${freq}&method=${method}`),
+                ]);
+            }
+            throw e;
+        });
+
+        buildTrendCharts();
+        loadTrendData(trendData, ohlcv);
+
+        const last = ohlcv[ohlcv.length - 1];
+        const prev = ohlcv[ohlcv.length - 2];
+        updateSymbolHeader(symbol, last, prev);
+    } catch (e) {
+        toast('Adaptive Trend load failed: ' + e.message, 'error');
+    } finally {
+        if (loadingEl) loadingEl.style.display = 'none';
+    }
+}
+
 // ── UI helpers ───────────────────────────────────────────────
 function showEmptyState() {
-    document.getElementById('empty-state').style.display = 'flex';
-    document.getElementById('chart-area').style.display  = 'none';
+    document.getElementById('empty-state').style.display       = 'flex';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
 }
 
 function showChartArea() {
@@ -400,25 +578,21 @@ async function switchTab(tabId) {
     });
 
     // Hide all content areas first
-    document.getElementById('empty-state').style.display  = 'none';
-    document.getElementById('chart-area').style.display   = 'none';
-    document.getElementById('stats-area').style.display   = 'none';
-    document.getElementById('knn-area').style.display     = 'none';
-    document.getElementById('backtest-area').style.display = 'none';
-    document.getElementById('scanner-area').style.display  = 'none';
-    document.querySelector('.tab-bar').style.display       = 'none';
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.querySelector('.tab-bar').style.display           = 'none';
 
     if (tabId === 'charts') {
-        if (state.activeSymbol) {
-            document.getElementById('chart-area').style.display = 'flex';
-            document.querySelector('.tab-bar').style.display    = 'flex';
-            loadChartData(state.activeSymbol);
-        } else {
-            document.getElementById('empty-state').style.display = 'flex';
-            document.querySelector('.tab-bar').style.display     = 'flex';
-        }
+        showChartArea();
+        if (state.activeSymbol) loadChartData(state.activeSymbol);
     } else if (tabId === 'stats') {
-        document.getElementById('stats-area').style.display = 'block';
+        showStatsArea();
         if (state.activeSymbol) loadStatsData(state.activeSymbol);
     } else if (tabId === 'knn') {
         document.getElementById('knn-area').style.display = 'block';
@@ -428,29 +602,76 @@ async function switchTab(tabId) {
         if (state.activeSymbol) {
             updateSymbolHeader(state.activeSymbol, null);
         }
+    } else if (tabId === 'trend') {
+        showTrendArea();
+        if (state.activeSymbol) loadAdaptiveTrendData(state.activeSymbol);
     } else if (tabId === 'scanner') {
-        document.getElementById('scanner-area').style.display = 'block';
+        showScannerArea();
+        loadScannerData();
+    } else if (tabId === 'data-manager') {
+        showDataManagerArea();
+        initDataManager();
     }
 }
 
 function showStatsArea() {
-    document.getElementById('empty-state').style.display  = 'none';
-    document.getElementById('chart-area').style.display   = 'none';
-    document.getElementById('stats-area').style.display   = 'block';
-    document.getElementById('knn-area').style.display     = 'none';
-    document.getElementById('backtest-area').style.display = 'none';
-    document.getElementById('scanner-area').style.display  = 'none';
-    document.querySelector('.tab-bar').style.display       = 'none';
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('stats-area').style.display        = 'block';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.querySelector('.tab-bar').style.display           = 'none';
 }
 
 function showChartArea() {
-    document.getElementById('empty-state').style.display  = 'none';
-    document.getElementById('stats-area').style.display   = 'none';
-    document.getElementById('knn-area').style.display     = 'none';
-    document.getElementById('backtest-area').style.display = 'none';
-    document.getElementById('scanner-area').style.display  = 'none';
-    document.getElementById('chart-area').style.display   = 'flex';
-    document.querySelector('.tab-bar').style.display       = 'flex';
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('chart-area').style.display        = 'flex';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.querySelector('.tab-bar').style.display           = 'flex';
+}
+
+function showTrendArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'flex';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.querySelector('.tab-bar').style.display           = 'none';
+}
+
+function showScannerArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'flex';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.querySelector('.tab-bar').style.display           = 'none';
+}
+
+function showDataManagerArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'flex';
+    document.querySelector('.tab-bar').style.display           = 'none';
 }
 
 // ── Stats Rendering ───────────────────────────────────────────
@@ -1040,6 +1261,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Buttons
     document.getElementById('btn-add-symbol').addEventListener('click', addSymbol);
+    document.getElementById('btn-bulk-add').addEventListener('click', openBulkModal);
     document.getElementById('btn-refresh-all').addEventListener('click', refreshAll);
     document.getElementById('new-symbol-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') addSymbol();
@@ -1054,6 +1276,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-run-backtest').addEventListener('click', () => {
         if (state.activeSymbol) loadBacktest(state.activeSymbol);
         else toast('Select a symbol first', 'warning');
+    });
+
+    // Close bulk modal on Escape
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeBulkModal();
     });
 
     await loadSymbols();
