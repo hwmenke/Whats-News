@@ -180,8 +180,25 @@ def get_adaptive_trend(symbol):
         return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
     if method not in ("kama", "adma"):
         return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
+
+    # Optional tuning params
+    int_params   = ["sb_er","sb_fast","sb_slow","mb_er","mb_fast","mb_slow",
+                    "lb_er","lb_fast","lb_slow","atr_n"]
+    float_params = ["confirm_mult"]
+    config = {}
+    for p in int_params:
+        v = request.args.get(p)
+        if v is not None:
+            try: config[p] = int(v)
+            except ValueError: pass
+    for p in float_params:
+        v = request.args.get(p)
+        if v is not None:
+            try: config[p] = float(v)
+            except ValueError: pass
+
     try:
-        result = adaptive.compute_adaptive_trend(symbol.upper(), freq, method)
+        result = adaptive.compute_adaptive_trend(symbol.upper(), freq, method, **config)
         if "error" in result:
             return jsonify(result), 404
         return jsonify(result)

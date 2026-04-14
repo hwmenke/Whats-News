@@ -1822,3 +1822,33 @@ html, body {
   color: var(--red);
   font-size: 12px;
 }
+
+/* ── Trend config panel ─────────────────────────────────────── */
+.trend-config-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 16px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+}
+.tconf-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.tconf-input {
+    width: 58px;
+    padding: 3px 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 11px;
+    font-family: var(--font-mono);
+}
+.tconf-apply { padding: 4px 12px; font-size: 11px; }
+.tconf-preset { padding: 4px 10px; font-size: 11px; }

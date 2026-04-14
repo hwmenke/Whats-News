@@ -518,10 +518,14 @@ async function loadAdaptiveTrendData(symbol) {
     const freq   = trendState.freq;
     const method = trendState.method;
 
+    const cfg    = typeof trendConfig !== 'undefined' ? trendConfig : {};
+    const cfgStr = Object.entries(cfg).map(([k,v]) => `${k}=${v}`).join('&');
+    const trendUrl = `${API}/adaptive-trend/${symbol}?freq=${freq}&method=${method}&${cfgStr}`;
+
     try {
         let [ohlcv, trendData] = await Promise.all([
             apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
-            apiFetch(`${API}/adaptive-trend/${symbol}?freq=${freq}&method=${method}`),
+            apiFetch(trendUrl),
         ]).catch(async e => {
             if (e.message.includes('404') || e.message.includes('No data')) {
                 toast(`No data for ${symbol}. Downloading…`, 'info');
@@ -530,7 +534,7 @@ async function loadAdaptiveTrendData(symbol) {
                 await loadSymbols();
                 return Promise.all([
                     apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
-                    apiFetch(`${API}/adaptive-trend/${symbol}?freq=${freq}&method=${method}`),
+                    apiFetch(trendUrl),
                 ]);
             }
             throw e;
@@ -604,6 +608,7 @@ async function switchTab(tabId) {
         }
     } else if (tabId === 'trend') {
         showTrendArea();
+        if (typeof renderTrendConfig === 'function') renderTrendConfig();
         if (state.activeSymbol) loadAdaptiveTrendData(state.activeSymbol);
     } else if (tabId === 'scanner') {
         showScannerArea();

@@ -244,6 +244,9 @@ async function dmStartBatch() {
                         ev.failed > 0 ? "warn" : "ok"
                     );
                     _dmShowSummary(ev.ok, ev.failed);
+                    if (typeof loadSymbols === 'function') {
+                        loadSymbols().catch(() => {});
+                    }
                 }
             }
         }

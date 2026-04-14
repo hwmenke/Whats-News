@@ -35,6 +35,13 @@ const trendState = {
     data:   null,
 };
 
+const trendConfig = {
+    sb_er: 10, sb_fast: 2, sb_slow: 30,
+    mb_er: 20, mb_fast: 2, mb_slow: 60,
+    lb_er: 40, lb_fast: 2, lb_slow: 120,
+    atr_n: 20, confirm_mult: 0.25,
+};
+
 // ── Line metadata (descriptions + colors) ─────────────────────
 const LINE_META = {
     sb:  {
@@ -595,4 +602,57 @@ function _updateSignalPanel(data, ohlcvRows) {
     } else {
         setCard('trend-sig-rr', atrV != null ? `ATR ${fmtP(atrV)}` : '—', 'neutral');
     }
+}
+
+// ── Config panel ──────────────────────────────────────────────
+function renderTrendConfig() {
+    const el = document.getElementById('trend-config-panel');
+    if (!el) return;
+
+    const fields = [
+        { key: 'sb_er',        label: 'SB ER',    min: 3,    max: 50,  step: 1    },
+        { key: 'sb_slow',      label: 'SB Slow',  min: 10,   max: 200, step: 5    },
+        { key: 'mb_er',        label: 'MB ER',    min: 5,    max: 100, step: 1    },
+        { key: 'mb_slow',      label: 'MB Slow',  min: 20,   max: 300, step: 10   },
+        { key: 'lb_er',        label: 'LB ER',    min: 10,   max: 200, step: 5    },
+        { key: 'lb_slow',      label: 'LB Slow',  min: 40,   max: 500, step: 20   },
+        { key: 'confirm_mult', label: 'Confirm×', min: 0.05, max: 1.0, step: 0.05 },
+    ];
+
+    el.innerHTML = fields.map(f => `
+        <label class="tconf-label">${f.label}
+            <input class="tconf-input" type="number"
+                   id="tconf-${f.key}" value="${trendConfig[f.key]}"
+                   min="${f.min}" max="${f.max}" step="${f.step}"/>
+        </label>
+    `).join('') + `
+        <button class="btn btn-primary tconf-apply" onclick="applyTrendConfig()">Apply</button>
+        <button class="btn btn-ghost tconf-preset" onclick="setTrendPreset('smoother')">Smoother</button>
+        <button class="btn btn-ghost tconf-preset" onclick="setTrendPreset('default')">Default</button>
+        <button class="btn btn-ghost tconf-preset" onclick="setTrendPreset('faster')">Faster</button>
+    `;
+}
+
+function applyTrendConfig() {
+    ['sb_er','sb_slow','mb_er','mb_slow','lb_er','lb_slow','atr_n'].forEach(k => {
+        const v = parseInt(document.getElementById(`tconf-${k}`)?.value);
+        if (!isNaN(v)) trendConfig[k] = v;
+    });
+    const cm = parseFloat(document.getElementById('tconf-confirm_mult')?.value);
+    if (!isNaN(cm)) trendConfig.confirm_mult = cm;
+
+    if (typeof state !== 'undefined' && state.activeSymbol) {
+        loadAdaptiveTrendData(state.activeSymbol);
+    }
+}
+
+function setTrendPreset(preset) {
+    const presets = {
+        default:  { sb_er:10, sb_slow:30,  mb_er:20, mb_slow:60,  lb_er:40, lb_slow:120, confirm_mult:0.25 },
+        smoother: { sb_er:10, sb_slow:60,  mb_er:20, mb_slow:120, lb_er:40, lb_slow:240, confirm_mult:0.40 },
+        faster:   { sb_er:10, sb_slow:15,  mb_er:20, mb_slow:30,  lb_er:40, lb_slow:60,  confirm_mult:0.15 },
+    };
+    Object.assign(trendConfig, presets[preset] || presets.default);
+    renderTrendConfig();
+    applyTrendConfig();
 }

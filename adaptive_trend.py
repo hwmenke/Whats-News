@@ -105,20 +105,25 @@ def _adaptive_ma(src: pd.Series, er_len: int, fast_period: int,
     return pd.Series(out, index=src.index)
 
 
-def _sticky_state(long_cond: pd.Series, short_cond: pd.Series) -> pd.Series:
+def _sticky_state(long_cond: pd.Series, short_cond: pd.Series, min_hold: int = 5) -> pd.Series:
     """
     Sticky regime:
       +1 once long_cond fires, holds until short_cond fires.
       -1 once short_cond fires, holds until long_cond fires.
        0 while neither has fired yet.
+    min_hold: minimum bars before the regime can flip again.
     """
-    state   = np.zeros(len(long_cond), dtype=int)
+    state = np.zeros(len(long_cond), dtype=int)
     current = 0
+    bars_since_flip = min_hold  # allow flip on first signal
     for i in range(len(long_cond)):
-        if current >= 0 and short_cond.iloc[i]:
+        bars_since_flip += 1
+        if current >= 0 and short_cond.iloc[i] and bars_since_flip >= min_hold:
             current = -1
-        elif current <= 0 and long_cond.iloc[i]:
+            bars_since_flip = 0
+        elif current <= 0 and long_cond.iloc[i] and bars_since_flip >= min_hold:
             current = 1
+            bars_since_flip = 0
         state[i] = current
     return pd.Series(state, index=long_cond.index)
 
@@ -145,6 +150,9 @@ def _ratchet_band(center: pd.Series, regime: pd.Series, atr: pd.Series,
         a = atr.iloc[i]
 
         if r == 0 or not np.isfinite(c) or not np.isfinite(a):
+            # still propagate last valid band value forward so series doesn't gap
+            if i > 0 and np.isfinite(band[i-1]):
+                band[i] = band[i-1]
             prev_regime = r
             continue
 
@@ -167,7 +175,11 @@ def _ratchet_band(center: pd.Series, regime: pd.Series, atr: pd.Series,
 # ── Main computation ──────────────────────────────────────────
 
 def compute_adaptive_trend(symbol: str, freq: str = "daily",
-                           method: str = "kama") -> dict:
+                           method: str = "kama",
+                           sb_er: int = 10, sb_fast: int = 2, sb_slow: int = 30,
+                           mb_er: int = 20, mb_fast: int = 2, mb_slow: int = 60,
+                           lb_er: int = 40, lb_fast: int = 2, lb_slow: int = 120,
+                           atr_n: int = 20, confirm_mult: float = 0.25) -> dict:
     """
     Full adaptive trend computation.
 
@@ -188,20 +200,20 @@ def compute_adaptive_trend(symbol: str, freq: str = "daily",
     hlc3  = (high + low + close) / 3.0
 
     # ── Adaptive baselines ────────────────────────────────────
-    sb = _adaptive_ma(hlc3, er_len=10, fast_period=2, slow_period=15, method=method)
-    mb = _adaptive_ma(hlc3, er_len=20, fast_period=2, slow_period=30, method=method)
-    lb = _adaptive_ma(hlc3, er_len=40, fast_period=2, slow_period=60, method=method)
+    sb = _adaptive_ma(hlc3, er_len=sb_er, fast_period=sb_fast, slow_period=sb_slow, method=method)
+    mb = _adaptive_ma(hlc3, er_len=mb_er, fast_period=mb_fast, slow_period=mb_slow, method=method)
+    lb = _adaptive_ma(hlc3, er_len=lb_er, fast_period=lb_fast, slow_period=lb_slow, method=method)
 
     # ── ATR ───────────────────────────────────────────────────
-    atr = _atr(high, low, close, n=20)
+    atr = _atr(high, low, close, n=atr_n)
 
     # ── Slopes ───────────────────────────────────────────────
     sb_slope = sb.diff()
     mb_slope = mb.diff()
     lb_slope = lb.diff()
 
-    # Confirmation: 0.10 × ATR avoids flipping on small wiggles
-    confirm = 0.10 * atr
+    # Confirmation: confirm_mult × ATR avoids flipping on small wiggles
+    confirm = confirm_mult * atr
 
     # ── Regimes ───────────────────────────────────────────────
     # Short-horizon
