@@ -194,6 +194,9 @@ def compute_adaptive_trend(symbol: str, freq: str = "daily",
     if df.empty:
         return {"error": "No OHLCV data found"}
 
+    # Drop duplicate dates (keeps last occurrence, which is most recent intraday bar)
+    df = df[~df.index.duplicated(keep='last')].sort_index()
+
     close = df["close"]
     high  = df["high"]
     low   = df["low"]
@@ -219,17 +222,17 @@ def compute_adaptive_trend(symbol: str, freq: str = "daily",
     # Short-horizon
     sh_long  = (close > sb + 0.5 * confirm) & (sb_slope > 0)
     sh_short = (close < sb - 0.5 * confirm) & (sb_slope < 0)
-    short_state = _sticky_state(sh_long.fillna(False), sh_short.fillna(False))
+    short_state = _sticky_state(sh_long.fillna(False), sh_short.fillna(False), min_hold=10)
 
     # Medium-horizon (master for trade management)
     med_long  = (sb > mb + confirm) & (mb_slope > 0) & (close > mb)
     med_short = (sb < mb - confirm) & (mb_slope < 0) & (close < mb)
-    medium_state = _sticky_state(med_long.fillna(False), med_short.fillna(False))
+    medium_state = _sticky_state(med_long.fillna(False), med_short.fillna(False), min_hold=10)
 
     # Long-horizon
     lng_long  = (mb > lb + confirm) & (lb_slope > 0)
     lng_short = (mb < lb - confirm) & (lb_slope < 0)
-    long_state = _sticky_state(lng_long.fillna(False), lng_short.fillna(False))
+    long_state = _sticky_state(lng_long.fillna(False), lng_short.fillna(False), min_hold=10)
 
     med_series = pd.Series(medium_state.values, index=df.index)
     lng_series = pd.Series(long_state.values,   index=df.index)
@@ -248,6 +251,23 @@ def compute_adaptive_trend(symbol: str, freq: str = "daily",
     is_first   = med_prev.isna()                          # no prior data
     entry_long  = (medium_state == 1) & (med_prev != 1) & (~is_first)
     entry_short = (medium_state == -1) & (med_prev != -1) & (~is_first)
+
+    # ── Clip to first bar where all key series have valid values ──────────
+    key_series = [sb, mb, lb, mdb, mrt, atr]
+    first_valid = max(
+        (s.first_valid_index() for s in key_series if s.first_valid_index() is not None),
+        default=None,
+    )
+    if first_valid is not None:
+        def _trim(s): return s.loc[first_valid:]
+        sb   = _trim(sb);   mb   = _trim(mb);   lb   = _trim(lb)
+        sdb  = _trim(sdb);  mrt  = _trim(mrt);  mdb  = _trim(mdb)
+        lrt  = _trim(lrt);  ldb  = _trim(ldb);  atr  = _trim(atr)
+        short_state  = _trim(short_state)
+        medium_state = _trim(medium_state)
+        long_state   = _trim(long_state)
+        entry_long   = _trim(entry_long)
+        entry_short  = _trim(entry_short)
 
     # ── Serialise ─────────────────────────────────────────────
     def regime_list(s: pd.Series) -> list:

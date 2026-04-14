@@ -21,7 +21,7 @@ const scannerState = {
     data:    null,
     sortKey: null,
     sortDir: 1,
-    visible: { rsi: true, kama: true, mom: true, vol: true },
+    visible: { rsi: true, kama: true, mom: true, vol: true, trend: true },
 };
 
 // ── Column definitions ─────────────────────────────────────────────────
@@ -59,6 +59,12 @@ const SCAN_GROUPS = [
             { key: 'vol_ratio', label: 'Vol Ratio', tfs: ['d'],     fmt: 'volr' },
             { key: 'dist_hi',   label: '52W Hi%',   tfs: ['d'],     fmt: 'dist' },
             { key: 'dist_sma',  label: 'Δ SMA200',  tfs: ['d'],     fmt: 'sma'  },
+        ],
+    },
+    {
+        id: 'trend', label: 'Trend',
+        metrics: [
+            { key: 'trend_score', label: 'Trend', tfs: ['d', 'w'], fmt: 'trend' },
         ],
     },
 ];
@@ -140,27 +146,59 @@ function _fmtCell(fmt, val) {
                     : 'sc-b2';
             return { text: t, cls: c };
         }
+
+        case 'trend': {
+            if (val == null) return { text: '—', cls: 'sc-n' };
+            const t = (val > 0 ? '+' : '') + val.toFixed(0);
+            const c = val >= 2  ? 'sc-s3'
+                    : val >= 1  ? 'sc-s2'
+                    : val >  0  ? 'sc-s1'
+                    : val <= -2 ? 'sc-b3'
+                    : val <= -1 ? 'sc-b2'
+                    : val <   0 ? 'sc-b1' : 'sc-n';
+            return { text: t, cls: c };
+        }
     }
 
     return { text: '—', cls: 'sc-n' };
 }
 
-// ── Composite daily signal score (−5 … +5) ────────────────────────────
+// ── Composite signal score (−5 … +5) ─────────────────────────────────
 function _score(row) {
     const d = row.d;
-    if (!d) return null;
-    let s = 0;
-    // RSI(14): < 45 = oversold lean (bull), > 55 = overbought (bear)
-    if (d.rsi_14   != null) s += d.rsi_14   < 45 ? 1 : d.rsi_14   > 55 ? -1 : 0;
-    // P/KM %ile: price below historical range = cheap (bull)
-    if (d.p_km_pct != null) s += d.p_km_pct < 40 ? 1 : d.p_km_pct > 60 ? -1 : 0;
-    // KAMA cross: fast above medium = trend up (bull)
-    if (d.kf_km    != null) s += d.kf_km    >  0 ? 1 : d.kf_km    <  0 ? -1 : 0;
-    // ROC 1M: positive momentum (bull)
-    if (d.roc_1m   != null) s += d.roc_1m   >  0 ? 1 : d.roc_1m   <  0 ? -1 : 0;
-    // BB %B: below 0.4 = near lower band (bull)
-    if (d.bb_b     != null) s += d.bb_b     < 0.4 ? 1 : d.bb_b    > 0.6 ? -1 : 0;
-    return Math.max(-5, Math.min(5, s));
+    const w = row.w;
+    let s = 0, n = 0;
+
+    // val < bullBelow = bullish, val > bearAbove = bearish
+    const addRange = (val, bullBelow, bearAbove, wt = 1) => {
+        if (val == null) return;
+        s += val < bullBelow ? wt : val > bearAbove ? -wt : 0;
+        n += wt;
+    };
+    // positive = bullish, negative = bearish
+    const addDir = (val, wt = 1) => {
+        if (val == null) return;
+        s += val > 0 ? wt : val < 0 ? -wt : 0;
+        n += wt;
+    };
+
+    if (d) {
+        addRange(d.rsi_14,   45, 55);
+        addRange(d.p_km_pct, 40, 60);
+        addDir(d.kf_km);
+        addDir(d.roc_1m);
+        addRange(d.bb_b,   0.4, 0.6);
+        addDir(d.trend_score);
+    }
+    if (w) {
+        addRange(w.rsi_14,   45, 55, 0.5);
+        addDir(w.kf_km,             0.5);
+        addDir(w.roc_1m,            0.5);
+        addDir(w.trend_score,       0.5);
+    }
+
+    if (n === 0) return null;
+    return Math.max(-5, Math.min(5, Math.round(s * 5 / n)));
 }
 
 // ── Header builder ─────────────────────────────────────────────────────

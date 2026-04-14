@@ -188,6 +188,26 @@ def _compute_tf(df: pd.DataFrame, lookback: int):
     sma200   = close.rolling(max(2, sma_n)).mean()
     dist_sma = (close / sma200.replace(0, np.nan) - 1.0) * 100
 
+    # ── Trend score (RSI + MACD + CCI composite, range -3...+3) ──────────
+    ema12     = close.ewm(span=12, adjust=False).mean()
+    ema26     = close.ewm(span=26, adjust=False).mean()
+    macd_line = ema12 - ema26
+    macd_hist = macd_line - macd_line.ewm(span=9, adjust=False).mean()
+
+    hlc3  = (df['high'] + df['low'] + close) / 3.0
+    sma20 = hlc3.rolling(20).mean()
+    mad20 = hlc3.rolling(20).apply(lambda x: np.abs(x - x.mean()).mean(), raw=True)
+    cci   = (hlc3 - sma20) / (0.015 * mad20.replace(0, np.nan))
+
+    _rsi_sc   = np.where(rsi14 > 80, 0, np.where(rsi14 > 50,  1, -1))
+    _cci_sc   = np.where(cci   > 0,  1, -1)
+    _macd_sc  = np.where(macd_hist > 0, 1, -1)
+    _trend_s  = pd.Series(
+        _rsi_sc + _cci_sc + _macd_sc,
+        index=close.index, dtype=float
+    )
+    _trend_s[rsi14.isna() | cci.isna() | macd_hist.isna()] = np.nan
+
     return {
         'rsi_7':      _last(rsi7),
         'rsi_14':     _last(rsi14),
@@ -203,6 +223,7 @@ def _compute_tf(df: pd.DataFrame, lookback: int):
         'vol_ratio':  _last(vol_ratio),
         'dist_hi':    _last(dist_hi),
         'dist_sma':   _last(dist_sma),
+        'trend_score': _last(_trend_s),
     }
 
 
