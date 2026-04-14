@@ -43,6 +43,19 @@
         />
         <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add symbol (or type comma-separated)">+</button>
         <button id="btn-bulk-add"   class="btn btn-ghost   btn-icon" title="Bulk import a list of tickers">≡</button>
+        <button id="btn-add-ratio"  class="btn btn-ghost   btn-icon" title="Add price ratio  A/B" onclick="toggleRatioForm()">÷</button>
+      </div>
+
+      <!-- Ratio form — hidden until ÷ button clicked -->
+      <div id="ratio-form" class="ratio-form" style="display:none;">
+        <input id="ratio-sym-a" type="text" class="ratio-input" placeholder="AAPL"
+               maxlength="12" autocomplete="off" spellcheck="false"
+               onkeydown="if(event.key==='Enter')document.getElementById('ratio-sym-b').focus()" />
+        <span class="ratio-slash">/</span>
+        <input id="ratio-sym-b" type="text" class="ratio-input" placeholder="MSFT"
+               maxlength="12" autocomplete="off" spellcheck="false"
+               onkeydown="if(event.key==='Enter')addRatioSymbol()" />
+        <button id="btn-ratio-add" class="btn btn-primary btn-icon" title="Compute ratio" onclick="addRatioSymbol()">+</button>
       </div>
     </div>
 
@@ -112,6 +125,9 @@
       </button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
         <span class="tab-icon">🗄️</span> Data Manager
+      </button>
+      <button id="tab-regression" class="tab-btn" onclick="switchTab('regression')">
+        <span class="tab-icon">📐</span> Regression
       </button>
     </nav>
     <div class="tab-bar">
@@ -563,6 +579,146 @@
 
     </div><!-- #data-manager-area -->
 
+    <!-- ── Regression Area ── -->
+    <div id="regression-area" class="reg-container" style="display:none;">
+
+      <!-- ── Left panel: factor status ── -->
+      <div class="reg-left">
+        <div class="reg-panel-header">Macro Factors</div>
+        <div id="reg-factor-list" class="reg-factor-list">
+          <div class="reg-factor-summary">Loading…</div>
+        </div>
+        <button id="btn-fetch-factors" class="btn btn-ghost reg-fetch-btn"
+                onclick="fetchMissingFactors()">
+          ⬇ Fetch Missing Factors
+        </button>
+        <div class="reg-factor-hint">
+          Factors must be in your local DB before running a regression.
+          Click above to auto-fetch any missing ones.
+        </div>
+      </div>
+
+      <!-- ── Right panel: controls + results ── -->
+      <div class="reg-right">
+
+        <!-- Controls bar -->
+        <div class="reg-controls">
+          <div class="reg-controls-group">
+            <span class="overlay-section-label">Freq</span>
+            <button class="ind-pill reg-active reg-freq-btn" data-val="daily"
+                    onclick="setRegFreq('daily')">Daily</button>
+            <button class="ind-pill reg-freq-btn" data-val="weekly"
+                    onclick="setRegFreq('weekly')">Weekly</button>
+          </div>
+          <div class="reg-controls-group">
+            <span class="overlay-section-label">Forward horizon</span>
+            <button class="ind-pill reg-hor-btn" data-val="1"
+                    onclick="setRegHorizon(1)">1d</button>
+            <button class="ind-pill reg-active reg-hor-btn" data-val="5"
+                    onclick="setRegHorizon(5)">5d</button>
+            <button class="ind-pill reg-hor-btn" data-val="10"
+                    onclick="setRegHorizon(10)">10d</button>
+            <button class="ind-pill reg-hor-btn" data-val="20"
+                    onclick="setRegHorizon(20)">20d</button>
+          </div>
+          <div class="reg-controls-group">
+            <span class="overlay-section-label">Lookback</span>
+            <button class="ind-pill reg-lb-btn" data-val="252"
+                    onclick="setRegLookback(252)">1y</button>
+            <button class="ind-pill reg-active reg-lb-btn" data-val="504"
+                    onclick="setRegLookback(504)">2y</button>
+            <button class="ind-pill reg-lb-btn" data-val="756"
+                    onclick="setRegLookback(756)">3y</button>
+            <button class="ind-pill reg-lb-btn" data-val="1260"
+                    onclick="setRegLookback(1260)">5y</button>
+          </div>
+          <button id="btn-run-regression" class="btn btn-primary reg-run-btn"
+                  onclick="runRegression()">▶ Run</button>
+        </div>
+
+        <!-- Loading overlay -->
+        <div id="reg-loading" class="chart-loading" style="display:none;">
+          <span class="spinner"></span>Running regression…
+        </div>
+
+        <!-- Empty state -->
+        <div id="reg-empty" class="reg-empty">
+          <div class="empty-icon">📐</div>
+          <p>Select a symbol, then click <strong>▶ Run</strong> to regress its forward
+             returns on macro factor features.</p>
+          <p style="font-size:11px;color:var(--text-dim);margin-top:6px;">
+            Macro factors must be fetched first (use the left panel).
+          </p>
+        </div>
+
+        <!-- Results -->
+        <div id="reg-results" class="reg-results" style="display:none;">
+
+          <!-- KPI row -->
+          <div class="reg-kpi-row">
+            <div class="reg-kpi">
+              <div class="reg-kpi-label">R²</div>
+              <div id="reg-r2" class="reg-kpi-value">—</div>
+            </div>
+            <div class="reg-kpi">
+              <div class="reg-kpi-label">Adj R²</div>
+              <div id="reg-adj-r2" class="reg-kpi-value">—</div>
+            </div>
+            <div class="reg-kpi">
+              <div class="reg-kpi-label">Observations</div>
+              <div id="reg-n-obs" class="reg-kpi-value">—</div>
+            </div>
+            <div class="reg-kpi">
+              <div class="reg-kpi-label">Features used</div>
+              <div id="reg-n-features" class="reg-kpi-value">—</div>
+            </div>
+          </div>
+
+          <!-- Factor note -->
+          <div id="reg-factor-note" class="reg-factor-note"></div>
+
+          <!-- Body: bars + table side-by-side -->
+          <div class="reg-body">
+
+            <!-- Feature importance bars -->
+            <div class="reg-body-left">
+              <div class="reg-section-header">
+                Feature Importance  <span class="reg-sec-note">ranked by |t-statistic|</span>
+              </div>
+              <div id="reg-importance" class="reg-importance"></div>
+            </div>
+
+            <!-- Coefficient table -->
+            <div class="reg-body-right">
+              <div class="reg-section-header">
+                Coefficients
+                <span class="reg-sec-note">standardised · *** p&lt;0.001  ** p&lt;0.01  * p&lt;0.05  . p&lt;0.10</span>
+              </div>
+              <div class="reg-coef-wrap">
+                <table class="reg-coef-table">
+                  <thead>
+                    <tr>
+                      <th>Feature</th>
+                      <th>Coef</th>
+                      <th>Std Err</th>
+                      <th>t-stat</th>
+                      <th>p-value</th>
+                      <th>Sig</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reg-coef-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+
+          </div><!-- .reg-body -->
+
+        </div><!-- #reg-results -->
+
+      </div><!-- .reg-right -->
+
+    </div><!-- #regression-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -612,6 +768,7 @@
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
+<script src="scripts/regression.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

@@ -452,15 +452,40 @@ function toggleTrendLine(key) {
 }
 
 // ── Line description strip ────────────────────────────────────
+// Maps line key to the param keys that describe it (for live readback)
+const _LINE_PARAM_KEYS = {
+    sb:  ['sb_er',  'sb_slow'],
+    mb:  ['mb_er',  'mb_slow'],
+    lb:  ['lb_er',  'lb_slow'],
+    sdb: ['atr_er', 'atr_fast', 'atr_slow'],
+    mrt: ['atr_er', 'atr_fast', 'atr_slow'],
+    mdb: ['atr_er', 'atr_fast', 'atr_slow'],
+    lrt: ['atr_er', 'atr_fast', 'atr_slow'],
+    ldb: ['atr_er', 'atr_fast', 'atr_slow'],
+};
+
 function showLineDesc(key) {
     const el   = document.getElementById('trend-line-desc');
     const meta = LINE_META[key];
     if (!el || !meta) return;
+
+    // Build live params string if custom params are active
+    let paramsStr = meta.params;
+    const liveP   = trendState.params;
+    if (liveP) {
+        const relevantKeys = _LINE_PARAM_KEYS[key] || [];
+        const liveStr = relevantKeys
+            .filter(k => liveP[k] != null)
+            .map(k => `${k}=${liveP[k]}`)
+            .join(' · ');
+        if (liveStr) paramsStr = liveStr + ' ★ optimised';
+    }
+
     el.innerHTML =
         `<span class="tld-dot" style="background:${meta.color}"></span>` +
         `<span class="tld-label">${meta.label}</span>` +
         `<span class="tld-sep">·</span>` +
-        `<span class="tld-params">${meta.params}</span>` +
+        `<span class="tld-params">${paramsStr}</span>` +
         `<span class="tld-sep">—</span>` +
         `<span class="tld-desc">${meta.desc}</span>`;
     el.style.opacity = '1';
@@ -494,8 +519,10 @@ function setTrendFreq(freq) {
 
 // ── Signal panel ──────────────────────────────────────────────
 function _updateSignalPanel(data, ohlcvRows) {
+    if (!ohlcvRows?.length || !data) return;
     const lastOf = arr => Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null;
-    const close  = ohlcvRows[ohlcvRows.length - 1].close;
+    const close  = ohlcvRows[ohlcvRows.length - 1]?.close;
+    if (!close) return;
 
     // Format price: 2 dp for large values (indices), 4 dp for FX
     const fmtP = v => {
@@ -599,13 +626,17 @@ function _updateSignalPanel(data, ohlcvRows) {
 }
 
 // ── Parameter optimization ────────────────────────────────
-let _optAbort = null;
+let _optAbortCtrl = null;
 
 async function runTrendOptimize() {
     const symbol = (typeof state !== 'undefined') ? state.activeSymbol : null;
     if (!symbol) return;
 
-    const btn = document.getElementById('btn-trend-optimize');
+    // Cancel any in-flight optimization
+    if (_optAbortCtrl) { _optAbortCtrl.abort(); _optAbortCtrl = null; }
+    _optAbortCtrl = new AbortController();
+
+    const btn   = document.getElementById('btn-trend-optimize');
     const panel = document.getElementById('trend-opt-panel');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Optimizing…'; }
     if (panel) { panel.style.display = 'none'; panel.innerHTML = ''; }
@@ -617,6 +648,7 @@ async function runTrendOptimize() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ freq: trendState.freq, method: trendState.method }),
+                signal: _optAbortCtrl.signal,
             }
         );
         if (!res.ok) {
@@ -626,11 +658,13 @@ async function runTrendOptimize() {
         const data = await res.json();
         _renderOptPanel(data);
     } catch (e) {
+        if (e.name === 'AbortError') return;   // user navigated away
         if (panel) {
             panel.style.display = 'flex';
             panel.innerHTML = `<span class="trend-opt-error">Optimize failed: ${e.message}</span>`;
         }
     } finally {
+        _optAbortCtrl = null;
         if (btn) { btn.disabled = false; btn.textContent = '⚡ Optimize'; }
     }
 }

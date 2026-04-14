@@ -4,6 +4,7 @@ data_fetcher.py - Download OHLCV from Yahoo Finance and store in DB
 
 import time
 import yfinance as yf
+import numpy as np
 import pandas as pd
 import database as db
 
@@ -31,6 +32,9 @@ def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     # Final filter
     available = [c for c in required if c in df.columns]
     df = df[available]
+    # Indices (e.g. ^VIX) often have volume=0/NaN — fill rather than drop
+    if "volume" in df.columns:
+        df["volume"] = df["volume"].fillna(0.0)
     df.dropna(inplace=True)
     df.index = pd.to_datetime(df.index)
     df.index = df.index.tz_localize(None)
@@ -158,3 +162,77 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
                 delay *= 2
             else:
                 return {"symbol": sym, "error": str(exc)}
+
+
+def fetch_ratio_and_store(sym_a: str, sym_b: str) -> dict:
+    """
+    Compute a synthetic OHLCV ratio series for A/B using existing DB data.
+
+    OHLCV construction:
+      open  = open_A  / open_B
+      close = close_A / close_B
+      high  = high_A  / low_B    (conservative upper bound of intraday ratio)
+      low   = low_A   / high_B   (conservative lower bound of intraday ratio)
+      volume = 0
+
+    Stores the result as symbol "A~B" in the ohlcv table (daily + weekly).
+    The tilde separator avoids URL-routing issues with slash characters.
+    """
+    sym_a     = sym_a.upper()
+    sym_b     = sym_b.upper()
+    ratio_sym = f"{sym_a}~{sym_b}"
+
+    print(f"++ Ratio: Computing {ratio_sym}")
+
+    df_a = db.get_ohlcv_df(sym_a, "daily", limit=5000)
+    df_b = db.get_ohlcv_df(sym_b, "daily", limit=5000)
+
+    if df_a.empty:
+        return {"symbol": ratio_sym, "error": f"No data for {sym_a}. Fetch it first."}
+    if df_b.empty:
+        return {"symbol": ratio_sym, "error": f"No data for {sym_b}. Fetch it first."}
+
+    # Align on common trading dates
+    common = df_a.index.intersection(df_b.index)
+    if len(common) < 10:
+        return {"symbol": ratio_sym,
+                "error": f"Only {len(common)} common dates between {sym_a} and {sym_b}."}
+
+    a = df_a.reindex(common)
+    b = df_b.reindex(common)
+
+    # Replace zeros in denominator to avoid inf
+    b_open  = b["open"].replace(0, np.nan)
+    b_high  = b["high"].replace(0, np.nan)
+    b_low   = b["low"].replace(0, np.nan)
+    b_close = b["close"].replace(0, np.nan)
+
+    ratio_df = pd.DataFrame({
+        "open":   a["open"]  / b_open,
+        "high":   a["high"]  / b_low,    # conservative upper bound
+        "low":    a["low"]   / b_high,   # conservative lower bound
+        "close":  a["close"] / b_close,
+        "volume": 0.0,
+    }, index=common)
+    ratio_df.dropna(inplace=True)
+
+    if ratio_df.empty:
+        return {"symbol": ratio_sym, "error": "Ratio series is empty after alignment."}
+
+    # Weekly resample
+    weekly_df = ratio_df.resample("W-FRI").agg({
+        "open":   "first", "high": "max",
+        "low":    "min",   "close": "last",
+        "volume": "sum",
+    }).dropna()
+
+    daily_count  = db.upsert_ohlcv(ratio_sym, "daily",  ratio_df)
+    weekly_count = db.upsert_ohlcv(ratio_sym, "weekly", weekly_df)
+
+    print(f"++ Ratio: Stored {daily_count}d / {weekly_count}w for {ratio_sym}")
+    return {
+        "symbol":      ratio_sym,
+        "display":     f"{sym_a}/{sym_b}",
+        "daily_rows":  daily_count,
+        "weekly_rows": weekly_count,
+    }

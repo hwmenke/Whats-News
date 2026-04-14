@@ -326,11 +326,18 @@ def _score_params(df: pd.DataFrame, method: str, p: dict,
     state = med_state.iloc[oos_n:]
     fwd   = fwd5.iloc[oos_n:]
 
-    l_ret = fwd[state ==  1].mean()
-    s_ret = fwd[state == -1].mean()
+    long_mask  = state ==  1
+    short_mask = state == -1
+
+    # Need at least 10 bars in each regime for a meaningful estimate
+    if long_mask.sum() < 10 or short_mask.sum() < 10:
+        return -1000.0
+
+    l_ret = fwd[long_mask].mean()
+    s_ret = fwd[short_mask].mean()
 
     if not np.isfinite(l_ret) or not np.isfinite(s_ret):
-        return -999.0
+        return -1000.0
 
     separation = float(l_ret - s_ret)
 
@@ -399,11 +406,14 @@ def optimize_adaptive_trend(symbol: str, freq: str = "daily",
     if abs(baseline) > 1e-10:
         improvement = (best_score - baseline) / abs(baseline) * 100.0
 
+    oos_n = int(len(df) * 0.70)
     return {
         "baseline_score":   round(float(baseline),    6),
         "best_score":       round(float(best_score),  6),
         "improvement_pct":  round(float(improvement), 1),
         "optimal_params":   {k: best_params[k] for k in _export},
         "default_params":   {k: default_p[k]   for k in _export},
-        "changed":          any(best_params[k] != default_p[k] for k in _export),
+        # list of parameter keys that differ from defaults (not a bool)
+        "changed":          [k for k in _export if best_params[k] != default_p[k]],
+        "oos_bars":         len(df) - oos_n,
     }

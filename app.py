@@ -17,6 +17,7 @@ import stats as stats
 import adaptive_trend as adaptive
 import scanner as scan
 import ticker_lists as tl
+import regression as reg
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -298,6 +299,67 @@ def fetch_batch():
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# -- Price Ratios ---------------------------------------------------------------
+
+@app.route("/api/fetch-ratio", methods=["POST"])
+def fetch_ratio():
+    """
+    Compute and store a synthetic A/B ratio OHLCV series.
+    POST body: {"sym_a": "AAPL", "sym_b": "MSFT"}
+    Both components must already be fetched.
+    """
+    body  = request.get_json(force=True) or {}
+    sym_a = body.get("sym_a", "").strip().upper()
+    sym_b = body.get("sym_b", "").strip().upper()
+    if not sym_a or not sym_b:
+        return jsonify({"error": "sym_a and sym_b are required"}), 400
+    if sym_a == sym_b:
+        return jsonify({"error": "sym_a and sym_b must be different"}), 400
+    # Validate no special chars beyond letters/digits/dot/caret
+    import re
+    valid = re.compile(r'^[\^]?[A-Z][A-Z0-9.\-\^]{0,9}$')
+    if not valid.match(sym_a) or not valid.match(sym_b):
+        return jsonify({"error": "Invalid symbol format"}), 400
+    result = fetcher.fetch_ratio_and_store(sym_a, sym_b)
+    if "error" in result:
+        return jsonify(result), 400
+    # Auto-register in symbols table so it appears in the watchlist
+    db.add_symbol(result["symbol"])
+    return jsonify(result), 201
+
+
+# -- Regression -----------------------------------------------------------------
+
+@app.route("/api/regression/factor-status", methods=["GET"])
+def get_factor_status():
+    """Return availability of all macro factors in the DB."""
+    return jsonify(reg.factor_status())
+
+
+@app.route("/api/regression/<string:symbol>", methods=["GET"])
+def get_regression(symbol):
+    """Run OLS regression of symbol forward returns on macro factor features."""
+    freq = request.args.get("freq", "daily")
+    if freq not in ("daily", "weekly"):
+        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    try:
+        horizon  = int(request.args.get("horizon",  5))
+        lookback = int(request.args.get("lookback", 504))
+    except (TypeError, ValueError):
+        return jsonify({"error": "horizon and lookback must be integers"}), 400
+    if not (1 <= horizon <= 60):
+        return jsonify({"error": "horizon must be 1–60"}), 400
+    if not (60 <= lookback <= 2000):
+        return jsonify({"error": "lookback must be 60–2000"}), 400
+    try:
+        result = reg.compute_regression(symbol.upper(), freq, horizon, lookback)
+        if "error" in result:
+            return jsonify(result), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # -- Entry point ----------------------------------------------------------------

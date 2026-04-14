@@ -152,6 +152,11 @@ async function loadSymbols() {
     }
 }
 
+// Display symbol — converts internal "A~B" store format to "A/B" for ratios
+function _displaySymbol(sym) {
+    return sym.includes('~') ? sym.replace('~', '/') : sym;
+}
+
 function renderSymbolList() {
     const list = document.getElementById('symbol-list');
     list.innerHTML = '';
@@ -162,13 +167,14 @@ function renderSymbolList() {
     }
 
     state.symbols.forEach(sym => {
+        const isRatio = sym.symbol.includes('~');
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
         item.dataset.symbol = sym.symbol;
 
         const ticker = document.createElement('span');
-        ticker.className = 'sym-ticker';
-        ticker.textContent = sym.symbol;
+        ticker.className = 'sym-ticker' + (isRatio ? ' sym-ticker-ratio' : '');
+        ticker.textContent = _displaySymbol(sym.symbol);
 
         const lastFetch = document.createElement('span');
         lastFetch.className = 'sym-change';
@@ -397,12 +403,19 @@ async function refreshAll() {
 async function selectSymbol(symbol) {
     state.activeSymbol = symbol;
     renderSymbolList();
+    // Update header immediately with symbol name
+    const sym = state.symbols.find(s => s.symbol === symbol);
+    const headerEl = document.getElementById('sym-title');
+    if (headerEl) headerEl.textContent = _displaySymbol(symbol);
     if (state.activeTab === 'charts') {
         await loadChartData(symbol);
     } else if (state.activeTab === 'stats') {
         await loadStatsData(symbol);
     } else if (state.activeTab === 'trend') {
         await loadAdaptiveTrendData(symbol);
+    } else if (state.activeTab === 'regression') {
+        // Regression tab: just update header; user clicks Run to trigger
+        showRegressionArea();
     }
 }
 
@@ -553,17 +566,23 @@ async function loadAdaptiveTrendData(symbol) {
 
 // ── UI helpers ───────────────────────────────────────────────
 function showEmptyState() {
-    document.getElementById('empty-state').style.display       = 'flex';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('empty-state').style.display        = 'flex';
+    document.getElementById('chart-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display         = 'none';
+    document.getElementById('trend-area').style.display         = 'none';
+    document.getElementById('scanner-area').style.display       = 'none';
+    document.getElementById('data-manager-area').style.display  = 'none';
+    document.getElementById('regression-area').style.display    = 'none';
 }
 
 function showChartArea() {
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('chart-area').style.display  = 'flex';
+    document.getElementById('empty-state').style.display        = 'none';
+    document.getElementById('stats-area').style.display         = 'none';
+    document.getElementById('trend-area').style.display         = 'none';
+    document.getElementById('scanner-area').style.display       = 'none';
+    document.getElementById('data-manager-area').style.display  = 'none';
+    document.getElementById('regression-area').style.display    = 'none';
+    document.getElementById('chart-area').style.display         = 'flex';
 }
 
 function showLoadingOverlay(show) {
@@ -594,57 +613,103 @@ async function switchTab(tabId) {
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
+    } else if (tabId === 'regression') {
+        showRegressionArea();
+        if (typeof initRegression === 'function') initRegression();
     }
 }
 
 function showStatsArea() {
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'block';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'none';
-    document.querySelector('.tab-bar').style.display           = 'none';
-}
-
-function showChartArea() {
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('chart-area').style.display        = 'flex';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'none';
-    document.querySelector('.tab-bar').style.display           = 'flex';
+    document.getElementById('empty-state').style.display        = 'none';
+    document.getElementById('chart-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display         = 'block';
+    document.getElementById('trend-area').style.display         = 'none';
+    document.getElementById('scanner-area').style.display       = 'none';
+    document.getElementById('data-manager-area').style.display  = 'none';
+    document.getElementById('regression-area').style.display    = 'none';
+    document.querySelector('.tab-bar').style.display            = 'none';
 }
 
 function showTrendArea() {
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('trend-area').style.display        = 'flex';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'none';
-    document.querySelector('.tab-bar').style.display           = 'none';
+    document.getElementById('empty-state').style.display        = 'none';
+    document.getElementById('chart-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display         = 'none';
+    document.getElementById('trend-area').style.display         = 'flex';
+    document.getElementById('scanner-area').style.display       = 'none';
+    document.getElementById('data-manager-area').style.display  = 'none';
+    document.getElementById('regression-area').style.display    = 'none';
+    document.querySelector('.tab-bar').style.display            = 'none';
 }
 
 function showScannerArea() {
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'flex';
-    document.getElementById('data-manager-area').style.display = 'none';
-    document.querySelector('.tab-bar').style.display           = 'none';
+    document.getElementById('empty-state').style.display        = 'none';
+    document.getElementById('chart-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display         = 'none';
+    document.getElementById('trend-area').style.display         = 'none';
+    document.getElementById('scanner-area').style.display       = 'flex';
+    document.getElementById('data-manager-area').style.display  = 'none';
+    document.getElementById('regression-area').style.display    = 'none';
+    document.querySelector('.tab-bar').style.display            = 'none';
 }
 
 function showDataManagerArea() {
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'flex';
-    document.querySelector('.tab-bar').style.display           = 'none';
+    document.getElementById('empty-state').style.display        = 'none';
+    document.getElementById('chart-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display         = 'none';
+    document.getElementById('trend-area').style.display         = 'none';
+    document.getElementById('scanner-area').style.display       = 'none';
+    document.getElementById('regression-area').style.display    = 'none';
+    document.getElementById('data-manager-area').style.display  = 'flex';
+    document.querySelector('.tab-bar').style.display            = 'none';
+}
+
+function showRegressionArea() {
+    document.getElementById('empty-state').style.display        = 'none';
+    document.getElementById('chart-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display         = 'none';
+    document.getElementById('trend-area').style.display         = 'none';
+    document.getElementById('scanner-area').style.display       = 'none';
+    document.getElementById('data-manager-area').style.display  = 'none';
+    document.getElementById('regression-area').style.display    = 'flex';
+    document.querySelector('.tab-bar').style.display            = 'none';
+}
+
+// ── Ratio Symbol UI ───────────────────────────────────────────
+function toggleRatioForm() {
+    const form = document.getElementById('ratio-form');
+    if (!form) return;
+    const visible = form.style.display !== 'none';
+    form.style.display = visible ? 'none' : 'flex';
+    if (!visible) document.getElementById('ratio-sym-a')?.focus();
+}
+
+async function addRatioSymbol() {
+    const symA = document.getElementById('ratio-sym-a')?.value.trim().toUpperCase();
+    const symB = document.getElementById('ratio-sym-b')?.value.trim().toUpperCase();
+    if (!symA || !symB) { toast('Enter both symbols for the ratio', 'warning'); return; }
+    if (symA === symB)  { toast('Symbols must be different', 'warning'); return; }
+
+    const btn = document.getElementById('btn-ratio-add');
+    if (btn) btn.disabled = true;
+    toast(`Computing ${symA}/${symB} ratio…`, 'info', 5000);
+
+    try {
+        const result = await apiFetch(`${API}/fetch-ratio`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ sym_a: symA, sym_b: symB }),
+        });
+        toast(`${symA}/${symB}: ${result.daily_rows} daily bars stored`, 'success');
+        document.getElementById('ratio-sym-a').value = '';
+        document.getElementById('ratio-sym-b').value = '';
+        toggleRatioForm();
+        await loadSymbols();
+        selectSymbol(result.symbol);
+    } catch (e) {
+        toast(`Ratio error: ${e.message}`, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 // ── Stats Rendering ───────────────────────────────────────────
