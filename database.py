@@ -185,3 +185,30 @@ def get_ohlcv_df(symbol: str, freq: str = "daily", limit: int = 1000) -> pd.Data
     df.set_index("date", inplace=True)
     df.sort_index(inplace=True)
     return df
+
+
+def is_recently_fetched(symbol: str, hours: int = 23) -> bool:
+    """Return True if symbol was fetched within the last N hours."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT last_fetch FROM symbols WHERE symbol = ?", (symbol.upper(),)
+    ).fetchone()
+    conn.close()
+    if not row or not row["last_fetch"]:
+        return False
+    from datetime import timedelta
+    last = datetime.fromisoformat(row["last_fetch"])
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - last < timedelta(hours=hours)
+
+
+def get_latest_ohlcv_date(symbol: str, freq: str = "daily"):
+    """Return the most recent date string in the ohlcv table, or None."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT MAX(date) AS d FROM ohlcv WHERE symbol = ? AND freq = ?",
+        (symbol.upper(), freq)
+    ).fetchone()
+    conn.close()
+    return row["d"] if row and row["d"] else None

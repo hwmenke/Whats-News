@@ -725,3 +725,168 @@ html, body {
   height: 300px;
   width: 100%;
 }
+
+/* ═══════════════════ SCANNER ═══════════════════ */
+
+.scanner-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 0 16px 0;
+  align-items: center;
+}
+
+.scanner-table-wrap {
+  overflow-x: auto;
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.scanner-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.scanner-table thead {
+  position: sticky;
+  top: 0;
+  background: var(--bg-elevated);
+  z-index: 5;
+}
+
+.scanner-table th,
+.scanner-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.scanner-table th {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.scanner-table tr:hover td {
+  background: var(--bg-hover);
+}
+
+.scanner-sym-link {
+  color: var(--accent-bright);
+  text-decoration: none;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.scanner-sym-link:hover {
+  text-decoration: underline;
+}
+
+.signal-badge {
+  display: inline-block;
+  background: #1c2a3a;
+  border: 1px solid var(--border-accent);
+  border-radius: 99px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  margin: 1px;
+}
+
+.signal-badge.bull {
+  color: var(--green);
+  border-color: rgba(34,197,94,0.4);
+  background: rgba(34,197,94,0.08);
+}
+
+.signal-badge.bear {
+  color: var(--red);
+  border-color: rgba(239,68,68,0.4);
+  background: rgba(239,68,68,0.08);
+}
+
+.signal-badge.neutral {
+  color: var(--yellow);
+  border-color: rgba(234,179,8,0.4);
+  background: rgba(234,179,8,0.08);
+}
+
+/* ═══════════════════ KNN ═══════════════════ */
+
+.knn-feature-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.knn-feature-table th,
+.knn-feature-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.knn-feature-table th {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.knn-feature-table tr:hover td {
+  background: var(--bg-hover);
+}
+
+.kpi-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.prediction-card .kpi-value {
+  font-size: 28px;
+}
+
+/* ═══════════════════ BACKTEST ═══════════════════ */
+
+.backtest-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 0 0 16px 0;
+}
+
+.backtest-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.backtest-table th,
+.backtest-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.backtest-table th {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.backtest-table tr:hover td {
+  background: var(--bg-hover);
+}

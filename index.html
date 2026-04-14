@@ -103,6 +103,15 @@
       <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">
         <span class="tab-icon">📊</span> Statistics
       </button>
+      <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">
+        <span class="tab-icon">🤖</span> KNN Lookalike
+      </button>
+      <button id="tab-backtest" class="tab-btn" onclick="switchTab('backtest')">
+        <span class="tab-icon">⚙️</span> Backtest
+      </button>
+      <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">
+        <span class="tab-icon">🔍</span> Scanner
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -265,6 +274,155 @@
       </div>
 
     </div><!-- #stats-area -->
+
+    <!-- ── KNN Area ── -->
+    <div id="knn-area" class="stats-container" style="display:none;">
+
+      <!-- Loading state -->
+      <div id="knn-loading" style="display:none; align-items:center; justify-content:center; gap:10px; padding:40px; color:var(--text-muted);">
+        <span class="spinner"></span> Computing KNN lookalikes…
+      </div>
+
+      <!-- Prediction KPI cards -->
+      <div class="kpi-row" style="margin-bottom:24px;">
+        <div class="kpi-card prediction-card">
+          <div class="kpi-label">1D Win Rate</div>
+          <div id="knn-win-1d" class="kpi-value">--</div>
+          <div id="knn-mean-1d" class="kpi-sub">Mean: --</div>
+        </div>
+        <div class="kpi-card prediction-card">
+          <div class="kpi-label">5D Win Rate</div>
+          <div id="knn-win-5d" class="kpi-value">--</div>
+          <div id="knn-mean-5d" class="kpi-sub">Mean: --</div>
+        </div>
+        <div class="kpi-card prediction-card">
+          <div class="kpi-label">20D Win Rate</div>
+          <div id="knn-win-20d" class="kpi-value">--</div>
+          <div id="knn-mean-20d" class="kpi-sub">Mean: --</div>
+        </div>
+      </div>
+
+      <!-- Feature table + Neighbours table -->
+      <div class="stats-grid">
+        <div class="stats-card">
+          <div class="stats-card-header">Current Market State</div>
+          <table class="knn-feature-table" id="knn-feature-table">
+            <thead><tr><th>Feature</th><th>Value</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="stats-card">
+          <div class="stats-card-header">Historical Lookalikes (K=15)</div>
+          <div style="overflow-x:auto;">
+            <table class="knn-feature-table" id="knn-neighbors-table">
+              <thead><tr><th>Date</th><th>Distance</th><th>1D</th><th>5D</th><th>20D</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- #knn-area -->
+
+    <!-- ── Backtest Area ── -->
+    <div id="backtest-area" class="stats-container" style="display:none;">
+
+      <!-- Controls -->
+      <div class="backtest-controls" style="margin-bottom:20px;">
+        <button id="btn-run-backtest" class="btn btn-primary">Run Optimization</button>
+        <span id="backtest-status" style="color:var(--text-muted); font-size:12px;"></span>
+      </div>
+
+      <!-- Best result KPI cards -->
+      <div class="kpi-row" style="margin-bottom:24px;">
+        <div class="kpi-card">
+          <div class="kpi-label">Best Sharpe</div>
+          <div id="bt-sharpe" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Ann. Return</div>
+          <div id="bt-annret" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Max Drawdown</div>
+          <div id="bt-maxdd" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Win Rate</div>
+          <div id="bt-winrate" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Trades</div>
+          <div id="bt-trades" class="kpi-value">--</div>
+        </div>
+      </div>
+
+      <!-- Top 10 results + equity curve -->
+      <div class="stats-grid">
+        <div class="stats-card">
+          <div class="stats-card-header">Top 10 Results</div>
+          <div style="overflow-x:auto;">
+            <table class="backtest-table" id="bt-results-table">
+              <thead>
+                <tr>
+                  <th>Label</th><th>Sharpe</th><th>Ann Ret</th>
+                  <th>Max DD</th><th>Trades</th><th>Win Rate</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="stats-card">
+          <div class="stats-card-header">Best Equity Curve</div>
+          <div class="chart-container-js">
+            <canvas id="chart-backtest-equity"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- #backtest-area -->
+
+    <!-- ── Scanner Area ── -->
+    <div id="scanner-area" class="stats-container" style="display:none;">
+
+      <!-- Controls -->
+      <div class="scanner-controls">
+        <button id="btn-fetch-sp500" class="btn btn-primary">Fetch S&amp;P 500</button>
+        <span id="scanner-fetch-status" style="color:var(--text-muted); font-size:12px;"></span>
+        <button id="btn-run-scanner" class="btn btn-ghost">Run Scanner</button>
+        <select id="scanner-signal-filter" class="kama-input" style="width:auto; padding:4px 8px;">
+          <option value="">All Signals</option>
+          <option value="RSI_OVERSOLD">RSI_OVERSOLD</option>
+          <option value="RSI_OVERBOUGHT">RSI_OVERBOUGHT</option>
+          <option value="KAMA_BULL_CROSS">KAMA_BULL_CROSS</option>
+          <option value="KAMA_BEAR_CROSS">KAMA_BEAR_CROSS</option>
+          <option value="STRONG_BULL">STRONG_BULL</option>
+          <option value="STRONG_BEAR">STRONG_BEAR</option>
+          <option value="MACD_BULL_CROSS">MACD_BULL_CROSS</option>
+          <option value="MACD_BEAR_CROSS">MACD_BEAR_CROSS</option>
+          <option value="HIGH_VOLUME">HIGH_VOLUME</option>
+          <option value="BB_LOWER_BAND">BB_LOWER_BAND</option>
+          <option value="BB_UPPER_BAND">BB_UPPER_BAND</option>
+        </select>
+        <span id="scanner-count" style="color:var(--text-muted); font-size:12px;"></span>
+      </div>
+
+      <!-- Results table -->
+      <div class="scanner-table-wrap">
+        <table class="scanner-table" id="scanner-table">
+          <thead>
+            <tr>
+              <th>Symbol</th><th>Price</th><th>Week%</th><th>RSI</th>
+              <th>Trend</th><th>KAMA10%</th><th>KAMA20%</th>
+              <th>Vol Ratio</th><th>Signals</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+    </div><!-- #scanner-area -->
 
   </main>
 

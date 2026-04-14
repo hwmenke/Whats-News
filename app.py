@@ -12,6 +12,9 @@ import database as db
 import data_fetcher as fetcher
 import indicators as ind
 import stats as stats
+import knn_model
+import backtester
+import scanner
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -140,6 +143,63 @@ def get_stats(symbol):
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# -- KNN Lookalike --------------------------------------------------------------
+
+@app.route("/api/knn/<string:symbol>")
+def get_knn(symbol):
+    k = int(request.args.get("k", 15))
+    result = knn_model.compute_knn_lookalike(symbol.upper(), k=k)
+    if "error" in result:
+        return jsonify(result), 404
+    return jsonify(result)
+
+
+# -- Backtester -----------------------------------------------------------------
+
+@app.route("/api/backtest/<string:symbol>")
+def get_backtest(symbol):
+    result = backtester.run_optimization(symbol.upper())
+    if "error" in result:
+        return jsonify(result), 404
+    return jsonify(result)
+
+
+# -- Scanner --------------------------------------------------------------------
+
+@app.route("/api/scanner/sp500")
+def get_sp500():
+    tickers = scanner.get_sp500_tickers()
+    return jsonify(tickers.to_dict(orient="records"))
+
+
+@app.route("/api/scanner/fetch", methods=["POST"])
+def fetch_sp500():
+    force = request.get_json(force=True, silent=True) or {}
+    force_refresh = force.get("force", False)
+    if scanner._fetch_status["running"]:
+        return jsonify({"message": "Fetch already running", "status": scanner._fetch_status})
+    import threading
+    def _run():
+        scanner._fetch_status["running"] = True
+        result = scanner.bulk_fetch_sp500(max_workers=5, force_refresh=force_refresh)
+        scanner._fetch_status["running"] = False
+        scanner._fetch_status["summary"] = result
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"message": "S&P 500 fetch started"})
+
+
+@app.route("/api/scanner/status")
+def scanner_status():
+    return jsonify(scanner._fetch_status)
+
+
+@app.route("/api/scanner/run")
+def run_scanner():
+    signal_filter = request.args.get("signal")
+    results = scanner.run_scanner(signal_filter=signal_filter or None)
+    return jsonify(results)
 
 
 # -- Entry point ----------------------------------------------------------------

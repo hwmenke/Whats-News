@@ -18,6 +18,8 @@ let state = {
 };
 
 let statsCharts = {};
+let backtestEquityChart = null;
+let scannerPollTimer = null;
 
 // ── Toast system ─────────────────────────────────────────────
 function toast(message, type = 'info', duration = 3500) {
@@ -270,9 +272,15 @@ async function selectSymbol(symbol) {
     renderSymbolList();
     if (state.activeTab === 'charts') {
         await loadChartData(symbol);
-    } else {
+    } else if (state.activeTab === 'stats') {
         await loadStatsData(symbol);
+    } else if (state.activeTab === 'knn') {
+        await loadKNN(symbol);
+    } else if (state.activeTab === 'backtest') {
+        // Backtest is triggered manually via the Run button; just update header
+        updateSymbolHeader(symbol, null);
     }
+    // Scanner tab doesn't depend on the selected symbol
 }
 
 async function loadStatsData(symbol) {
@@ -386,32 +394,63 @@ function showLoadingOverlay(show) {
 async function switchTab(tabId) {
     state.activeTab = tabId;
 
-    // Update buttons
+    // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.id === `tab-${tabId}`);
     });
 
+    // Hide all content areas first
+    document.getElementById('empty-state').style.display  = 'none';
+    document.getElementById('chart-area').style.display   = 'none';
+    document.getElementById('stats-area').style.display   = 'none';
+    document.getElementById('knn-area').style.display     = 'none';
+    document.getElementById('backtest-area').style.display = 'none';
+    document.getElementById('scanner-area').style.display  = 'none';
+    document.querySelector('.tab-bar').style.display       = 'none';
+
     if (tabId === 'charts') {
-        showChartArea();
-        if (state.activeSymbol) loadChartData(state.activeSymbol);
-    } else {
-        showStatsArea();
+        if (state.activeSymbol) {
+            document.getElementById('chart-area').style.display = 'flex';
+            document.querySelector('.tab-bar').style.display    = 'flex';
+            loadChartData(state.activeSymbol);
+        } else {
+            document.getElementById('empty-state').style.display = 'flex';
+            document.querySelector('.tab-bar').style.display     = 'flex';
+        }
+    } else if (tabId === 'stats') {
+        document.getElementById('stats-area').style.display = 'block';
         if (state.activeSymbol) loadStatsData(state.activeSymbol);
+    } else if (tabId === 'knn') {
+        document.getElementById('knn-area').style.display = 'block';
+        if (state.activeSymbol) loadKNN(state.activeSymbol);
+    } else if (tabId === 'backtest') {
+        document.getElementById('backtest-area').style.display = 'block';
+        if (state.activeSymbol) {
+            updateSymbolHeader(state.activeSymbol, null);
+        }
+    } else if (tabId === 'scanner') {
+        document.getElementById('scanner-area').style.display = 'block';
     }
 }
 
 function showStatsArea() {
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('chart-area').style.display  = 'none';
-    document.getElementById('stats-area').style.display  = 'block';
-    document.querySelector('.tab-bar').style.display     = 'none';
+    document.getElementById('empty-state').style.display  = 'none';
+    document.getElementById('chart-area').style.display   = 'none';
+    document.getElementById('stats-area').style.display   = 'block';
+    document.getElementById('knn-area').style.display     = 'none';
+    document.getElementById('backtest-area').style.display = 'none';
+    document.getElementById('scanner-area').style.display  = 'none';
+    document.querySelector('.tab-bar').style.display       = 'none';
 }
 
 function showChartArea() {
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('stats-area').style.display  = 'none';
-    document.getElementById('chart-area').style.display  = 'flex';
-    document.querySelector('.tab-bar').style.display     = 'flex';
+    document.getElementById('empty-state').style.display  = 'none';
+    document.getElementById('stats-area').style.display   = 'none';
+    document.getElementById('knn-area').style.display     = 'none';
+    document.getElementById('backtest-area').style.display = 'none';
+    document.getElementById('scanner-area').style.display  = 'none';
+    document.getElementById('chart-area').style.display   = 'flex';
+    document.querySelector('.tab-bar').style.display       = 'flex';
 }
 
 // ── Stats Rendering ───────────────────────────────────────────
@@ -668,6 +707,321 @@ function updateSymbolHeader(symbol, last, prev) {
     set('ohlcv-volume', fmtVol(last.volume));
 }
 
+// ── KNN Functions ────────────────────────────────────────────
+async function loadKNN(symbol) {
+    document.getElementById('knn-loading').style.display = 'flex';
+    try {
+        const data = await apiFetch(`${API}/knn/${symbol}?k=15`);
+        renderKNN(data);
+    } catch (e) {
+        toast('KNN failed: ' + e.message, 'error');
+    } finally {
+        document.getElementById('knn-loading').style.display = 'none';
+    }
+}
+
+function renderKNN(data) {
+    const fmt  = v => (v !== null && v !== undefined && Number.isFinite(v)) ? (v * 100).toFixed(2) + '%' : '--';
+    const fmtF = (v, dec) => (v !== null && v !== undefined && Number.isFinite(v)) ? v.toFixed(dec) : '--';
+
+    // Prediction KPI cards
+    const horizons = { '1d': 'fwd_1d', '5d': 'fwd_5d', '20d': 'fwd_20d' };
+    for (const [suffix, key] of Object.entries(horizons)) {
+        const s = data.summary[key] || {};
+        const winEl  = document.getElementById(`knn-win-${suffix}`);
+        const meanEl = document.getElementById(`knn-mean-${suffix}`);
+        if (winEl)  winEl.textContent  = s.positive_pct !== null && s.positive_pct !== undefined ? (s.positive_pct * 100).toFixed(1) + '%' : '--';
+        if (meanEl) meanEl.textContent = 'Mean: ' + fmt(s.mean);
+    }
+
+    // Current features table
+    const featureTbody = document.querySelector('#knn-feature-table tbody');
+    if (featureTbody) {
+        const featureLabels = {
+            rsi14:        'RSI (14)',
+            vol20_ann:    'Vol 20D Ann.',
+            macd_hist:    'MACD Hist',
+            cci_norm:     'CCI / 200',
+            vol_ratio:    'Vol Ratio vs 20MA',
+            kama_dist_10: 'Price vs KAMA10',
+            kama_dist_20: 'Price vs KAMA20',
+            kama_dist_50: 'Price vs KAMA50',
+        };
+        featureTbody.innerHTML = '';
+        const cf = data.current_features || {};
+        for (const [key, label] of Object.entries(featureLabels)) {
+            const val = cf[key];
+            const tr  = document.createElement('tr');
+            tr.innerHTML = `<td>${label}</td><td>${fmtF(val, 4)}</td>`;
+            featureTbody.appendChild(tr);
+        }
+    }
+
+    // Neighbours table
+    const nbTbody = document.querySelector('#knn-neighbors-table tbody');
+    if (nbTbody) {
+        nbTbody.innerHTML = '';
+        (data.neighbors || []).forEach(n => {
+            const tr = document.createElement('tr');
+            const colorRet = v => {
+                if (v === null || v === undefined || !Number.isFinite(v)) return '';
+                return v >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+            };
+            tr.innerHTML = `
+                <td>${n.date}</td>
+                <td>${fmtF(n.distance, 3)}</td>
+                <td style="${colorRet(n.fwd_1d)}">${fmt(n.fwd_1d)}</td>
+                <td style="${colorRet(n.fwd_5d)}">${fmt(n.fwd_5d)}</td>
+                <td style="${colorRet(n.fwd_20d)}">${fmt(n.fwd_20d)}</td>
+            `;
+            nbTbody.appendChild(tr);
+        });
+    }
+}
+
+// ── Backtest Functions ────────────────────────────────────────
+async function loadBacktest(symbol) {
+    const statusEl = document.getElementById('backtest-status');
+    const btn      = document.getElementById('btn-run-backtest');
+    if (statusEl) statusEl.textContent = 'Running optimization…';
+    if (btn) btn.disabled = true;
+    try {
+        const data = await apiFetch(`${API}/backtest/${symbol}`);
+        renderBacktest(data);
+        if (statusEl) statusEl.textContent = `Done — ${data.total_tested} combos tested`;
+    } catch (e) {
+        toast('Backtest failed: ' + e.message, 'error');
+        if (statusEl) statusEl.textContent = 'Error: ' + e.message;
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+function renderBacktest(data) {
+    const fmt    = (v, dec = 2) => (v !== null && v !== undefined && Number.isFinite(v)) ? v.toFixed(dec) : '--';
+    const fmtPct = v => (v !== null && v !== undefined && Number.isFinite(v)) ? (v * 100).toFixed(2) + '%' : '--';
+
+    const best = data.best || {};
+    const set  = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('bt-sharpe',  fmt(best.sharpe, 3));
+    set('bt-annret',  fmtPct(best.ann_ret));
+    set('bt-maxdd',   fmtPct(best.max_dd));
+    set('bt-winrate', fmtPct(best.win_rate));
+    set('bt-trades',  best.n_trades !== undefined ? String(best.n_trades) : '--');
+
+    // Top 10 table
+    const tbody = document.querySelector('#bt-results-table tbody');
+    if (tbody) {
+        tbody.innerHTML = '';
+        (data.top10 || []).forEach((r, i) => {
+            const tr = document.createElement('tr');
+            if (i === 0) tr.style.background = 'rgba(59,130,246,0.08)';
+            tr.innerHTML = `
+                <td>${r.label}</td>
+                <td>${fmt(r.sharpe, 3)}</td>
+                <td>${fmtPct(r.ann_ret)}</td>
+                <td>${fmtPct(r.max_dd)}</td>
+                <td>${r.n_trades}</td>
+                <td>${fmtPct(r.win_rate)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // Equity curve chart
+    if (backtestEquityChart) {
+        backtestEquityChart.destroy();
+        backtestEquityChart = null;
+    }
+    const canvas = document.getElementById('chart-backtest-equity');
+    if (canvas && data.equity_curve && data.equity_curve.length > 0) {
+        const labels    = data.equity_curve.map(d => d.date);
+        const strategy  = data.equity_curve.map(d => d.strategy);
+        const benchmark = data.equity_curve.map(d => d.benchmark);
+        backtestEquityChart = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Strategy',
+                        data: strategy,
+                        borderColor: '#4facfe',
+                        backgroundColor: 'rgba(79,172,254,0.08)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.1,
+                        fill: true,
+                    },
+                    {
+                        label: 'Buy & Hold',
+                        data: benchmark,
+                        borderColor: '#f97316',
+                        backgroundColor: 'transparent',
+                        borderWidth: 1.5,
+                        borderDash: [5, 3],
+                        pointRadius: 0,
+                        tension: 0.1,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: true, labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 } },
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 }, maxTicksLimit: 12 } },
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 10 } } },
+                },
+            },
+        });
+    }
+}
+
+// ── Scanner Functions ─────────────────────────────────────────
+async function fetchSP500() {
+    const btn      = document.getElementById('btn-fetch-sp500');
+    const statusEl = document.getElementById('scanner-fetch-status');
+    if (btn) btn.disabled = true;
+    if (statusEl) statusEl.textContent = 'Starting fetch…';
+
+    try {
+        await apiFetch(`${API}/scanner/fetch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force: false }),
+        });
+        if (statusEl) statusEl.textContent = 'Fetching… 0%';
+        pollScannerStatus();
+    } catch (e) {
+        toast('Fetch failed: ' + e.message, 'error');
+        if (statusEl) statusEl.textContent = 'Error: ' + e.message;
+        if (btn) btn.disabled = false;
+    }
+}
+
+function pollScannerStatus() {
+    if (scannerPollTimer) clearInterval(scannerPollTimer);
+    scannerPollTimer = setInterval(async () => {
+        try {
+            const s      = await apiFetch(`${API}/scanner/status`);
+            const btn    = document.getElementById('btn-fetch-sp500');
+            const statusEl = document.getElementById('scanner-fetch-status');
+            if (s.running) {
+                if (statusEl) statusEl.textContent = `Fetching… ${s.progress}% (${s.done}/${s.total})`;
+            } else {
+                clearInterval(scannerPollTimer);
+                scannerPollTimer = null;
+                if (btn) btn.disabled = false;
+                const sum = s.summary || {};
+                if (statusEl) {
+                    statusEl.textContent = sum.error
+                        ? 'Error: ' + sum.error
+                        : `Done — ${sum.success || 0} ok, ${sum.skipped || 0} skipped, ${sum.failed || 0} failed`;
+                }
+                toast('S&P 500 fetch complete', 'success');
+            }
+        } catch (e) {
+            clearInterval(scannerPollTimer);
+            scannerPollTimer = null;
+        }
+    }, 3000);
+}
+
+async function runScanner() {
+    const btn       = document.getElementById('btn-run-scanner');
+    const countEl   = document.getElementById('scanner-count');
+    const filterSel = document.getElementById('scanner-signal-filter');
+    const signal    = filterSel ? filterSel.value : '';
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Scanning…'; }
+    if (countEl) countEl.textContent = '';
+
+    try {
+        let url = `${API}/scanner/run`;
+        if (signal) url += `?signal=${encodeURIComponent(signal)}`;
+        const results = await apiFetch(url);
+        renderScannerTable(results);
+        if (countEl) countEl.textContent = `${results.length} results`;
+    } catch (e) {
+        toast('Scanner failed: ' + e.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Run Scanner'; }
+    }
+}
+
+function renderScannerTable(results) {
+    const tbody = document.querySelector('#scanner-table tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const fmtPct = v => (v !== null && v !== undefined && Number.isFinite(v)) ? (v * 100).toFixed(2) + '%' : '--';
+    const fmt2   = v => (v !== null && v !== undefined && Number.isFinite(v)) ? v.toFixed(2) : '--';
+
+    const signalClass = sig => {
+        const bull = ['RSI_OVERSOLD','KAMA_BULL_CROSS','STRONG_BULL','MACD_BULL_CROSS','BB_LOWER_BAND'];
+        const bear = ['RSI_OVERBOUGHT','KAMA_BEAR_CROSS','STRONG_BEAR','MACD_BEAR_CROSS','BB_UPPER_BAND'];
+        if (bull.includes(sig)) return 'bull';
+        if (bear.includes(sig)) return 'bear';
+        return 'neutral';
+    };
+
+    results.forEach(r => {
+        const tr = document.createElement('tr');
+
+        // RSI coloring
+        let rsiStyle = '';
+        if (r.rsi !== null && r.rsi !== undefined) {
+            if (r.rsi < 30)  rsiStyle = 'color:var(--green); font-weight:600';
+            if (r.rsi > 70)  rsiStyle = 'color:var(--red); font-weight:600';
+        }
+
+        // Trend score coloring
+        let trendStyle = '';
+        if (r.trend_score !== null && r.trend_score !== undefined) {
+            if (r.trend_score >= 2)  trendStyle = 'color:var(--green); font-weight:600';
+            if (r.trend_score <= -2) trendStyle = 'color:var(--red); font-weight:600';
+        }
+
+        // Week return coloring
+        let weekStyle = '';
+        if (r.week_ret !== null && r.week_ret !== undefined) {
+            weekStyle = r.week_ret >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+        }
+
+        const signalBadges = (r.signals || []).map(sig =>
+            `<span class="signal-badge ${signalClass(sig)}">${sig}</span>`
+        ).join(' ');
+
+        tr.innerHTML = `
+            <td><a class="scanner-sym-link" href="#" data-sym="${r.symbol}">${r.symbol}</a></td>
+            <td>$${fmt2(r.price)}</td>
+            <td style="${weekStyle}">${fmtPct(r.week_ret)}</td>
+            <td style="${rsiStyle}">${fmt2(r.rsi)}</td>
+            <td style="${trendStyle}">${r.trend_score !== null && r.trend_score !== undefined ? r.trend_score : '--'}</td>
+            <td>${r.kama10_dist !== null && r.kama10_dist !== undefined ? r.kama10_dist.toFixed(2) + '%' : '--'}</td>
+            <td>${r.kama20_dist !== null && r.kama20_dist !== undefined ? r.kama20_dist.toFixed(2) + '%' : '--'}</td>
+            <td>${fmt2(r.vol_ratio)}</td>
+            <td>${signalBadges}</td>
+        `;
+
+        // Click symbol → select and go to charts tab
+        const link = tr.querySelector('.scanner-sym-link');
+        if (link) {
+            link.addEventListener('click', e => {
+                e.preventDefault();
+                selectSymbol(r.symbol);
+                switchTab('charts');
+            });
+        }
+
+        tbody.appendChild(tr);
+    });
+}
+
 // ── Boot ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     startClock();
@@ -689,6 +1043,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-refresh-all').addEventListener('click', refreshAll);
     document.getElementById('new-symbol-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') addSymbol();
+    });
+
+    // Scanner buttons
+    document.getElementById('btn-fetch-sp500').addEventListener('click', fetchSP500);
+    document.getElementById('btn-run-scanner').addEventListener('click', runScanner);
+    document.getElementById('scanner-signal-filter').addEventListener('change', runScanner);
+
+    // Backtest button
+    document.getElementById('btn-run-backtest').addEventListener('click', () => {
+        if (state.activeSymbol) loadBacktest(state.activeSymbol);
+        else toast('Select a symbol first', 'warning');
     });
 
     await loadSymbols();

@@ -1,7 +1,9 @@
 """
 data_fetcher.py - Download OHLCV from Yahoo Finance and store in DB
+Supports incremental fetching: only downloads bars newer than what's in the DB.
 """
 
+import datetime
 import yfinance as yf
 import pandas as pd
 import database as db
@@ -40,14 +42,25 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     """
     Download daily data from Yahoo Finance, resample to weekly,
     and upsert both into the database.
+    If data already exists in the DB, only downloads bars from last_date + 1 day
+    forward (incremental mode). Falls back to full 2y download if no data exists.
     """
     sym = symbol.upper()
     print(f"++ Fetcher: Starting fetch for {sym}")
     ticker = yf.Ticker(sym)
 
-    # Fetch daily OHLCV
-    print(f"++ Fetcher: Downloading {period} of daily history...")
-    raw = ticker.history(period=period, interval="1d", auto_adjust=True)
+    # Check if we have existing data and can do an incremental fetch
+    last_date_str = db.get_latest_ohlcv_date(sym, "daily")
+    if last_date_str:
+        last_date  = datetime.date.fromisoformat(last_date_str)
+        start_date = last_date + datetime.timedelta(days=1)
+        start_str  = start_date.isoformat()
+        print(f"++ Fetcher: Incremental fetch for {sym} from {start_str}")
+        raw = ticker.history(start=start_str, interval="1d", auto_adjust=True)
+    else:
+        print(f"++ Fetcher: Full {period} download for {sym}")
+        raw = ticker.history(period=period, interval="1d", auto_adjust=True)
+
     if raw.empty:
         print(f"!! Fetcher: No data returned for {sym}")
         return {"symbol": sym, "error": f"No data returned for {sym}"}
