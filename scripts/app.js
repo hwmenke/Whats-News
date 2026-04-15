@@ -1179,74 +1179,7 @@ async function runScanner() {
     }
 }
 
-function renderScannerTable(results) {
-    const tbody = document.querySelector('#scanner-table tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    const fmtPct = v => (v !== null && v !== undefined && Number.isFinite(v)) ? (v * 100).toFixed(2) + '%' : '--';
-    const fmt2   = v => (v !== null && v !== undefined && Number.isFinite(v)) ? v.toFixed(2) : '--';
-
-    const signalClass = sig => {
-        const bull = ['RSI_OVERSOLD','KAMA_BULL_CROSS','STRONG_BULL','MACD_BULL_CROSS','BB_LOWER_BAND'];
-        const bear = ['RSI_OVERBOUGHT','KAMA_BEAR_CROSS','STRONG_BEAR','MACD_BEAR_CROSS','BB_UPPER_BAND'];
-        if (bull.includes(sig)) return 'bull';
-        if (bear.includes(sig)) return 'bear';
-        return 'neutral';
-    };
-
-    results.forEach(r => {
-        const tr = document.createElement('tr');
-
-        // RSI coloring
-        let rsiStyle = '';
-        if (r.rsi !== null && r.rsi !== undefined) {
-            if (r.rsi < 30)  rsiStyle = 'color:var(--green); font-weight:600';
-            if (r.rsi > 70)  rsiStyle = 'color:var(--red); font-weight:600';
-        }
-
-        // Trend score coloring
-        let trendStyle = '';
-        if (r.trend_score !== null && r.trend_score !== undefined) {
-            if (r.trend_score >= 2)  trendStyle = 'color:var(--green); font-weight:600';
-            if (r.trend_score <= -2) trendStyle = 'color:var(--red); font-weight:600';
-        }
-
-        // Week return coloring
-        let weekStyle = '';
-        if (r.week_ret !== null && r.week_ret !== undefined) {
-            weekStyle = r.week_ret >= 0 ? 'color:var(--green)' : 'color:var(--red)';
-        }
-
-        const signalBadges = (r.signals || []).map(sig =>
-            `<span class="signal-badge ${signalClass(sig)}">${sig}</span>`
-        ).join(' ');
-
-        tr.innerHTML = `
-            <td><a class="scanner-sym-link" href="#" data-sym="${r.symbol}">${r.symbol}</a></td>
-            <td>$${fmt2(r.price)}</td>
-            <td style="${weekStyle}">${fmtPct(r.week_ret)}</td>
-            <td style="${rsiStyle}">${fmt2(r.rsi)}</td>
-            <td style="${trendStyle}">${r.trend_score !== null && r.trend_score !== undefined ? r.trend_score : '--'}</td>
-            <td>${r.kama10_dist !== null && r.kama10_dist !== undefined ? r.kama10_dist.toFixed(2) + '%' : '--'}</td>
-            <td>${r.kama20_dist !== null && r.kama20_dist !== undefined ? r.kama20_dist.toFixed(2) + '%' : '--'}</td>
-            <td>${fmt2(r.vol_ratio)}</td>
-            <td>${signalBadges}</td>
-        `;
-
-        // Click symbol → select and go to charts tab
-        const link = tr.querySelector('.scanner-sym-link');
-        if (link) {
-            link.addEventListener('click', e => {
-                e.preventDefault();
-                selectSymbol(r.symbol);
-                switchTab('charts');
-            });
-        }
-
-        tbody.appendChild(tr);
-    });
-}
+// renderScannerTable is defined in scanner.js (multi-timeframe version)
 
 // ── Boot ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -1272,10 +1205,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.key === 'Enter') addSymbol();
     });
 
-    // Scanner buttons
-    document.getElementById('btn-fetch-sp500').addEventListener('click', fetchSP500);
-    document.getElementById('btn-run-scanner').addEventListener('click', runScanner);
-    document.getElementById('scanner-signal-filter').addEventListener('change', runScanner);
+    // Scanner buttons (optional — only present in legacy scanner UI)
+    document.getElementById('btn-fetch-sp500')?.addEventListener('click', fetchSP500);
+    document.getElementById('btn-run-scanner')?.addEventListener('click', runScanner);
+    document.getElementById('scanner-signal-filter')?.addEventListener('change', runScanner);
 
     // Backtest button
     document.getElementById('btn-run-backtest').addEventListener('click', () => {
