@@ -400,18 +400,22 @@
       <div class="trend-subtabs">
         <button class="trend-stab trend-stab-active" id="trend-stab-chart" onclick="switchTrendTab('chart')">📈 Chart</button>
         <button class="trend-stab" id="trend-stab-scan" onclick="switchTrendTab('scan')">📡 Scan Watchlist</button>
-      </div>
-
-      <!-- ══ CHART panel ══ -->
-      <div id="trend-chart-panel">
-
-      <!-- Controls bar -->
-      <div class="trend-controls">
-        <div class="trend-controls-group">
+        <!-- SHARED: Method always visible -->
+        <div class="trend-controls-group" style="margin-left:auto; padding:0 8px; display:flex; align-items:center; gap:6px;">
           <span class="overlay-section-label">Method</span>
           <button class="ind-pill trend-active trend-method-btn" data-val="kama" onclick="setTrendMethod('kama')">KAMA</button>
           <button class="ind-pill trend-method-btn"              data-val="adma" onclick="setTrendMethod('adma')">ADMA</button>
         </div>
+      </div>
+
+      <!-- SHARED: Config panel — KAMA/ADMA params + RSI period — always visible -->
+      <div id="trend-config-panel" class="trend-config-row"></div>
+
+      <!-- ══ CHART panel ══ -->
+      <div id="trend-chart-panel">
+
+      <!-- Chart-specific controls: Freq + Baselines + Bands -->
+      <div class="trend-controls">
         <div class="trend-controls-group">
           <span class="overlay-section-label">Freq</span>
           <button class="ind-pill trend-active trend-freq-btn" data-val="daily"  onclick="setTrendFreq('daily')">Daily</button>
@@ -467,9 +471,6 @@
 
       <!-- Description strip — updates on button hover -->
       <div id="trend-line-desc" class="trend-line-desc"></div>
-
-      <!-- Config panel — compact numeric inputs for KAMA/ADMA params -->
-      <div id="trend-config-panel" class="trend-config-row"></div>
 
       <!-- Two-panel layout -->
       <div class="trend-panels">

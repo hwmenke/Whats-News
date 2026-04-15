@@ -40,6 +40,7 @@ const trendConfig = {
     mb_er: 20, mb_fast: 2, mb_slow: 60,
     lb_er: 40, lb_fast: 2, lb_slow: 120,
     atr_n: 20, confirm_mult: 0.25,
+    rsi_period: 14,
 };
 
 // ── Line metadata (descriptions + colors) ─────────────────────
@@ -599,6 +600,7 @@ function renderTrendConfig() {
         { key: 'lb_er',        label: 'LB ER',    min: 10,   max: 200, step: 5    },
         { key: 'lb_slow',      label: 'LB Slow',  min: 40,   max: 500, step: 20   },
         { key: 'confirm_mult', label: 'Confirm×', min: 0.05, max: 1.0, step: 0.05 },
+        { key: 'rsi_period',   label: 'RSI(X)',   min: 2,    max: 50,  step: 1    },
     ];
 
     el.innerHTML = fields.map(f => `
@@ -616,7 +618,7 @@ function renderTrendConfig() {
 }
 
 function applyTrendConfig() {
-    ['sb_er','sb_slow','mb_er','mb_slow','lb_er','lb_slow','atr_n'].forEach(k => {
+    ['sb_er','sb_slow','mb_er','mb_slow','lb_er','lb_slow','atr_n','rsi_period'].forEach(k => {
         const v = parseInt(document.getElementById(`tconf-${k}`)?.value);
         if (!isNaN(v)) trendConfig[k] = v;
     });
@@ -692,7 +694,9 @@ async function loadTrendScan() {
     if (load) load.style.display = 'inline-flex';
 
     try {
-        const data = await apiFetch(`${API}/trend-scan?freq=${trendScanState.freq}&method=${trendState.method}`);
+        const cfg    = typeof trendConfig !== 'undefined' ? trendConfig : {};
+        const cfgStr = Object.entries(cfg).map(([k, v]) => `${k}=${v}`).join('&');
+        const data   = await apiFetch(`${API}/trend-scan?freq=${trendScanState.freq}&method=${trendState.method}&${cfgStr}`);
         trendScanState.data = data;
         renderTrendScanTable(data);
         if (ts) ts.textContent = 'Updated ' + new Date().toLocaleTimeString();
@@ -717,18 +721,20 @@ function renderTrendScanTable(data) {
     if (!thead || !tbody) return;
 
     // Header
+    const rsiPeriod = (typeof trendConfig !== 'undefined' ? trendConfig.rsi_period : null) || 14;
     const cols = [
-        { key: 'symbol',     label: 'Symbol',    title: 'Click to load chart' },
-        { key: 'signal',     label: 'Signal',    title: 'Composite trend signal (−3 to +3)' },
-        { key: 'price',      label: 'Price',     title: 'Last close price' },
-        { key: 'kama10_pct', label: '% vs K10',  title: '% distance from KAMA(10) — fast baseline' },
-        { key: 'kama20_pct', label: '% vs K20',  title: '% distance from KAMA(20) — medium baseline' },
-        { key: 'kama50_pct', label: '% vs K50',  title: '% distance from KAMA(50) — slow baseline' },
-        { key: 'tp2_price',  label: 'TP2 / P',   title: 'MDB (target) ÷ price — ratio > 1 means room to upside' },
-        { key: 'price_stop', label: 'P / Stop',  title: 'Price ÷ MRT (stop) — ratio < 1 means stop breached' },
-        { key: 'rr',         label: 'R : R',     title: 'Reward / Risk — |MDB−price| ÷ |price−MRT|' },
-        { key: 'mrt',        label: 'Stop',      title: 'MRT — trailing stop level' },
-        { key: 'mdb',        label: 'Target',    title: 'MDB — TP2 target level' },
+        { key: 'symbol',     label: 'Symbol',           title: 'Click to load chart' },
+        { key: 'signal',     label: 'Signal',           title: 'Composite trend signal (−3 to +3)' },
+        { key: 'price',      label: 'Price',            title: 'Last close price' },
+        { key: 'rsi',        label: `RSI(${rsiPeriod})`, title: `RSI with period ${rsiPeriod}` },
+        { key: 'kama10_pct', label: '% vs K10',         title: '% distance from KAMA(10) — fast baseline' },
+        { key: 'kama20_pct', label: '% vs K20',         title: '% distance from KAMA(20) — medium baseline' },
+        { key: 'kama50_pct', label: '% vs K50',         title: '% distance from KAMA(50) — slow baseline' },
+        { key: 'tp2_price',  label: 'TP2 / P',          title: 'MDB (target) ÷ price — ratio > 1 means room to upside' },
+        { key: 'price_stop', label: 'P / Stop',         title: 'Price ÷ MRT (stop) — ratio < 1 means stop breached' },
+        { key: 'rr',         label: 'R : R',            title: 'Reward / Risk — |MDB−price| ÷ |price−MRT|' },
+        { key: 'mrt',        label: 'Stop',             title: 'MRT — trailing stop level' },
+        { key: 'mdb',        label: 'Target',           title: 'MDB — TP2 target level' },
     ];
 
     const sk = trendScanState.sortKey;
@@ -798,10 +804,19 @@ function renderTrendScanTable(data) {
 
         const fmtP = (v) => v != null ? '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
 
+        const rsiCell = (v) => {
+            if (v == null) return { t: '—', c: '' };
+            const t = v.toFixed(1);
+            const c = v < 30 ? 'tscan-bull' : v < 45 ? 'tscan-pos'
+                    : v > 70 ? 'tscan-bear' : v > 55 ? 'tscan-neg' : '';
+            return { t, c };
+        };
+
         const cells = [
             { t: row.symbol,  c: 'scan-td-sym' },
             { t: row.error ? `⚠ ${row.error}` : sigLabel, c: row.error ? 'tscan-warn' : sigCls },
             { t: fmtP(row.price), c: '' },
+            rsiCell(row.rsi),
             pct(row.kama10_pct, true),
             pct(row.kama20_pct, true),
             pct(row.kama50_pct, true),

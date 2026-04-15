@@ -220,13 +220,30 @@ def get_adaptive_trend(symbol):
 def trend_scan():
     """Compute adaptive-trend metrics for every watchlist symbol."""
     import concurrent.futures
-    from scanner import _kama as kama_fn
+    from scanner import _kama as kama_fn, _rsi as rsi_fn
 
-    freq   = request.args.get("freq",   "daily")
-    method = request.args.get("method", "kama")
-    symbols = [s["symbol"] for s in db.list_symbols()]
+    freq       = request.args.get("freq",   "daily")
+    method     = request.args.get("method", "kama")
+    rsi_period = int(request.args.get("rsi_period", 14))
+    symbols    = [s["symbol"] for s in db.list_symbols()]
     if not symbols:
         return jsonify([])
+
+    # Parse the same KAMA/ADMA config params as /api/adaptive-trend
+    int_params   = ["sb_er","sb_fast","sb_slow","mb_er","mb_fast","mb_slow",
+                    "lb_er","lb_fast","lb_slow","atr_n"]
+    float_params = ["confirm_mult"]
+    at_config = {}
+    for p in int_params:
+        v = request.args.get(p)
+        if v is not None:
+            try: at_config[p] = int(v)
+            except ValueError: pass
+    for p in float_params:
+        v = request.args.get(p)
+        if v is not None:
+            try: at_config[p] = float(v)
+            except ValueError: pass
 
     def _one(sym):
         try:
@@ -239,17 +256,21 @@ def trend_scan():
             if price <= 0:
                 return {"symbol": sym, "error": "Zero price"}
 
+            # RSI with configurable period
+            rsi_s   = rsi_fn(close, rsi_period)
+            rsi_val = round(float(rsi_s.dropna().iloc[-1]), 2) if len(rsi_s.dropna()) else None
+
             # KAMA distances (price vs KAMA, expressed as %)
             def _kd(k):
-                s = kama_fn(close, window=k)
-                v = s.dropna()
+                s  = kama_fn(close, window=k)
+                v  = s.dropna()
                 if not len(v):
                     return None
                 kv = float(v.iloc[-1])
                 return round((price / kv - 1.0) * 100, 2) if kv > 0 else None
 
-            # Adaptive trend levels
-            trend = adaptive.compute_adaptive_trend(sym, freq, method)
+            # Adaptive trend levels (with same config params as chart)
+            trend = adaptive.compute_adaptive_trend(sym, freq, method, **at_config)
 
             def _tlast(key):
                 arr = trend.get(key, [])
@@ -269,8 +290,8 @@ def trend_scan():
                 signal = int((ss or 0) + (ms or 0) + (ls or 0))
 
             # Derived ratios
-            tp2_price  = round(mdb / price, 4)  if mdb and price else None
-            price_stop = round(price / mrt, 4)  if mrt and price else None
+            tp2_price  = round(mdb / price, 4) if mdb and price else None
+            price_stop = round(price / mrt, 4) if mrt and price else None
             if mrt and mdb and price:
                 risk   = abs(price - mrt)
                 reward = abs(mdb - price)
@@ -281,6 +302,7 @@ def trend_scan():
             return {
                 "symbol":     sym,
                 "price":      round(price, 2),
+                "rsi":        rsi_val,
                 "kama10_pct": _kd(10),
                 "kama20_pct": _kd(20),
                 "kama50_pct": _kd(50),
