@@ -112,9 +112,9 @@ let _regSyncing     = false;
 
 // ── Colors ───────────────────────────────────────────────────
 const TC = {
-    sb:     '#3b82f6',   // blue    — fast baseline
-    mb:     '#ef4444',   // red     — medium baseline
-    lb:     '#f97316',   // orange  — long baseline
+    sb:     '#3b82f6',   // blue         — fast baseline
+    mb:     '#ef4444',   // red          — medium baseline
+    lb:     '#eab308',   // yellow solid — long baseline
     sdb:    '#22c55e',   // bright-green — short TP
     mdb:    '#16a34a',   // dark-green   — medium TP
     ldb:    '#06b6d4',   // cyan         — long TP
@@ -249,9 +249,9 @@ function buildTrendCharts() {
     const LS = LightweightCharts.LineStyle;
 
     // Baselines (lastValueVisible = true for SB + MB only — keep axis clean)
-    trendSeries.sb  = _line(TC.sb,  2,   LS.Solid,  'SB',  true);
-    trendSeries.mb  = _line(TC.mb,  2,   LS.Solid,  'MB',  true);
-    trendSeries.lb  = _line(TC.lb,  1.5, LS.Dashed, 'LB',  false);
+    trendSeries.sb  = _line(TC.sb,  2,   LS.Solid, 'SB',  true);
+    trendSeries.mb  = _line(TC.mb,  2,   LS.Solid, 'MB',  true);
+    trendSeries.lb  = _line(TC.lb,  1.5, LS.Solid, 'LB',  false);
 
     // Bands
     trendSeries.sdb = _line(TC.sdb, 1,   LS.Dashed, 'SDB', false);
@@ -414,7 +414,7 @@ function _applyVis() {
     if (trendState.vis.mb)  show(trendSeries.mb,  TC.mb,  2,   LS.Solid);
     else                    hide(trendSeries.mb);
 
-    if (trendState.vis.lb)  show(trendSeries.lb,  TC.lb,  1.5, LS.Dashed);
+    if (trendState.vis.lb)  show(trendSeries.lb,  TC.lb,  1.5, LS.Solid);
     else                    hide(trendSeries.lb);
 
     if (trendState.vis.sdb) show(trendSeries.sdb, TC.sdb, 1,   LS.Dashed);
@@ -483,8 +483,17 @@ function setTrendFreq(freq) {
 
 // ── Signal panel ──────────────────────────────────────────────
 function _updateSignalPanel(data, ohlcvRows) {
-    const lastOf = arr => Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null;
-    const close  = ohlcvRows[ohlcvRows.length - 1].close;
+    // lastOf: scan backwards for the last element whose value is non-null
+    const lastOf = arr => {
+        if (!Array.isArray(arr)) return null;
+        for (let i = arr.length - 1; i >= 0; i--) {
+            if (arr[i] != null && arr[i].value != null) return arr[i];
+        }
+        return null;
+    };
+    const lastRow = ohlcvRows[ohlcvRows.length - 1];
+    const close   = lastRow.close;
+    const asOfDate = lastRow.date;
 
     // Format price: 2 dp for large values (indices), 4 dp for FX
     const fmtP = v => {
@@ -499,10 +508,19 @@ function _updateSignalPanel(data, ohlcvRows) {
         el.className    = `trend-signal-value ${cls}`;
     };
 
-    // Current regime states
-    const ss = lastOf(data.short_state)?.value  || 0;
-    const ms = lastOf(data.medium_state)?.value || 0;
-    const ls = lastOf(data.long_state)?.value   || 0;
+    // Current regime states — use last non-null entry, verify date matches OHLCV
+    const lastSS  = lastOf(data.short_state);
+    const lastMS  = lastOf(data.medium_state);
+    const lastLS  = lastOf(data.long_state);
+    const ss = lastSS?.value  || 0;
+    const ms = lastMS?.value  || 0;
+    const ls = lastLS?.value  || 0;
+
+    // Show "as of" date — if state date lags OHLCV date, flag it
+    const stateDate = lastMS?.date || asOfDate;
+    const dateMatch = stateDate === asOfDate;
+    const asOfEl = document.getElementById('trend-align');
+    // (we'll update asOfEl below)
 
     // ── Composite signal (-3 … +3) ────────────────────────────
     const comp = ss + ms + ls;
@@ -525,8 +543,12 @@ function _updateSignalPanel(data, ohlcvRows) {
     const arrow = s => s > 0 ? '↑' : s < 0 ? '↓' : '–';
     const alignEl = document.getElementById('trend-align');
     if (alignEl) {
+        const dateLabel = !dateMatch
+            ? ` ⚠ state ${stateDate} ≠ price ${asOfDate}`
+            : ` · ${asOfDate}`;
         alignEl.textContent =
-            `Short ${arrow(ss)}  ·  Medium ${arrow(ms)}  ·  Long ${arrow(ls)}`;
+            `Short ${arrow(ss)}  ·  Medium ${arrow(ms)}  ·  Long ${arrow(ls)}${dateLabel}`;
+        alignEl.style.color = !dateMatch ? '#f97316' : '';
     }
 
     // Strength bar (filled dots 0-3)
