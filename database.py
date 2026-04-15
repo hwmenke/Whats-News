@@ -38,6 +38,16 @@ def init_db():
         )
     """)
 
+    # Migrations — add new columns to existing DBs without data loss
+    for col, defn in [
+        ('group_tag',  "TEXT    DEFAULT ''"),
+        ('sort_order', 'INTEGER DEFAULT 0'),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE symbols ADD COLUMN {col} {defn}")
+        except Exception:
+            pass  # column already exists
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS ohlcv (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,9 +75,22 @@ def init_db():
 
 def list_symbols():
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM symbols ORDER BY symbol").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM symbols ORDER BY COALESCE(NULLIF(group_tag,''), 'zzz'), symbol"
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def set_symbol_group(symbol: str, group_tag: str):
+    """Set the group tag for a symbol (empty string = no group)."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE symbols SET group_tag=? WHERE symbol=?",
+        (group_tag.strip(), symbol.upper())
+    )
+    conn.commit()
+    conn.close()
 
 
 def add_symbol(symbol: str, name: str = "", sector: str = ""):

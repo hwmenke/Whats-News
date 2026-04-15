@@ -17,10 +17,7 @@
 
   <!-- ═══════════════════ TOP BAR ═══════════════════ -->
   <header class="topbar">
-    <div class="topbar-logo">
-      <div class="logo-icon">📈</div>
-      FinDash
-    </div>
+    <button id="btn-sidebar-toggle" class="btn-sidebar-toggle" onclick="toggleSidebar()" title="Toggle watchlist">☰</button>
 
     <div class="topbar-spacer"></div>
 
@@ -393,11 +390,20 @@
     <!-- ── Adaptive Trend Area ── -->
     <div id="trend-area" class="trend-container" style="display:none;">
 
-      <!-- Full-area loading overlay — sits over the whole trend container -->
+      <!-- Full-area loading overlay -->
       <div id="trend-loading" class="chart-loading" style="display:none;">
         <span class="spinner"></span>
         Computing adaptive trend…
       </div>
+
+      <!-- Sub-tabs: Chart | Scan -->
+      <div class="trend-subtabs">
+        <button class="trend-stab trend-stab-active" id="trend-stab-chart" onclick="switchTrendTab('chart')">📈 Chart</button>
+        <button class="trend-stab" id="trend-stab-scan" onclick="switchTrendTab('scan')">📡 Scan Watchlist</button>
+      </div>
+
+      <!-- ══ CHART panel ══ -->
+      <div id="trend-chart-panel">
 
       <!-- Controls bar -->
       <div class="trend-controls">
@@ -539,6 +545,41 @@
         </div><!-- .trend-panel-signal -->
 
       </div><!-- .trend-panels -->
+
+      </div><!-- #trend-chart-panel -->
+
+      <!-- ══ SCAN panel ══ -->
+      <div id="trend-scan-panel" style="display:none; flex-direction:column; height:100%; overflow:hidden;">
+
+        <!-- Scan controls -->
+        <div class="trend-scan-controls">
+          <button class="btn btn-primary" id="btn-trend-scan" onclick="loadTrendScan()">⟳ Scan Watchlist</button>
+          <div class="trend-controls-group">
+            <span class="overlay-section-label">Freq</span>
+            <button class="ind-pill trend-active trend-scan-freq-btn" data-val="daily"  onclick="setTrendScanFreq('daily')">Daily</button>
+            <button class="ind-pill trend-scan-freq-btn"              data-val="weekly" onclick="setTrendScanFreq('weekly')">Weekly</button>
+          </div>
+          <span id="trend-scan-ts" style="color:var(--text-muted); font-size:11px;"></span>
+          <div id="trend-scan-loading" style="display:none;">
+            <span class="spinner"></span> Scanning…
+          </div>
+        </div>
+
+        <!-- Sortable table -->
+        <div class="scanner-table-wrap" style="flex:1; overflow-y:auto;">
+          <table id="trend-scan-table" class="scanner-table" style="width:100%;">
+            <thead id="trend-scan-thead"></thead>
+            <tbody id="trend-scan-tbody"></tbody>
+          </table>
+        </div>
+
+        <div id="trend-scan-empty" class="scanner-empty" style="display:none;">
+          <div class="empty-icon">📡</div>
+          <p>No symbols — add tickers to your watchlist first.</p>
+        </div>
+
+      </div><!-- #trend-scan-panel -->
+
     </div><!-- #trend-area -->
 
     <!-- ── Scanner Area ── -->

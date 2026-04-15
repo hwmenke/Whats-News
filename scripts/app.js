@@ -144,6 +144,15 @@ function setupKamaAddForm() {
     input.addEventListener('keydown', e => { if (e.key === 'Enter') addPeriod(); });
 }
 
+// ── Sidebar toggle ────────────────────────────────────────────
+function toggleSidebar() {
+    const app = document.querySelector('.app');
+    const btn = document.getElementById('btn-sidebar-toggle');
+    if (!app) return;
+    const collapsed = app.classList.toggle('sidebar-collapsed');
+    if (btn) btn.textContent = collapsed ? '▶' : '☰';
+}
+
 // ── Symbol Watchlist ─────────────────────────────────────────
 async function loadSymbols() {
     try {
@@ -163,7 +172,22 @@ function renderSymbolList() {
         return;
     }
 
+    // Group symbols by group_tag
+    let lastGroup = undefined;
     state.symbols.forEach(sym => {
+        const tag = sym.group_tag || '';
+
+        // Render group header when group changes
+        if (tag !== lastGroup) {
+            lastGroup = tag;
+            if (tag) {
+                const hdr = document.createElement('div');
+                hdr.className = 'sym-group-header';
+                hdr.textContent = tag;
+                list.appendChild(hdr);
+            }
+        }
+
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
         item.dataset.symbol = sym.symbol;
@@ -172,11 +196,15 @@ function renderSymbolList() {
         ticker.className = 'sym-ticker';
         ticker.textContent = sym.symbol;
 
-        const lastFetch = document.createElement('span');
-        lastFetch.className = 'sym-change';
-        lastFetch.style.fontSize  = '10px';
-        lastFetch.style.color     = 'var(--text-dim)';
-        lastFetch.textContent = sym.last_fetch ? '⟳ ' + sym.last_fetch.slice(0, 10) : 'Not fetched';
+        // Group tag badge (click to edit inline)
+        const tagBadge = document.createElement('span');
+        tagBadge.className   = 'sym-tag';
+        tagBadge.textContent = tag || '+ tag';
+        tagBadge.title       = 'Click to set group';
+        tagBadge.addEventListener('click', e => {
+            e.stopPropagation();
+            startTagEdit(sym.symbol, tag, tagBadge);
+        });
 
         const removeBtn = document.createElement('span');
         removeBtn.className  = 'sym-remove';
@@ -185,10 +213,44 @@ function renderSymbolList() {
         removeBtn.addEventListener('click', e => { e.stopPropagation(); removeSymbol(sym.symbol); });
 
         item.appendChild(ticker);
-        item.appendChild(lastFetch);
+        item.appendChild(tagBadge);
         item.appendChild(removeBtn);
         item.addEventListener('click', () => selectSymbol(sym.symbol));
         list.appendChild(item);
+    });
+}
+
+function startTagEdit(symbol, currentTag, badgeEl) {
+    const input = document.createElement('input');
+    input.className   = 'sym-tag-input';
+    input.value       = currentTag;
+    input.placeholder = 'Group name…';
+    input.maxLength   = 30;
+
+    const parent = badgeEl.parentElement;
+    parent.replaceChild(input, badgeEl);
+    input.focus();
+    input.select();
+
+    const commit = async () => {
+        const newTag = input.value.trim();
+        try {
+            await apiFetch(`${API}/symbols/${symbol}/group`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ group_tag: newTag }),
+            });
+            await loadSymbols();
+        } catch (e) {
+            toast('Group update failed: ' + e.message, 'error');
+            input.replaceWith(badgeEl);
+        }
+    };
+
+    input.addEventListener('blur',   commit);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.replaceWith(badgeEl); }
     });
 }
 
@@ -540,6 +602,7 @@ async function loadAdaptiveTrendData(symbol) {
             throw e;
         });
 
+        window._trendLastOhlcv = ohlcv;   // cache for sub-tab back-navigation
         buildTrendCharts();
         loadTrendData(trendData, ohlcv);
 

@@ -384,24 +384,6 @@ function loadTrendData(data, ohlcvRows) {
     trendSeries.lrt.setData(_toLine(data.lrt));
     trendSeries.ldb.setData(_toLine(data.ldb));
 
-    // Entry markers (long ▲ below bar, short ▼ above bar)
-    const markers = [];
-    (data.entry_long  || []).forEach(d => {
-        if (d.value) markers.push({
-            time: d.date, position: 'belowBar', color: TC.bull,
-            shape: 'arrowUp', text: 'L',
-        });
-    });
-    (data.entry_short || []).forEach(d => {
-        if (d.value) markers.push({
-            time: d.date, position: 'aboveBar', color: TC.bear,
-            shape: 'arrowDown', text: 'S',
-        });
-    });
-    // ISO date strings sort lexicographically — safe for YYYY-MM-DD
-    markers.sort((a, b) => a.time.localeCompare(b.time));
-    trendSeries.candle.setMarkers(markers);
-
     // Regime histograms
     trendSeries.regLong.setData(_regData(data.long_state,   3));
     trendSeries.regMed.setData(_regData(data.medium_state,  0));
@@ -655,4 +637,199 @@ function setTrendPreset(preset) {
     Object.assign(trendConfig, presets[preset] || presets.default);
     renderTrendConfig();
     applyTrendConfig();
+}
+
+// ── Trend sub-tab switching ───────────────────────────────────
+function switchTrendTab(tab) {
+    const chartPanel = document.getElementById('trend-chart-panel');
+    const scanPanel  = document.getElementById('trend-scan-panel');
+    const btnChart   = document.getElementById('trend-stab-chart');
+    const btnScan    = document.getElementById('trend-stab-scan');
+    if (!chartPanel || !scanPanel) return;
+
+    if (tab === 'chart') {
+        chartPanel.style.display = 'flex';
+        scanPanel.style.display  = 'none';
+        btnChart?.classList.add('trend-stab-active');
+        btnScan?.classList.remove('trend-stab-active');
+        // Rebuild charts if needed (they may have been destroyed)
+        if (typeof state !== 'undefined' && state.activeSymbol) {
+            if (!trendCharts.price) buildTrendCharts();
+            if (trendState.data) {
+                // Re-apply data without re-fetching
+                const ohlcvData = window._trendLastOhlcv;
+                if (ohlcvData) loadTrendData(trendState.data, ohlcvData);
+            }
+        }
+    } else {
+        chartPanel.style.display = 'none';
+        scanPanel.style.display  = 'flex';
+        btnChart?.classList.remove('trend-stab-active');
+        btnScan?.classList.add('trend-stab-active');
+    }
+}
+
+// ── Trend Scan state ─────────────────────────────────────────
+const trendScanState = {
+    data:    null,
+    sortKey: 'signal',
+    sortDir: -1,
+    freq:    'daily',
+};
+
+function setTrendScanFreq(freq) {
+    trendScanState.freq = freq;
+    document.querySelectorAll('.trend-scan-freq-btn').forEach(btn => {
+        btn.classList.toggle('trend-active', btn.dataset.val === freq);
+    });
+}
+
+async function loadTrendScan() {
+    const btn  = document.getElementById('btn-trend-scan');
+    const load = document.getElementById('trend-scan-loading');
+    const ts   = document.getElementById('trend-scan-ts');
+    if (btn)  { btn.disabled = true; }
+    if (load) load.style.display = 'inline-flex';
+
+    try {
+        const data = await apiFetch(`${API}/trend-scan?freq=${trendScanState.freq}&method=${trendState.method}`);
+        trendScanState.data = data;
+        renderTrendScanTable(data);
+        if (ts) ts.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    } catch (e) {
+        toast('Trend scan failed: ' + e.message, 'error');
+    } finally {
+        if (btn)  btn.disabled = false;
+        if (load) load.style.display = 'none';
+    }
+}
+
+function sortTrendScan(key) {
+    trendScanState.sortDir = trendScanState.sortKey === key ? trendScanState.sortDir * -1 : -1;
+    trendScanState.sortKey = key;
+    if (trendScanState.data) renderTrendScanTable(trendScanState.data);
+}
+
+function renderTrendScanTable(data) {
+    const thead = document.getElementById('trend-scan-thead');
+    const tbody = document.getElementById('trend-scan-tbody');
+    const empty = document.getElementById('trend-scan-empty');
+    if (!thead || !tbody) return;
+
+    // Header
+    const cols = [
+        { key: 'symbol',     label: 'Symbol',    title: 'Click to load chart' },
+        { key: 'signal',     label: 'Signal',    title: 'Composite trend signal (−3 to +3)' },
+        { key: 'price',      label: 'Price',     title: 'Last close price' },
+        { key: 'kama10_pct', label: '% vs K10',  title: '% distance from KAMA(10) — fast baseline' },
+        { key: 'kama20_pct', label: '% vs K20',  title: '% distance from KAMA(20) — medium baseline' },
+        { key: 'kama50_pct', label: '% vs K50',  title: '% distance from KAMA(50) — slow baseline' },
+        { key: 'tp2_price',  label: 'TP2 / P',   title: 'MDB (target) ÷ price — ratio > 1 means room to upside' },
+        { key: 'price_stop', label: 'P / Stop',  title: 'Price ÷ MRT (stop) — ratio < 1 means stop breached' },
+        { key: 'rr',         label: 'R : R',     title: 'Reward / Risk — |MDB−price| ÷ |price−MRT|' },
+        { key: 'mrt',        label: 'Stop',      title: 'MRT — trailing stop level' },
+        { key: 'mdb',        label: 'Target',    title: 'MDB — TP2 target level' },
+    ];
+
+    const sk = trendScanState.sortKey;
+    thead.innerHTML = '';
+    const tr = document.createElement('tr');
+    cols.forEach(c => {
+        const th = document.createElement('th');
+        th.className    = `scan-th scan-th-fixed scan-sortable${sk === c.key ? ' scan-sort-active' : ''}`;
+        th.textContent  = c.label + (sk === c.key ? (trendScanState.sortDir > 0 ? ' ▲' : ' ▼') : '');
+        th.title        = c.title;
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', () => sortTrendScan(c.key));
+        tr.appendChild(th);
+    });
+    thead.appendChild(tr);
+
+    // Sort
+    const sorted = [...data].sort((a, b) => {
+        let va = a[sk], vb = b[sk];
+        if (sk === 'symbol') return (va || '').localeCompare(vb || '') * trendScanState.sortDir;
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        return (va - vb) * trendScanState.sortDir;
+    });
+
+    tbody.innerHTML = '';
+    if (!sorted.length) {
+        if (empty) empty.style.display = 'flex';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    sorted.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.className = 'scan-row';
+
+        const sigCls = row.signal >= 2  ? 'tscan-bull-strong'
+                     : row.signal >= 1  ? 'tscan-bull'
+                     : row.signal <= -2 ? 'tscan-bear-strong'
+                     : row.signal <= -1 ? 'tscan-bear'
+                     :                   'tscan-neutral';
+        const sigLabel = row.signal > 0 ? `+${row.signal}` : row.signal != null ? `${row.signal}` : '—';
+
+        const pct = (v, good) => {
+            if (v == null) return { t: '—', c: '' };
+            const t = (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+            const c = good
+                ? (v > 5 ? 'tscan-bull' : v > 0 ? 'tscan-pos' : v > -5 ? 'tscan-neg' : 'tscan-bear')
+                : (v > 10 ? 'tscan-warn' : v > 0 ? 'tscan-pos' : 'tscan-neg');
+            return { t, c };
+        };
+
+        const ratio = (v, gt1good) => {
+            if (v == null) return { t: '—', c: '' };
+            const t = v.toFixed(3) + '×';
+            const c = gt1good
+                ? (v >= 1.05 ? 'tscan-bull' : v >= 1.0 ? 'tscan-pos' : 'tscan-bear')
+                : (v >= 1.02 ? 'tscan-bull' : v >= 1.0 ? 'tscan-pos' : 'tscan-bear');
+            return { t, c };
+        };
+
+        const rr = (v) => {
+            if (v == null) return { t: '—', c: '' };
+            return { t: v.toFixed(2), c: v >= 2 ? 'tscan-bull' : v >= 1 ? 'tscan-pos' : 'tscan-neg' };
+        };
+
+        const fmtP = (v) => v != null ? '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+
+        const cells = [
+            { t: row.symbol,  c: 'scan-td-sym' },
+            { t: row.error ? `⚠ ${row.error}` : sigLabel, c: row.error ? 'tscan-warn' : sigCls },
+            { t: fmtP(row.price), c: '' },
+            pct(row.kama10_pct, true),
+            pct(row.kama20_pct, true),
+            pct(row.kama50_pct, true),
+            ratio(row.tp2_price, true),
+            ratio(row.price_stop, true),
+            rr(row.rr),
+            { t: fmtP(row.mrt), c: 'tscan-neg' },
+            { t: fmtP(row.mdb), c: 'tscan-pos' },
+        ];
+
+        cells.forEach((cell, i) => {
+            const td = document.createElement('td');
+            td.className   = `scan-td ${cell.c}`;
+            td.textContent = cell.t;
+            // Symbol cell: click to load chart
+            if (i === 0 && !row.error) {
+                td.style.cursor = 'pointer';
+                td.title = `Load ${row.symbol} → Chart`;
+                td.addEventListener('click', () => {
+                    if (typeof selectSymbol === 'function') {
+                        selectSymbol(row.symbol);
+                    }
+                    switchTrendTab('chart');
+                });
+            }
+            tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+    });
 }

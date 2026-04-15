@@ -59,6 +59,14 @@ def delete_symbol(symbol):
     return jsonify({"message": f"{symbol.upper()} removed"})
 
 
+@app.route("/api/symbols/<string:symbol>/group", methods=["PUT"])
+def set_symbol_group(symbol):
+    data      = request.get_json(force=True) or {}
+    group_tag = data.get("group_tag", "").strip()
+    db.set_symbol_group(symbol.upper(), group_tag)
+    return jsonify({"message": "ok"})
+
+
 # -- Data fetch -----------------------------------------------------------------
 
 @app.route("/api/fetch/<string:symbol>", methods=["POST"])
@@ -204,6 +212,92 @@ def get_adaptive_trend(symbol):
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# -- Trend Scan ----------------------------------------------------------------
+
+@app.route("/api/trend-scan")
+def trend_scan():
+    """Compute adaptive-trend metrics for every watchlist symbol."""
+    import concurrent.futures
+    from scanner import _kama as kama_fn
+
+    freq   = request.args.get("freq",   "daily")
+    method = request.args.get("method", "kama")
+    symbols = [s["symbol"] for s in db.list_symbols()]
+    if not symbols:
+        return jsonify([])
+
+    def _one(sym):
+        try:
+            ohlcv = db.get_ohlcv_df(sym, freq, limit=600)
+            if ohlcv.empty or len(ohlcv) < 30:
+                return {"symbol": sym, "error": "No data — fetch first"}
+
+            close = ohlcv["close"]
+            price = float(close.iloc[-1])
+            if price <= 0:
+                return {"symbol": sym, "error": "Zero price"}
+
+            # KAMA distances (price vs KAMA, expressed as %)
+            def _kd(k):
+                s = kama_fn(close, window=k)
+                v = s.dropna()
+                if not len(v):
+                    return None
+                kv = float(v.iloc[-1])
+                return round((price / kv - 1.0) * 100, 2) if kv > 0 else None
+
+            # Adaptive trend levels
+            trend = adaptive.compute_adaptive_trend(sym, freq, method)
+
+            def _tlast(key):
+                arr = trend.get(key, [])
+                for d in reversed(arr):
+                    if d.get("value") is not None:
+                        return float(d["value"])
+                return None
+
+            if "error" in trend:
+                mrt = mdb = signal = None
+            else:
+                mrt    = _tlast("mrt")
+                mdb    = _tlast("mdb")
+                ms     = _tlast("medium_state")
+                ss     = _tlast("short_state")
+                ls     = _tlast("long_state")
+                signal = int((ss or 0) + (ms or 0) + (ls or 0))
+
+            # Derived ratios
+            tp2_price  = round(mdb / price, 4)  if mdb and price else None
+            price_stop = round(price / mrt, 4)  if mrt and price else None
+            if mrt and mdb and price:
+                risk   = abs(price - mrt)
+                reward = abs(mdb - price)
+                rr = round(reward / risk, 2) if risk > 1e-10 else None
+            else:
+                rr = None
+
+            return {
+                "symbol":     sym,
+                "price":      round(price, 2),
+                "kama10_pct": _kd(10),
+                "kama20_pct": _kd(20),
+                "kama50_pct": _kd(50),
+                "tp2_price":  tp2_price,
+                "price_stop": price_stop,
+                "rr":         rr,
+                "signal":     signal,
+                "mrt":        round(mrt, 2) if mrt else None,
+                "mdb":        round(mdb, 2) if mdb else None,
+            }
+        except Exception as e:
+            return {"symbol": sym, "error": str(e)}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(_one, symbols))
+
+    return jsonify(results)
 
 
 # -- Scanner --------------------------------------------------------------------

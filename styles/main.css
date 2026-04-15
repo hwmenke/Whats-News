@@ -39,7 +39,7 @@
   --shadow-glow:   0 0 20px rgba(59,130,246,0.15);
 
   --sidebar-w:     240px;
-  --topbar-h:      58px;
+  --topbar-h:      40px;
 }
 
 /* ── Reset & Base ─────────────────────────────────────────── */
@@ -76,11 +76,36 @@ html, body {
   grid-area: topbar;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 20px;
+  gap: 10px;
+  padding: 0 12px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
   z-index: 100;
+}
+
+/* Sidebar toggle button in topbar */
+.btn-sidebar-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.15s, border-color 0.15s;
+}
+.btn-sidebar-toggle:hover { color: var(--text-primary); border-color: var(--accent); }
+
+/* Sidebar collapsed state */
+.app.sidebar-collapsed {
+  grid-template-columns: 0 1fr;
+}
+.app.sidebar-collapsed .sidebar {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-right: none;
 }
 
 .topbar-logo {
@@ -1852,3 +1877,104 @@ html, body {
 }
 .tconf-apply { padding: 4px 12px; font-size: 11px; }
 .tconf-preset { padding: 4px 10px; font-size: 11px; }
+
+/* ── Trend sub-tabs (Chart / Scan) ────────────────────────── */
+.trend-subtabs {
+    display: flex;
+    gap: 4px;
+    padding: 6px 12px 0;
+    background: var(--bg-base);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.trend-stab {
+    padding: 5px 16px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+}
+.trend-stab:hover { color: var(--text-primary); }
+.trend-stab.trend-stab-active {
+    color: var(--accent);
+    background: var(--bg-elevated);
+    border-color: var(--border);
+}
+
+/* Trend scan controls bar */
+.trend-scan-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+/* ── Watchlist group headers + group tag badge ─────────────── */
+.sym-group-header {
+    padding: 6px 12px 3px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--accent);
+    background: var(--bg-base);
+    border-top: 1px solid var(--border);
+    margin-top: 2px;
+}
+.sym-group-header:first-child { border-top: none; margin-top: 0; }
+
+.sym-tag {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: border-color 0.15s;
+}
+.sym-tag:hover { border-color: var(--accent); color: var(--accent); }
+
+.sym-tag-input {
+    font-size: 11px;
+    padding: 2px 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    width: 80px;
+    outline: none;
+}
+
+/* Trend scan table — signal column colors */
+.tscan-bull-strong { background: rgba(34,197,94,0.25); color: #22c55e; font-weight: 700; }
+.tscan-bull        { background: rgba(34,197,94,0.12); color: #22c55e; }
+.tscan-bear-strong { background: rgba(239,68,68,0.25); color: #ef4444; font-weight: 700; }
+.tscan-bear        { background: rgba(239,68,68,0.12); color: #ef4444; }
+.tscan-neutral     { color: var(--text-muted); }
+.tscan-pos  { color: #22c55e; }
+.tscan-neg  { color: #ef4444; }
+.tscan-warn { color: #f97316; }
+
+/* ── Trend chart/scan panels (sub-tab wrappers) ──────────────── */
+#trend-chart-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+#trend-scan-panel {
+  flex: 1;
+  min-height: 0;
+}
