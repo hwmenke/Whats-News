@@ -416,6 +416,8 @@ async function selectSymbol(symbol) {
     } else if (state.activeTab === 'regression') {
         // Regression tab: just update header; user clicks Run to trigger
         showRegressionArea();
+    } else if (state.activeTab === 'swirl') {
+        if (typeof swLoad === 'function') swLoad();
     }
 }
 
@@ -575,6 +577,7 @@ const _AREA_DISPLAY = {
     'data-manager-area': 'flex',
     'regression-area':   'flex',
     'strategy-area':     'flex',
+    'swirl-area':        'flex',
 };
 
 function _showOnly(activeId) {
@@ -623,6 +626,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'strategy') {
         showStrategyArea();
         if (typeof initStrategyTester === 'function') initStrategyTester();
+    } else if (tabId === 'swirl') {
+        showSwirlogramArea();
+        if (typeof initSwirligram === 'function') initSwirligram();
     }
 }
 
@@ -632,6 +638,7 @@ function showScannerArea()     { _showOnly('scanner-area'); }
 function showDataManagerArea() { _showOnly('data-manager-area'); }
 function showRegressionArea()  { _showOnly('regression-area'); }
 function showStrategyArea()    { _showOnly('strategy-area'); }
+function showSwirlogramArea()  { _showOnly('swirl-area'); }
 
 // ── Ratio Symbol UI ───────────────────────────────────────────
 function toggleRatioForm() {

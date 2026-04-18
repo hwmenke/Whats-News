@@ -19,6 +19,7 @@ import scanner as scan
 import ticker_lists as tl
 import regression as reg
 import strategy_tester as st
+import swirligram as swirl
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -415,6 +416,32 @@ def strategy_monte_carlo():
         return jsonify({"error": "trades list required"}), 400
     try:
         result = st.monte_carlo(trades, n_sim)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -- Swirligram -----------------------------------------------------------------
+
+@app.route("/api/swirligram/<string:symbol>", methods=["GET"])
+def get_swirligram(symbol):
+    """RSI phase-space (Swirligram) for daily + weekly timeframes."""
+    try:
+        rsi_period   = int(request.args.get("period", 14))
+        daily_trail  = int(request.args.get("trail",  90))
+        weekly_trail = int(request.args.get("wtrail", 52))
+    except (TypeError, ValueError):
+        return jsonify({"error": "period/trail must be integers"}), 400
+    if not (5 <= rsi_period <= 50):
+        return jsonify({"error": "period must be 5–50"}), 400
+    if not (20 <= daily_trail <= 504):
+        return jsonify({"error": "trail must be 20–504"}), 400
+    try:
+        result = swirl.compute_swirligram(
+            symbol.upper(), rsi_period, daily_trail, weekly_trail
+        )
+        if "error" in result:
+            return jsonify(result), 404
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

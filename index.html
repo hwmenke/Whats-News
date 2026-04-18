@@ -132,6 +132,9 @@
       <button id="tab-strategy" class="tab-btn" onclick="switchTab('strategy')">
         <span class="tab-icon">🧪</span> Strategy
       </button>
+      <button id="tab-swirl" class="tab-btn" onclick="switchTab('swirl')">
+        <span class="tab-icon">🌀</span> Swirligram
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -831,7 +834,7 @@
           <!-- Walk-forward section -->
           <div id="st-wf-section" style="display:none;">
             <div class="st-chart-label">Walk-Forward: OOS Sharpe per Fold</div>
-            <div id="st-wf-fold-chart" class="st-chart st-chart-sm"></div>
+            <div class="st-chart st-chart-sm"><canvas id="st-wf-fold-chart"></canvas></div>
             <div id="st-wf-stability" class="st-wf-stability"></div>
             <div id="st-wf-fold-table" class="st-fold-table-wrap"></div>
           </div>
@@ -839,7 +842,7 @@
           <!-- Monte Carlo section -->
           <div id="st-mc-section" style="display:none;">
             <div class="st-chart-label">Monte Carlo (1000 simulations)</div>
-            <div id="st-mc-chart" class="st-chart st-chart-sm"></div>
+            <div class="st-chart st-chart-sm"><canvas id="st-mc-chart"></canvas></div>
           </div>
 
           <!-- Trades table -->
@@ -862,6 +865,80 @@
       </div><!-- .st-right -->
 
     </div><!-- #strategy-area -->
+
+    <!-- ══ Swirligram ═══════════════════════════════════════════ -->
+    <div id="swirl-area" class="sw-container" style="display:none;">
+
+      <!-- Top bar: combined signal + stats + controls -->
+      <div class="sw-topbar">
+        <div id="sw-combined-badge" class="sw-combined-badge sw-badge-gray">
+          <span id="sw-combined-label">Select a symbol</span>
+          <span id="sw-combined-score" class="sw-combined-score"></span>
+        </div>
+
+        <div class="sw-header-stats">
+          <div class="sw-hstat">
+            <span class="sw-hstat-lbl">Daily RSI</span>
+            <span id="sw-daily-rsi-val" class="sw-hstat-val">—</span>
+            <span id="sw-daily-drsi-val" class="sw-hstat-dir">—</span>
+          </div>
+          <div class="sw-hstat">
+            <span class="sw-hstat-lbl">Weekly RSI</span>
+            <span id="sw-weekly-rsi-val" class="sw-hstat-val">—</span>
+            <span id="sw-weekly-drsi-val" class="sw-hstat-dir">—</span>
+          </div>
+        </div>
+
+        <div class="sw-controls">
+          <label>Trail
+            <input type="number" id="sw-trail" value="90" min="20" max="252" style="width:52px">
+          </label>
+          <label>RSI Period
+            <input type="number" id="sw-period" value="14" min="5" max="30" style="width:44px">
+          </label>
+          <button id="btn-sw-run" class="sw-run-btn" onclick="swLoad()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div id="sw-loading" class="sw-loading" style="display:none;">⏳ Computing…</div>
+
+      <!-- Charts grid: daily | weekly -->
+      <div class="sw-grid">
+
+        <!-- Daily panel -->
+        <div class="sw-panel">
+          <div class="sw-panel-title">Daily RSI Phase Space
+            <span class="sw-panel-hint">X = RSI · Y = Δ RSI per bar · trail = last N bars · ● = today</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-daily-phase"></canvas>
+          </div>
+          <div id="sw-daily-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">Daily RSI Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-daily-timeline"></canvas>
+          </div>
+        </div>
+
+        <!-- Weekly panel -->
+        <div class="sw-panel">
+          <div class="sw-panel-title">Weekly RSI Phase Space
+            <span class="sw-panel-hint">Ideal anchor: RSI 50–62 · ● = this week</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-weekly-phase"></canvas>
+          </div>
+          <div id="sw-weekly-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">Weekly RSI Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-weekly-timeline"></canvas>
+          </div>
+        </div>
+
+      </div><!-- .sw-grid -->
+
+    </div><!-- #swirl-area -->
 
   </main>
 
@@ -914,6 +991,7 @@
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/regression.js"></script>
 <script src="scripts/strategy_tester.js"></script>
+<script src="scripts/swirligram.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

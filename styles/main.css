@@ -2279,3 +2279,160 @@ html, body {
 .st-stability-good   { background: rgba(34,197,94,0.15); color: var(--green); }
 .st-stability-bad    { background: rgba(239,68,68,0.15); color: var(--red); }
 .reg-coef-table tr:hover { background: var(--bg-hover); }
+
+/* ── Swirligram ───────────────────────────────────────────── */
+
+.sw-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Top bar ──────────────────────────────────────────────── */
+.sw-topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* Combined signal badge */
+.sw-combined-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  border: 1.5px solid transparent;
+}
+.sw-badge-green  { background: rgba(34,197,94,0.15);  border-color: rgba(34,197,94,0.4);  color: var(--green);  }
+.sw-badge-yellow { background: rgba(234,179,8,0.15);  border-color: rgba(234,179,8,0.4);  color: var(--yellow); }
+.sw-badge-orange { background: rgba(249,115,22,0.12); border-color: rgba(249,115,22,0.4); color: var(--orange); }
+.sw-badge-gray   { background: var(--bg-card);        border-color: var(--border);         color: var(--text-dim); font-weight: 400; }
+.sw-combined-score { font-size: 11px; font-weight: 400; opacity: 0.7; }
+
+/* Header stats */
+.sw-header-stats  { display: flex; gap: 20px; }
+.sw-hstat         { display: flex; flex-direction: column; gap: 1px; }
+.sw-hstat-lbl     { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+.sw-hstat-val     { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.sw-hstat-dir     { font-size: 11px; color: var(--text-muted); }
+
+/* Controls */
+.sw-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.sw-controls label     { display: flex; gap: 5px; align-items: center; }
+.sw-controls input     { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; padding: 3px 6px; font-size: 11px; }
+.sw-run-btn            { padding: 5px 12px; background: var(--accent); border: none; color: #fff; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600; }
+.sw-run-btn:hover      { background: var(--accent-bright); }
+.sw-run-btn:disabled   { opacity: 0.5; cursor: default; }
+
+/* Loading */
+.sw-loading {
+  padding: 20px; color: var(--text-dim); font-size: 13px;
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* ── Charts grid ──────────────────────────────────────────── */
+.sw-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sw-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  gap: 6px;
+}
+.sw-panel:last-child { border-right: none; }
+
+.sw-panel-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.sw-panel-hint {
+  font-size: 9px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-dim);
+  opacity: 0.6;
+  display: block;
+  margin-top: 2px;
+}
+.sw-mini-title { margin-top: 8px; }
+
+/* Phase-space chart */
+.sw-chart-wrap {
+  flex: 0 0 240px;
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.sw-chart-wrap canvas { width: 100% !important; height: 240px !important; }
+
+/* Signal box */
+.sw-signal-box {
+  flex-shrink: 0;
+  padding: 8px 0 4px;
+}
+.sw-sig-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+.sw-sig-label  { font-size: 12px; font-weight: 700; }
+.sw-sig-score  { font-size: 11px; color: var(--text-dim); }
+.sw-sig-bar-track { height: 5px; background: var(--bg-card); border-radius: 3px; overflow: hidden; margin-bottom: 7px; }
+.sw-sig-bar-fill  { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+.sw-sig-details {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.7;
+}
+.sw-sig-details li::before { content: '• '; color: var(--text-dim); }
+
+/* RSI timeline */
+.sw-timeline-wrap {
+  flex: 0 0 90px;
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.sw-timeline-wrap canvas { width: 100% !important; height: 90px !important; }
+
+/* Responsive: stack on narrow screens */
+@media (max-width: 900px) {
+  .sw-grid { grid-template-columns: 1fr; overflow-y: auto; }
+  .sw-panel { border-right: none; border-bottom: 1px solid var(--border); }
+}
