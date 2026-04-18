@@ -565,25 +565,29 @@ async function loadAdaptiveTrendData(symbol) {
 }
 
 // ── UI helpers ───────────────────────────────────────────────
-function showEmptyState() {
-    document.getElementById('empty-state').style.display        = 'flex';
-    document.getElementById('chart-area').style.display         = 'none';
-    document.getElementById('stats-area').style.display         = 'none';
-    document.getElementById('trend-area').style.display         = 'none';
-    document.getElementById('scanner-area').style.display       = 'none';
-    document.getElementById('data-manager-area').style.display  = 'none';
-    document.getElementById('regression-area').style.display    = 'none';
+
+const _AREA_DISPLAY = {
+    'empty-state':       'flex',
+    'chart-area':        'flex',
+    'stats-area':        'block',
+    'trend-area':        'flex',
+    'scanner-area':      'flex',
+    'data-manager-area': 'flex',
+    'regression-area':   'flex',
+    'strategy-area':     'flex',
+};
+
+function _showOnly(activeId) {
+    for (const [id, disp] of Object.entries(_AREA_DISPLAY)) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = (id === activeId) ? disp : 'none';
+    }
+    const tabBar = document.querySelector('.tab-bar');
+    if (tabBar) tabBar.style.display = (activeId === 'chart-area') ? '' : 'none';
 }
 
-function showChartArea() {
-    document.getElementById('empty-state').style.display        = 'none';
-    document.getElementById('stats-area').style.display         = 'none';
-    document.getElementById('trend-area').style.display         = 'none';
-    document.getElementById('scanner-area').style.display       = 'none';
-    document.getElementById('data-manager-area').style.display  = 'none';
-    document.getElementById('regression-area').style.display    = 'none';
-    document.getElementById('chart-area').style.display         = 'flex';
-}
+function showEmptyState()      { _showOnly('empty-state'); }
+function showChartArea()       { _showOnly('chart-area'); }
 
 function showLoadingOverlay(show) {
     document.getElementById('chart-loading').style.display = show ? 'flex' : 'none';
@@ -616,63 +620,18 @@ async function switchTab(tabId) {
     } else if (tabId === 'regression') {
         showRegressionArea();
         if (typeof initRegression === 'function') initRegression();
+    } else if (tabId === 'strategy') {
+        showStrategyArea();
+        if (typeof initStrategyTester === 'function') initStrategyTester();
     }
 }
 
-function showStatsArea() {
-    document.getElementById('empty-state').style.display        = 'none';
-    document.getElementById('chart-area').style.display         = 'none';
-    document.getElementById('stats-area').style.display         = 'block';
-    document.getElementById('trend-area').style.display         = 'none';
-    document.getElementById('scanner-area').style.display       = 'none';
-    document.getElementById('data-manager-area').style.display  = 'none';
-    document.getElementById('regression-area').style.display    = 'none';
-    document.querySelector('.tab-bar').style.display            = 'none';
-}
-
-function showTrendArea() {
-    document.getElementById('empty-state').style.display        = 'none';
-    document.getElementById('chart-area').style.display         = 'none';
-    document.getElementById('stats-area').style.display         = 'none';
-    document.getElementById('trend-area').style.display         = 'flex';
-    document.getElementById('scanner-area').style.display       = 'none';
-    document.getElementById('data-manager-area').style.display  = 'none';
-    document.getElementById('regression-area').style.display    = 'none';
-    document.querySelector('.tab-bar').style.display            = 'none';
-}
-
-function showScannerArea() {
-    document.getElementById('empty-state').style.display        = 'none';
-    document.getElementById('chart-area').style.display         = 'none';
-    document.getElementById('stats-area').style.display         = 'none';
-    document.getElementById('trend-area').style.display         = 'none';
-    document.getElementById('scanner-area').style.display       = 'flex';
-    document.getElementById('data-manager-area').style.display  = 'none';
-    document.getElementById('regression-area').style.display    = 'none';
-    document.querySelector('.tab-bar').style.display            = 'none';
-}
-
-function showDataManagerArea() {
-    document.getElementById('empty-state').style.display        = 'none';
-    document.getElementById('chart-area').style.display         = 'none';
-    document.getElementById('stats-area').style.display         = 'none';
-    document.getElementById('trend-area').style.display         = 'none';
-    document.getElementById('scanner-area').style.display       = 'none';
-    document.getElementById('regression-area').style.display    = 'none';
-    document.getElementById('data-manager-area').style.display  = 'flex';
-    document.querySelector('.tab-bar').style.display            = 'none';
-}
-
-function showRegressionArea() {
-    document.getElementById('empty-state').style.display        = 'none';
-    document.getElementById('chart-area').style.display         = 'none';
-    document.getElementById('stats-area').style.display         = 'none';
-    document.getElementById('trend-area').style.display         = 'none';
-    document.getElementById('scanner-area').style.display       = 'none';
-    document.getElementById('data-manager-area').style.display  = 'none';
-    document.getElementById('regression-area').style.display    = 'flex';
-    document.querySelector('.tab-bar').style.display            = 'none';
-}
+function showStatsArea()       { _showOnly('stats-area'); }
+function showTrendArea()       { _showOnly('trend-area'); }
+function showScannerArea()     { _showOnly('scanner-area'); }
+function showDataManagerArea() { _showOnly('data-manager-area'); }
+function showRegressionArea()  { _showOnly('regression-area'); }
+function showStrategyArea()    { _showOnly('strategy-area'); }
 
 // ── Ratio Symbol UI ───────────────────────────────────────────
 function toggleRatioForm() {

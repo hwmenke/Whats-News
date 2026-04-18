@@ -18,6 +18,7 @@ import adaptive_trend as adaptive
 import scanner as scan
 import ticker_lists as tl
 import regression as reg
+import strategy_tester as st
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -357,6 +358,63 @@ def get_regression(symbol):
         result = reg.compute_regression(symbol.upper(), freq, horizon, lookback)
         if "error" in result:
             return jsonify(result), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -- Strategy Tester ------------------------------------------------------------
+
+@app.route("/api/strategy/backtest", methods=["POST"])
+def strategy_backtest():
+    """Run a vectorised backtest for a symbol + strategy config."""
+    body = request.get_json(force=True, silent=True) or {}
+    symbol = body.get("symbol", "")
+    freq   = body.get("freq", "daily")
+    config = body.get("config", {})
+    if not symbol:
+        return jsonify({"error": "symbol required"}), 400
+    if freq not in ("daily", "weekly"):
+        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    try:
+        result = st.run_backtest(symbol.upper(), freq, config)
+        if "error" in result:
+            return jsonify(result), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/strategy/walk-forward", methods=["POST"])
+def strategy_walk_forward():
+    """Walk-forward optimization for a strategy config."""
+    body = request.get_json(force=True, silent=True) or {}
+    symbol = body.get("symbol", "")
+    freq   = body.get("freq", "daily")
+    config = body.get("config", {})
+    if not symbol:
+        return jsonify({"error": "symbol required"}), 400
+    if freq not in ("daily", "weekly"):
+        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    try:
+        result = st.walk_forward_optimize(symbol.upper(), freq, config)
+        if "error" in result:
+            return jsonify(result), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/strategy/monte-carlo", methods=["POST"])
+def strategy_monte_carlo():
+    """Bootstrap Monte Carlo simulation over a list of trade returns."""
+    body   = request.get_json(force=True, silent=True) or {}
+    trades = body.get("trades", [])
+    n_sim  = int(body.get("n_sim", 1000))
+    if not trades:
+        return jsonify({"error": "trades list required"}), 400
+    try:
+        result = st.monte_carlo(trades, n_sim)
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

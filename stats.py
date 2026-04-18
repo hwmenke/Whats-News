@@ -5,19 +5,9 @@ stats.py - Compute statistical analysis and factor quintiles for a symbol.
 import numpy as np
 import pandas as pd
 import database as db
+from ta_core import _kama, _rsi
 
 KAMA_PERIODS = [10, 20, 50]
-
-
-def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
-    """Wilder RSI via exponential moving average."""
-    delta    = close.diff()
-    gain     = delta.clip(lower=0)
-    loss     = (-delta).clip(lower=0)
-    avg_gain = gain.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
-    rs       = avg_gain / avg_loss.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
 
 
 def _safe(val):
@@ -36,28 +26,6 @@ def _finite_or_none(val):
     except Exception:
         return _safe(val)
     return _safe(val)
-
-
-def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> pd.Series:
-    """Lightweight KAMA implementation shared with the stats calculations."""
-    prices = close.to_numpy(dtype=float, copy=True)
-    kama_vals = np.full(len(prices), np.nan)
-
-    if len(prices) < window:
-        return pd.Series(kama_vals, index=close.index)
-
-    fast_sc = 2.0 / (fast + 1)
-    slow_sc = 2.0 / (slow + 1)
-    kama_vals[window - 1] = prices[window - 1]
-
-    for i in range(window, len(prices)):
-        direction = abs(prices[i] - prices[i - window])
-        volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
-        er = direction / volatility if volatility != 0 else 0
-        sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
-        kama_vals[i] = kama_vals[i - 1] + sc * (prices[i] - kama_vals[i - 1])
-
-    return pd.Series(kama_vals, index=close.index)
 
 
 def compute_stats(symbol: str) -> dict:

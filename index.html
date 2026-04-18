@@ -9,7 +9,7 @@
   <!-- TradingView Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <!-- Chart.js for statistics -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -128,6 +128,9 @@
       </button>
       <button id="tab-regression" class="tab-btn" onclick="switchTab('regression')">
         <span class="tab-icon">📐</span> Regression
+      </button>
+      <button id="tab-strategy" class="tab-btn" onclick="switchTab('strategy')">
+        <span class="tab-icon">🧪</span> Strategy
       </button>
     </nav>
     <div class="tab-bar">
@@ -719,6 +722,147 @@
 
     </div><!-- #regression-area -->
 
+    <!-- ══ Strategy Tester ══════════════════════════════════════ -->
+    <div id="strategy-area" class="st-container" style="display:none;">
+
+      <!-- Left panel: condition builder -->
+      <div class="st-left">
+        <div class="st-section-title">Symbol &amp; Frequency</div>
+        <div class="st-freq-row">
+          <button class="st-freq-btn st-active" data-val="daily"  onclick="stSetFreq('daily')">Daily</button>
+          <button class="st-freq-btn"           data-val="weekly" onclick="stSetFreq('weekly')">Weekly</button>
+        </div>
+
+        <div class="st-section-title" style="margin-top:14px;">Entry Long</div>
+        <div id="st-entry-long-rows"></div>
+        <button class="st-add-btn" onclick="stAddConditionRow('entry_long','st-entry-long-rows')">+ Condition</button>
+
+        <div class="st-section-title" style="margin-top:12px;">Exit Long</div>
+        <div id="st-exit-long-rows"></div>
+        <button class="st-add-btn" onclick="stAddConditionRow('exit_long','st-exit-long-rows')">+ Condition</button>
+
+        <div class="st-section-title" style="margin-top:12px;">
+          <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
+            <input type="checkbox" id="st-allow-short" onchange="stToggleShort(this.checked)"> Allow Short
+          </label>
+        </div>
+        <div id="st-short-conditions" style="display:none;">
+          <div class="st-section-title" style="margin-top:8px;">Entry Short</div>
+          <div id="st-entry-short-rows"></div>
+          <button class="st-add-btn" onclick="stAddConditionRow('entry_short','st-entry-short-rows')">+ Condition</button>
+          <div class="st-section-title" style="margin-top:8px;">Exit Short</div>
+          <div id="st-exit-short-rows"></div>
+          <button class="st-add-btn" onclick="stAddConditionRow('exit_short','st-exit-short-rows')">+ Condition</button>
+        </div>
+
+        <div class="st-section-title" style="margin-top:14px;">Settings</div>
+        <div class="st-setting-row">
+          <label>Regime Filter
+            <select id="st-regime-filter">
+              <option value="none">None</option>
+              <option value="long_only">Long Only</option>
+              <option value="short_only">Short Only</option>
+              <option value="trend_aligned">Trend Aligned</option>
+            </select>
+          </label>
+        </div>
+        <div class="st-setting-row">
+          <label>Commission %&nbsp;<input type="number" id="st-commission" value="0.05" step="0.01" min="0" max="5"></label>
+          <label>Slippage %&nbsp;<input type="number" id="st-slippage" value="0.05" step="0.01" min="0" max="5"></label>
+        </div>
+        <div class="st-setting-row">
+          <label>Bar Delay&nbsp;
+            <select id="st-bar-delay">
+              <option value="0">0 (same bar)</option>
+              <option value="1" selected>1 (next bar)</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="st-action-row">
+          <button id="btn-st-run" class="st-run-btn" onclick="stRunBacktest()">▶ Run Backtest</button>
+          <button id="btn-st-wf"  class="st-wf-btn"  onclick="stRunWalkForward()">⚡ Walk-Forward</button>
+        </div>
+
+        <!-- Walk-forward settings (collapsed) -->
+        <div id="st-wf-settings" style="display:none; margin-top:10px;">
+          <div class="st-section-title">Walk-Forward Options</div>
+          <div class="st-setting-row">
+            <label>Folds&nbsp;<input type="number" id="st-wf-folds" value="5" min="2" max="20"></label>
+            <label>Train %&nbsp;<input type="number" id="st-wf-train-pct" value="70" min="30" max="90"></label>
+          </div>
+          <div class="st-setting-row">
+            <label><input type="checkbox" id="st-wf-anchored"> Anchored (expanding)</label>
+          </div>
+          <div class="st-section-title" style="margin-top:8px;">Param Grid</div>
+          <div id="st-param-grid-rows"></div>
+          <button class="st-add-btn" onclick="stAddParamGridRow()">+ Param</button>
+        </div>
+        <button class="st-toggle-btn" onclick="stToggleWfSettings()">⚙ Walk-Forward Settings</button>
+
+        <!-- Monte Carlo -->
+        <div style="margin-top:8px;">
+          <button id="btn-st-mc" class="st-mc-btn" onclick="stRunMonteCarlo()" style="display:none;">🎲 Monte Carlo</button>
+        </div>
+      </div><!-- .st-left -->
+
+      <!-- Right panel: results -->
+      <div class="st-right">
+        <div id="st-loading" class="st-loading" style="display:none;">
+          <span class="st-spinner">⏳</span> Running…
+        </div>
+
+        <div id="st-empty" class="st-empty">
+          <div class="empty-icon">🧪</div>
+          <p>Select a symbol, build entry conditions, then click Run Backtest.</p>
+        </div>
+
+        <div id="st-results" style="display:none;">
+          <!-- KPI row -->
+          <div id="st-metrics-row" class="st-kpi-row"></div>
+
+          <!-- Charts -->
+          <div class="st-chart-label">Price &amp; Signals</div>
+          <div id="st-price-chart" class="st-chart"></div>
+
+          <div class="st-chart-label">Equity vs Benchmark</div>
+          <div id="st-equity-chart" class="st-chart"></div>
+
+          <!-- Walk-forward section -->
+          <div id="st-wf-section" style="display:none;">
+            <div class="st-chart-label">Walk-Forward: OOS Sharpe per Fold</div>
+            <div id="st-wf-fold-chart" class="st-chart st-chart-sm"></div>
+            <div id="st-wf-stability" class="st-wf-stability"></div>
+            <div id="st-wf-fold-table" class="st-fold-table-wrap"></div>
+          </div>
+
+          <!-- Monte Carlo section -->
+          <div id="st-mc-section" style="display:none;">
+            <div class="st-chart-label">Monte Carlo (1000 simulations)</div>
+            <div id="st-mc-chart" class="st-chart st-chart-sm"></div>
+          </div>
+
+          <!-- Trades table -->
+          <div class="st-chart-label" style="margin-top:14px;">Trades
+            <span id="st-trades-count" class="st-badge"></span>
+          </div>
+          <div id="st-trades-table-wrap" class="st-trades-wrap">
+            <table class="st-trades-table">
+              <thead>
+                <tr>
+                  <th>Entry</th><th>Exit</th><th>Dir</th>
+                  <th>Bars</th><th>Gross</th><th>Net</th>
+                  <th>MFE</th><th>MAE</th>
+                </tr>
+              </thead>
+              <tbody id="st-trades-tbody"></tbody>
+            </table>
+          </div>
+        </div><!-- #st-results -->
+      </div><!-- .st-right -->
+
+    </div><!-- #strategy-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -769,6 +913,7 @@
 <script src="scripts/scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/regression.js"></script>
+<script src="scripts/strategy_tester.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

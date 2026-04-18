@@ -22,6 +22,7 @@ Timeframe lookbacks used for percentile rank windows:
 import numpy as np
 import pandas as pd
 import database as db
+from ta_core import _kama, _rsi as _rsi_core
 
 
 # ── type helpers ─────────────────────────────────────────────────────
@@ -48,37 +49,8 @@ def _last(s: pd.Series):
     return _safe(valid.iloc[-1]) if len(valid) else None
 
 
-# ── indicator implementations ─────────────────────────────────────────
-
 def _rsi(close: pd.Series, n: int) -> pd.Series:
-    """Wilder EWM RSI (mirrors `ta` library behaviour)."""
-    delta = close.diff()
-    gain  = delta.clip(lower=0)
-    loss  = (-delta).clip(lower=0)
-    ag    = gain.ewm(alpha=1.0 / n, adjust=False).mean()
-    al    = loss.ewm(alpha=1.0 / n, adjust=False).mean()
-    rs    = ag / al.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
-
-
-def _kama(close: pd.Series, window: int = 10,
-          fast: int = 2, slow: int = 30) -> pd.Series:
-    """Kaufman Adaptive Moving Average (mirrors indicators.py)."""
-    fast_sc = 2.0 / (fast + 1)
-    slow_sc = 2.0 / (slow + 1)
-    prices  = close.values.astype(float)
-    n       = len(prices)
-    out     = np.full(n, np.nan)
-    if n < window:
-        return pd.Series(out, index=close.index)
-    out[window - 1] = prices[window - 1]
-    for i in range(window, n):
-        direction  = abs(prices[i] - prices[i - window])
-        volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
-        er  = direction / volatility if volatility > 1e-12 else 0.0
-        sc  = (er * (fast_sc - slow_sc) + slow_sc) ** 2
-        out[i] = out[i - 1] + sc * (prices[i] - out[i - 1])
-    return pd.Series(out, index=close.index)
+    return _rsi_core(close, window=n)
 
 
 def _pct_rank(series: pd.Series, lookback: int) -> pd.Series:
