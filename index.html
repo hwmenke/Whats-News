@@ -887,6 +887,16 @@
             <span id="sw-weekly-rsi-val" class="sw-hstat-val">—</span>
             <span id="sw-weekly-drsi-val" class="sw-hstat-dir">—</span>
           </div>
+          <div class="sw-hstat">
+            <span class="sw-hstat-lbl">KAMA Fast Pct</span>
+            <span id="sw-kama-fast-val" class="sw-hstat-val">—</span>
+            <span id="sw-kama-fast-dir" class="sw-hstat-dir">—</span>
+          </div>
+          <div class="sw-hstat">
+            <span class="sw-hstat-lbl">KAMA Trend Pct</span>
+            <span id="sw-kama-trend-val" class="sw-hstat-val">—</span>
+            <span id="sw-kama-trend-dir" class="sw-hstat-dir">—</span>
+          </div>
         </div>
 
         <div class="sw-controls">
@@ -933,6 +943,36 @@
           <div class="sw-panel-title sw-mini-title">Weekly RSI Timeline</div>
           <div class="sw-timeline-wrap">
             <canvas id="sw-weekly-timeline"></canvas>
+          </div>
+        </div>
+
+        <!-- KAMA Fast Pct panel -->
+        <div class="sw-panel">
+          <div class="sw-panel-title">Close/KAMA₁₀ Pct Rank Phase
+            <span class="sw-panel-hint">X = %ile rank of close/KAMA(10) · Y = Δ rank/bar · 252-bar rolling window</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-kama-fast-phase"></canvas>
+          </div>
+          <div id="sw-kama-fast-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">Close/KAMA₁₀ Pct Rank Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-kama-fast-tl"></canvas>
+          </div>
+        </div>
+
+        <!-- KAMA Trend Pct panel -->
+        <div class="sw-panel">
+          <div class="sw-panel-title">KAMA₁₀/KAMA₂₀ Pct Rank Phase
+            <span class="sw-panel-hint">X = %ile rank of KAMA(10)/KAMA(20) · trend momentum · 252-bar window</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-kama-trend-phase"></canvas>
+          </div>
+          <div id="sw-kama-trend-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">KAMA Trend Pct Rank Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-kama-trend-tl"></canvas>
           </div>
         </div>
 
