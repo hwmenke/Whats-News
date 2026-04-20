@@ -5,6 +5,7 @@ Run: python app.py
 
 import json
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
@@ -20,9 +21,12 @@ import ticker_lists as tl
 import regression as reg
 import strategy_tester as st
 import swirligram as swirl
+import errors
+from errors import ApiError
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
+errors.register(app)
 
 # Initialise the database on startup
 db.init_db()
@@ -47,7 +51,7 @@ def add_symbol():
     data   = request.get_json(force=True)
     symbol = data.get("symbol", "").strip().upper()
     if not symbol:
-        return jsonify({"error": "symbol is required"}), 400
+        raise errors.symbol_required()
     added = db.add_symbol(symbol)
     if not added:
         return jsonify({"message": f"{symbol} already in watchlist"}), 200
@@ -65,16 +69,12 @@ def delete_symbol(symbol):
 @app.route("/api/fetch/<string:symbol>", methods=["POST"])
 def fetch_symbol(symbol):
     print(f">> API: Fetch request for {symbol}")
-    try:
-        result = fetcher.fetch_and_store(symbol.upper())
-        if "error" in result:
-            print(f"!! API: Error fetching {symbol}: {result['error']}")
-            return jsonify(result), 400
-        print(f"<< API: Successfully fetched {symbol}")
-        return jsonify(result)
-    except Exception as e:
-        print(f"!! API: Exception fetching {symbol}: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+    result = fetcher.fetch_and_store(symbol.upper())
+    if "error" in result:
+        print(f"!! API: Error fetching {symbol}: {result['error']}")
+        raise errors.fetch_failed(symbol.upper(), result["error"])
+    print(f"<< API: Successfully fetched {symbol}")
+    return jsonify(result)
 
 
 @app.route("/api/refresh", methods=["POST"])
@@ -104,16 +104,16 @@ def get_ohlcv(symbol):
     try:
         limit = int(request.args.get("limit", 500))
     except (TypeError, ValueError):
-        return jsonify({"error": "limit must be an integer"}), 400
+        raise errors.validation("limit must be an integer")
 
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        raise errors.validation("freq must be 'daily' or 'weekly'")
     if limit <= 0:
-        return jsonify({"error": "limit must be a positive integer"}), 400
+        raise errors.validation("limit must be a positive integer")
 
     rows = db.get_ohlcv(symbol.upper(), freq, limit)
     if not rows:
-        return jsonify({"error": "No data. Fetch the symbol first."}), 404
+        raise errors.no_data(symbol.upper())
     return jsonify(rows)
 
 
@@ -123,7 +123,7 @@ def get_ohlcv(symbol):
 def get_indicators(symbol):
     freq = request.args.get("freq", "daily")
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        raise errors.validation("freq must be 'daily' or 'weekly'")
 
     kama_param = request.args.get("kama", "10,20,50")
     try:
@@ -131,9 +131,11 @@ def get_indicators(symbol):
         if not kama_periods:
             kama_periods = [10, 20, 50]
     except ValueError:
-        return jsonify({"error": "kama must be comma-separated integers"}), 400
+        raise errors.validation("kama must be comma-separated integers")
 
     result = ind.compute_indicators(symbol.upper(), freq, kama_periods)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
     return jsonify(result)
 
 
@@ -141,13 +143,10 @@ def get_indicators(symbol):
 
 @app.route("/api/stats/<string:symbol>", methods=["GET"])
 def get_stats(symbol):
-    try:
-        result = stats.compute_stats(symbol.upper())
-        if "error" in result:
-            return jsonify(result), 404
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    result = stats.compute_stats(symbol.upper())
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
 
 
 # -- Adaptive Trend -------------------------------------------------------------
@@ -157,11 +156,10 @@ def get_adaptive_trend(symbol):
     freq   = request.args.get("freq", "daily")
     method = request.args.get("method", "kama")
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        raise errors.validation("freq must be 'daily' or 'weekly'")
     if method not in ("kama", "adma"):
-        return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
+        raise errors.validation("method must be 'kama' or 'adma'")
 
-    # Optional parameter overrides (integers only)
     _int_keys = ("sb_er","sb_slow","mb_er","mb_slow","lb_er","lb_slow",
                  "atr_fast","atr_slow","atr_er")
     custom = {}
@@ -171,16 +169,13 @@ def get_adaptive_trend(symbol):
             try:
                 custom[k] = int(v)
             except ValueError:
-                return jsonify({"error": f"{k} must be an integer"}), 400
+                raise errors.validation(f"{k} must be an integer")
 
-    try:
-        result = adaptive.compute_adaptive_trend(
-            symbol.upper(), freq, method, params=custom or None)
-        if "error" in result:
-            return jsonify(result), 404
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    result = adaptive.compute_adaptive_trend(
+        symbol.upper(), freq, method, params=custom or None)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
 
 
 @app.route("/api/adaptive-trend/<string:symbol>/optimize", methods=["POST"])
@@ -189,16 +184,13 @@ def optimize_trend(symbol):
     freq   = body.get("freq", "daily")
     method = body.get("method", "kama")
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        raise errors.validation("freq must be 'daily' or 'weekly'")
     if method not in ("kama", "adma"):
-        return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
-    try:
-        result = adaptive.optimize_adaptive_trend(symbol.upper(), freq, method)
-        if "error" in result:
-            return jsonify(result), 404
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise errors.validation("method must be 'kama' or 'adma'")
+    result = adaptive.optimize_adaptive_trend(symbol.upper(), freq, method)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
 
 
 # -- Scanner --------------------------------------------------------------------
@@ -206,14 +198,11 @@ def optimize_trend(symbol):
 @app.route("/api/scanner", methods=["GET"])
 def get_scanner():
     """Compute multi-timeframe scanner metrics for every watched symbol."""
-    try:
-        symbols = [s['symbol'] for s in db.list_symbols()]
-        if not symbols:
-            return jsonify([])
-        data = scan.compute_scanner(symbols)
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    symbols = [s['symbol'] for s in db.list_symbols()]
+    if not symbols:
+        return jsonify([])
+    data = scan.compute_scanner(symbols)
+    return jsonify(data)
 
 
 # -- Data Manager ---------------------------------------------------------------
@@ -230,14 +219,10 @@ def fetch_batch():
     SSE streaming endpoint.
     POST body: {
         "tickers":      ["AAPL", ...],
-        "start_date":   "2000-01-01",   // optional, default 2000-01-01
-        "delay":        1.5,            // seconds between requests
-        "add_watchlist": true           // whether to add each ticker to watchlist
+        "start_date":   "2000-01-01",
+        "delay":        1.5,
+        "add_watchlist": true
     }
-    Streams SSE events:
-        data: {"type":"start",  "total": N}
-        data: {"type":"result", "index": i, "symbol": "...", "ok": bool, "msg": "..."}
-        data: {"type":"done",   "ok": N, "failed": N}
     """
     body        = request.get_json(force=True) or {}
     tickers     = [t.strip().upper() for t in body.get("tickers", []) if t.strip()]
@@ -246,9 +231,8 @@ def fetch_batch():
     add_wl      = bool(body.get("add_watchlist", True))
 
     if not tickers:
-        return jsonify({"error": "tickers list is empty"}), 400
+        raise ApiError("SYMBOL_REQUIRED", "tickers list is empty", http=400)
 
-    # Clamp delay to reasonable range
     delay = max(0.3, min(delay, 10.0))
 
     def generate():
@@ -284,7 +268,6 @@ def fetch_batch():
                     fail_count += 1
                     yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': False, 'msg': str(exc)})}\n\n"
 
-                # Rate-limiting pause (skip after last ticker)
                 if i < total - 1:
                     time.sleep(delay)
 
@@ -296,10 +279,7 @@ def fetch_batch():
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
-        headers={
-            "Cache-Control":  "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
@@ -310,24 +290,20 @@ def fetch_ratio():
     """
     Compute and store a synthetic A/B ratio OHLCV series.
     POST body: {"sym_a": "AAPL", "sym_b": "MSFT"}
-    Both components must already be fetched.
     """
     body  = request.get_json(force=True) or {}
     sym_a = body.get("sym_a", "").strip().upper()
     sym_b = body.get("sym_b", "").strip().upper()
     if not sym_a or not sym_b:
-        return jsonify({"error": "sym_a and sym_b are required"}), 400
+        raise ApiError("SYMBOL_REQUIRED", "sym_a and sym_b are required", http=400)
     if sym_a == sym_b:
-        return jsonify({"error": "sym_a and sym_b must be different"}), 400
-    # Validate no special chars beyond letters/digits/dot/caret
-    import re
+        raise errors.validation("sym_a and sym_b must be different")
     valid = re.compile(r'^[\^]?[A-Z][A-Z0-9.\-\^]{0,9}$')
     if not valid.match(sym_a) or not valid.match(sym_b):
-        return jsonify({"error": "Invalid symbol format"}), 400
+        raise errors.invalid_symbol(f"{sym_a}/{sym_b}")
     result = fetcher.fetch_ratio_and_store(sym_a, sym_b)
     if "error" in result:
-        return jsonify(result), 400
-    # Auto-register in symbols table so it appears in the watchlist
+        raise ApiError("FETCH_FAILED", result["error"], http=400)
     db.add_symbol(result["symbol"])
     return jsonify(result), 201
 
@@ -345,23 +321,20 @@ def get_regression(symbol):
     """Run OLS regression of symbol forward returns on macro factor features."""
     freq = request.args.get("freq", "daily")
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        raise errors.validation("freq must be 'daily' or 'weekly'")
     try:
         horizon  = int(request.args.get("horizon",  5))
         lookback = int(request.args.get("lookback", 504))
     except (TypeError, ValueError):
-        return jsonify({"error": "horizon and lookback must be integers"}), 400
+        raise errors.validation("horizon and lookback must be integers")
     if not (1 <= horizon <= 60):
-        return jsonify({"error": "horizon must be 1–60"}), 400
+        raise errors.validation("horizon must be 1–60")
     if not (60 <= lookback <= 2000):
-        return jsonify({"error": "lookback must be 60–2000"}), 400
-    try:
-        result = reg.compute_regression(symbol.upper(), freq, horizon, lookback)
-        if "error" in result:
-            return jsonify(result), 404
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise errors.validation("lookback must be 60–2000")
+    result = reg.compute_regression(symbol.upper(), freq, horizon, lookback)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
 
 
 # -- Strategy Tester ------------------------------------------------------------
@@ -369,41 +342,35 @@ def get_regression(symbol):
 @app.route("/api/strategy/backtest", methods=["POST"])
 def strategy_backtest():
     """Run a vectorised backtest for a symbol + strategy config."""
-    body = request.get_json(force=True, silent=True) or {}
+    body   = request.get_json(force=True, silent=True) or {}
     symbol = body.get("symbol", "")
     freq   = body.get("freq", "daily")
     config = body.get("config", {})
     if not symbol:
-        return jsonify({"error": "symbol required"}), 400
+        raise errors.symbol_required()
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
-    try:
-        result = st.run_backtest(symbol.upper(), freq, config)
-        if "error" in result:
-            return jsonify(result), 404
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise errors.validation("freq must be 'daily' or 'weekly'")
+    result = st.run_backtest(symbol.upper(), freq, config)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
 
 
 @app.route("/api/strategy/walk-forward", methods=["POST"])
 def strategy_walk_forward():
     """Walk-forward optimization for a strategy config."""
-    body = request.get_json(force=True, silent=True) or {}
+    body   = request.get_json(force=True, silent=True) or {}
     symbol = body.get("symbol", "")
     freq   = body.get("freq", "daily")
     config = body.get("config", {})
     if not symbol:
-        return jsonify({"error": "symbol required"}), 400
+        raise errors.symbol_required()
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
-    try:
-        result = st.walk_forward_optimize(symbol.upper(), freq, config)
-        if "error" in result:
-            return jsonify(result), 404
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise errors.validation("freq must be 'daily' or 'weekly'")
+    result = st.walk_forward_optimize(symbol.upper(), freq, config)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
 
 
 @app.route("/api/strategy/monte-carlo", methods=["POST"])
@@ -413,12 +380,9 @@ def strategy_monte_carlo():
     trades = body.get("trades", [])
     n_sim  = int(body.get("n_sim", 1000))
     if not trades:
-        return jsonify({"error": "trades list required"}), 400
-    try:
-        result = st.monte_carlo(trades, n_sim)
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise ApiError("SYMBOL_REQUIRED", "trades list required", http=400)
+    result = st.monte_carlo(trades, n_sim)
+    return jsonify(result)
 
 
 # -- Swirligram -----------------------------------------------------------------
@@ -431,20 +395,25 @@ def get_swirligram(symbol):
         daily_trail  = int(request.args.get("trail",  90))
         weekly_trail = int(request.args.get("wtrail", 52))
     except (TypeError, ValueError):
-        return jsonify({"error": "period/trail must be integers"}), 400
+        raise errors.validation("period/trail must be integers")
     if not (5 <= rsi_period <= 50):
-        return jsonify({"error": "period must be 5–50"}), 400
+        raise errors.validation("period must be 5–50")
     if not (20 <= daily_trail <= 504):
-        return jsonify({"error": "trail must be 20–504"}), 400
-    try:
-        result = swirl.compute_swirligram(
-            symbol.upper(), rsi_period, daily_trail, weekly_trail
-        )
-        if "error" in result:
-            return jsonify(result), 404
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise errors.validation("trail must be 20–504")
+    result = swirl.compute_swirligram(
+        symbol.upper(), rsi_period, daily_trail, weekly_trail)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
+
+
+# -- Cache stats (debug) --------------------------------------------------------
+
+@app.route("/api/_cache/stats", methods=["GET"])
+def get_cache_stats():
+    """Return indicator cache hit/miss stats."""
+    import indicator_cache as cache
+    return jsonify(cache.cache_stats())
 
 
 # -- Entry point ----------------------------------------------------------------

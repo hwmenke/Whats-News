@@ -13,6 +13,7 @@ Key buy signal (per user intent):
 import numpy as np
 import pandas as pd
 import database as db
+import indicator_cache as cache
 from ta_core import _kama, _rsi
 
 
@@ -328,19 +329,16 @@ def compute_swirligram(symbol: str, rsi_period: int = 14,
                        weekly_trail: int = 52) -> dict:
     """
     Return daily + weekly RSI phase-space data for the Swirligram tab.
-
-    Response shape:
-    {
-      symbol, rsi_period,
-      daily: {
-        rsi, drsi, dates,   <- lists of floats / strings, aligned
-        current: {rsi, drsi},
-        signal: {label, score, color, details}
-      },
-      weekly: { ...same... } | null,
-      combined: {label, score, color}
-    }
     """
+    return cache.get_or_compute(
+        "compute_swirligram", symbol, "daily",
+        lambda: _compute_swirligram_inner(symbol, rsi_period, daily_trail, weekly_trail),
+        rsi_period=rsi_period, daily_trail=daily_trail, weekly_trail=weekly_trail,
+    )
+
+
+def _compute_swirligram_inner(symbol: str, rsi_period: int,
+                               daily_trail: int, weekly_trail: int) -> dict:
     daily_limit  = daily_trail  + rsi_period + 60
     weekly_limit = weekly_trail + rsi_period + 20
 

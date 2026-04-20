@@ -10,11 +10,12 @@ const DEFAULT_KAMA_PERIODS = [10, 20, 50];
 
 // App state
 let state = {
-    symbols:      [],
-    activeSymbol: null,
-    loading:      false,
-    activeTab:    'charts',
-    statsData:    null,
+    symbols:         [],
+    activeSymbol:    null,
+    loading:         false,
+    activeTab:       'charts',
+    statsData:       null,
+    watchlistFilter: '',
 };
 
 let statsCharts = {};
@@ -35,14 +36,25 @@ function toast(message, type = 'info', duration = 3500) {
 // ── API helpers ──────────────────────────────────────────────
 async function apiFetch(url, opts = {}) {
     console.log(`>> API Fetch: ${url}`, opts.method || 'GET');
-    const res  = await fetch(url, opts);
+    const res = await fetch(url, opts);
     console.log(`<< API Response: ${res.status} ${res.statusText}`);
-    const data = await res.json();
+    let data;
+    try { data = await res.json(); } catch (_) { data = null; }
     if (!res.ok) {
-        console.error('!! API Error:', data.error || `HTTP ${res.status}`);
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const err    = new Error(data?.message || data?.error || `HTTP ${res.status}`);
+        err.code     = data?.code   || 'HTTP_' + res.status;
+        err.hint     = data?.hint   || null;
+        err.status   = res.status;
+        console.error('!! API Error:', err.code, err.message);
+        throw err;
     }
     return data;
+}
+
+function toastFromError(err, prefix = '') {
+    const base = prefix ? `${prefix}: ${err.message}` : err.message;
+    const msg  = err.hint ? `${base} — ${err.hint}` : base;
+    toast(msg, 'error');
 }
 
 // ── Clock ────────────────────────────────────────────────────
@@ -133,7 +145,7 @@ function setupKamaAddForm() {
                 loadIndicatorsToPanel('daily',  dailyInd);
                 loadIndicatorsToPanel('weekly', weeklyInd);
             } catch (e) {
-                toast('Failed to load new KAMA: ' + e.message, 'error');
+                toastFromError(e, 'KAMA');
             }
         }
     };
@@ -148,8 +160,25 @@ async function loadSymbols() {
         state.symbols = await apiFetch(`${API}/symbols`);
         renderSymbolList();
     } catch (e) {
-        toast('Failed to load symbols: ' + e.message, 'error');
+        toastFromError(e, 'Symbols');
     }
+}
+
+function _moveWatchlist(delta) {
+    const visible = state.symbols.filter(s => _matchesFilter(s, state.watchlistFilter));
+    if (!visible.length) return;
+    const idx = visible.findIndex(s => s.symbol === state.activeSymbol);
+    const next = visible[(idx + delta + visible.length) % visible.length];
+    selectSymbol(next.symbol);
+}
+
+// Watchlist filter helper
+function _matchesFilter(symEntry, needle) {
+    if (!needle) return true;
+    const n = needle.toLowerCase();
+    return symEntry.symbol.toLowerCase().includes(n) ||
+           (symEntry.name   || '').toLowerCase().includes(n) ||
+           (symEntry.sector || '').toLowerCase().includes(n);
 }
 
 // Display symbol — converts internal "A~B" store format to "A/B" for ratios
@@ -161,12 +190,24 @@ function renderSymbolList() {
     const list = document.getElementById('symbol-list');
     list.innerHTML = '';
 
+    const visible = state.symbols.filter(s => _matchesFilter(s, state.watchlistFilter));
+    const countEl = document.getElementById('watchlist-count');
+    if (countEl) {
+        countEl.textContent = state.watchlistFilter
+            ? `${visible.length}/${state.symbols.length}`
+            : (state.symbols.length ? `${state.symbols.length}` : '');
+    }
+
     if (!state.symbols.length) {
         list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No symbols yet.</div>';
         return;
     }
+    if (!visible.length) {
+        list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No matches.</div>';
+        return;
+    }
 
-    state.symbols.forEach(sym => {
+    visible.forEach(sym => {
         const isRatio = sym.symbol.includes('~');
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
@@ -224,7 +265,7 @@ async function addSymbol() {
         await loadSymbols();
         selectSymbol(symbol);
     } catch (e) {
-        toast('Error: ' + e.message, 'error');
+        toastFromError(e, 'Add symbol');
     } finally {
         input.disabled = false;
     }
@@ -240,7 +281,7 @@ async function removeSymbol(symbol) {
         }
         await loadSymbols();
     } catch (e) {
-        toast('Error: ' + e.message, 'error');
+        toastFromError(e, 'Remove symbol');
     }
 }
 
@@ -256,7 +297,7 @@ async function fetchSymbolData(symbol, silent = false) {
         return true;
     } catch (e) {
         console.error(`[App] Fetch failed for ${symbol}:`, e);
-        if (!silent) toast(`${symbol} fetch failed: ` + e.message, 'error');
+        if (!silent) toastFromError(e, symbol);
         return false;
     }
 }
@@ -392,7 +433,7 @@ async function refreshAll() {
         await loadSymbols();
         if (state.activeSymbol) await loadChartData(state.activeSymbol);
     } catch (e) {
-        toast('Refresh failed: ' + e.message, 'error');
+        toastFromError(e, 'Refresh');
     } finally {
         btn.disabled = false;
         btn.innerHTML = '⟳ Refresh All';
@@ -402,6 +443,7 @@ async function refreshAll() {
 // ── Symbol selection & chart loading ─────────────────────────
 async function selectSymbol(symbol) {
     state.activeSymbol = symbol;
+    persistence.save({ activeSymbol: symbol });
     renderSymbolList();
     // Update header immediately with symbol name
     const sym = state.symbols.find(s => s.symbol === symbol);
@@ -432,8 +474,8 @@ async function loadStatsData(symbol) {
             apiFetch(`${API}/ohlcv/${symbol}?freq=daily&limit=2`),
             apiFetch(`${API}/stats/${symbol}`),
         ]).catch(async e => {
-            // If it's a 404/No data, try fetching
-            if (e.message.includes('404') || e.message.includes('No data')) {
+            // If it's a NO_DATA error, try auto-fetching
+            if (e.code === 'NO_DATA' || e.status === 404) {
                 toast(`No data for ${symbol}. Downloading…`, 'info');
                 const ok = await fetchSymbolData(symbol);
                 if (!ok) throw e;
@@ -448,12 +490,12 @@ async function loadStatsData(symbol) {
 
         state.statsData = stats;
         renderStats(stats);
-        
+
         const last = ohlcv[ohlcv.length - 1];
         const prev = ohlcv[ohlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
-        toast('Stats load failed: ' + e.message, 'error');
+        toastFromError(e, 'Stats');
         // Clear old stats if error
         document.getElementById('stat-vol').textContent = '--';
         document.getElementById('stat-sharpe').textContent = '--';
@@ -481,16 +523,19 @@ async function loadChartData(symbol) {
             apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
         ]).catch(async e => {
             // No data yet — auto-fetch then retry
-            toast(`No data for ${symbol}. Downloading…`, 'info');
-            const ok = await fetchSymbolData(symbol);
-            if (!ok) throw e;
-            await loadSymbols();
-            return Promise.all([
-                apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
-                apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`),
-                apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`),
-                apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
-            ]);
+            if (e.code === 'NO_DATA' || e.status === 404) {
+                toast(`No data for ${symbol}. Downloading…`, 'info');
+                const ok = await fetchSymbolData(symbol);
+                if (!ok) throw e;
+                await loadSymbols();
+                return Promise.all([
+                    apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
+                    apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`),
+                    apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`),
+                    apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
+                ]);
+            }
+            throw e;
         });
 
         initCharts();
@@ -505,7 +550,7 @@ async function loadChartData(symbol) {
         const prev = dailyOhlcv[dailyOhlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
-        toast('Chart load failed: ' + e.message, 'error');
+        toastFromError(e, 'Chart');
         showEmptyState();
     } finally {
         state.loading = false;
@@ -540,7 +585,7 @@ async function loadAdaptiveTrendData(symbol) {
             apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
             apiFetch(_trendUrl()),
         ]).catch(async e => {
-            if (e.message.includes('404') || e.message.includes('No data')) {
+            if (e.code === 'NO_DATA' || e.status === 404) {
                 toast(`No data for ${symbol}. Downloading…`, 'info');
                 const ok = await fetchSymbolData(symbol);
                 if (!ok) throw e;
@@ -560,7 +605,7 @@ async function loadAdaptiveTrendData(symbol) {
         const prev = ohlcv[ohlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
-        toast('Adaptive Trend load failed: ' + e.message, 'error');
+        toastFromError(e, 'Trend');
     } finally {
         if (loadingEl) loadingEl.style.display = 'none';
     }
@@ -599,6 +644,7 @@ function showLoadingOverlay(show) {
 // ── Tab Switching ─────────────────────────────────────────────
 async function switchTab(tabId) {
     state.activeTab = tabId;
+    persistence.save({ activeTab: tabId });
 
     // Update buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -672,7 +718,7 @@ async function addRatioSymbol() {
         await loadSymbols();
         selectSymbol(result.symbol);
     } catch (e) {
-        toast(`Ratio error: ${e.message}`, 'error');
+        toastFromError(e, 'Ratio');
     } finally {
         if (btn) btn.disabled = false;
     }
@@ -739,11 +785,8 @@ function renderStats(data) {
         }
     };
 
-    const destroy = (id) => { if (statsCharts[id]) statsCharts[id].destroy(); };
-
     // 1. RSI Deciles 1D
-    destroy('rsi1d');
-    statsCharts['rsi1d'] = new Chart(document.getElementById('chart-rsi-1d'), {
+    statsCharts['rsi1d'] = updateOrCreate('stats.rsi1d', document.getElementById('chart-rsi-1d'), {
         type: 'bar',
         data: {
             labels: data.rsi_analysis.fwd_1d.map(d => `D${d.bin+1}`),
@@ -758,7 +801,7 @@ function renderStats(data) {
 
     // 2b. Price vs KAMA distance deciles (1D)
     destroy('kamaDist1d');
-    statsCharts['kamaDist1d'] = new Chart(document.getElementById('chart-kama-dist-1d'), {
+    statsCharts['kamaDist1d'] = updateOrCreate('stats.kamaDist1d', document.getElementById('chart-kama-dist-1d'), {
         type: 'line',
         data: {
             labels: Array.from({ length: 10 }, (_, i) => `D${i + 1}`),
@@ -779,7 +822,7 @@ function renderStats(data) {
 
     // 2. RSI Deciles 5D
     destroy('rsi5d');
-    statsCharts['rsi5d'] = new Chart(document.getElementById('chart-rsi-5d'), {
+    statsCharts['rsi5d'] = updateOrCreate('stats.rsi5d', document.getElementById('chart-rsi-5d'), {
         type: 'bar',
         data: {
             labels: data.rsi_analysis.fwd_5d.map(d => `D${d.bin+1}`),
@@ -794,7 +837,7 @@ function renderStats(data) {
 
     // 2c. Price vs KAMA distance deciles (5D)
     destroy('kamaDist5d');
-    statsCharts['kamaDist5d'] = new Chart(document.getElementById('chart-kama-dist-5d'), {
+    statsCharts['kamaDist5d'] = updateOrCreate('stats.kamaDist5d', document.getElementById('chart-kama-dist-5d'), {
         type: 'line',
         data: {
             labels: Array.from({ length: 10 }, (_, i) => `D${i + 1}`),
@@ -815,7 +858,7 @@ function renderStats(data) {
 
     // 3. Returns Distribution
     destroy('dist');
-    statsCharts['dist'] = new Chart(document.getElementById('chart-dist'), {
+    statsCharts['dist'] = updateOrCreate('stats.dist', document.getElementById('chart-dist'), {
         type: 'bar',
         data: {
             labels: data.distribution.map(d => (d.bin * 100).toFixed(1) + '%'),
@@ -840,7 +883,7 @@ function renderStats(data) {
     // 4. Seasonality
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     destroy('season');
-    statsCharts['season'] = new Chart(document.getElementById('chart-seasonality'), {
+    statsCharts['season'] = updateOrCreate('stats.season', document.getElementById('chart-seasonality'), {
         type: 'bar',
         data: {
             labels: data.seasonality.map(d => monthNames[d.month-1]),
@@ -854,7 +897,7 @@ function renderStats(data) {
 
     // 4b. KAMA cross forward returns
     destroy('kamaCross');
-    statsCharts['kamaCross'] = new Chart(document.getElementById('chart-kama-cross'), {
+    statsCharts['kamaCross'] = updateOrCreate('stats.kamaCross', document.getElementById('chart-kama-cross'), {
         type: 'bar',
         data: {
             labels: (data.kama_cross_analysis || []).map(d => d.label),
@@ -880,7 +923,7 @@ function renderStats(data) {
 
     // 4c. KAMA cross event counts
     destroy('kamaCrossCounts');
-    statsCharts['kamaCrossCounts'] = new Chart(document.getElementById('chart-kama-cross-counts'), {
+    statsCharts['kamaCrossCounts'] = updateOrCreate('stats.kamaCrossCounts', document.getElementById('chart-kama-cross-counts'), {
         type: 'bar',
         data: {
             labels: (data.kama_cross_analysis || []).map(d => d.label),
@@ -961,10 +1004,61 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.key === 'Escape') closeBulkModal();
     });
 
+    // Watchlist filter
+    const wlSearch = document.getElementById('watchlist-search');
+    if (wlSearch) {
+        let _filterTimer = null;
+        wlSearch.addEventListener('input', () => {
+            clearTimeout(_filterTimer);
+            _filterTimer = setTimeout(() => {
+                state.watchlistFilter = wlSearch.value.trim();
+                renderSymbolList();
+            }, 150);
+        });
+        wlSearch.addEventListener('keydown', e => {
+            if (e.key === 'Enter') {
+                const visible = state.symbols.filter(s => _matchesFilter(s, state.watchlistFilter));
+                if (visible.length) selectSymbol(visible[0].symbol);
+            } else if (e.key === 'Escape') {
+                wlSearch.value = '';
+                state.watchlistFilter = '';
+                renderSymbolList();
+                wlSearch.blur();
+            }
+        });
+    }
+
+    // Keyboard shortcuts
+    const TAB_ORDER = ['charts','stats','trend','scanner','data-manager','regression','strategy','swirl'];
+    TAB_ORDER.forEach((id, i) =>
+        registerShortcut({ key: String(i + 1), handler: () => switchTab(id), description: `Go to ${id}` })
+    );
+    registerShortcut({ key: 'j', handler: () => _moveWatchlist(+1), description: 'Next symbol' });
+    registerShortcut({ key: 'k', handler: () => _moveWatchlist(-1), description: 'Previous symbol' });
+    registerShortcut({ key: 'r', handler: () => { if (state.activeSymbol) switchTab(state.activeTab); }, description: 'Reload view' });
+    registerShortcut({ key: '/', handler: () => document.getElementById('watchlist-search')?.focus(), description: 'Focus watchlist search' });
+    registerShortcut({ key: '?', shift: true, handler: showShortcutsHelp, description: 'Show this help' });
+
     await loadSymbols();
 
-    if (state.symbols.length && state.symbols[0].last_fetch) {
-        selectSymbol(state.symbols[0].symbol);
+    const saved = persistence.load();
+    const savedSym = saved?.activeSymbol;
+    const savedTab = saved?.activeTab || 'charts';
+
+    // Restore active tab button highlight first
+    const tabBtn = document.getElementById(`tab-${savedTab}`);
+    if (tabBtn) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        tabBtn.classList.add('active');
+    }
+    state.activeTab = savedTab;
+
+    // Restore symbol only if it's still in the watchlist
+    const validSym = savedSym && state.symbols.find(s => s.symbol === savedSym);
+    if (validSym) {
+        await selectSymbol(savedSym);
+    } else if (state.symbols.length && state.symbols[0].last_fetch) {
+        await selectSymbol(state.symbols[0].symbol);
     } else {
         showEmptyState();
     }

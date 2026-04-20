@@ -10,6 +10,7 @@ overridden per-request to support UI-driven optimization.
 import numpy as np
 import pandas as pd
 import database as db
+import indicator_cache as cache
 
 
 # ── JSON helpers ──────────────────────────────────────────────
@@ -285,6 +286,16 @@ def compute_adaptive_trend(symbol: str, freq: str = "daily",
     Public entry point.  `params` is an optional dict of overrides on top of
     DEFAULT_PARAMS — only the keys provided are overridden.
     """
+    frozen_params = tuple(sorted((params or {}).items()))
+    return cache.get_or_compute(
+        "compute_adaptive_trend", symbol, freq,
+        lambda: _compute_adaptive_trend_inner(symbol, freq, method, params),
+        method=method, params=frozen_params,
+    )
+
+
+def _compute_adaptive_trend_inner(symbol: str, freq: str,
+                                  method: str, params: dict) -> dict:
     df = db.get_ohlcv_df(symbol, freq, limit=1500)
     if df.empty:
         return {"error": "No OHLCV data found"}

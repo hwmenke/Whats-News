@@ -214,6 +214,30 @@ html, body {
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Symbol List ──────────────────────────────────────────── */
+.watchlist-filter {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.watchlist-filter input {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.watchlist-filter input::placeholder { color: var(--text-dim); }
+.watchlist-filter input:focus { outline: none; border-color: var(--accent); }
+#watchlist-count {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
 .symbol-list {
   flex: 1;
   overflow-y: auto;

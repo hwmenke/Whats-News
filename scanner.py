@@ -22,6 +22,7 @@ Timeframe lookbacks used for percentile rank windows:
 import numpy as np
 import pandas as pd
 import database as db
+import indicator_cache as cache
 from ta_core import _kama, _rsi as _rsi_core
 
 
@@ -187,6 +188,15 @@ def compute_scanner(symbols: list) -> list:
     Compute D/W/M scanner metrics for every symbol in the list.
     Returns a JSON-serialisable list of row dicts.
     """
+    sym_key = tuple(sorted(symbols))
+    return cache.get_or_compute(
+        "compute_scanner", "__all__", "daily",
+        lambda: _compute_scanner_inner(symbols),
+        symbols=sym_key,
+    )
+
+
+def _compute_scanner_inner(symbols: list) -> list:
     results = []
     for sym in symbols:
         try:

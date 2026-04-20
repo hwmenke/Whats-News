@@ -32,6 +32,14 @@ const GROUP_LABELS = {
 
 // ── Init ──────────────────────────────────────────────────────
 async function initRegression() {
+    if (typeof persistence !== 'undefined') {
+        const saved = persistence.loadTab('regression');
+        if (saved) {
+            if (saved.freq     != null) setRegFreq(saved.freq);
+            if (saved.horizon  != null) { regState.horizon  = saved.horizon;  const el = document.getElementById('reg-horizon');  if (el) el.value = saved.horizon; }
+            if (saved.lookback != null) { regState.lookback = saved.lookback; const el = document.getElementById('reg-lookback'); if (el) el.value = saved.lookback; }
+        }
+    }
     await loadFactorStatus();
 }
 
@@ -124,6 +132,14 @@ async function runRegression() {
     if (!symbol) {
         toast('Select a symbol first', 'warning');
         return;
+    }
+
+    if (typeof persistence !== 'undefined') {
+        persistence.saveTab('regression', {
+            freq:     regState.freq,
+            horizon:  regState.horizon,
+            lookback: regState.lookback,
+        });
     }
 
     const btn       = document.getElementById('btn-run-regression');

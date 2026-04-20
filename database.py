@@ -10,6 +10,7 @@ import sqlite3
 import os
 import pandas as pd
 from datetime import datetime, timezone
+import indicator_cache as cache
 
 logger = logging.getLogger(__name__)
 
@@ -89,11 +90,13 @@ def add_symbol(symbol: str, name: str = "", sector: str = ""):
 
 
 def remove_symbol(symbol: str):
+    sym = symbol.upper()
     conn = get_connection()
-    conn.execute("DELETE FROM symbols WHERE symbol = ?", (symbol.upper(),))
-    conn.execute("DELETE FROM ohlcv WHERE symbol = ?", (symbol.upper(),))
+    conn.execute("DELETE FROM symbols WHERE symbol = ?", (sym,))
+    conn.execute("DELETE FROM ohlcv WHERE symbol = ?", (sym,))
     conn.commit()
     conn.close()
+    cache.bump_version(sym)
 
 
 def update_last_fetch(symbol: str):

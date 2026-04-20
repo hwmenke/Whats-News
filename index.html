@@ -59,6 +59,11 @@
       </div>
     </div>
 
+    <div class="watchlist-filter">
+      <input id="watchlist-search" type="text" placeholder="Filter…" autocomplete="off" spellcheck="false">
+      <span id="watchlist-count"></span>
+    </div>
+
     <div id="symbol-list" class="symbol-list">
       <!-- Rendered by app.js -->
     </div>
@@ -1025,6 +1030,9 @@
 </div>
 
 <!-- Scripts -->
+<script src="scripts/chart_helpers.js"></script>
+<script src="scripts/persistence.js"></script>
+<script src="scripts/shortcuts.js"></script>
 <script src="scripts/charts.js"></script>
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>

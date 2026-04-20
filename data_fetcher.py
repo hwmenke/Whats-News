@@ -7,6 +7,7 @@ import yfinance as yf
 import numpy as np
 import pandas as pd
 import database as db
+import indicator_cache as cache
 
 
 def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
@@ -87,6 +88,7 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
 
     db.update_symbol_info(sym, name, sector)
     db.update_last_fetch(sym)
+    cache.bump_version(sym)
 
     return {
         "symbol":       sym,
@@ -146,6 +148,7 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
             db.update_symbol_info(sym, name, sector)
             db.update_last_fetch(sym)
 
+            cache.bump_version(sym)
             return {
                 "symbol":      sym,
                 "name":        name,
@@ -228,6 +231,7 @@ def fetch_ratio_and_store(sym_a: str, sym_b: str) -> dict:
 
     daily_count  = db.upsert_ohlcv(ratio_sym, "daily",  ratio_df)
     weekly_count = db.upsert_ohlcv(ratio_sym, "weekly", weekly_df)
+    cache.bump_version(ratio_sym)
 
     print(f"++ Ratio: Stored {daily_count}d / {weekly_count}w for {ratio_sym}")
     return {

@@ -7,6 +7,7 @@ Returns a dict ready to be JSON-serialised.
 import numpy as np
 import pandas as pd
 import database as db
+import indicator_cache as cache
 from ta_core import _kama, _rsi, _bollinger, _macd, _cci
 
 
@@ -32,9 +33,15 @@ def _series_to_list(s: pd.Series) -> list:
 
 
 def compute_indicators(symbol: str, freq: str = "daily", kama_periods: list = None) -> dict:
-    if kama_periods is None:
-        kama_periods = [10, 20, 50]
+    kama_periods = kama_periods or [10, 20, 50]
+    return cache.get_or_compute(
+        "compute_indicators", symbol, freq,
+        lambda: _compute_indicators_inner(symbol, freq, kama_periods),
+        kama_periods=tuple(kama_periods),
+    )
 
+
+def _compute_indicators_inner(symbol: str, freq: str, kama_periods: list) -> dict:
     df = db.get_ohlcv_df(symbol, freq, limit=1000)
     if df.empty:
         return {"error": "No OHLCV data found"}

@@ -38,6 +38,13 @@ const SW_BADGE_CLASS = {
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 function initSwirligram() {
+    if (typeof persistence !== 'undefined') {
+        const saved = persistence.loadTab('swirl');
+        if (saved) {
+            if (saved.trail  != null) { const el = document.getElementById('sw-trail');  if (el) el.value = saved.trail; }
+            if (saved.period != null) { const el = document.getElementById('sw-period'); if (el) el.value = saved.period; }
+        }
+    }
     if (typeof state !== 'undefined' && state.activeSymbol) {
         swLoad();
     }
@@ -50,6 +57,10 @@ async function swLoad() {
 
     const trail  = parseInt(document.getElementById('sw-trail')?.value  || '90',  10);
     const period = parseInt(document.getElementById('sw-period')?.value || '14', 10);
+
+    if (typeof persistence !== 'undefined') {
+        persistence.saveTab('swirl', { trail, period });
+    }
 
     _swSetLoading(true);
 
@@ -141,11 +152,6 @@ function _swUpdateHeaderStats(daily, weekly, kama) {
 function _swRenderPhaseChart(canvasId, xArr, yArr, dates, signal, stateKey, opts = {}) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || !xArr?.length) return;
-
-    if (swState.charts[stateKey]) {
-        try { swState.charts[stateKey].destroy(); } catch (_) {}
-        swState.charts[stateKey] = null;
-    }
 
     const {
         xLabel     = 'X',
@@ -253,7 +259,7 @@ function _swRenderPhaseChart(canvasId, xArr, yArr, dates, signal, stateKey, opts
         },
     };
 
-    swState.charts[stateKey] = new Chart(canvas, {
+    swState.charts[stateKey] = updateOrCreate('sw.' + stateKey, canvas, {
         type: 'line',
         data: {
             datasets: [
@@ -405,11 +411,6 @@ function _swRenderTimeline(canvasId, yArr, dates, stateKey, opts = {}) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || !yArr?.length || !dates?.length) return;
 
-    if (swState.charts[stateKey]) {
-        try { swState.charts[stateKey].destroy(); } catch (_) {}
-        swState.charts[stateKey] = null;
-    }
-
     const {
         yMin      = 0,
         yMax      = 100,
@@ -471,7 +472,7 @@ function _swRenderTimeline(canvasId, yArr, dates, stateKey, opts = {}) {
         },
     };
 
-    swState.charts[stateKey] = new Chart(canvas, {
+    swState.charts[stateKey] = updateOrCreate('sw.' + stateKey, canvas, {
         type: 'line',
         data: {
             labels: dates,

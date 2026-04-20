@@ -20,9 +20,12 @@ const stState = {
 
 // ── Init ──────────────────────────────────────────────────────
 function initStrategyTester() {
-    // Sync active symbol display
     if (typeof state !== 'undefined' && state.activeSymbol) {
         stState.symbol = state.activeSymbol;
+    }
+    if (typeof persistence !== 'undefined') {
+        const saved = persistence.loadTab('strategy');
+        if (saved?.freq) stSetFreq(saved.freq);
     }
 }
 
@@ -208,6 +211,10 @@ async function stRunBacktest() {
 
     const config = stReadConfig();
     if (!config.entry_long) { toast('Add at least one Entry Long condition', 'warning'); return; }
+
+    if (typeof persistence !== 'undefined') {
+        persistence.saveTab('strategy', { freq: stState.freq });
+    }
 
     _stSetLoading(true);
 
@@ -430,11 +437,10 @@ function _stRenderWalkForward(data) {
     // Fold bar chart via Chart.js
     const container = document.getElementById('st-wf-fold-chart');
     if (container && data.folds?.length) {
-        if (stState.wfChart) stState.wfChart.destroy();
         const labels = data.folds.map(f => `Fold ${f.fold}`);
         const isSharpe = data.folds.map(f => f.is_metric);
         const oosSharpe = data.folds.map(f => f.oos_metric);
-        stState.wfChart = new Chart(container, {
+        stState.wfChart = updateOrCreate('st.wf', container, {
             type: 'bar',
             data: {
                 labels,
@@ -501,12 +507,10 @@ function _stRenderMonteCarlo(data) {
 
     const container = document.getElementById('st-mc-chart');
     if (!container || !data.percentiles) return;
-    if (stState.mcChart) stState.mcChart.destroy();
-
     const n = data.percentiles.p50.length;
     const labels = Array.from({ length: n }, (_, i) => i + 1);
 
-    stState.mcChart = new Chart(container, {
+    stState.mcChart = updateOrCreate('st.mc', container, {
         type: 'line',
         data: {
             labels,
