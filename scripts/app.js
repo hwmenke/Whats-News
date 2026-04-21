@@ -567,12 +567,15 @@ async function loadAdaptiveTrendData(symbol) {
     if (loadingEl) loadingEl.style.display = 'flex';
     updateSymbolHeader(symbol, null);
 
-    const freq   = trendState.freq;
-    const method = trendState.method;
+    const method  = trendState.method;
+    const isBoth  = trendState.freq === 'both';
+    const freqD   = 'daily';
+    const freqW   = 'weekly';
+    const freq    = isBoth ? freqD : trendState.freq;
 
     // Build trend URL — append custom params if set
-    const _trendUrl = () => {
-        let url = `${API}/adaptive-trend/${symbol}?freq=${freq}&method=${method}`;
+    const _trendUrl = (f) => {
+        let url = `${API}/adaptive-trend/${symbol}?freq=${f}&method=${method}`;
         if (trendState.params) {
             url += '&' + Object.entries(trendState.params)
                 .map(([k, v]) => `${k}=${v}`).join('&');
@@ -581,29 +584,49 @@ async function loadAdaptiveTrendData(symbol) {
     };
 
     try {
-        let [ohlcv, trendData] = await Promise.all([
-            apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
-            apiFetch(_trendUrl()),
-        ]).catch(async e => {
+        // In "Both" mode fetch daily + weekly concurrently
+        const fetches = isBoth
+            ? [
+                apiFetch(`${API}/ohlcv/${symbol}?freq=${freqD}`),
+                apiFetch(_trendUrl(freqD)),
+                apiFetch(`${API}/ohlcv/${symbol}?freq=${freqW}`),
+                apiFetch(_trendUrl(freqW)),
+              ]
+            : [
+                apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
+                apiFetch(_trendUrl(freq)),
+              ];
+
+        let results = await Promise.all(fetches).catch(async e => {
             if (e.code === 'NO_DATA' || e.status === 404) {
                 toast(`No data for ${symbol}. Downloading…`, 'info');
                 const ok = await fetchSymbolData(symbol);
                 if (!ok) throw e;
                 await loadSymbols();
-                return Promise.all([
-                    apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
-                    apiFetch(_trendUrl()),
-                ]);
+                return Promise.all(fetches);
             }
             throw e;
         });
 
-        buildTrendCharts();
-        loadTrendData(trendData, ohlcv);
+        if (isBoth) {
+            const [ohlcv, trendData, ohlcvW, trendDataW] = results;
+            buildTrendCharts();
+            buildWeeklyTrendCharts();
+            loadTrendData(trendData, ohlcv);
+            loadWeeklyTrendData(trendDataW, ohlcvW);
 
-        const last = ohlcv[ohlcv.length - 1];
-        const prev = ohlcv[ohlcv.length - 2];
-        updateSymbolHeader(symbol, last, prev);
+            const last = ohlcv[ohlcv.length - 1];
+            const prev = ohlcv[ohlcv.length - 2];
+            updateSymbolHeader(symbol, last, prev);
+        } else {
+            const [ohlcv, trendData] = results;
+            buildTrendCharts();
+            loadTrendData(trendData, ohlcv);
+
+            const last = ohlcv[ohlcv.length - 1];
+            const prev = ohlcv[ohlcv.length - 2];
+            updateSymbolHeader(symbol, last, prev);
+        }
     } catch (e) {
         toastFromError(e, 'Trend');
     } finally {

@@ -309,7 +309,7 @@
     <!-- ── Adaptive Trend Area ── -->
     <div id="trend-area" class="trend-container" style="display:none;">
 
-      <!-- Full-area loading overlay — sits over the whole trend container -->
+      <!-- Full-area loading overlay -->
       <div id="trend-loading" class="chart-loading" style="display:none;">
         <span class="spinner"></span>
         Computing adaptive trend…
@@ -326,6 +326,9 @@
           <span class="overlay-section-label">Freq</span>
           <button class="ind-pill trend-active trend-freq-btn" data-val="daily"  onclick="setTrendFreq('daily')">Daily</button>
           <button class="ind-pill trend-freq-btn"              data-val="weekly" onclick="setTrendFreq('weekly')">Weekly</button>
+          <button class="ind-pill trend-freq-btn trend-both-btn" data-val="both" onclick="setTrendFreq('both')">
+            <span class="trend-both-icon">⊞</span> Both
+          </button>
         </div>
         <div class="trend-controls-group">
           <span class="overlay-section-label">Baselines</span>
@@ -384,86 +387,157 @@
         </div>
       </div>
 
-      <!-- Description strip — updates on button hover -->
+      <!-- Description strip -->
       <div id="trend-line-desc" class="trend-line-desc"></div>
 
-      <!-- Optimize result panel — hidden until optimize completes -->
+      <!-- Optimize result panel -->
       <div id="trend-opt-panel" class="trend-opt-panel" style="display:none;"></div>
 
-      <!-- Two-panel layout -->
-      <div class="trend-panels">
+      <!-- Main panels row -->
+      <div class="trend-panels" id="trend-panels">
 
-        <!-- ── Main chart panel ── -->
-        <div class="trend-panel-main">
-          <div class="panel-header">Price · Adaptive Bands</div>
+        <!-- Charts stack (daily + optionally weekly) -->
+        <div class="trend-charts-stack">
 
-          <!-- Price chart — flex:1 fills remaining height -->
-          <div class="trend-price-wrap">
-            <div id="trend-chart-price" style="width:100%;height:100%;"></div>
+          <!-- Daily chart panel -->
+          <div class="trend-panel-main" id="trend-panel-daily">
+            <div class="trend-panel-header">
+              <span class="trend-panel-header-label" id="trend-daily-label">Price · Adaptive Bands</span>
+            </div>
+            <div class="trend-price-wrap">
+              <div id="trend-chart-price" style="width:100%;height:100%;"></div>
+            </div>
+            <div class="chart-divider"></div>
+            <div class="trend-regime-wrap">
+              <div class="chart-label">S / M / L REGIME</div>
+              <div id="trend-chart-regime" style="width:100%;height:100%;"></div>
+            </div>
           </div>
 
-          <div class="chart-divider"></div>
-
-          <!-- Regime strip — fixed height, shows all 3 horizons -->
-          <div class="trend-regime-wrap">
-            <div class="chart-label">S / M / L REGIME</div>
-            <div id="trend-chart-regime" style="width:100%;height:100%;"></div>
+          <!-- Weekly chart panel (shown only in Both mode) -->
+          <div class="trend-panel-main trend-panel-weekly" id="trend-panel-weekly" style="display:none;">
+            <div class="trend-panel-header trend-panel-header-w">
+              <span class="trend-panel-header-label">Weekly · Adaptive Bands</span>
+              <span class="trend-freq-badge">W</span>
+            </div>
+            <div class="trend-price-wrap">
+              <div id="trend-chart-price-w" style="width:100%;height:100%;"></div>
+            </div>
+            <div class="chart-divider"></div>
+            <div class="trend-regime-wrap">
+              <div class="chart-label">S / M / L REGIME (Weekly)</div>
+              <div id="trend-chart-regime-w" style="width:100%;height:100%;"></div>
+            </div>
           </div>
-        </div>
+
+        </div><!-- .trend-charts-stack -->
 
         <div class="panel-divider"></div>
 
-        <!-- ── Signal panel ── -->
-        <div class="trend-panel-signal">
-          <div class="panel-header">Signal Summary</div>
+        <!-- Signal panel -->
+        <div class="trend-panel-signal" id="trend-panel-signal">
 
-          <!-- Composite signal badge (most prominent element) -->
+          <!-- Header with collapse button -->
+          <div class="trend-sig-header">
+            <span class="trend-sig-title">Signal Summary</span>
+            <button class="trend-sig-collapse-btn" id="trend-sig-collapse-btn"
+                    onclick="toggleTrendSignalPanel()" title="Hide panel">‹</button>
+          </div>
+
+          <!-- Composite badge -->
           <div class="trend-composite-wrap">
-            <div class="trend-composite-label">Composite Signal</div>
-            <div id="trend-composite" class="trend-composite-badge neutral">—</div>
-            <div id="trend-strength"  class="trend-strength-bar neutral">○ ○ ○</div>
-            <div id="trend-align"     class="trend-align-detail">—</div>
+            <div class="trend-composite-cols" id="trend-composite-cols">
+              <div class="trend-composite-col">
+                <div class="trend-composite-freq-label" id="trend-comp-label-d">Daily</div>
+                <div id="trend-composite" class="trend-composite-badge neutral">—</div>
+                <div id="trend-strength" class="trend-strength-bar neutral">○ ○ ○</div>
+              </div>
+              <div class="trend-composite-col trend-composite-col-w" id="trend-composite-col-w" style="display:none;">
+                <div class="trend-composite-freq-label">Weekly</div>
+                <div id="trend-composite-w" class="trend-composite-badge neutral">—</div>
+                <div id="trend-strength-w" class="trend-strength-bar neutral">○ ○ ○</div>
+              </div>
+            </div>
           </div>
 
-          <!-- 2 × 4 signal detail grid -->
-          <div class="trend-signal-grid">
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">Short Horizon</div>
-              <div id="trend-sig-short" class="trend-signal-value neutral">—</div>
+          <!-- Vertical signal rows -->
+          <div class="trend-sig-list">
+
+            <div class="trend-sig-section-label">Regime</div>
+
+            <div class="trend-sig-row" data-sig-key="short">
+              <div class="trend-sig-icon-wrap" style="background:rgba(59,130,246,0.15);color:#3b82f6">S</div>
+              <span class="trend-sig-label">Short</span>
+              <span id="trend-sig-short" class="trend-sig-val neutral">—</span>
+              <span id="trend-sig-short-w" class="trend-sig-val-w neutral" style="display:none;">—</span>
+              <button class="trend-sig-info-btn" data-info-key="short">?</button>
             </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">Medium Horizon</div>
-              <div id="trend-sig-medium" class="trend-signal-value neutral">—</div>
+
+            <div class="trend-sig-row" data-sig-key="medium">
+              <div class="trend-sig-icon-wrap" style="background:rgba(239,68,68,0.15);color:#ef4444">M</div>
+              <span class="trend-sig-label">Medium</span>
+              <span id="trend-sig-medium" class="trend-sig-val neutral">—</span>
+              <span id="trend-sig-medium-w" class="trend-sig-val-w neutral" style="display:none;">—</span>
+              <button class="trend-sig-info-btn" data-info-key="medium">?</button>
             </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">Long Horizon</div>
-              <div id="trend-sig-long" class="trend-signal-value neutral">—</div>
+
+            <div class="trend-sig-row" data-sig-key="long">
+              <div class="trend-sig-icon-wrap" style="background:rgba(249,115,22,0.15);color:#f97316">L</div>
+              <span class="trend-sig-label">Long</span>
+              <span id="trend-sig-long" class="trend-sig-val neutral">—</span>
+              <span id="trend-sig-long-w" class="trend-sig-val-w neutral" style="display:none;">—</span>
+              <button class="trend-sig-info-btn" data-info-key="long">?</button>
             </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">Last Entry</div>
-              <div id="trend-sig-entry" class="trend-signal-value neutral">—</div>
+
+            <div class="trend-sig-section-label" style="margin-top:4px;">Trade Levels</div>
+
+            <div class="trend-sig-row" data-sig-key="entry">
+              <div class="trend-sig-icon-wrap" style="background:rgba(168,85,247,0.15);color:#a855f7">↵</div>
+              <span class="trend-sig-label">Last Entry</span>
+              <span id="trend-sig-entry" class="trend-sig-val neutral">—</span>
+              <button class="trend-sig-info-btn" data-info-key="entry">?</button>
             </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">Stop · MRT</div>
-              <div id="trend-sig-mrt" class="trend-signal-value neutral">—</div>
+
+            <div class="trend-sig-row" data-sig-key="mrt">
+              <div class="trend-sig-icon-wrap" style="background:rgba(71,85,105,0.25);color:#64748b">✕</div>
+              <span class="trend-sig-label">Stop · MRT</span>
+              <span id="trend-sig-mrt" class="trend-sig-val neutral">—</span>
+              <button class="trend-sig-info-btn" data-info-key="mrt">?</button>
             </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">TP1 · SDB</div>
-              <div id="trend-sig-sdb" class="trend-signal-value neutral">—</div>
+
+            <div class="trend-sig-row" data-sig-key="sdb">
+              <div class="trend-sig-icon-wrap" style="background:rgba(34,197,94,0.15);color:#22c55e">T1</div>
+              <span class="trend-sig-label">Target 1 · SDB</span>
+              <span id="trend-sig-sdb" class="trend-sig-val neutral">—</span>
+              <button class="trend-sig-info-btn" data-info-key="sdb">?</button>
             </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">TP2 · MDB</div>
-              <div id="trend-sig-mdb" class="trend-signal-value neutral">—</div>
+
+            <div class="trend-sig-row" data-sig-key="mdb">
+              <div class="trend-sig-icon-wrap" style="background:rgba(22,163,74,0.15);color:#16a34a">T2</div>
+              <span class="trend-sig-label">Target 2 · MDB</span>
+              <span id="trend-sig-mdb" class="trend-sig-val neutral">—</span>
+              <button class="trend-sig-info-btn" data-info-key="mdb">?</button>
             </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">R : R  ·  ATR</div>
-              <div id="trend-sig-rr" class="trend-signal-value neutral">—</div>
+
+            <div class="trend-sig-row" data-sig-key="rr">
+              <div class="trend-sig-icon-wrap" style="background:rgba(6,182,212,0.15);color:#06b6d4">R:R</div>
+              <span class="trend-sig-label">Risk · Reward</span>
+              <span id="trend-sig-rr" class="trend-sig-val neutral">—</span>
+              <button class="trend-sig-info-btn" data-info-key="rr">?</button>
             </div>
-          </div>
+
+          </div><!-- .trend-sig-list -->
 
         </div><!-- .trend-panel-signal -->
 
+        <!-- Collapsed tab (expand handle) -->
+        <div class="trend-sig-tab" id="trend-sig-tab" onclick="toggleTrendSignalPanel()" title="Show signals">›</div>
+
       </div><!-- .trend-panels -->
+
+      <!-- Floating tooltip (shared, moved by JS) -->
+      <div class="trend-sig-tooltip" id="trend-sig-tooltip"></div>
+
     </div><!-- #trend-area -->
 
     <!-- ── Scanner Area ── -->

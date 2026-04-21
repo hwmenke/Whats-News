@@ -963,6 +963,28 @@ html, body {
   background: rgba(34,197,94,0.25) !important;
 }
 
+/* Both-mode freq button */
+.trend-both-btn { gap: 4px; }
+.trend-both-icon { font-size: 11px; opacity: 0.8; }
+
+/* Weekly panel freq badge */
+.trend-freq-badge {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(168,85,247,0.15);
+  color: #c084fc;
+  font-weight: 700;
+  margin-left: auto;
+}
+
+/* Composite wrap spacing */
+.trend-composite-wrap {
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
 /* ── Two-panel layout ──────────────────────────────────────── */
 .trend-panels {
   flex: 1;
@@ -972,9 +994,9 @@ html, body {
   min-height: 0;
 }
 
-/* Main panel (price chart) — 65% of width */
-.trend-panel-main {
-  flex: 2.2;
+/* Charts stack — daily + optional weekly stacked vertically */
+.trend-charts-stack {
+  flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -982,42 +1004,159 @@ html, body {
   min-height: 0;
 }
 
+/* Main panel (daily price chart) */
+.trend-panel-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Weekly panel — hidden by default, shown in "Both" mode */
+.trend-panel-weekly {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* Panel header with freq label */
+.trend-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.trend-panel-header-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+}
+.trend-panel-freq-badge {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(59,130,246,0.15);
+  color: #60a5fa;
+  font-weight: 600;
+}
+
 /* Price chart wrapper — fills remaining space */
 .trend-price-wrap {
   flex: 1;
-  min-height: 300px;    /* guarantees LWC has a non-zero height at creation */
+  min-height: 200px;
   position: relative;
   background: var(--bg-base);
 }
 
 /* Regime strip wrapper */
 .trend-regime-wrap {
-  height: 130px;
+  height: 90px;
   flex-shrink: 0;
   position: relative;
   background: var(--bg-base);
 }
 
-/* Signal panel — 35% of width, scrolls if needed */
+/* ── Signal panel — collapsible right sidebar ──────────────── */
 .trend-panel-signal {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-base);
+  border-left: 1px solid var(--border);
+  transition: width 0.25s ease;
+  position: relative;
+}
+.trend-panel-signal.collapsed {
+  width: 0;
+  border-left: none;
+}
+
+/* Expand handle (shown when panel is collapsed) */
+.trend-sig-tab {
+  position: absolute;
+  left: -22px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 48px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-dim);
+  z-index: 10;
+}
+.trend-sig-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+/* Signal panel header with collapse button */
+.trend-sig-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.trend-sig-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+.trend-sig-collapse-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.trend-sig-collapse-btn:hover { color: var(--text-primary); }
+
+/* ── Composite badge columns (D / W) ──────────────────────── */
+.trend-composite-cols {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.trend-composite-col {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  min-width: 240px;
-  background: var(--bg-base);
-}
-
-/* ── Composite signal badge ────────────────────────────────── */
-.trend-composite-wrap {
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 18px 16px 14px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  text-align: center;
+  gap: 5px;
+  padding: 12px 8px 10px;
+}
+.trend-composite-col + .trend-composite-col {
+  border-left: 1px solid var(--border);
+}
+.trend-composite-freq-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
 }
 
 .trend-composite-label {
@@ -1030,19 +1169,20 @@ html, body {
 
 .trend-composite-badge {
   font-family: var(--font-mono);
-  font-size: 22px;
+  font-size: 13px;
   font-weight: 800;
-  letter-spacing: 1px;
-  padding: 8px 20px;
-  border-radius: var(--radius-lg);
-  border: 2px solid currentColor;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid currentColor;
+  white-space: nowrap;
 }
 
 /* Bullish variants */
 .trend-composite-badge.bull-strong {
   color: #22c55e;
   background: rgba(34,197,94,0.15);
-  box-shadow: 0 0 20px rgba(34,197,94,0.15);
+  box-shadow: 0 0 12px rgba(34,197,94,0.12);
 }
 .trend-composite-badge.bull {
   color: #4ade80;
@@ -1071,62 +1211,140 @@ html, body {
 .trend-composite-badge.bear-strong {
   color: #ef4444;
   background: rgba(239,68,68,0.15);
-  box-shadow: 0 0 20px rgba(239,68,68,0.12);
+  box-shadow: 0 0 12px rgba(239,68,68,0.10);
 }
 
-/* Strength dots row  ● ● ○ */
+/* Strength dots row */
 .trend-strength-bar {
-  font-size: 14px;
-  letter-spacing: 4px;
+  font-size: 11px;
+  letter-spacing: 3px;
 }
 .trend-strength-bar.bull { color: var(--green); }
 .trend-strength-bar.bear { color: var(--red);   }
 .trend-strength-bar.neutral { color: var(--text-dim); }
 
-/* Horizon alignment arrows: Short ↑ · Medium ↓ · Long ↑ */
-.trend-align-detail {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-muted);
-  letter-spacing: 0.3px;
-}
-
-/* ── Signal detail grid (2 × 4) ────────────────────────────── */
-.trend-signal-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  padding: 12px;
-  flex-shrink: 0;
-}
-
-.trend-signal-card {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
+/* ── Signal rows (vertical list) ───────────────────────────── */
+.trend-sig-list {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  overflow-y: auto;
+  flex: 1;
 }
 
-.trend-signal-label {
+.trend-sig-section-label {
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
   color: var(--text-dim);
+  padding: 8px 12px 4px;
+  border-bottom: 1px solid var(--border);
 }
 
-.trend-signal-value {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 700;
+.trend-sig-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  min-height: 32px;
+}
+.trend-sig-row:hover { background: var(--bg-hover); }
+
+.trend-sig-icon-wrap {
+  font-size: 13px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.trend-sig-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.trend-sig-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  min-width: 52px;
+  text-align: right;
+}
+.trend-sig-val-w {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  min-width: 44px;
+  text-align: right;
+}
+.trend-sig-val.bull,   .trend-sig-val-w.bull   { color: var(--green); }
+.trend-sig-val.bear,   .trend-sig-val-w.bear   { color: var(--red);   }
+.trend-sig-val.neutral,.trend-sig-val-w.neutral { color: var(--text-muted); }
+
+.trend-sig-info-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.trend-sig-info-btn:hover { opacity: 1; color: #60a5fa; border-color: #60a5fa; }
+
+/* ── Floating tooltip ──────────────────────────────────────── */
+.trend-sig-tooltip {
+  position: fixed;
+  z-index: 200;
+  width: 220px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-lg);
+  padding: 10px 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s, transform 0.15s;
+}
+.trend-sig-tooltip.ts-tip-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.ts-tip-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 5px;
+}
+.ts-tip-desc {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 5px;
+}
+.ts-tip-params {
+  font-size: 9px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+/* ── Legacy aliases (keep old signal-value colour classes working) */
 .trend-signal-value.bull    { color: var(--green); }
 .trend-signal-value.bear    { color: var(--red);   }
 .trend-signal-value.neutral { color: var(--text-muted); }

@@ -91,17 +91,26 @@ const LINE_META = {
 // ── Instances ─────────────────────────────────────────────────
 let trendCharts    = { price: null, regime: null };
 let trendSeries    = {
-    // Background regime fills (on hidden left scale)
     bgLong: null, bgShort: null,
-    // Price overlays
     candle:   null,
     sb: null, mb: null, lb: null,
     sdb: null, mrt: null, mdb: null, lrt: null, ldb: null,
-    // Regime strip
     regLong: null, regMed: null, regShort: null,
 };
+
+// Weekly chart instances (Both mode only)
+let trendChartsW   = { price: null, regime: null };
+let trendSeriesW   = {
+    bgLong: null, bgShort: null,
+    candle:   null,
+    sb: null, mb: null, lb: null,
+    sdb: null, mrt: null, mdb: null, lrt: null, ldb: null,
+    regLong: null, regMed: null, regShort: null,
+};
+
 let _trendObservers = [];   // ResizeObserver instances — cleaned up on destroy
 let _regSyncing     = false;
+let _regSyncingW    = false;
 
 // ── Colors ───────────────────────────────────────────────────
 const TC = {
@@ -152,11 +161,10 @@ function _trendBaseOpts() {
 
 // ── Destroy ───────────────────────────────────────────────────
 function destroyTrendCharts() {
-    // Clean up resize observers first to prevent stale callbacks
     _trendObservers.forEach(obs => obs.disconnect());
     _trendObservers = [];
 
-    Object.values(trendCharts).forEach(c => { if (c) c.remove(); });
+    Object.values(trendCharts).forEach(c => { if (c) try { c.remove(); } catch(_) {} });
     trendCharts = { price: null, regime: null };
     trendSeries = {
         bgLong: null, bgShort: null,
@@ -165,6 +173,18 @@ function destroyTrendCharts() {
         regLong: null, regMed: null, regShort: null,
     };
     _regSyncing = false;
+}
+
+function destroyWeeklyTrendCharts() {
+    Object.values(trendChartsW).forEach(c => { if (c) try { c.remove(); } catch(_) {} });
+    trendChartsW = { price: null, regime: null };
+    trendSeriesW = {
+        bgLong: null, bgShort: null,
+        candle: null, sb: null, mb: null, lb: null,
+        sdb: null, mrt: null, mdb: null, lrt: null, ldb: null,
+        regLong: null, regMed: null, regShort: null,
+    };
+    _regSyncingW = false;
 }
 
 // ── Observe helper (stores observer for later cleanup) ────────
@@ -306,6 +326,93 @@ function buildTrendCharts() {
     _observe('trend-chart-regime', trendCharts.regime);
 }
 
+// ── Build weekly charts (used in Both mode) ───────────────────
+function buildWeeklyTrendCharts() {
+    destroyWeeklyTrendCharts();
+
+    const priceEl  = document.getElementById('trend-chart-price-w');
+    const regimeEl = document.getElementById('trend-chart-regime-w');
+    if (!priceEl || !regimeEl) return;
+
+    trendChartsW.price = LightweightCharts.createChart(priceEl, {
+        ..._trendBaseOpts(),
+        width:  priceEl.clientWidth  || 600,
+        height: priceEl.clientHeight || 300,
+        leftPriceScale: { visible: false, scaleMargins: { top: 0, bottom: 0 } },
+    });
+
+    trendSeriesW.bgLong = trendChartsW.price.addHistogramSeries({
+        priceScaleId: 'left', color: 'rgba(34,197,94,0.07)',
+        base: -1, priceLineVisible: false, lastValueVisible: false,
+    });
+    trendSeriesW.bgShort = trendChartsW.price.addHistogramSeries({
+        priceScaleId: 'left', color: 'rgba(239,68,68,0.07)',
+        base: 1, priceLineVisible: false, lastValueVisible: false,
+    });
+    trendSeriesW.candle = trendChartsW.price.addCandlestickSeries({
+        upColor: '#22c55e', downColor: '#ef4444',
+        borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+        wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+    });
+
+    const _lineW = (color, lw, ls, title, lastVal = false) =>
+        trendChartsW.price.addLineSeries({
+            color, lineWidth: lw, lineStyle: ls,
+            priceLineVisible: false, lastValueVisible: lastVal, title,
+        });
+    const LS = LightweightCharts.LineStyle;
+
+    trendSeriesW.sb  = _lineW(TC.sb,  2,   LS.Solid,  'SB',  true);
+    trendSeriesW.mb  = _lineW(TC.mb,  2,   LS.Solid,  'MB',  true);
+    trendSeriesW.lb  = _lineW(TC.lb,  1.5, LS.Dashed, 'LB',  false);
+    trendSeriesW.sdb = _lineW(TC.sdb, 1,   LS.Dashed, 'SDB', false);
+    trendSeriesW.mrt = _lineW(TC.mrt, 1.5, LS.Dashed, 'MRT', false);
+    trendSeriesW.mdb = _lineW(TC.mdb, 1,   LS.Dashed, 'MDB', false);
+    trendSeriesW.lrt = _lineW(TC.lrt, 1,   LS.Dashed, 'LRT', false);
+    trendSeriesW.ldb = _lineW(TC.ldb, 1,   LS.Dashed, 'LDB', false);
+
+    trendChartsW.regime = LightweightCharts.createChart(regimeEl, {
+        ..._trendBaseOpts(),
+        width:  regimeEl.clientWidth  || 600,
+        height: regimeEl.clientHeight || 90,
+        rightPriceScale: { borderColor: '#30363d', scaleMargins: { top: 0.08, bottom: 0.08 } },
+    });
+
+    const _histW = (base) => trendChartsW.regime.addHistogramSeries({
+        base, priceLineVisible: false, lastValueVisible: false,
+    });
+
+    trendSeriesW.regLong  = _histW(3);
+    trendSeriesW.regMed   = _histW(0);
+    trendSeriesW.regShort = _histW(-3);
+
+    const _refW = (series, price, title, color) =>
+        series.createPriceLine({ price, color, lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true, title });
+
+    _refW(trendSeriesW.regLong,  3,  'LONG',  TC.lb   + '60');
+    _refW(trendSeriesW.regMed,   0,  'MED',   TC.neut + '80');
+    _refW(trendSeriesW.regShort, -3, 'SHORT', TC.lb   + '60');
+
+    // Cross-sync weekly price ↔ regime
+    trendChartsW.price.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (_regSyncingW || !range) return;
+        _regSyncingW = true;
+        try { trendChartsW.regime.timeScale().setVisibleLogicalRange(range); } catch (_) {}
+        _regSyncingW = false;
+    });
+    trendChartsW.regime.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (_regSyncingW || !range) return;
+        _regSyncingW = true;
+        try { trendChartsW.price.timeScale().setVisibleLogicalRange(range); } catch (_) {}
+        _regSyncingW = false;
+    });
+
+    _observe('trend-chart-price-w',  trendChartsW.price);
+    _observe('trend-chart-regime-w', trendChartsW.regime);
+}
+
 // ── Data helpers ──────────────────────────────────────────────
 function _toLine(arr) {
     if (!Array.isArray(arr)) return [];
@@ -411,6 +518,52 @@ function loadTrendData(data, ohlcvRows) {
     _updateSignalPanel(data, ohlcvRows);
 }
 
+// ── Load weekly data into weekly charts ───────────────────────
+function loadWeeklyTrendData(data, ohlcvRows) {
+    if (!data || data.error || !ohlcvRows?.length || !trendSeriesW.candle) return;
+
+    trendSeriesW.candle.setData(
+        ohlcvRows.map(r => ({ time: r.date, open: r.open, high: r.high, low: r.low, close: r.close }))
+    );
+
+    if (Array.isArray(data.medium_state) && trendSeriesW.bgLong && trendSeriesW.bgShort) {
+        trendSeriesW.bgLong.setData(
+            data.medium_state.map(d => ({ time: d.date, value: d.value > 0 ? 1 : -1, color: 'rgba(34,197,94,0.07)' }))
+        );
+        trendSeriesW.bgShort.setData(
+            data.medium_state.map(d => ({ time: d.date, value: d.value < 0 ? -1 : 1, color: 'rgba(239,68,68,0.07)' }))
+        );
+    }
+
+    trendSeriesW.sb.setData(_toLine(data.sb));
+    trendSeriesW.mb.setData(_toLine(data.mb));
+    trendSeriesW.lb.setData(_toLine(data.lb));
+    trendSeriesW.sdb.setData(_toLine(data.sdb));
+    trendSeriesW.mrt.setData(_toLine(data.mrt));
+    trendSeriesW.mdb.setData(_toLine(data.mdb));
+    trendSeriesW.lrt.setData(_toLine(data.lrt));
+    trendSeriesW.ldb.setData(_toLine(data.ldb));
+
+    const markers = [];
+    (data.entry_long  || []).forEach(d => {
+        if (d.value) markers.push({ time: d.date, position: 'belowBar', color: TC.bull, shape: 'arrowUp', text: 'L' });
+    });
+    (data.entry_short || []).forEach(d => {
+        if (d.value) markers.push({ time: d.date, position: 'aboveBar', color: TC.bear, shape: 'arrowDown', text: 'S' });
+    });
+    markers.sort((a, b) => a.time.localeCompare(b.time));
+    trendSeriesW.candle.setMarkers(markers);
+
+    trendSeriesW.regLong.setData(_regData(data.long_state,   3));
+    trendSeriesW.regMed.setData(_regData(data.medium_state,  0));
+    trendSeriesW.regShort.setData(_regData(data.short_state, -3));
+
+    trendChartsW.price.timeScale().fitContent();
+
+    // Update weekly column in signal panel
+    _updateSignalPanelW(data, ohlcvRows);
+}
+
 // ── Visibility toggles ────────────────────────────────────────
 function _applyVis() {
     const LS = LightweightCharts.LineStyle;
@@ -512,6 +665,20 @@ function setTrendFreq(freq) {
     document.querySelectorAll('.trend-freq-btn').forEach(btn => {
         btn.classList.toggle('trend-active', btn.dataset.val === freq);
     });
+
+    // Show/hide weekly panel and W columns in signal panel
+    const weeklyPanel  = document.getElementById('trend-panel-weekly');
+    const compColW     = document.getElementById('trend-composite-col-w');
+    const wValEls      = document.querySelectorAll('.trend-sig-val-w');
+    const isBoth       = freq === 'both';
+
+    if (weeklyPanel)  weeklyPanel.style.display  = isBoth ? '' : 'none';
+    if (compColW)     compColW.style.display      = isBoth ? '' : 'none';
+    wValEls.forEach(el => { el.style.display      = isBoth ? '' : 'none'; });
+
+    // Destroy weekly charts when leaving Both mode
+    if (!isBoth) destroyWeeklyTrendCharts();
+
     if (typeof state !== 'undefined' && state.activeSymbol) {
         loadAdaptiveTrendData(state.activeSymbol);
     }
@@ -533,8 +700,10 @@ function _updateSignalPanel(data, ohlcvRows) {
     const setCard = (id, text, cls) => {
         const el = document.getElementById(id);
         if (!el) return;
-        el.textContent  = text;
-        el.className    = `trend-signal-value ${cls}`;
+        el.textContent = text;
+        el.className   = el.classList.contains('trend-sig-val-w')
+            ? `trend-sig-val-w ${cls}`
+            : `trend-sig-val ${cls}`;
     };
 
     // Current regime states
@@ -624,6 +793,172 @@ function _updateSignalPanel(data, ohlcvRows) {
         setCard('trend-sig-rr', atrV != null ? `ATR ${fmtP(atrV)}` : '—', 'neutral');
     }
 }
+
+// ── Weekly column update ──────────────────────────────────────
+function _updateSignalPanelW(data, ohlcvRows) {
+    if (!ohlcvRows?.length || !data) return;
+    const lastOf = arr => Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null;
+    const close  = ohlcvRows[ohlcvRows.length - 1]?.close;
+    if (!close) return;
+
+    const fmtP = v => {
+        if (v == null || !isFinite(v)) return '—';
+        return close > 100 ? v.toFixed(2) : v.toFixed(4);
+    };
+    const setW = (id, text, cls) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = text;
+        el.className   = `trend-sig-val-w ${cls}`;
+    };
+
+    const ss = lastOf(data.short_state)?.value  || 0;
+    const ms = lastOf(data.medium_state)?.value || 0;
+    const ls = lastOf(data.long_state)?.value   || 0;
+    const comp = ss + ms + ls;
+
+    const compMap = {
+         3: ['STRONG LONG',  'bull-strong'],
+         2: ['LONG',         'bull'],
+         1: ['LEAN LONG',    'bull-soft'],
+         0: ['NEUTRAL',      'neutral'],
+        '-1': ['LEAN SHORT', 'bear-soft'],
+        '-2': ['SHORT',      'bear'],
+        '-3': ['STRONG SHORT','bear-strong'],
+    };
+    const [compLabel, compCls] = compMap[String(comp)] || ['—', 'neutral'];
+
+    const compWEl = document.getElementById('trend-composite-w');
+    if (compWEl) {
+        compWEl.textContent = compLabel;
+        compWEl.className   = `trend-composite-badge ${compCls}`;
+    }
+    const strengthWEl = document.getElementById('trend-strength-w');
+    if (strengthWEl) {
+        const abs = Math.abs(comp);
+        const dot = '●'; const empty = '○';
+        strengthWEl.textContent = Array.from({ length: 3 }, (_, i) => i < abs ? dot : empty).join(' ');
+        strengthWEl.className   = `trend-strength-bar ${comp >= 0 ? 'bull' : 'bear'}`;
+    }
+
+    const stateLabel = v => v > 0 ? 'LONG' : v < 0 ? 'SHORT' : 'NEUT';
+    const stateClass = v => v > 0 ? 'bull' : v < 0 ? 'bear'  : 'neutral';
+    setW('trend-sig-short-w',  stateLabel(ss), stateClass(ss));
+    setW('trend-sig-medium-w', stateLabel(ms), stateClass(ms));
+    setW('trend-sig-long-w',   stateLabel(ls), stateClass(ls));
+}
+
+// ── Signal panel collapse / expand ────────────────────────────
+function toggleTrendSignalPanel() {
+    const panel  = document.getElementById('trend-panel-signal');
+    const tab    = document.getElementById('trend-sig-tab');
+    const colBtn = document.getElementById('trend-sig-collapse-btn');
+    if (!panel) return;
+
+    const isCollapsed = panel.classList.contains('collapsed');
+    panel.classList.toggle('collapsed', !isCollapsed);
+
+    if (tab) {
+        tab.style.display  = isCollapsed ? 'none' : 'flex';
+        tab.textContent    = '›';
+    }
+    if (colBtn) {
+        colBtn.textContent = isCollapsed ? '‹' : '›';
+        colBtn.title       = isCollapsed ? 'Hide panel' : 'Show panel';
+    }
+
+    // Trigger chart resize after transition
+    setTimeout(() => {
+        [trendCharts.price, trendCharts.regime, trendChartsW.price, trendChartsW.regime].forEach(c => {
+            if (!c) return;
+            try {
+                const el = c.chartElement?.parentElement;
+                if (el) c.resize(el.clientWidth, el.clientHeight);
+            } catch (_) {}
+        });
+    }, 280);
+}
+
+// ── Signal info tooltips ──────────────────────────────────────
+const _SIG_INFO = {
+    short: {
+        title: 'Short Horizon Regime',
+        desc:  'Driven by SB (fast KAMA). Reflects near-term momentum — flips quickly in trending markets, stays flat in choppy conditions.',
+        params: 'SB · ER=10 · fast=2 · slow=15',
+    },
+    medium: {
+        title: 'Medium Horizon Regime',
+        desc:  'Master trend signal driven by MB. Governs all trade management bands (MRT stop, MDB target). Entry fires when SB crosses MB.',
+        params: 'MB · ER=20 · fast=2 · slow=30',
+    },
+    long: {
+        title: 'Long Horizon Regime',
+        desc:  'Macro structure driven by LB. Only flips on sustained multi-month moves. Context for LRT wide stop and LDB extended target.',
+        params: 'LB · ER=40 · fast=2 · slow=60',
+    },
+    entry: {
+        title: 'Last Entry Signal',
+        desc:  'Most recent LONG or SHORT entry — fires when SB crosses MB (medium regime flip). Date shown for reference.',
+        params: 'SB cross MB · medium regime change',
+    },
+    mrt: {
+        title: 'MRT — Trailing Stop',
+        desc:  'Medium Retracement Band. Sits 2.25 ATR below MB in a long regime. Ratchets upward as MB advances; never retreats against the trade.',
+        params: 'MB − 2.25 × ATR(20) · ratchets in long regime',
+    },
+    sdb: {
+        title: 'SDB — Target 1',
+        desc:  'Short Deviation Band. First take-profit level. 2.0 ATR above SB. Ratcheting band — moves only in the direction of the trade.',
+        params: 'SB + 2.0 × ATR(20) · ratchets in long regime',
+    },
+    mdb: {
+        title: 'MDB — Target 2',
+        desc:  'Medium Deviation Band. Main take-profit at 4.5 ATR above MB — exactly 2× the stop distance, giving a built-in 2:1 R:R.',
+        params: 'MB + 4.5 × ATR(20) · ratchets in long regime',
+    },
+    rr: {
+        title: 'Risk : Reward Ratio',
+        desc:  'Live R:R = distance to MDB ÷ distance to MRT from current close. ≥ 2:1 = green (favorable). Only meaningful in an active regime.',
+        params: '(MDB − close) ÷ (close − MRT)',
+    },
+};
+
+function _initSigTooltips() {
+    const tip = document.getElementById('trend-sig-tooltip');
+    if (!tip) return;
+
+    document.querySelectorAll('.trend-sig-info-btn').forEach(btn => {
+        btn.addEventListener('mouseenter', e => {
+            const key  = btn.dataset.infoKey;
+            const info = _SIG_INFO[key];
+            if (!info) return;
+
+            tip.innerHTML =
+                `<div class="ts-tip-title">${info.title}</div>` +
+                `<div class="ts-tip-desc">${info.desc}</div>` +
+                `<div class="ts-tip-params">${info.params}</div>`;
+
+            // Position tooltip to the left of the button, avoid overflow
+            const rect = btn.getBoundingClientRect();
+            const tipW = 220;
+            let left = rect.left - tipW - 8;
+            if (left < 8) left = rect.right + 8;
+            let top  = rect.top - 10;
+            if (top + 120 > window.innerHeight) top = window.innerHeight - 130;
+
+            tip.style.left = left + 'px';
+            tip.style.top  = top  + 'px';
+            tip.classList.add('ts-tip-visible');
+        });
+
+        btn.addEventListener('mouseleave', () => {
+            tip.classList.remove('ts-tip-visible');
+        });
+    });
+}
+
+// Call once DOM is ready (trend tab is rendered)
+document.addEventListener('DOMContentLoaded', _initSigTooltips);
 
 // ── Parameter optimization ────────────────────────────────
 let _optAbortCtrl = null;
