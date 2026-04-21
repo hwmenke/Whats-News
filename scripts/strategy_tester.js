@@ -218,6 +218,9 @@ async function stRunBacktest() {
 
     _stSetLoading(true);
 
+    const doBootstrap = document.getElementById('st-bootstrap-ci')?.checked || false;
+    if (doBootstrap) config.bootstrap = true;
+
     try {
         const data = await apiFetch(`${API}/strategy/backtest`, {
             method:  'POST',
@@ -227,6 +230,7 @@ async function stRunBacktest() {
         stState.result = data;
         _stRenderResults(data);
         document.getElementById('btn-st-mc').style.display = '';
+        document.getElementById('btn-st-fa').style.display = '';
     } catch (e) {
         _stShowError(e.message);
     } finally {
@@ -299,27 +303,41 @@ function _stRenderMetrics(m, bm) {
         return pct ? (v * 100).toFixed(2) + '%' : v.toFixed ? v.toFixed(4) : v;
     };
     const color = v => v == null ? '' : v > 0 ? 'st-kpi-pos' : v < 0 ? 'st-kpi-neg' : '';
+    const fmtCi = (ci, pct) => {
+        if (!ci) return '';
+        const lo = pct ? (ci[0] * 100).toFixed(1) + '%' : ci[0].toFixed(2);
+        const hi = pct ? (ci[1] * 100).toFixed(1) + '%' : ci[1].toFixed(2);
+        return `<div class="st-kpi-ci" title="95% bootstrap CI">[${lo}, ${hi}]</div>`;
+    };
+    const pValBadge = p => {
+        if (p == null) return '';
+        const cls = p < 0.05 ? 'st-kpi-sig' : 'st-kpi-insig';
+        return `<div class="st-kpi-pval ${cls}" title="P(Sharpe≤0)">p=${p.toFixed(3)}</div>`;
+    };
 
     const metrics = [
-        { label: 'Total Return', val: m.total_return,  pct: true },
-        { label: 'CAGR',         val: m.cagr,          pct: true },
-        { label: 'Sharpe',       val: m.sharpe,        pct: false },
-        { label: 'Sortino',      val: m.sortino,       pct: false },
-        { label: 'Max DD',       val: m.max_drawdown,  pct: true },
-        { label: 'Calmar',       val: m.calmar,        pct: false },
-        { label: 'Win Rate',     val: m.win_rate,      pct: true },
-        { label: '# Trades',     val: m.n_trades,      pct: false },
-        { label: 'Kelly ½',      val: m.kelly_half,    pct: true },
-        { label: 'Exposure',     val: m.exposure_pct,  pct: true },
+        { label: 'Total Return', key: 'total_return', val: m.total_return, pct: true,  ci: m.cagr_ci95,   ciPct: true },
+        { label: 'CAGR',         key: 'cagr',         val: m.cagr,         pct: true,  ci: m.cagr_ci95,   ciPct: true },
+        { label: 'Sharpe',       key: 'sharpe',       val: m.sharpe,       pct: false, ci: m.sharpe_ci95, ciPct: false },
+        { label: 'Sortino',      key: 'sortino',      val: m.sortino,      pct: false },
+        { label: 'Max DD',       key: 'max_drawdown', val: m.max_drawdown, pct: true },
+        { label: 'Calmar',       key: 'calmar',       val: m.calmar,       pct: false },
+        { label: 'Win Rate',     key: 'win_rate',     val: m.win_rate,     pct: true },
+        { label: '# Trades',     key: 'n_trades',     val: m.n_trades,     pct: false },
+        { label: 'Kelly ½',      key: 'kelly_half',   val: m.kelly_half,   pct: true },
+        { label: 'Exposure',     key: 'exposure_pct', val: m.exposure_pct, pct: true },
     ];
 
-    container.innerHTML = metrics.map(({ label, val, pct }) =>
-        `<div class="st-kpi">` +
-        `<div class="st-kpi-label">${label}</div>` +
-        `<div class="st-kpi-value ${color(val)}">${fmt(val, pct)}</div>` +
-        (bm ? `<div class="st-kpi-bench">${fmt(bm[label.toLowerCase().replace(/ /g, '_')] ?? null, pct)}</div>` : '') +
-        `</div>`
-    ).join('');
+    container.innerHTML = metrics.map(({ label, key, val, pct, ci, ciPct }) => {
+        const isSharepe = key === 'sharpe';
+        return `<div class="st-kpi">` +
+            `<div class="st-kpi-label">${label}</div>` +
+            `<div class="st-kpi-value ${color(val)}">${fmt(val, pct)}</div>` +
+            (ci ? fmtCi(ci, ciPct ?? pct) : '') +
+            (isSharepe && m.sharpe_p_val != null ? pValBadge(m.sharpe_p_val) : '') +
+            (bm ? `<div class="st-kpi-bench">${fmt(bm[key] ?? null, pct)}</div>` : '') +
+            `</div>`;
+    }).join('');
 }
 
 function _stRenderPriceChart(data) {
@@ -562,5 +580,128 @@ function _stShowError(msg) {
         emptyEl.innerHTML =
             `<div class="empty-icon">⚠</div>` +
             `<p>${msg}</p>`;
+    }
+}
+
+// ── Factor Attribution ────────────────────────────────────────
+async function stRunFactorAttribution() {
+    const result = stState.result;
+    if (!result?.dates?.length) { toast('Run a backtest first', 'warning'); return; }
+
+    // Extract bar-by-bar net_ret from equity curve
+    const eq  = result.equity;
+    const net_ret = eq.map((v, i) => i === 0 ? 0 : (eq[i] - eq[i-1]) / (eq[i-1] || 1));
+
+    try {
+        const data = await apiFetch(`${API}/strategy/factor-attribution`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ net_ret, dates: result.dates, freq: stState.freq }),
+        });
+        _stRenderFactorAttribution(data);
+    } catch (e) {
+        toast('Factor attribution: ' + e.message + (e.hint ? ' — ' + e.hint : ''), 'error');
+    }
+}
+
+function _stRenderFactorAttribution(data) {
+    const section = document.getElementById('st-factor-section');
+    if (!section) return;
+    section.style.display = '';
+
+    const missingEl = document.getElementById('st-factor-missing');
+    if (missingEl && data.missing_factors?.length) {
+        missingEl.textContent = `(missing: ${data.missing_factors.join(', ')} — fetch to improve accuracy)`;
+    } else if (missingEl) {
+        missingEl.textContent = '';
+    }
+
+    const COLORS = ['#3b82f6','#22c55e','#f59e0b','#a855f7','#ef4444'];
+    const labels  = data.dates;
+    const factors = data.factor_names || [];
+
+    // Rolling betas chart
+    const betaCanvas = document.getElementById('st-factor-beta-chart');
+    if (betaCanvas) {
+        const datasets = factors.map((f, fi) => ({
+            label:       f,
+            data:        (data.rolling_betas[f] || []).map(v => v == null ? null : v),
+            borderColor: COLORS[fi % COLORS.length],
+            borderWidth: 1.5,
+            pointRadius: 0,
+            fill:        false,
+            spanGaps:    false,
+        }));
+        statsCharts['st-factor-beta'] = updateOrCreate('st.factor.beta', betaCanvas, {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                plugins: { legend: { position: 'top', labels: { color: '#94a3b8', font: { size: 10 } } } },
+                scales: {
+                    x: { display: false },
+                    y: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#1e293b' } },
+                },
+            },
+        });
+    }
+
+    // Cumulative alpha chart
+    const alphaCanvas = document.getElementById('st-factor-alpha-chart');
+    if (alphaCanvas) {
+        statsCharts['st-factor-alpha'] = updateOrCreate('st.factor.alpha', alphaCanvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label:       'Cumulative Alpha',
+                    data:        (data.cumulative_alpha || []).map(v => v == null ? null : v),
+                    borderColor: '#22c55e',
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    fill:        false,
+                    spanGaps:    false,
+                }],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { display: false },
+                    y: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#1e293b' } },
+                },
+            },
+        });
+    }
+
+    // Stats table
+    const tableWrap = document.getElementById('st-factor-stats-table');
+    if (tableWrap && data.factor_betas) {
+        const sigStar = t => Math.abs(t) >= 1.96 ? '*' : '';
+        const rows = factors.map(f => {
+            const beta = data.factor_betas[f];
+            const t    = data.factor_tstats[f];
+            return `<tr>
+                <td style="padding:3px 8px;color:var(--text-primary)">${f}</td>
+                <td style="padding:3px 8px;color:var(--accent);font-variant-numeric:tabular-nums">${beta != null ? beta.toFixed(4) : '—'}</td>
+                <td style="padding:3px 8px;color:var(--text-secondary);font-variant-numeric:tabular-nums">${t != null ? t.toFixed(2) + sigStar(t) : '—'}</td>
+            </tr>`;
+        }).join('');
+        const alpha = data.intercept_alpha;
+        const tA    = data.intercept_tstat;
+        tableWrap.innerHTML = `<table style="font-size:11px;border-collapse:collapse;width:100%">
+            <thead><tr>
+                <th style="padding:3px 8px;text-align:left;color:var(--text-dim)">Factor</th>
+                <th style="padding:3px 8px;text-align:left;color:var(--text-dim)">Beta</th>
+                <th style="padding:3px 8px;text-align:left;color:var(--text-dim)">t-stat</th>
+            </tr></thead>
+            <tbody>${rows}
+            <tr style="border-top:1px solid var(--border)">
+                <td style="padding:3px 8px;color:var(--text-primary)">Alpha (ann.)</td>
+                <td style="padding:3px 8px;color:${alpha > 0 ? 'var(--green)' : 'var(--red)'};font-variant-numeric:tabular-nums">${alpha != null ? (alpha * 100).toFixed(2) + '%' : '—'}</td>
+                <td style="padding:3px 8px;color:var(--text-secondary);font-variant-numeric:tabular-nums">${tA != null ? tA.toFixed(2) + sigStar(tA) + ' (p=' + (data.intercept_pval ?? 0).toFixed(3) + ')' : '—'}</td>
+            </tr>
+            </tbody></table>
+            <div style="font-size:9px;color:var(--text-dim);margin-top:4px">R²=${(data.r2 ?? 0).toFixed(3)} &nbsp;|&nbsp; * = |t|≥1.96</div>`;
     }
 }

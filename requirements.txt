@@ -5,3 +5,4 @@ pandas==2.2.2
 numpy==1.26.4
 ta==0.11.0
 pytest>=8.0
+numba>=0.59

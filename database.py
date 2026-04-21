@@ -5,6 +5,7 @@ Tables:
   - ohlcv    : OHLCV bars (daily + weekly)
 """
 
+import json
 import logging
 import sqlite3
 import os
@@ -32,14 +33,19 @@ def init_db():
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS symbols (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol      TEXT    NOT NULL UNIQUE,
-            name        TEXT,
-            sector      TEXT,
-            added_at    TEXT    NOT NULL,
-            last_fetch  TEXT
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol         TEXT    NOT NULL UNIQUE,
+            name           TEXT,
+            sector         TEXT,
+            added_at       TEXT    NOT NULL,
+            last_fetch     TEXT,
+            quality_report TEXT
         )
     """)
+    # Migrate existing databases that lack the quality_report column
+    existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(symbols)").fetchall()]
+    if "quality_report" not in existing_cols:
+        cur.execute("ALTER TABLE symbols ADD COLUMN quality_report TEXT")
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS ohlcv (
@@ -107,6 +113,31 @@ def update_last_fetch(symbol: str):
     )
     conn.commit()
     conn.close()
+
+
+def update_quality_report(symbol: str, report: dict):
+    conn = get_connection()
+    conn.execute(
+        "UPDATE symbols SET quality_report = ? WHERE symbol = ?",
+        (json.dumps(report), symbol.upper())
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_quality_report(symbol: str) -> dict | None:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT quality_report FROM symbols WHERE symbol = ?",
+        (symbol.upper(),)
+    ).fetchone()
+    conn.close()
+    if row is None or row["quality_report"] is None:
+        return None
+    try:
+        return json.loads(row["quality_report"])
+    except Exception:
+        return None
 
 
 def update_symbol_info(symbol: str, name: str, sector: str):

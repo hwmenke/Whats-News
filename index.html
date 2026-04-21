@@ -140,6 +140,9 @@
       <button id="tab-swirl" class="tab-btn" onclick="switchTab('swirl')">
         <span class="tab-icon">🌀</span> Swirligram
       </button>
+      <button id="tab-portfolio" class="tab-btn" onclick="switchTab('portfolio')">
+        <span class="tab-icon">📂</span> Portfolio
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -787,6 +790,12 @@
           </label>
         </div>
 
+        <div class="st-setting-row">
+          <label title="Adds Politis-Romano stationary block bootstrap 95% CI on Sharpe and CAGR. Adds ~2s.">
+            <input type="checkbox" id="st-bootstrap-ci"> Bootstrap CIs <span style="font-size:10px;color:var(--text-dim)">(slow)</span>
+          </label>
+        </div>
+
         <div class="st-action-row">
           <button id="btn-st-run" class="st-run-btn" onclick="stRunBacktest()">▶ Run Backtest</button>
           <button id="btn-st-wf"  class="st-wf-btn"  onclick="stRunWalkForward()">⚡ Walk-Forward</button>
@@ -811,6 +820,7 @@
         <!-- Monte Carlo -->
         <div style="margin-top:8px;">
           <button id="btn-st-mc" class="st-mc-btn" onclick="stRunMonteCarlo()" style="display:none;">🎲 Monte Carlo</button>
+          <button id="btn-st-fa" class="st-mc-btn" onclick="stRunFactorAttribution()" style="display:none;">📊 Factor Attribution</button>
         </div>
       </div><!-- .st-left -->
 
@@ -848,6 +858,17 @@
           <div id="st-mc-section" style="display:none;">
             <div class="st-chart-label">Monte Carlo (1000 simulations)</div>
             <div class="st-chart st-chart-sm"><canvas id="st-mc-chart"></canvas></div>
+          </div>
+
+          <!-- Factor Attribution section -->
+          <div id="st-factor-section" style="display:none;">
+            <div class="st-chart-label">Factor Attribution — Rolling 63-bar Betas
+              <span id="st-factor-missing" style="font-size:10px;color:var(--red);margin-left:8px;"></span>
+            </div>
+            <div class="st-chart st-chart-sm"><canvas id="st-factor-beta-chart"></canvas></div>
+            <div class="st-chart-label" style="margin-top:8px;">Cumulative Alpha (daily)</div>
+            <div class="st-chart st-chart-sm"><canvas id="st-factor-alpha-chart"></canvas></div>
+            <div id="st-factor-stats-table" class="st-fold-table-wrap" style="margin-top:8px;"></div>
           </div>
 
           <!-- Trades table -->
@@ -985,6 +1006,74 @@
 
     </div><!-- #swirl-area -->
 
+    <!-- ── Portfolio Backtest ──────────────────────────────────────── -->
+    <div id="portfolio-area" class="st-container" style="display:none;">
+
+      <!-- Left: symbol selection + settings -->
+      <div class="st-left">
+        <div class="st-section-label">Symbols</div>
+        <div id="pt-symbol-list" class="pt-symbol-list"></div>
+
+        <div class="st-section-label" style="margin-top:12px;">Sizing Mode</div>
+        <div class="st-setting-row">
+          <label><input type="radio" name="pt-sizing" value="vol_target" checked> Vol Target (10%)</label>
+        </div>
+        <div class="st-setting-row">
+          <label><input type="radio" name="pt-sizing" value="risk_parity"> Risk Parity</label>
+        </div>
+        <div class="st-setting-row">
+          <label><input type="radio" name="pt-sizing" value="equal"> Equal Weight</label>
+        </div>
+
+        <div class="st-section-label" style="margin-top:12px;">Frequency</div>
+        <div class="st-freq-row">
+          <button class="st-freq-btn st-active" data-val="daily"  onclick="ptSetFreq('daily')">Daily</button>
+          <button class="st-freq-btn"           data-val="weekly" onclick="ptSetFreq('weekly')">Weekly</button>
+        </div>
+
+        <div class="st-section-label" style="margin-top:12px;">Entry Condition (applied to all symbols)</div>
+        <div id="pt-entry-long-rows" class="st-conditions-wrap"></div>
+        <button class="st-add-cond-btn" onclick="ptAddConditionRow('pt-entry-long-rows')">+ Entry Long</button>
+
+        <div style="margin-top:8px;">
+          <label style="font-size:11px;color:var(--text-dim);">Exit Long</label>
+          <div id="pt-exit-long-rows" class="st-conditions-wrap"></div>
+          <button class="st-add-cond-btn" onclick="ptAddConditionRow('pt-exit-long-rows')">+ Exit Long</button>
+        </div>
+
+        <div class="st-setting-row" style="margin-top:10px;">
+          <label>Commission %&nbsp;<input type="number" id="pt-commission" value="0.05" step="0.01" min="0" max="5"></label>
+          <label>Slippage %&nbsp;<input type="number" id="pt-slippage" value="0.05" step="0.01" min="0" max="5"></label>
+        </div>
+
+        <div class="st-action-row">
+          <button id="btn-pt-run" class="st-run-btn" onclick="ptRunBacktest()">▶ Run Portfolio</button>
+        </div>
+      </div><!-- .st-left -->
+
+      <!-- Right: results -->
+      <div class="st-right">
+        <div id="pt-loading" class="st-loading" style="display:none;">
+          <span class="st-spinner">⏳</span> Running portfolio backtest…
+        </div>
+        <div id="pt-empty" class="st-empty">
+          <div class="empty-icon">📂</div>
+          <p>Select symbols from the watchlist, choose a sizing mode, then click Run Portfolio.</p>
+        </div>
+        <div id="pt-results" style="display:none;">
+          <div id="pt-metrics-row" class="st-kpi-row"></div>
+          <div class="st-chart-label">Portfolio Equity vs Benchmark</div>
+          <div class="st-chart st-chart-sm"><canvas id="pt-equity-chart"></canvas></div>
+          <div class="st-chart-label" style="margin-top:8px;">Per-Leg Equity</div>
+          <div class="st-chart st-chart-sm"><canvas id="pt-leg-chart"></canvas></div>
+          <div class="st-chart-label" style="margin-top:8px;">Position Weights</div>
+          <div class="st-chart st-chart-sm"><canvas id="pt-weight-chart"></canvas></div>
+          <div id="pt-contribution-table" class="st-fold-table-wrap" style="margin-top:10px;"></div>
+        </div>
+      </div><!-- .st-right -->
+
+    </div><!-- #portfolio-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -1040,6 +1129,7 @@
 <script src="scripts/regression.js"></script>
 <script src="scripts/strategy_tester.js"></script>
 <script src="scripts/swirligram.js"></script>
+<script src="scripts/portfolio.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

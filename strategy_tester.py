@@ -214,14 +214,24 @@ def _build_positions(entry_long: pd.Series,
 # ── Trade extraction ───────────────────────────────────────────────────────────
 
 def _extract_trades(df: pd.DataFrame, position: pd.Series,
-                    commission_pct: float, slippage_pct: float) -> list:
-    """Walk position changes and build trade list."""
+                    commission_pct: float, slippage_pct: float,
+                    bar_delay: int = 1) -> list:
+    """Walk position changes and build trade list.
+
+    Uses bar_delay to match the fill-price assumption in _equity_curve:
+    when bar_delay=1 the fill is the close of the next bar after the signal.
+    """
     closes  = df["close"].values
     highs   = df["high"].values
     lows    = df["low"].values
     pos     = position.values
     dates   = [d.strftime("%Y-%m-%d") for d in df.index]
     cost    = commission_pct + slippage_pct  # one-way cost
+    n       = len(closes)
+
+    def _fill_price(signal_i: int) -> float:
+        fi = min(signal_i + bar_delay, n - 1)
+        return closes[fi]
 
     trades  = []
     in_pos  = False
@@ -235,11 +245,11 @@ def _extract_trades(df: pd.DataFrame, position: pd.Series,
         if not in_pos and curr != 0:
             in_pos    = True
             entry_i   = i
-            entry_p   = closes[i]
+            entry_p   = _fill_price(i)
             direction = curr
         elif in_pos and (curr == 0 or curr != direction):
             exit_i = i
-            exit_p = closes[i]
+            exit_p = _fill_price(i)
 
             # MFE / MAE over trade window
             if direction == 1:
@@ -379,6 +389,66 @@ def _compute_metrics(eq: pd.DataFrame, trades: list, freq: str = "daily") -> dic
     }
 
 
+# ── Bootstrap confidence intervals ─────────────────────────────────────────────
+
+def _stationary_block_bootstrap(arr: np.ndarray, block_len: int,
+                                 n_boot: int = 1000, seed: int = 42) -> np.ndarray:
+    """
+    Politis-Romano stationary block bootstrap.
+    Draws random block starts uniformly; blocks wrap around circularly.
+    Returns array of shape (n_boot, len(arr)).
+    """
+    rng = np.random.default_rng(seed)
+    n   = len(arr)
+    out = np.empty((n_boot, n), dtype=float)
+    starts = rng.integers(0, n, size=(n_boot, math.ceil(n / block_len) + 1))
+    for b in range(n_boot):
+        idx = 0
+        row = out[b]
+        for s in starts[b]:
+            take = min(block_len, n - idx)
+            for k in range(take):
+                row[idx] = arr[(s + k) % n]
+                idx += 1
+            if idx >= n:
+                break
+    return out
+
+
+def add_bootstrap_ci(metrics: dict, eq: pd.DataFrame,
+                     freq: str = "daily", n_boot: int = 1000) -> dict:
+    """
+    Augment a metrics dict with bootstrap 95% CIs and p-values.
+    Modifies metrics in-place and returns it.
+    """
+    nr  = eq["net_ret"].values
+    ann = _ann_factor(freq)
+    if len(nr) < 20:
+        return metrics
+
+    avg_bars = metrics.get("avg_bars_held", 1) or 1
+    block_len = max(2, int(round(avg_bars)))
+    boot = _stationary_block_bootstrap(nr, block_len, n_boot)
+
+    std_b = boot.std(axis=1, ddof=1)
+    std_b[std_b < 1e-12] = 1e-12
+    boot_sharpe = boot.mean(axis=1) / std_b * math.sqrt(ann)
+
+    boot_cagr = np.array([
+        (np.cumprod(1.0 + s)[-1] ** (1.0 / max(len(s) / ann, 0.01)) - 1.0)
+        for s in boot
+    ])
+
+    lo_s, hi_s = np.percentile(boot_sharpe, [2.5, 97.5])
+    lo_c, hi_c = np.percentile(boot_cagr,   [2.5, 97.5])
+
+    metrics["sharpe_ci95"]  = [round(float(lo_s), 4), round(float(hi_s), 4)]
+    metrics["cagr_ci95"]    = [round(float(lo_c), 4), round(float(hi_c), 4)]
+    # One-sided p-value: P(bootstrap Sharpe ≤ 0 | observed data)
+    metrics["sharpe_p_val"] = round(float(np.mean(boot_sharpe <= 0)), 4)
+    return metrics
+
+
 # ── LWC marker builder ─────────────────────────────────────────────────────────
 
 def _build_markers(trades: list) -> list:
@@ -416,6 +486,8 @@ def run_backtest(symbol: str, freq: str, config: dict) -> dict:
         slippage_pct     : float
         regime_filter    : "none"|"long_only"|"short_only"|"trend_aligned"
         limit            : int (default 2000)
+        bootstrap        : bool (default False) — add 95% CI on Sharpe/CAGR
+        n_boot           : int (default 1000)
     """
     limit = int(config.get("limit", 2000))
     df    = db.get_ohlcv_df(symbol, freq, limit=limit)
@@ -457,9 +529,13 @@ def run_backtest(symbol: str, freq: str, config: dict) -> dict:
             pass
 
     position = _build_positions(entry_long, exit_long, entry_short, exit_short, allow_short)
-    trades   = _extract_trades(df, position, commission, slippage)
+    trades   = _extract_trades(df, position, commission, slippage, bar_delay)
     eq       = _equity_curve(df, position, commission, slippage, bar_delay)
     metrics  = _compute_metrics(eq, trades, freq)
+
+    if bool(config.get("bootstrap", False)):
+        n_boot = int(config.get("n_boot", 1000))
+        add_bootstrap_ci(metrics, eq, freq, n_boot)
 
     # Benchmark (buy-and-hold)
     bh_pos = pd.Series(1, index=df.index)

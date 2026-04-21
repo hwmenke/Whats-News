@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import database as db
 import indicator_cache as cache
+import data_quality as dq
 
 
 def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
@@ -71,8 +72,11 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     }).dropna()
     print(f"++ Fetcher: Resampled to {len(weekly_df)} weekly bars")
 
-    daily_count  = db.upsert_ohlcv(sym, "daily",  daily_df)
-    weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
+    quality = dq.validate(daily_df, "daily")
+    db.upsert_ohlcv(sym, "daily",  daily_df)
+    db.upsert_ohlcv(sym, "weekly", weekly_df)
+    daily_count  = len(daily_df)
+    weekly_count = len(weekly_df)
     print(f"++ Fetcher: Database updated ({daily_count}d, {weekly_count}w)")
 
     # Pull meta info (name, sector) - try/except as this can be slow/fail
@@ -88,14 +92,16 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
 
     db.update_symbol_info(sym, name, sector)
     db.update_last_fetch(sym)
+    db.update_quality_report(sym, quality)
     cache.bump_version(sym)
 
     return {
-        "symbol":       sym,
-        "name":         name,
-        "sector":       sector,
-        "daily_rows":   daily_count,
-        "weekly_rows":  weekly_count,
+        "symbol":        sym,
+        "name":          name,
+        "sector":        sector,
+        "daily_rows":    daily_count,
+        "weekly_rows":   weekly_count,
+        "data_quality":  quality,
     }
 
 
@@ -132,8 +138,11 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
                 "volume": "sum",
             }).dropna()
 
-            daily_count  = db.upsert_ohlcv(sym, "daily",  daily_df)
-            weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
+            quality = dq.validate(daily_df, "daily")
+            db.upsert_ohlcv(sym, "daily",  daily_df)
+            db.upsert_ohlcv(sym, "weekly", weekly_df)
+            daily_count  = len(daily_df)
+            weekly_count = len(weekly_df)
             print(f"++ Fetcher: Stored {daily_count}d / {weekly_count}w for {sym}")
 
             # Metadata (best-effort)
@@ -147,7 +156,7 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
 
             db.update_symbol_info(sym, name, sector)
             db.update_last_fetch(sym)
-
+            db.update_quality_report(sym, quality)
             cache.bump_version(sym)
             return {
                 "symbol":      sym,

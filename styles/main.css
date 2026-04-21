@@ -2271,6 +2271,10 @@ html, body {
 .st-kpi-bench { font-size: 9px; color: var(--text-dim); }
 .st-kpi-pos   { color: var(--green); }
 .st-kpi-neg   { color: var(--red); }
+.st-kpi-ci    { font-size: 9px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.st-kpi-pval  { font-size: 9px; font-variant-numeric: tabular-nums; }
+.st-kpi-sig   { color: var(--green); }
+.st-kpi-insig { color: var(--text-dim); }
 
 /* Charts */
 .st-chart-label {
@@ -2468,3 +2472,9 @@ html, body {
   .sw-panel:last-child { border-right: none; border-bottom: 1px solid var(--border); }
   .sw-panel:last-child { border-bottom: none; }
 }
+
+/* ── Portfolio tab ──────────────────────────────────────────── */
+.pt-symbol-list { display: flex; flex-direction: column; gap: 3px; max-height: 200px; overflow-y: auto; padding: 4px 0; }
+.pt-sym-item    { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-primary); cursor: pointer; padding: 2px 0; }
+.pt-sym-item input { cursor: pointer; accent-color: var(--accent); }
+.pt-sym-name    { font-size: 9px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }

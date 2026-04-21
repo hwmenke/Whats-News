@@ -7,23 +7,69 @@ All functions are pure (no DB access) and return pd.Series or tuples thereof.
 import numpy as np
 import pandas as pd
 
+try:
+    import numba
+    _NUMBA = True
+except ImportError:
+    _NUMBA = False
+
+
+def _make_kama_nb():
+    """Build the numba-JIT KAMA inner loop (cached). Falls back to pure numpy."""
+    if not _NUMBA:
+        return None
+    import numba as nb
+
+    @nb.njit(cache=True)
+    def _kama_nb(prices: np.ndarray, window: int,
+                 fast_sc: float, slow_sc: float) -> np.ndarray:
+        n = len(prices)
+        out = np.full(n, np.nan)
+        if n < window:
+            return out
+        out[window - 1] = prices[window - 1]
+        # Pre-compute abs-diff array — O(N) pass
+        abs_diff = np.empty(n - 1)
+        for j in range(n - 1):
+            abs_diff[j] = abs(prices[j + 1] - prices[j])
+        # Seed the running volatility window sum
+        vol_sum = 0.0
+        for j in range(window - 1):
+            vol_sum += abs_diff[j]
+        # Slide the window: O(N) total
+        for i in range(window, n):
+            vol_sum += abs_diff[i - 1]
+            vol_sum -= abs_diff[i - window]
+            direction = abs(prices[i] - prices[i - window])
+            er  = direction / vol_sum if vol_sum > 1e-12 else 0.0
+            sc  = (er * (fast_sc - slow_sc) + slow_sc) ** 2
+            out[i] = out[i - 1] + sc * (prices[i] - out[i - 1])
+        return out
+
+    return _kama_nb
+
+
+_kama_nb = _make_kama_nb()
+
 
 def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> pd.Series:
-    """Kaufman's Adaptive Moving Average."""
+    """Kaufman's Adaptive Moving Average (numba-accelerated when available)."""
     fast_sc = 2.0 / (fast + 1)
     slow_sc = 2.0 / (slow + 1)
-    prices = close.to_numpy(dtype=float, copy=True)
-    n = len(prices)
-    out = np.full(n, np.nan)
-    if n < window:
-        return pd.Series(out, index=close.index)
-    out[window - 1] = prices[window - 1]
-    for i in range(window, n):
-        direction  = abs(prices[i] - prices[i - window])
-        volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
-        er  = direction / volatility if volatility > 1e-12 else 0.0
-        sc  = (er * (fast_sc - slow_sc) + slow_sc) ** 2
-        out[i] = out[i - 1] + sc * (prices[i] - out[i - 1])
+    prices  = close.to_numpy(dtype=float, copy=True)
+    if _kama_nb is not None:
+        out = _kama_nb(prices, window, fast_sc, slow_sc)
+    else:
+        n   = len(prices)
+        out = np.full(n, np.nan)
+        if n >= window:
+            out[window - 1] = prices[window - 1]
+            for i in range(window, n):
+                direction  = abs(prices[i] - prices[i - window])
+                volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
+                er  = direction / volatility if volatility > 1e-12 else 0.0
+                sc  = (er * (fast_sc - slow_sc) + slow_sc) ** 2
+                out[i] = out[i - 1] + sc * (prices[i] - out[i - 1])
     return pd.Series(out, index=close.index)
 
 

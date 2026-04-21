@@ -21,6 +21,9 @@ import ticker_lists as tl
 import regression as reg
 import strategy_tester as st
 import swirligram as swirl
+import data_quality as dq
+import factor_attribution as fa
+import portfolio_backtest as pb
 import errors
 from errors import ApiError
 
@@ -30,6 +33,16 @@ errors.register(app)
 
 # Initialise the database on startup
 db.init_db()
+
+# Warm the numba JIT cache so the first real request isn't slow
+try:
+    from ta_core import _kama_nb as _kama_nb_fn
+    import numpy as _np_warm
+    if _kama_nb_fn is not None:
+        _kama_nb_fn(_np_warm.ones(50, dtype=float), 10, 0.6667, 0.0645)
+    del _kama_nb_fn, _np_warm
+except Exception:
+    pass
 
 
 # -- Static files ---------------------------------------------------------------
@@ -339,6 +352,33 @@ def get_regression(symbol):
 
 # -- Strategy Tester ------------------------------------------------------------
 
+def _assert_data_quality(symbol: str, freq: str):
+    """Raise ApiError if the symbol's data has critical quality issues."""
+    df = db.get_ohlcv_df(symbol, freq, limit=200)
+    if df.empty:
+        return
+    report = dq.validate(df, freq)
+    if not report["ok"]:
+        crits = [i for i in report["issues"] if i["severity"] == "critical"]
+        if crits:
+            raise ApiError("DATA_QUALITY",
+                           f"Data quality check failed for {symbol}",
+                           hint=crits[0]["detail"], http=422)
+
+
+@app.route("/api/data-quality/<string:symbol>", methods=["GET"])
+def get_data_quality(symbol):
+    """Return stored data-quality report for a symbol."""
+    report = db.get_quality_report(symbol.upper())
+    if report is None:
+        # Run on-demand if not stored yet
+        df = db.get_ohlcv_df(symbol.upper(), "daily", limit=2000)
+        if df.empty:
+            raise errors.no_data(symbol.upper())
+        report = dq.validate(df, "daily")
+    return jsonify(report)
+
+
 @app.route("/api/strategy/backtest", methods=["POST"])
 def strategy_backtest():
     """Run a vectorised backtest for a symbol + strategy config."""
@@ -350,6 +390,7 @@ def strategy_backtest():
         raise errors.symbol_required()
     if freq not in ("daily", "weekly"):
         raise errors.validation("freq must be 'daily' or 'weekly'")
+    _assert_data_quality(symbol.upper(), freq)
     result = st.run_backtest(symbol.upper(), freq, config)
     if "error" in result:
         raise errors.no_data(symbol.upper())
@@ -367,9 +408,68 @@ def strategy_walk_forward():
         raise errors.symbol_required()
     if freq not in ("daily", "weekly"):
         raise errors.validation("freq must be 'daily' or 'weekly'")
+    _assert_data_quality(symbol.upper(), freq)
     result = st.walk_forward_optimize(symbol.upper(), freq, config)
     if "error" in result:
         raise errors.no_data(symbol.upper())
+    return jsonify(result)
+
+
+@app.route("/api/strategy/portfolio-backtest", methods=["POST"])
+def portfolio_backtest_endpoint():
+    """Multi-asset portfolio backtest with vol-targeted / risk-parity / equal sizing."""
+    body    = request.get_json(force=True, silent=True) or {}
+    symbols = [s.strip().upper() for s in body.get("symbols", []) if s.strip()]
+    freq    = body.get("freq", "daily")
+    config  = body.get("config", {})
+    sizing  = body.get("sizing", "vol_target")
+
+    if not symbols:
+        raise errors.symbol_required()
+    if len(symbols) > 20:
+        raise errors.validation("Max 20 symbols per portfolio backtest")
+    if freq not in ("daily", "weekly"):
+        raise errors.validation("freq must be 'daily' or 'weekly'")
+    if sizing not in ("vol_target", "risk_parity", "equal"):
+        raise errors.validation("sizing must be vol_target, risk_parity, or equal")
+
+    # Data quality gate
+    for sym in symbols:
+        df = db.get_ohlcv_df(sym, freq, limit=200)
+        if df.empty:
+            continue
+        report = dq.validate(df, freq)
+        if not report["ok"]:
+            crits = [i for i in report["issues"] if i["severity"] == "critical"]
+            if crits:
+                raise ApiError("DATA_QUALITY",
+                               f"Data quality check failed for {sym}",
+                               hint=crits[0]["detail"], http=422)
+
+    result = pb.run_portfolio_backtest(symbols, freq, config, sizing)
+    if "error" in result:
+        raise ApiError("COMPUTATION_FAILED", result["error"], http=422)
+    return jsonify(result)
+
+
+@app.route("/api/strategy/factor-attribution", methods=["POST"])
+def strategy_factor_attribution():
+    """Factor attribution for a strategy's bar-by-bar net returns."""
+    body     = request.get_json(force=True, silent=True) or {}
+    net_ret  = body.get("net_ret", [])
+    dates    = body.get("dates", [])
+    freq     = body.get("freq", "daily")
+    lookback = int(body.get("lookback", 504))
+    if not net_ret or not dates:
+        raise ApiError("SYMBOL_REQUIRED", "net_ret and dates are required", http=400)
+    if len(net_ret) != len(dates):
+        raise errors.validation("net_ret and dates must have equal length")
+    result = fa.compute_factor_attribution(net_ret, dates, freq, lookback)
+    if "error" in result:
+        raise ApiError("COMPUTATION_FAILED", result["error"],
+                       hint=result.get("missing_factors", []) and
+                       "Fetch " + ", ".join(result.get("missing_factors", [])) + " first",
+                       http=422)
     return jsonify(result)
 
 
