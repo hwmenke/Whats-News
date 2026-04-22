@@ -143,6 +143,9 @@
       <button id="tab-portfolio" class="tab-btn" onclick="switchTab('portfolio')">
         <span class="tab-icon">📂</span> Portfolio
       </button>
+      <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">
+        <span class="tab-icon">🔮</span> KNN
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -1148,6 +1151,112 @@
 
     </div><!-- #portfolio-area -->
 
+    <!-- ── KNN Pattern Forecast Area ── -->
+    <div id="knn-area" class="knn-container" style="display:none;">
+
+      <div id="knn-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span> Searching for similar patterns…
+      </div>
+
+      <!-- Controls bar -->
+      <div class="knn-controls">
+        <!-- Left: Freq + K + Run -->
+        <div class="knn-controls-left">
+          <div class="knn-ctrl-group">
+            <span class="knn-ctrl-label">Freq</span>
+            <button class="ind-pill knn-freq-btn knn-active" data-val="daily"  onclick="knnSetFreq('daily')">Daily</button>
+            <button class="ind-pill knn-freq-btn"            data-val="weekly" onclick="knnSetFreq('weekly')">Weekly</button>
+          </div>
+          <div class="knn-ctrl-group">
+            <span class="knn-ctrl-label">Neighbours</span>
+            <input id="knn-k-input" type="number" class="knn-k-input" value="20" min="5" max="50" step="5" />
+          </div>
+          <button id="btn-knn-run" class="btn btn-primary knn-run-btn" onclick="knnRunForecast()">
+            🔮 Find Patterns
+          </button>
+        </div>
+
+        <!-- Right: Weight sliders -->
+        <div class="knn-controls-right">
+          <span class="knn-ctrl-label">Feature Weights</span>
+          <div class="knn-sliders">
+            <div class="knn-slider-row">
+              <span class="knn-slider-icon">📊</span>
+              <span class="knn-slider-label">Trend</span>
+              <input id="knn-slider-trend" class="knn-slider" type="range" min="0" max="1" step="0.05"
+                     value="0.25" oninput="knnUpdateWeight('trend',this.value)">
+              <span id="knn-w-val-trend" class="knn-slider-val">0.25</span>
+            </div>
+            <div class="knn-slider-row">
+              <span class="knn-slider-icon">⚡</span>
+              <span class="knn-slider-label">Momentum</span>
+              <input id="knn-slider-momentum" class="knn-slider" type="range" min="0" max="1" step="0.05"
+                     value="0.25" oninput="knnUpdateWeight('momentum',this.value)">
+              <span id="knn-w-val-momentum" class="knn-slider-val">0.25</span>
+            </div>
+            <div class="knn-slider-row">
+              <span class="knn-slider-icon">🌊</span>
+              <span class="knn-slider-label">Volatility</span>
+              <input id="knn-slider-volatility" class="knn-slider" type="range" min="0" max="1" step="0.05"
+                     value="0.20" oninput="knnUpdateWeight('volatility',this.value)">
+              <span id="knn-w-val-volatility" class="knn-slider-val">0.20</span>
+            </div>
+            <div class="knn-slider-row">
+              <span class="knn-slider-icon">🕯</span>
+              <span class="knn-slider-label">Price Action</span>
+              <input id="knn-slider-price_action" class="knn-slider" type="range" min="0" max="1" step="0.05"
+                     value="0.20" oninput="knnUpdateWeight('price_action',this.value)">
+              <span id="knn-w-val-price_action" class="knn-slider-val">0.20</span>
+            </div>
+            <div class="knn-slider-row">
+              <span class="knn-slider-icon">📦</span>
+              <span class="knn-slider-label">Volume</span>
+              <input id="knn-slider-volume" class="knn-slider" type="range" min="0" max="1" step="0.05"
+                     value="0.10" oninput="knnUpdateWeight('volume',this.value)">
+              <span id="knn-w-val-volume" class="knn-slider-val">0.10</span>
+            </div>
+          </div>
+          <div class="knn-weight-row">
+            <span class="knn-ctrl-label">Total:</span>
+            <span id="knn-weight-total" class="knn-weight-total knn-wt-ok">1.00</span>
+            <button class="ind-pill" onclick="knnResetWeights()" style="font-size:10px;padding:2px 8px;">↺ Reset</button>
+          </div>
+        </div>
+      </div><!-- .knn-controls -->
+
+      <!-- Meta row (shown after run) -->
+      <div id="knn-meta" class="knn-meta" style="display:none;"></div>
+
+      <!-- Empty state -->
+      <div id="knn-empty" class="empty-state">
+        <div class="empty-icon">🔮</div>
+        <p>Select a symbol and click <b>Find Patterns</b> to run KNN analysis across 5 feature groups and 4 time horizons.</p>
+      </div>
+
+      <!-- Results -->
+      <div id="knn-results" style="display:none;" class="knn-results">
+
+        <!-- Horizon cards (4 across) -->
+        <div id="knn-horizon-cards" class="knn-horizon-cards"></div>
+
+        <!-- Bottom: neighbour table + feature panel -->
+        <div class="knn-bottom">
+
+          <!-- Neighbour table -->
+          <div id="knn-neighbor-table" class="knn-neighbor-table"></div>
+
+          <!-- Feature snapshot -->
+          <div class="knn-feature-sidebar">
+            <div class="knn-feat-title">Current Feature Snapshot</div>
+            <div id="knn-feature-panel" class="knn-feature-panel"></div>
+          </div>
+
+        </div><!-- .knn-bottom -->
+
+      </div><!-- #knn-results -->
+
+    </div><!-- #knn-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -1204,6 +1313,7 @@
 <script src="scripts/strategy_tester.js"></script>
 <script src="scripts/swirligram.js"></script>
 <script src="scripts/portfolio.js"></script>
+<script src="scripts/knn_forecast.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

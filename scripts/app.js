@@ -647,6 +647,7 @@ const _AREA_DISPLAY = {
     'strategy-area':     'flex',
     'swirl-area':        'flex',
     'portfolio-area':    'flex',
+    'knn-area':          'flex',
 };
 
 function _showOnly(activeId) {
@@ -702,6 +703,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'portfolio') {
         showPortfolioArea();
         if (typeof initPortfolioTester === 'function') initPortfolioTester();
+    } else if (tabId === 'knn') {
+        showKnnArea();
+        if (typeof initKnnForecast === 'function') initKnnForecast();
     }
 }
 
@@ -713,6 +717,7 @@ function showRegressionArea()  { _showOnly('regression-area'); }
 function showStrategyArea()    { _showOnly('strategy-area'); }
 function showSwirlogramArea()  { _showOnly('swirl-area'); }
 function showPortfolioArea()   { _showOnly('portfolio-area'); }
+function showKnnArea()         { _showOnly('knn-area'); }
 
 // ── Ratio Symbol UI ───────────────────────────────────────────
 function toggleRatioForm() {
@@ -1057,7 +1062,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Keyboard shortcuts
-    const TAB_ORDER = ['charts','stats','trend','scanner','data-manager','regression','strategy','swirl','portfolio'];
+    const TAB_ORDER = ['charts','stats','trend','scanner','data-manager','regression','strategy','swirl','portfolio','knn'];
     TAB_ORDER.forEach((id, i) =>
         registerShortcut({ key: String(i + 1), handler: () => switchTab(id), description: `Go to ${id}` })
     );
