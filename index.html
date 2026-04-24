@@ -26,6 +26,10 @@
 
     <div class="status-dot" title="Connected"></div>
     <span id="market-time" class="market-time">--</span>
+    <div id="regime-badge" class="regime-badge" title="Market Regime" onclick="switchTab('regime')" style="cursor:pointer;">
+      <span id="regime-badge-icon">○</span>
+      <span id="regime-badge-label">—</span>
+    </div>
   </header>
 
   <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
@@ -145,6 +149,18 @@
       </button>
       <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">
         <span class="tab-icon">🔮</span> KNN
+      </button>
+      <button id="tab-regime" class="tab-btn" onclick="switchTab('regime')">
+        <span class="tab-icon">🌡</span> Regime
+      </button>
+      <button id="tab-momentum" class="tab-btn" onclick="switchTab('momentum')">
+        <span class="tab-icon">🏆</span> Momentum
+      </button>
+      <button id="tab-seasonality" class="tab-btn" onclick="switchTab('seasonality')">
+        <span class="tab-icon">📅</span> Seasonality
+      </button>
+      <button id="tab-factor-model" class="tab-btn" onclick="switchTab('factor-model')">
+        <span class="tab-icon">🧮</span> Factors
       </button>
     </nav>
     <div class="tab-bar">
@@ -1257,6 +1273,144 @@
 
     </div><!-- #knn-area -->
 
+    <!-- ── Market Regime Area ── -->
+    <div id="regime-area" class="rg-container" style="display:none;">
+      <div id="regime-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Computing regime…</div>
+      <div class="rg-controls">
+        <span class="rg-ctrl-label">Regime Symbol</span>
+        <input id="regime-symbol-input" type="text" class="rg-sym-input" value="SPY" placeholder="SPY" maxlength="10" />
+        <button class="btn btn-primary btn-sm" onclick="loadRegimeFull(document.getElementById('regime-symbol-input').value)">▶ Load</button>
+        <span style="font-size:10px;color:var(--text-dim);margin-left:8px">Use SPY for market-wide regime, or any symbol for that asset's trend state</span>
+      </div>
+      <div id="regime-empty" class="empty-state">
+        <div class="empty-icon">🌡</div>
+        <p>Click <b>Load</b> to compute the market regime for SPY (or any symbol).</p>
+      </div>
+      <div id="regime-results" style="display:none;" class="rg-results">
+        <div id="regime-hero" class="rg-hero"></div>
+        <div class="rg-chart-wrap">
+          <div class="rg-chart-label">Price History · Regime Overlay</div>
+          <div id="regime-price-chart" style="width:100%;height:220px;"></div>
+        </div>
+        <div class="rg-bottom">
+          <div id="regime-stats-table" class="rg-stats-section"></div>
+          <div id="regime-transitions" class="rg-trans-section"></div>
+        </div>
+      </div>
+    </div><!-- #regime-area -->
+
+    <!-- ── Momentum Ranker Area ── -->
+    <div id="momentum-area" class="mom-container" style="display:none;">
+      <div id="mom-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Ranking symbols…</div>
+      <div class="mom-controls">
+        <button id="btn-mom-load" class="btn btn-primary btn-sm" onclick="loadMomentumRanks()">↻ Refresh</button>
+        <span style="font-size:10px;color:var(--text-dim);margin-left:8px">Rankings use 3M / 6M / 12M-1M composite score · Jegadeesh-Titman construction</span>
+      </div>
+      <div id="mom-empty" class="empty-state">
+        <div class="empty-icon">🏆</div>
+        <p>Cross-sectional momentum ranking across your watchlist.</p>
+      </div>
+      <div id="mom-results" style="display:none;" class="mom-results">
+        <div id="mom-summary" class="mom-summary"></div>
+        <div class="mom-body">
+          <div class="mom-table-wrap">
+            <table class="mom-tbl">
+              <thead><tr>
+                <th class="mom-th">#</th>
+                <th class="mom-th">Symbol</th>
+                <th class="mom-th">Tier</th>
+                <th class="mom-th" style="min-width:140px">Composite Score</th>
+                <th class="mom-th">1M</th>
+                <th class="mom-th">3M</th>
+                <th class="mom-th">6M</th>
+                <th class="mom-th">12M-1M</th>
+                <th class="mom-th">Price</th>
+                <th class="mom-th">1D Chg</th>
+              </tr></thead>
+              <tbody id="mom-table-body"></tbody>
+            </table>
+          </div>
+          <div class="mom-chart-wrap">
+            <div class="mom-chart-label">Momentum Portfolio vs Equal-Weight</div>
+            <canvas id="mom-portfolio-chart" style="width:100%;height:220px;"></canvas>
+          </div>
+        </div>
+      </div>
+    </div><!-- #momentum-area -->
+
+    <!-- ── Seasonality Area ── -->
+    <div id="seasonality-area" class="seas-container" style="display:none;">
+      <div id="seas-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Computing seasonality…</div>
+      <div class="seas-controls">
+        <span class="seas-ctrl-label">Symbol</span>
+        <input id="seas-symbol-input" type="text" class="seas-sym-input" placeholder="AAPL" maxlength="10" />
+        <button class="btn btn-primary btn-sm" onclick="loadSeasonality(document.getElementById('seas-symbol-input').value||undefined)">▶ Analyse</button>
+        <span id="seas-symbol-label" style="font-size:10px;color:var(--text-dim);margin-left:10px"></span>
+      </div>
+      <div id="seas-highlights" class="seas-highlights"></div>
+      <div id="seas-empty" class="empty-state">
+        <div class="empty-icon">📅</div>
+        <p>Select a symbol and click <b>Analyse</b> to see historical seasonality patterns.</p>
+      </div>
+      <div id="seas-results" style="display:none;" class="seas-results">
+        <div class="seas-charts-row">
+          <div class="seas-chart-card">
+            <div class="seas-chart-title">Average Monthly Return</div>
+            <canvas id="seas-month-chart" style="width:100%;height:180px;"></canvas>
+          </div>
+          <div class="seas-chart-card">
+            <div class="seas-chart-title">Day-of-Week Effect</div>
+            <canvas id="seas-dow-chart" style="width:100%;height:180px;"></canvas>
+          </div>
+          <div class="seas-chart-card">
+            <div class="seas-chart-title">Quarterly Returns + Hit Rate</div>
+            <canvas id="seas-quarter-chart" style="width:100%;height:180px;"></canvas>
+          </div>
+        </div>
+        <div id="seas-heatmap" class="seas-heatmap-wrap"></div>
+      </div>
+    </div><!-- #seasonality-area -->
+
+    <!-- ── Factor Model Area ── -->
+    <div id="factor-model-area" class="fm-container" style="display:none;">
+      <div id="fm-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Running factor regressions…</div>
+      <div class="fm-controls">
+        <span class="fm-ctrl-label">Lookback (bars)</span>
+        <input id="fm-lookback-input" type="number" class="fm-lookback-input" value="504" min="126" max="1260" step="63" />
+        <button id="btn-fm-load" class="btn btn-primary btn-sm" onclick="loadFactorModel()">▶ Run Model</button>
+        <div id="fm-missing-warn" class="fm-warn" style="display:none;"></div>
+      </div>
+      <div id="fm-empty" class="empty-state">
+        <div class="empty-icon">🧮</div>
+        <p>Run factor regressions for all watchlist symbols. Requires SPY, IWM, IWD, IWF, TLT, GLD in your watchlist.</p>
+      </div>
+      <div id="fm-results" style="display:none;" class="fm-results">
+        <div class="fm-top">
+          <div id="fm-exposure-matrix" class="fm-matrix-panel"></div>
+          <div class="fm-alpha-panel">
+            <div class="fm-section-title">Alpha Ranking</div>
+            <canvas id="fm-alpha-chart" style="width:100%;height:260px;"></canvas>
+          </div>
+        </div>
+        <div class="fm-middle">
+          <div class="fm-perf-panel">
+            <div class="fm-section-title">Factor Cumulative Performance</div>
+            <canvas id="fm-factor-perf-chart" style="width:100%;height:180px;"></canvas>
+          </div>
+        </div>
+        <div id="fm-drilldown" class="fm-drilldown" style="display:none;">
+          <div id="fm-drill-header" class="fm-drill-header"></div>
+          <div class="fm-drill-charts">
+            <div class="fm-drill-chart-wrap">
+              <div class="fm-section-title">Rolling 63-bar Factor Betas</div>
+              <canvas id="fm-rolling-beta-chart" style="width:100%;height:160px;"></canvas>
+            </div>
+            <div id="fm-attribution" class="fm-drill-attr"></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- #factor-model-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -1314,6 +1468,10 @@
 <script src="scripts/swirligram.js"></script>
 <script src="scripts/portfolio.js"></script>
 <script src="scripts/knn_forecast.js"></script>
+<script src="scripts/market_regime.js"></script>
+<script src="scripts/momentum_ranker.js"></script>
+<script src="scripts/seasonality.js"></script>
+<script src="scripts/factor_model.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

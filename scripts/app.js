@@ -648,6 +648,10 @@ const _AREA_DISPLAY = {
     'swirl-area':        'flex',
     'portfolio-area':    'flex',
     'knn-area':          'flex',
+    'regime-area':       'flex',
+    'momentum-area':     'flex',
+    'seasonality-area':  'flex',
+    'factor-model-area': 'flex',
 };
 
 function _showOnly(activeId) {
@@ -706,6 +710,18 @@ async function switchTab(tabId) {
     } else if (tabId === 'knn') {
         showKnnArea();
         if (typeof initKnnForecast === 'function') initKnnForecast();
+    } else if (tabId === 'regime') {
+        showRegimeArea();
+        if (typeof initRegime === 'function') initRegime();
+    } else if (tabId === 'momentum') {
+        showMomentumArea();
+        if (typeof initMomentumRanker === 'function') initMomentumRanker();
+    } else if (tabId === 'seasonality') {
+        showSeasonalityArea();
+        if (typeof initSeasonality === 'function') initSeasonality();
+    } else if (tabId === 'factor-model') {
+        showFactorModelArea();
+        if (typeof initFactorModel === 'function') initFactorModel();
     }
 }
 
@@ -718,6 +734,10 @@ function showStrategyArea()    { _showOnly('strategy-area'); }
 function showSwirlogramArea()  { _showOnly('swirl-area'); }
 function showPortfolioArea()   { _showOnly('portfolio-area'); }
 function showKnnArea()         { _showOnly('knn-area'); }
+function showRegimeArea()      { _showOnly('regime-area'); }
+function showMomentumArea()    { _showOnly('momentum-area'); }
+function showSeasonalityArea() { _showOnly('seasonality-area'); }
+function showFactorModelArea() { _showOnly('factor-model-area'); }
 
 // ── Ratio Symbol UI ───────────────────────────────────────────
 function toggleRatioForm() {
@@ -1073,6 +1093,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     registerShortcut({ key: '?', shift: true, handler: showShortcutsHelp, description: 'Show this help' });
 
     await loadSymbols();
+
+    // Load regime badge async (non-blocking)
+    if (typeof loadRegimeBadge === 'function') loadRegimeBadge('SPY');
 
     const saved = persistence.load();
     const savedSym = saved?.activeSymbol;

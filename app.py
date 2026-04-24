@@ -21,6 +21,10 @@ import ticker_lists as tl
 import regression as reg
 import strategy_tester as st
 import swirligram as swirl
+import market_regime as mr
+import momentum_ranker as mom_rank
+import seasonality as seas
+import factor_model as fmodel
 import data_quality as dq
 import factor_attribution as fa
 import portfolio_backtest as pb
@@ -505,6 +509,48 @@ def get_swirligram(symbol):
         symbol.upper(), rsi_period, daily_trail, weekly_trail)
     if "error" in result:
         raise errors.no_data(symbol.upper())
+    return jsonify(result)
+
+
+# -- Market Regime --------------------------------------------------------------
+
+@app.route("/api/market-regime", methods=["GET"])
+def market_regime_route():
+    symbol = request.args.get("symbol", "SPY").upper()
+    result = mr.compute_market_regime(symbol)
+    if "error" in result:
+        return jsonify(result), 422
+    return jsonify(result)
+
+
+# -- Momentum Ranker ------------------------------------------------------------
+
+@app.route("/api/momentum-rank", methods=["GET"])
+def momentum_rank_route():
+    result = mom_rank.compute_momentum_ranks()
+    if "error" in result:
+        return jsonify(result), 422
+    return jsonify(result)
+
+
+# -- Seasonality ----------------------------------------------------------------
+
+@app.route("/api/seasonality/<string:symbol>", methods=["GET"])
+def seasonality_route(symbol: str):
+    result = seas.compute_seasonality(symbol.upper())
+    if "error" in result:
+        return jsonify(result), 422
+    return jsonify(result)
+
+
+# -- Factor Model Analyzer ------------------------------------------------------
+
+@app.route("/api/factor-model", methods=["GET"])
+def factor_model_route():
+    lookback = min(int(request.args.get("lookback", 504)), 1260)
+    result   = fmodel.compute_factor_model(lookback)
+    if "error" in result:
+        return jsonify(result), 422
     return jsonify(result)
 
 
