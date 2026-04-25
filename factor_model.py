@@ -27,6 +27,7 @@ Cross-sectional output:
 from __future__ import annotations
 
 import math
+from math import lgamma
 import numpy as np
 import pandas as pd
 import database as db
@@ -88,7 +89,6 @@ def _pval(t_stat: float, df: int = 252) -> float:
     try:
         x = df / (df + t_stat ** 2)
         # Regularised incomplete beta approximation
-        from math import lgamma, exp, log
         a, b = 0.5 * df, 0.5
         if x <= 0 or x >= 1:
             return float(t_stat == 0)
@@ -109,12 +109,10 @@ def compute_factor_model(lookback: int = 504) -> dict:
 
 
 def _compute_inner(lookback: int) -> dict:
-    # ── Load factor returns ────────────────────────────────────
     factor_df, missing_factors = _get_factor_returns("daily", lookback + 10)
     if factor_df.empty or len(factor_df) < 63:
         return {"error": "Factor ETFs not available. Add SPY, IWM, IWD, IWF, TLT, GLD to your watchlist."}
 
-    # Trim to available factor columns only
     avail_factors = [f for f in FACTOR_NAMES if f in factor_df.columns and factor_df[f].notna().sum() > 50]
     if not avail_factors:
         return {"error": "No factor columns available"}
@@ -122,8 +120,8 @@ def _compute_inner(lookback: int) -> dict:
     factor_df = factor_df[avail_factors].dropna()
     fnames    = avail_factors
 
-    # ── Load watchlist symbols ─────────────────────────────────
     syms_meta = db.list_symbols()
+    name_map  = {s["symbol"]: s["name"] for s in syms_meta}
     symbols   = [s["symbol"] for s in syms_meta
                  if s["symbol"] not in FACTOR_SYMBOLS]
 
@@ -150,7 +148,6 @@ def _compute_inner(lookback: int) -> dict:
         betas, tstats, r2 = _ols(y, X)
         n_params = len(betas)
 
-        # betas[-1] = intercept (daily alpha)
         alpha_daily = betas[-1]
         alpha_ann   = alpha_daily * 252
         alpha_t     = tstats[-1]
@@ -159,7 +156,6 @@ def _compute_inner(lookback: int) -> dict:
         factor_betas  = {fnames[i]: _safe(betas[i])  for i in range(len(fnames))}
         factor_tstats = {fnames[i]: _safe(tstats[i]) for i in range(len(fnames))}
 
-        # ── Factor contribution to total return ───────────────
         total_ret    = float((1 + merged["y"]).prod() - 1)
         factor_contribs = {}
         for i, f in enumerate(fnames):
@@ -167,7 +163,6 @@ def _compute_inner(lookback: int) -> dict:
             factor_contribs[f] = _safe(betas[i] * factor_cum)
         alpha_contrib = _safe(total_ret - sum(v for v in factor_contribs.values() if v is not None))
 
-        # ── Rolling betas (ROLL_WIN bars) ─────────────────────
         rolling_betas = {f: [] for f in fnames}
         rolling_dates = []
         for end in range(ROLL_WIN, len(merged)):
@@ -181,7 +176,7 @@ def _compute_inner(lookback: int) -> dict:
 
         results[sym] = {
             "symbol":          sym,
-            "name":            next((s["name"] for s in syms_meta if s["symbol"] == sym), ""),
+            "name":            name_map.get(sym, ""),
             "n_obs":           n,
             "r2":              _safe(r2),
             "alpha_ann":       _safe(alpha_ann),

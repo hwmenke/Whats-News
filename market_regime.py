@@ -44,7 +44,7 @@ def _safe(v):
     try:
         if np.isnan(v): return None
     except: pass
-    return float(v) if isinstance(v, (np.floating, float)) else v
+    return round(float(v), 4)
 
 
 def _classify_series(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
@@ -107,7 +107,6 @@ def _compute_inner(symbol: str) -> dict:
     cur_state   = state_s[last_date]
     cur_meta    = REGIME_META.get(cur_state, {})
 
-    # Days in current regime
     days_in = 1
     for i in range(len(valid_idx) - 2, -1, -1):
         if state_s[valid_idx[i]] == cur_state:

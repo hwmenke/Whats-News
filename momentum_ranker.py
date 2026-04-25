@@ -29,6 +29,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import database as db
+import indicator_cache as cache
 
 
 def _safe(v):
@@ -40,19 +41,19 @@ def _safe(v):
 
 
 def compute_momentum_ranks() -> dict:
-    """
-    Ranks all watchlist symbols by momentum.
-    Returns: ranked list + portfolio simulation.
-    """
+    return cache.get_or_compute("momentum_ranks", "ALL", "daily", _compute_ranks)
+
+
+def _compute_ranks() -> dict:
     syms_meta = db.list_symbols()
     if not syms_meta:
         return {"error": "No symbols in watchlist"}
 
-    symbols = [s["symbol"] for s in syms_meta]
+    symbols  = [s["symbol"] for s in syms_meta]
+    name_map = {s["symbol"]: s["name"] for s in syms_meta}
 
-    # ── Gather last price + returns for each symbol ────────────
-    rows    = []
-    closes  = {}    # sym → close Series (for portfolio simulation)
+    rows   = []
+    closes = {}
 
     for sym in symbols:
         df = db.get_ohlcv_df(sym, "daily", limit=280)
@@ -64,26 +65,17 @@ def compute_momentum_ranks() -> dict:
         n   = len(close)
         ret = lambda h: float((close.iloc[-1] / close.iloc[-h] - 1)) if n >= h else None
 
-        r1m  = ret(21)
-        r3m  = ret(63)   if n >= 63  else None
-        r6m  = ret(126)  if n >= 126 else None
-        # 12M-1M: close[-252] → close[-21]
-        r12m1m = None
-        if n >= 252 and n >= 21:
-            r12m1m = float(close.iloc[-21] / close.iloc[-252] - 1)
-
-        last_price = _safe(close.iloc[-1])
-        prev_price = _safe(close.iloc[-2]) if n >= 2 else None
-        chg1d      = ((close.iloc[-1] / close.iloc[-2]) - 1) if (n >= 2 and prev_price) else None
+        r12m1m = float(close.iloc[-21] / close.iloc[-252] - 1) if n >= 252 else None
+        chg1d  = ((close.iloc[-1] / close.iloc[-2]) - 1) if n >= 2 else None
 
         rows.append({
             "symbol":  sym,
-            "name":    next((s["name"] for s in syms_meta if s["symbol"] == sym), ""),
-            "price":   last_price,
+            "name":    name_map.get(sym, ""),
+            "price":   _safe(close.iloc[-1]),
             "chg1d":   _safe(chg1d),
-            "ret_1m":  _safe(r1m),
-            "ret_3m":  _safe(r3m),
-            "ret_6m":  _safe(r6m),
+            "ret_1m":  _safe(ret(21)),
+            "ret_3m":  _safe(ret(63)),
+            "ret_6m":  _safe(ret(126)),
             "ret_12m_skip1m": _safe(r12m1m),
         })
 
@@ -119,27 +111,16 @@ def compute_momentum_ranks() -> dict:
     df_ranks["tier"] = df_ranks["rank"].apply(_tier)
     df_ranks["composite"] = df_ranks["composite"].round(4)
 
-    # ── Portfolio backtest (simple top-tercile rebalance) ─────
     portfolio = _momentum_portfolio(closes)
 
-    result_rows = []
-    for _, row in df_ranks.iterrows():
-        result_rows.append({
-            "rank":        int(row["rank"]),
-            "symbol":      row["symbol"],
-            "name":        row.get("name", ""),
-            "price":       row["price"],
-            "chg1d":       row["chg1d"],
-            "ret_1m":      row["ret_1m"],
-            "ret_3m":      row["ret_3m"],
-            "ret_6m":      row["ret_6m"],
-            "ret_12m_skip1m": row["ret_12m_skip1m"],
-            "composite":   float(row["composite"]) if pd.notna(row["composite"]) else None,
-            "tier":        row["tier"],
-        })
+    # NaN → None so JSON serialisation is clean
+    df_ranks["composite"] = df_ranks["composite"].where(pd.notna(df_ranks["composite"]), other=None)
+    df_ranks["rank"] = df_ranks["rank"].astype(int)
 
     return {
-        "rankings":  result_rows,
+        "rankings":  df_ranks[["rank","symbol","name","price","chg1d",
+                                "ret_1m","ret_3m","ret_6m","ret_12m_skip1m",
+                                "composite","tier"]].to_dict("records"),
         "n_symbols": n_syms,
         "portfolio": portfolio,
     }
@@ -159,50 +140,37 @@ def _momentum_portfolio(closes: dict[str, pd.Series]) -> dict:
     if len(prices) < 126:
         return {}
 
-    prices = prices.fillna(method="ffill").dropna(how="all")
+    prices = prices.ffill().dropna(how="all")
     rets   = prices.pct_change().fillna(0)
 
-    # Monthly rebalance dates (~every 21 trading days)
-    rebalance_idx = list(range(63, len(prices), 21))   # warm-up 63 bars
+    rebalance_idx = list(range(63, len(prices), 21))
 
-    port_rets   = pd.Series(0.0, index=rets.index)
-    bench_rets  = rets.mean(axis=1)                    # equal-weight benchmark
-    weights     = {}   # sym → weight
+    port_rets  = pd.Series(0.0, index=rets.index)
+    bench_rets = rets.mean(axis=1)
+    top_cols: list[str] = []
+    weight_vec = np.array([])
 
     for i, rb in enumerate(rebalance_idx):
-        # Score at rebalance
-        end_score   = rb
-        scores      = {}
+        scores = {}
+        start63 = max(0, rb - 63)
         for sym in closes:
-            s = prices[sym].dropna()
-            if len(s) < rb + 1:
+            p = prices[sym]
+            if len(p) < rb + 1 or p.iloc[start63] <= 0:
                 continue
-            idx_in_prices = list(prices.index).index(prices.index[rb])
-            # 63-bar return
-            start63 = max(0, idx_in_prices - 63)
-            r3m = (prices[sym].iloc[idx_in_prices] / prices[sym].iloc[start63]) - 1 if prices[sym].iloc[start63] > 0 else np.nan
-            scores[sym] = r3m
+            scores[sym] = p.iloc[rb] / p.iloc[start63] - 1
 
-        if not scores:
-            continue
+        if scores:
+            sc_arr   = pd.Series(scores).dropna()
+            thresh   = sc_arr.quantile(0.67)
+            top_syms = sc_arr[sc_arr >= thresh].index.tolist()
+            if top_syms:
+                top_cols   = [s for s in top_syms if s in rets.columns]
+                weight_vec = np.full(len(top_cols), 1.0 / len(top_cols))
 
-        sc_arr   = pd.Series(scores).dropna()
-        thresh   = sc_arr.quantile(0.67)
-        top_syms = sc_arr[sc_arr >= thresh].index.tolist()
-
-        # Equal-weight among top symbols
-        new_weights = {sym: 1.0 / len(top_syms) for sym in top_syms} if top_syms else {}
-        weights = new_weights
-
-        # Apply weights until next rebalance
         next_rb = rebalance_idx[i + 1] if i + 1 < len(rebalance_idx) else len(prices)
-        for day_i in range(rb, next_rb):
-            if day_i >= len(rets):
-                break
-            date = rets.index[day_i]
-            day_ret = sum(weights.get(sym, 0) * rets.loc[date, sym]
-                          for sym in weights if sym in rets.columns)
-            port_rets.iloc[day_i] = day_ret
+        end     = min(next_rb, len(rets))
+        if top_cols and end > rb:
+            port_rets.iloc[rb:end] = rets.iloc[rb:end][top_cols].values @ weight_vec
 
     # Build equity curves
     eq_port  = (1 + port_rets.iloc[63:]).cumprod()

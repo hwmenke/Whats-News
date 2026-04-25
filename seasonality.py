@@ -107,17 +107,18 @@ def _compute_inner(symbol: str) -> dict:
 
     # ── Year × Month heatmap ───────────────────────────────────
     years = sorted(monthly_ret.index.year.unique())
+    # One groupby pass instead of years×12 individual boolean masks
+    monthly_grouped = monthly_ret.groupby(
+        [monthly_ret.index.year, monthly_ret.index.month]
+    ).first()
+
     heatmap = []
     for yr in years:
-        row = {"year": int(yr), "months": {}}
-        for m in range(1, 13):
-            mask = (monthly_ret.index.year == yr) & (monthly_ret.index.month == m)
-            vals = monthly_ret[mask]
-            row["months"][str(m)] = _safe(vals.iloc[0]) if len(vals) else None
-        # Annual total
-        yr_mask  = monthly_ret.index.year == yr
-        yr_vals  = monthly_ret[yr_mask].dropna()
-        row["annual"] = _safe(((1 + yr_vals).prod() - 1)) if len(yr_vals) else None
+        row = {"year": int(yr), "months": {
+            str(m): _safe(monthly_grouped.get((yr, m))) for m in range(1, 13)
+        }}
+        yr_vals = monthly_ret[monthly_ret.index.year == yr].dropna()
+        row["annual"] = _safe((1 + yr_vals).prod() - 1) if len(yr_vals) else None
         heatmap.append(row)
 
     # ── Best / worst calendar facts ────────────────────────────
