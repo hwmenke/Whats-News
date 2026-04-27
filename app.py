@@ -19,6 +19,7 @@ import backtester
 import scanner
 import adaptive_trend as adaptive
 import ticker_lists as tl
+import pycaret_model
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -456,6 +457,38 @@ def fetch_batch():
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# -- PyCaret AutoML -------------------------------------------------------------
+
+@app.route("/api/pycaret/<string:symbol>", methods=["GET"])
+def get_pycaret_prediction(symbol):
+    """
+    Train PyCaret classifiers on historical features and predict the current
+    bar direction (UP / DOWN) for the given symbol.
+
+    Query params:
+        horizon  (int, default 5)  – forward return window in trading days
+        n_models (int, default 5)  – number of models to compare (max 7)
+    """
+    try:
+        horizon  = int(request.args.get("horizon",  5))
+        n_models = int(request.args.get("n_models", 5))
+    except (TypeError, ValueError):
+        return jsonify({"error": "horizon and n_models must be integers"}), 400
+
+    if horizon not in (1, 5, 10, 20):
+        return jsonify({"error": "horizon must be 1, 5, 10, or 20"}), 400
+    if not (1 <= n_models <= 7):
+        return jsonify({"error": "n_models must be between 1 and 7"}), 400
+
+    try:
+        result = pycaret_model.train_and_predict(symbol.upper(), horizon=horizon, n_models=n_models)
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # -- Entry point ----------------------------------------------------------------
