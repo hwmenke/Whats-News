@@ -11,17 +11,27 @@ A professional-grade financial dashboard built with a Python (Flask) backend and
 ### 1. Clone the repository
 
 ```bash
-git clone <repo-url>
-cd Whats-News
+git clone https://github.com/hwmenke/Whats-News.git /Users/hmenke/code/trading
+cd /Users/hmenke/code/trading
+git checkout claude/add-pycaret-integration-CcGEp
 ```
 
-### 2. Install dependencies
+### 2. Create a virtual environment
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Start the server
+> PyCaret pulls in a large set of ML libraries (~500 MB). This step takes a few minutes on first run.
+
+### 4. Start the server
 
 ```bash
 python3 app.py
@@ -86,6 +96,7 @@ Navigate to **http://localhost:8050** in your browser.
 | `factor_attribution.py` | Per-strategy factor attribution using Fama-French factors |
 | `regression.py` | Macro-factor OLS regression (24 factors, pure numpy) |
 | `knn_forecast.py` | Weighted KNN pattern-recognition forecast (17 features, 4 horizons) |
+| `pycaret_model.py` | PyCaret AutoML — trains & compares classifiers to predict UP/DOWN direction |
 | `swirligram.py` | RSI phase-space swirligram with buy-setup scoring |
 | `ticker_lists.py` | Curated ticker library (~220 tickers, 12 categories) |
 | `errors.py` | Structured API error taxonomy |
@@ -95,6 +106,30 @@ Navigate to **http://localhost:8050** in your browser.
 All modules live in `scripts/`:
 
 `app.js` · `charts.js` · `chart_helpers.js` · `data_manager.js` · `factor_model.js` · `knn_forecast.js` · `market_regime.js` · `momentum_ranker.js` · `persistence.js` · `portfolio.js` · `regression.js` · `scanner.js` · `seasonality.js` · `shortcuts.js` · `strategy_tester.js` · `swirligram.js` · `trend_chart.js`
+
+---
+
+## PyCaret AutoML Endpoint
+
+`GET /api/pycaret/<symbol>?horizon=5&n_models=5`
+
+Trains and compares up to 7 classifiers (LR, DT, RF, ET, NB, Ridge, LDA) on 17
+ATR-normalised technical features (same feature set as KNN Forecast) and returns
+a directional prediction for the most-recent bar.
+
+| Parameter | Default | Options |
+|-----------|---------|---------|
+| `horizon` | `5` | `1`, `5`, `10`, `20` (trading days) |
+| `n_models` | `5` | `1`–`7` |
+
+**Example:**
+```bash
+# Fetch data first, then predict
+curl -X POST http://localhost:8050/api/fetch/AAPL
+curl "http://localhost:8050/api/pycaret/AAPL?horizon=5&n_models=5"
+```
+
+Response includes: `prediction` (UP/DOWN), `confidence`, model `leaderboard`, `feature_importance`, and `current_features`.
 
 ---
 
