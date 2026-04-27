@@ -148,7 +148,7 @@ def update_quality_report(symbol: str, report: dict):
     conn.close()
 
 
-def get_quality_report(symbol: str) -> dict | None:
+def get_quality_report(symbol: str):
     conn = get_connection()
     row = conn.execute(
         "SELECT quality_report FROM symbols WHERE symbol = ?",

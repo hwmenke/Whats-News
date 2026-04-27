@@ -73,7 +73,7 @@ def _pct_rank(series: pd.Series, window: int = 252) -> pd.Series:
     return series.rolling(window, min_periods=20).apply(_rank, raw=True)
 
 
-def _safe_float(val) -> float | None:
+def _safe_float(val):
     try:
         f = float(val)
         return None if np.isnan(f) else round(f, 6)

@@ -298,7 +298,7 @@ def _horizon_stats(rets: np.ndarray, horizon: int) -> dict:
 # ── Public entry point ────────────────────────────────────────
 def compute_knn_forecast(symbol: str, freq: str = "daily",
                          k: int = 20,
-                         group_weights: dict | None = None) -> dict:
+                         group_weights=None) -> dict:
     return cache.get_or_compute(
         "knn_forecast", symbol, freq,
         lambda: _compute_inner(symbol, freq, k, group_weights),
@@ -308,7 +308,7 @@ def compute_knn_forecast(symbol: str, freq: str = "daily",
 
 
 def _compute_inner(symbol: str, freq: str, k: int,
-                   group_weights: dict | None) -> dict:
+                   group_weights) -> dict:
     df = db.get_ohlcv_df(symbol, freq, limit=2000)
     if df.empty:
         return {"error": "No OHLCV data"}
