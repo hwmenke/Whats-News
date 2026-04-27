@@ -1,19 +1,25 @@
 """
 pycaret_model.py  –  AutoML directional-prediction module using PyCaret.
 
-Trains classification models on historical technical-indicator features to
-predict whether the stock will close UP or DOWN over the next `horizon`
-trading days.  The best model from compare_models() is used to classify the
-current (most-recent) bar.
+Trains classification models on the same 17-feature set used by knn_forecast.py
+to predict whether the stock will close UP or DOWN over the next `horizon`
+trading days.  The best model from compare_models() classifies the current
+(most-recent) bar.
 
-Feature set (mirrors knn_model.py, no `ta` dependency):
-    rsi14, vol20_ann, macd_hist, cci_norm, vol_ratio,
-    kama_dist_10, kama_dist_20, kama_dist_50
+Feature groups:
+    trend        – KAMA-10/20/50 distance (ATR-normalised), KAMA-10 slope
+    momentum     – RSI-14, RSI-7, ROC-5, ROC-20, MACD histogram
+    volatility   – ATR percentile rank, Bollinger %B, HV-20 rank
+    price_action – candle body ratio, upper-shadow ratio, close streak
+    volume       – log relative volume, OBV slope
 """
+
+from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 import database as db
+from ta_core import _kama, _rsi, _bollinger, _macd
 
 try:
     from pycaret.classification import ClassificationExperiment
@@ -22,81 +28,49 @@ except ImportError:
     PYCARET_AVAILABLE = False
 
 
-# ── Technical indicator helpers ────────────────────────────────────────────────
-
-def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> pd.Series:
-    prices = close.to_numpy(dtype=float, copy=True)
-    kama_vals = np.full(len(prices), np.nan)
-    if len(prices) < window:
-        return pd.Series(kama_vals, index=close.index)
-    fast_sc = 2.0 / (fast + 1)
-    slow_sc = 2.0 / (slow + 1)
-    kama_vals[window - 1] = prices[window - 1]
-    for i in range(window, len(prices)):
-        direction = abs(prices[i] - prices[i - window])
-        volatility = np.sum(np.abs(np.diff(prices[i - window : i + 1])))
-        er = direction / volatility if volatility != 0 else 0
-        sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
-        kama_vals[i] = kama_vals[i - 1] + sc * (prices[i] - kama_vals[i - 1])
-    return pd.Series(kama_vals, index=close.index)
-
-
-def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
-    delta = close.diff()
-    gain = delta.clip(lower=0).ewm(com=window - 1, min_periods=window).mean()
-    loss = (-delta.clip(upper=0)).ewm(com=window - 1, min_periods=window).mean()
-    rs = gain / loss.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
-
-
-def _macd_hist(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.Series:
-    ema_fast = close.ewm(span=fast, adjust=False).mean()
-    ema_slow = close.ewm(span=slow, adjust=False).mean()
-    macd = ema_fast - ema_slow
-    return macd - macd.ewm(span=signal, adjust=False).mean()
-
-
-def _cci(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 20) -> pd.Series:
-    tp = (high + low + close) / 3.0
-    sma = tp.rolling(window).mean()
-    mad = tp.rolling(window).apply(lambda x: np.mean(np.abs(x - x.mean())), raw=True)
-    return (tp - sma) / (0.015 * mad.replace(0, np.nan))
-
-
-# ── Feature engineering ────────────────────────────────────────────────────────
+# ── Feature constants (mirrors knn_forecast.py catalogue) ─────────────────────
 
 FEATURE_COLS = [
-    "rsi14", "vol20_ann", "macd_hist", "cci_norm",
-    "vol_ratio", "kama_dist_10", "kama_dist_20", "kama_dist_50",
+    # trend
+    "kama10_dist", "kama20_dist", "kama50_dist", "kama_slope",
+    # momentum
+    "rsi14", "rsi7", "roc5", "roc20", "macd_hist",
+    # volatility
+    "atr_rank", "bb_pct", "hv20_rank",
+    # price action
+    "body_ratio", "upper_shadow", "streak",
+    # volume
+    "vol_ratio", "obv_slope",
 ]
 
 FAST_CLASSIFIERS = ["lr", "dt", "rf", "et", "nb", "ridge", "lda"]
 
 
-def _build_features(df: pd.DataFrame, horizon: int) -> pd.DataFrame:
-    """Build feature + binary target dataframe; drop all rows with NaN."""
-    close = df["close"]
-    high  = df["high"]
-    low   = df["low"]
-    vol   = df["volume"]
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
-    feat = pd.DataFrame(index=df.index)
-    feat["rsi14"]       = _rsi(close, 14)
-    feat["vol20_ann"]   = close.pct_change().rolling(20).std() * np.sqrt(252)
-    feat["macd_hist"]   = _macd_hist(close)
-    feat["cci_norm"]    = _cci(high, low, close, 20) / 200.0
-    vol_ma20            = vol.rolling(20).mean()
-    feat["vol_ratio"]   = vol / vol_ma20.replace(0, np.nan)
-    for period in [10, 20, 50]:
-        kama_s = _kama(close, window=period)
-        feat[f"kama_dist_{period}"] = (close / kama_s.replace(0, np.nan)) - 1.0
+def _atr14(df: pd.DataFrame) -> pd.Series:
+    high  = df["high"].values.astype(float)
+    low   = df["low"].values.astype(float)
+    close = df["close"].values.astype(float)
+    n     = len(close)
+    prev  = np.empty(n)
+    prev[0] = close[0]
+    prev[1:] = close[:-1]
+    tr = np.maximum(high - low, np.maximum(np.abs(high - prev), np.abs(low - prev)))
+    atr = np.full(n, np.nan)
+    if n < 14:
+        return pd.Series(atr, index=df.index)
+    atr[13] = tr[:14].mean()
+    alpha = 1.0 / 14.0
+    for i in range(14, n):
+        atr[i] = atr[i - 1] + alpha * (tr[i] - atr[i - 1])
+    return pd.Series(atr, index=df.index)
 
-    # Label: direction of `horizon`-day forward return (last `horizon` rows are unknown)
-    fwd_ret = close.pct_change(horizon).shift(-horizon)
-    feat["target"] = np.where(fwd_ret > 0.0, "UP", "DOWN")
-    feat.loc[feat.index[-horizon:], "target"] = np.nan
 
-    return feat.dropna(subset=FEATURE_COLS + ["target"]).copy()
+def _pct_rank(series: pd.Series, window: int = 252) -> pd.Series:
+    def _rank(x):
+        return (x[:-1] < x[-1]).sum() / max(len(x) - 1, 1)
+    return series.rolling(window, min_periods=20).apply(_rank, raw=True)
 
 
 def _safe_float(val) -> float | None:
@@ -107,12 +81,116 @@ def _safe_float(val) -> float | None:
         return None
 
 
+# ── Feature engineering ────────────────────────────────────────────────────────
+
+def _build_features(df: pd.DataFrame, horizon: int) -> pd.DataFrame:
+    """
+    Build the full 17-feature matrix + binary UP/DOWN label.
+    Last `horizon` rows have no label (no future data yet) and are dropped.
+    """
+    close  = df["close"]
+    high   = df["high"]
+    low    = df["low"]
+    open_  = df["open"]
+    volume = df["volume"]
+
+    eps   = 1e-10
+    atr   = _atr14(df)
+    atr_s = atr.clip(lower=eps)
+
+    # ── Trend ──────────────────────────────────────────────────────────────────
+    k10 = _kama(close, window=10)
+    k20 = _kama(close, window=20)
+    k50 = _kama(close, window=50)
+    kama10_dist = (close - k10) / atr_s
+    kama20_dist = (close - k20) / atr_s
+    kama50_dist = (close - k50) / atr_s
+    kama_slope  = k10.diff(5) / atr_s
+
+    # ── Momentum ───────────────────────────────────────────────────────────────
+    rsi14 = _rsi(close, window=14)
+    rsi7  = _rsi(close, window=7)
+    roc5  = np.log(close / close.shift(5).replace(0, np.nan))
+    roc20 = np.log(close / close.shift(20).replace(0, np.nan))
+    _, _, macd_h = _macd(close)
+    macd_hist = macd_h / atr_s
+
+    # ── Volatility ─────────────────────────────────────────────────────────────
+    atr_pct  = atr / close.clip(lower=eps)
+    atr_rank = _pct_rank(atr_pct, 252)
+
+    upper, _, lower_bb = _bollinger(close, window=20, num_std=2.0)
+    band_range = (upper - lower_bb).clip(lower=eps)
+    bb_pct     = (close - lower_bb) / band_range
+
+    log_ret  = np.log(close / close.shift(1).replace(0, np.nan))
+    hv20     = log_ret.rolling(20).std() * np.sqrt(252)
+    hv20_rank = _pct_rank(hv20, 252)
+
+    # ── Price action ───────────────────────────────────────────────────────────
+    candle_range = (high - low).clip(lower=eps)
+    body         = (close - open_).abs()
+    body_ratio   = body / candle_range
+
+    hi_shadow    = high - pd.concat([open_, close], axis=1).max(axis=1)
+    upper_shadow = hi_shadow.clip(lower=0) / candle_range
+
+    direction = np.sign(close.diff()).fillna(0).astype(int).values
+    streak_vals = np.zeros(len(direction))
+    cur = 0
+    for i in range(1, len(direction)):
+        d = direction[i]
+        if d == 0:
+            cur = 0
+        elif d == cur / max(abs(cur), 1) or cur == 0:
+            cur = cur + d
+        else:
+            cur = d
+        streak_vals[i] = np.clip(cur, -5, 5)
+    streak = pd.Series(streak_vals / 5.0, index=close.index)
+
+    # ── Volume ─────────────────────────────────────────────────────────────────
+    vol_ema20 = volume.ewm(span=20, adjust=False).mean().clip(lower=1)
+    vol_ratio = np.log((volume / vol_ema20).clip(lower=eps))
+    obv       = (np.sign(close.diff()) * volume).cumsum()
+    obv_std   = obv.rolling(20).std().clip(lower=eps)
+    obv_slope = obv.diff(5) / obv_std
+
+    # ── Assemble ───────────────────────────────────────────────────────────────
+    feat = pd.DataFrame({
+        "kama10_dist":  kama10_dist,
+        "kama20_dist":  kama20_dist,
+        "kama50_dist":  kama50_dist,
+        "kama_slope":   kama_slope,
+        "rsi14":        rsi14,
+        "rsi7":         rsi7,
+        "roc5":         roc5,
+        "roc20":        roc20,
+        "macd_hist":    macd_hist,
+        "atr_rank":     atr_rank,
+        "bb_pct":       bb_pct,
+        "hv20_rank":    hv20_rank,
+        "body_ratio":   body_ratio,
+        "upper_shadow": upper_shadow,
+        "streak":       streak,
+        "vol_ratio":    vol_ratio,
+        "obv_slope":    obv_slope,
+    }, index=df.index)
+
+    # Label: direction of `horizon`-day forward return
+    fwd_ret = close.pct_change(horizon).shift(-horizon)
+    feat["target"] = np.where(fwd_ret > 0.0, "UP", "DOWN")
+    feat.loc[feat.index[-horizon:], "target"] = np.nan
+
+    return feat.dropna(subset=FEATURE_COLS + ["target"]).copy()
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 def train_and_predict(symbol: str, horizon: int = 5, n_models: int = 5) -> dict:
     """
-    Train PyCaret classification models on technical-indicator features and
-    return a directional prediction (UP / DOWN) for the most-recent bar.
+    Train PyCaret classification models on 17 technical features and return a
+    directional prediction (UP / DOWN) for the most-recent bar.
 
     Args:
         symbol:   Ticker (e.g. 'AAPL').
@@ -178,7 +256,7 @@ def train_and_predict(symbol: str, horizon: int = 5, n_models: int = 5) -> dict:
     pred_label = str(pred_df[label_col].iloc[0])
     pred_score = _safe_float(pred_df[score_col].iloc[0]) or 0.0
 
-    # ── Feature importance (tree-based or linear coefficients) ────────────────
+    # ── Feature importance (tree models) or coefficients (linear) ─────────────
     feat_importance = None
     try:
         if hasattr(best_model, "feature_importances_"):
@@ -197,10 +275,7 @@ def train_and_predict(symbol: str, horizon: int = 5, n_models: int = 5) -> dict:
     except Exception:
         pass
 
-    current_raw = {
-        col: _safe_float(v)
-        for col, v in current_features.iloc[0].items()
-    }
+    current_raw = {col: _safe_float(v) for col, v in current_features.iloc[0].items()}
 
     return {
         "symbol":             symbol,

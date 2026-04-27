@@ -5,6 +5,7 @@ Run: python app.py
 
 import json
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
@@ -14,18 +15,40 @@ import database as db
 import data_fetcher as fetcher
 import indicators as ind
 import stats as stats
-import knn_model
-import backtester
-import scanner
 import adaptive_trend as adaptive
+import scanner as scan
 import ticker_lists as tl
+import regression as reg
+import strategy_tester as st
+import swirligram as swirl
+import market_regime as mr
+import momentum_ranker as mom_rank
+import seasonality as seas
+import factor_model as fmodel
+import data_quality as dq
+import factor_attribution as fa
+import portfolio_backtest as pb
+import knn_forecast as knn
+import errors
 import pycaret_model
+from errors import ApiError
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
+errors.register(app)
 
 # Initialise the database on startup
 db.init_db()
+
+# Warm the numba JIT cache so the first real request isn't slow
+try:
+    from ta_core import _kama_nb as _kama_nb_fn
+    import numpy as _np_warm
+    if _kama_nb_fn is not None:
+        _kama_nb_fn(_np_warm.ones(50, dtype=float), 10, 0.6667, 0.0645)
+    del _kama_nb_fn, _np_warm
+except Exception:
+    pass
 
 
 # -- Static files ---------------------------------------------------------------
@@ -47,7 +70,7 @@ def add_symbol():
     data   = request.get_json(force=True)
     symbol = data.get("symbol", "").strip().upper()
     if not symbol:
-        return jsonify({"error": "symbol is required"}), 400
+        raise errors.symbol_required()
     added = db.add_symbol(symbol)
     if not added:
         return jsonify({"message": f"{symbol} already in watchlist"}), 200
@@ -60,29 +83,17 @@ def delete_symbol(symbol):
     return jsonify({"message": f"{symbol.upper()} removed"})
 
 
-@app.route("/api/symbols/<string:symbol>/group", methods=["PUT"])
-def set_symbol_group(symbol):
-    data      = request.get_json(force=True) or {}
-    group_tag = data.get("group_tag", "").strip()
-    db.set_symbol_group(symbol.upper(), group_tag)
-    return jsonify({"message": "ok"})
-
-
 # -- Data fetch -----------------------------------------------------------------
 
 @app.route("/api/fetch/<string:symbol>", methods=["POST"])
 def fetch_symbol(symbol):
     print(f">> API: Fetch request for {symbol}")
-    try:
-        result = fetcher.fetch_and_store(symbol.upper())
-        if "error" in result:
-            print(f"!! API: Error fetching {symbol}: {result['error']}")
-            return jsonify(result), 400
-        print(f"<< API: Successfully fetched {symbol}")
-        return jsonify(result)
-    except Exception as e:
-        print(f"!! API: Exception fetching {symbol}: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+    result = fetcher.fetch_and_store(symbol.upper())
+    if "error" in result:
+        print(f"!! API: Error fetching {symbol}: {result['error']}")
+        raise errors.fetch_failed(symbol.upper(), result["error"])
+    print(f"<< API: Successfully fetched {symbol}")
+    return jsonify(result)
 
 
 @app.route("/api/refresh", methods=["POST"])
@@ -112,16 +123,16 @@ def get_ohlcv(symbol):
     try:
         limit = int(request.args.get("limit", 500))
     except (TypeError, ValueError):
-        return jsonify({"error": "limit must be an integer"}), 400
+        raise errors.validation("limit must be an integer")
 
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        raise errors.validation("freq must be 'daily' or 'weekly'")
     if limit <= 0:
-        return jsonify({"error": "limit must be a positive integer"}), 400
+        raise errors.validation("limit must be a positive integer")
 
     rows = db.get_ohlcv(symbol.upper(), freq, limit)
     if not rows:
-        return jsonify({"error": "No data. Fetch the symbol first."}), 404
+        raise errors.no_data(symbol.upper())
     return jsonify(rows)
 
 
@@ -131,7 +142,7 @@ def get_ohlcv(symbol):
 def get_indicators(symbol):
     freq = request.args.get("freq", "daily")
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        raise errors.validation("freq must be 'daily' or 'weekly'")
 
     kama_param = request.args.get("kama", "10,20,50")
     try:
@@ -139,9 +150,11 @@ def get_indicators(symbol):
         if not kama_periods:
             kama_periods = [10, 20, 50]
     except ValueError:
-        return jsonify({"error": "kama must be comma-separated integers"}), 400
+        raise errors.validation("kama must be comma-separated integers")
 
     result = ind.compute_indicators(symbol.upper(), freq, kama_periods)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
     return jsonify(result)
 
 
@@ -149,33 +162,9 @@ def get_indicators(symbol):
 
 @app.route("/api/stats/<string:symbol>", methods=["GET"])
 def get_stats(symbol):
-    try:
-        result = stats.compute_stats(symbol.upper())
-        if "error" in result:
-            return jsonify(result), 404
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-# -- KNN Lookalike --------------------------------------------------------------
-
-@app.route("/api/knn/<string:symbol>")
-def get_knn(symbol):
-    k = int(request.args.get("k", 15))
-    result = knn_model.compute_knn_lookalike(symbol.upper(), k=k)
+    result = stats.compute_stats(symbol.upper())
     if "error" in result:
-        return jsonify(result), 404
-    return jsonify(result)
-
-
-# -- Backtester -----------------------------------------------------------------
-
-@app.route("/api/backtest/<string:symbol>")
-def get_backtest(symbol):
-    result = backtester.run_optimization(symbol.upper())
-    if "error" in result:
-        return jsonify(result), 404
+        raise errors.no_data(symbol.upper())
     return jsonify(result)
 
 
@@ -186,190 +175,53 @@ def get_adaptive_trend(symbol):
     freq   = request.args.get("freq", "daily")
     method = request.args.get("method", "kama")
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        raise errors.validation("freq must be 'daily' or 'weekly'")
     if method not in ("kama", "adma"):
-        return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
+        raise errors.validation("method must be 'kama' or 'adma'")
 
-    # Optional tuning params
-    int_params   = ["sb_er","sb_fast","sb_slow","mb_er","mb_fast","mb_slow",
-                    "lb_er","lb_fast","lb_slow","atr_n"]
-    float_params = ["confirm_mult"]
-    config = {}
-    for p in int_params:
-        v = request.args.get(p)
+    _int_keys = ("sb_er","sb_slow","mb_er","mb_slow","lb_er","lb_slow",
+                 "atr_fast","atr_slow","atr_er")
+    custom = {}
+    for k in _int_keys:
+        v = request.args.get(k)
         if v is not None:
-            try: config[p] = int(v)
-            except ValueError: pass
-    for p in float_params:
-        v = request.args.get(p)
-        if v is not None:
-            try: config[p] = float(v)
-            except ValueError: pass
+            try:
+                custom[k] = int(v)
+            except ValueError:
+                raise errors.validation(f"{k} must be an integer")
 
-    try:
-        result = adaptive.compute_adaptive_trend(symbol.upper(), freq, method, **config)
-        if "error" in result:
-            return jsonify(result), 404
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    result = adaptive.compute_adaptive_trend(
+        symbol.upper(), freq, method, params=custom or None)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
 
 
-# -- Trend Scan ----------------------------------------------------------------
-
-@app.route("/api/trend-scan")
-def trend_scan():
-    """Compute adaptive-trend metrics for every watchlist symbol."""
-    import concurrent.futures
-    from scanner import _kama as kama_fn, _rsi as rsi_fn
-
-    freq       = request.args.get("freq",   "daily")
-    method     = request.args.get("method", "kama")
-    rsi_period = int(request.args.get("rsi_period", 14))
-    symbols    = [s["symbol"] for s in db.list_symbols()]
-    if not symbols:
-        return jsonify([])
-
-    # Parse the same KAMA/ADMA config params as /api/adaptive-trend
-    int_params   = ["sb_er","sb_fast","sb_slow","mb_er","mb_fast","mb_slow",
-                    "lb_er","lb_fast","lb_slow","atr_n"]
-    float_params = ["confirm_mult"]
-    at_config = {}
-    for p in int_params:
-        v = request.args.get(p)
-        if v is not None:
-            try: at_config[p] = int(v)
-            except ValueError: pass
-    for p in float_params:
-        v = request.args.get(p)
-        if v is not None:
-            try: at_config[p] = float(v)
-            except ValueError: pass
-
-    def _one(sym):
-        try:
-            ohlcv = db.get_ohlcv_df(sym, freq, limit=600)
-            if ohlcv.empty or len(ohlcv) < 30:
-                return {"symbol": sym, "error": "No data — fetch first"}
-
-            close = ohlcv["close"]
-            price = float(close.iloc[-1])
-            if price <= 0:
-                return {"symbol": sym, "error": "Zero price"}
-
-            # RSI with configurable period
-            rsi_s   = rsi_fn(close, rsi_period)
-            rsi_val = round(float(rsi_s.dropna().iloc[-1]), 2) if len(rsi_s.dropna()) else None
-
-            # KAMA distances (price vs KAMA, expressed as %)
-            def _kd(k):
-                s  = kama_fn(close, window=k)
-                v  = s.dropna()
-                if not len(v):
-                    return None
-                kv = float(v.iloc[-1])
-                return round((price / kv - 1.0) * 100, 2) if kv > 0 else None
-
-            # Adaptive trend levels (with same config params as chart)
-            trend = adaptive.compute_adaptive_trend(sym, freq, method, **at_config)
-
-            def _tlast(key):
-                arr = trend.get(key, [])
-                for d in reversed(arr):
-                    if d.get("value") is not None:
-                        return float(d["value"])
-                return None
-
-            if "error" in trend:
-                mrt = mdb = signal = None
-            else:
-                mrt    = _tlast("mrt")
-                mdb    = _tlast("mdb")
-                ms     = _tlast("medium_state")
-                ss     = _tlast("short_state")
-                ls     = _tlast("long_state")
-                signal = int((ss or 0) + (ms or 0) + (ls or 0))
-
-            # Derived ratios
-            tp2_price  = round(mdb / price, 4) if mdb and price else None
-            price_stop = round(price / mrt, 4) if mrt and price else None
-            if mrt and mdb and price:
-                risk   = abs(price - mrt)
-                reward = abs(mdb - price)
-                rr = round(reward / risk, 2) if risk > 1e-10 else None
-            else:
-                rr = None
-
-            return {
-                "symbol":     sym,
-                "price":      round(price, 2),
-                "rsi":        rsi_val,
-                "kama10_pct": _kd(10),
-                "kama20_pct": _kd(20),
-                "kama50_pct": _kd(50),
-                "tp2_price":  tp2_price,
-                "price_stop": price_stop,
-                "rr":         rr,
-                "signal":     signal,
-                "mrt":        round(mrt, 2) if mrt else None,
-                "mdb":        round(mdb, 2) if mdb else None,
-            }
-        except Exception as e:
-            return {"symbol": sym, "error": str(e)}
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        results = list(pool.map(_one, symbols))
-
-    return jsonify(results)
+@app.route("/api/adaptive-trend/<string:symbol>/optimize", methods=["POST"])
+def optimize_trend(symbol):
+    body   = request.get_json(force=True) or {}
+    freq   = body.get("freq", "daily")
+    method = body.get("method", "kama")
+    if freq not in ("daily", "weekly"):
+        raise errors.validation("freq must be 'daily' or 'weekly'")
+    if method not in ("kama", "adma"):
+        raise errors.validation("method must be 'kama' or 'adma'")
+    result = adaptive.optimize_adaptive_trend(symbol.upper(), freq, method)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
 
 
 # -- Scanner --------------------------------------------------------------------
 
-@app.route("/api/scanner/sp500")
-def get_sp500():
-    tickers = scanner.get_sp500_tickers()
-    return jsonify(tickers.to_dict(orient="records"))
-
-
-@app.route("/api/scanner/fetch", methods=["POST"])
-def fetch_sp500():
-    force = request.get_json(force=True, silent=True) or {}
-    force_refresh = force.get("force", False)
-    if scanner._fetch_status["running"]:
-        return jsonify({"message": "Fetch already running", "status": scanner._fetch_status})
-    import threading
-    def _run():
-        scanner._fetch_status["running"] = True
-        result = scanner.bulk_fetch_sp500(max_workers=5, force_refresh=force_refresh)
-        scanner._fetch_status["running"] = False
-        scanner._fetch_status["summary"] = result
-    threading.Thread(target=_run, daemon=True).start()
-    return jsonify({"message": "S&P 500 fetch started"})
-
-
-@app.route("/api/scanner/status")
-def scanner_status():
-    return jsonify(scanner._fetch_status)
-
-
-@app.route("/api/scanner/run")
-def run_scanner():
-    signal_filter = request.args.get("signal")
-    results = scanner.run_scanner(signal_filter=signal_filter or None)
-    return jsonify(results)
-
-
 @app.route("/api/scanner", methods=["GET"])
 def get_scanner():
     """Compute multi-timeframe scanner metrics for every watched symbol."""
-    try:
-        symbols = [s['symbol'] for s in db.list_symbols()]
-        if not symbols:
-            return jsonify([])
-        data = scanner.compute_scanner(symbols)
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    symbols = [s['symbol'] for s in db.list_symbols()]
+    if not symbols:
+        return jsonify([])
+    data = scan.compute_scanner(symbols)
+    return jsonify(data)
 
 
 # -- Data Manager ---------------------------------------------------------------
@@ -386,14 +238,10 @@ def fetch_batch():
     SSE streaming endpoint.
     POST body: {
         "tickers":      ["AAPL", ...],
-        "start_date":   "2000-01-01",   // optional, default 2000-01-01
-        "delay":        1.5,            // seconds between requests
-        "add_watchlist": true           // whether to add each ticker to watchlist
+        "start_date":   "2000-01-01",
+        "delay":        1.5,
+        "add_watchlist": true
     }
-    Streams SSE events:
-        data: {"type":"start",  "total": N}
-        data: {"type":"result", "index": i, "symbol": "...", "ok": bool, "msg": "..."}
-        data: {"type":"done",   "ok": N, "failed": N}
     """
     body        = request.get_json(force=True) or {}
     tickers     = [t.strip().upper() for t in body.get("tickers", []) if t.strip()]
@@ -402,9 +250,8 @@ def fetch_batch():
     add_wl      = bool(body.get("add_watchlist", True))
 
     if not tickers:
-        return jsonify({"error": "tickers list is empty"}), 400
+        raise ApiError("SYMBOL_REQUIRED", "tickers list is empty", http=400)
 
-    # Clamp delay to reasonable range
     delay = max(0.3, min(delay, 10.0))
 
     def generate():
@@ -440,7 +287,6 @@ def fetch_batch():
                     fail_count += 1
                     yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': False, 'msg': str(exc)})}\n\n"
 
-                # Rate-limiting pause (skip after last ticker)
                 if i < total - 1:
                     time.sleep(delay)
 
@@ -452,11 +298,301 @@ def fetch_batch():
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
-        headers={
-            "Cache-Control":  "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# -- Price Ratios ---------------------------------------------------------------
+
+@app.route("/api/fetch-ratio", methods=["POST"])
+def fetch_ratio():
+    """
+    Compute and store a synthetic A/B ratio OHLCV series.
+    POST body: {"sym_a": "AAPL", "sym_b": "MSFT"}
+    """
+    body  = request.get_json(force=True) or {}
+    sym_a = body.get("sym_a", "").strip().upper()
+    sym_b = body.get("sym_b", "").strip().upper()
+    if not sym_a or not sym_b:
+        raise ApiError("SYMBOL_REQUIRED", "sym_a and sym_b are required", http=400)
+    if sym_a == sym_b:
+        raise errors.validation("sym_a and sym_b must be different")
+    valid = re.compile(r'^[\^]?[A-Z][A-Z0-9.\-\^]{0,9}$')
+    if not valid.match(sym_a) or not valid.match(sym_b):
+        raise errors.invalid_symbol(f"{sym_a}/{sym_b}")
+    result = fetcher.fetch_ratio_and_store(sym_a, sym_b)
+    if "error" in result:
+        raise ApiError("FETCH_FAILED", result["error"], http=400)
+    db.add_symbol(result["symbol"])
+    return jsonify(result), 201
+
+
+# -- Regression -----------------------------------------------------------------
+
+@app.route("/api/regression/factor-status", methods=["GET"])
+def get_factor_status():
+    """Return availability of all macro factors in the DB."""
+    return jsonify(reg.factor_status())
+
+
+@app.route("/api/regression/<string:symbol>", methods=["GET"])
+def get_regression(symbol):
+    """Run OLS regression of symbol forward returns on macro factor features."""
+    freq = request.args.get("freq", "daily")
+    if freq not in ("daily", "weekly"):
+        raise errors.validation("freq must be 'daily' or 'weekly'")
+    try:
+        horizon  = int(request.args.get("horizon",  5))
+        lookback = int(request.args.get("lookback", 504))
+    except (TypeError, ValueError):
+        raise errors.validation("horizon and lookback must be integers")
+    if not (1 <= horizon <= 60):
+        raise errors.validation("horizon must be 1–60")
+    if not (60 <= lookback <= 2000):
+        raise errors.validation("lookback must be 60–2000")
+    result = reg.compute_regression(symbol.upper(), freq, horizon, lookback)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
+
+
+# -- Strategy Tester ------------------------------------------------------------
+
+def _assert_data_quality(symbol: str, freq: str):
+    """Raise ApiError if the symbol's data has critical quality issues."""
+    df = db.get_ohlcv_df(symbol, freq, limit=200)
+    if df.empty:
+        return
+    report = dq.validate(df, freq)
+    if not report["ok"]:
+        crits = [i for i in report["issues"] if i["severity"] == "critical"]
+        if crits:
+            raise ApiError("DATA_QUALITY",
+                           f"Data quality check failed for {symbol}",
+                           hint=crits[0]["detail"], http=422)
+
+
+@app.route("/api/data-quality/<string:symbol>", methods=["GET"])
+def get_data_quality(symbol):
+    """Return stored data-quality report for a symbol."""
+    report = db.get_quality_report(symbol.upper())
+    if report is None:
+        # Run on-demand if not stored yet
+        df = db.get_ohlcv_df(symbol.upper(), "daily", limit=2000)
+        if df.empty:
+            raise errors.no_data(symbol.upper())
+        report = dq.validate(df, "daily")
+    return jsonify(report)
+
+
+@app.route("/api/strategy/backtest", methods=["POST"])
+def strategy_backtest():
+    """Run a vectorised backtest for a symbol + strategy config."""
+    body   = request.get_json(force=True, silent=True) or {}
+    symbol = body.get("symbol", "")
+    freq   = body.get("freq", "daily")
+    config = body.get("config", {})
+    if not symbol:
+        raise errors.symbol_required()
+    if freq not in ("daily", "weekly"):
+        raise errors.validation("freq must be 'daily' or 'weekly'")
+    _assert_data_quality(symbol.upper(), freq)
+    result = st.run_backtest(symbol.upper(), freq, config)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
+
+
+@app.route("/api/strategy/walk-forward", methods=["POST"])
+def strategy_walk_forward():
+    """Walk-forward optimization for a strategy config."""
+    body   = request.get_json(force=True, silent=True) or {}
+    symbol = body.get("symbol", "")
+    freq   = body.get("freq", "daily")
+    config = body.get("config", {})
+    if not symbol:
+        raise errors.symbol_required()
+    if freq not in ("daily", "weekly"):
+        raise errors.validation("freq must be 'daily' or 'weekly'")
+    _assert_data_quality(symbol.upper(), freq)
+    result = st.walk_forward_optimize(symbol.upper(), freq, config)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
+
+
+@app.route("/api/strategy/portfolio-backtest", methods=["POST"])
+def portfolio_backtest_endpoint():
+    """Multi-asset portfolio backtest with vol-targeted / risk-parity / equal sizing."""
+    body    = request.get_json(force=True, silent=True) or {}
+    symbols = [s.strip().upper() for s in body.get("symbols", []) if s.strip()]
+    freq    = body.get("freq", "daily")
+    config  = body.get("config", {})
+    sizing  = body.get("sizing", "vol_target")
+
+    if not symbols:
+        raise errors.symbol_required()
+    if len(symbols) > 20:
+        raise errors.validation("Max 20 symbols per portfolio backtest")
+    if freq not in ("daily", "weekly"):
+        raise errors.validation("freq must be 'daily' or 'weekly'")
+    if sizing not in ("vol_target", "risk_parity", "equal"):
+        raise errors.validation("sizing must be vol_target, risk_parity, or equal")
+
+    # Data quality gate
+    for sym in symbols:
+        df = db.get_ohlcv_df(sym, freq, limit=200)
+        if df.empty:
+            continue
+        report = dq.validate(df, freq)
+        if not report["ok"]:
+            crits = [i for i in report["issues"] if i["severity"] == "critical"]
+            if crits:
+                raise ApiError("DATA_QUALITY",
+                               f"Data quality check failed for {sym}",
+                               hint=crits[0]["detail"], http=422)
+
+    result = pb.run_portfolio_backtest(symbols, freq, config, sizing)
+    if "error" in result:
+        raise ApiError("COMPUTATION_FAILED", result["error"], http=422)
+    return jsonify(result)
+
+
+@app.route("/api/strategy/factor-attribution", methods=["POST"])
+def strategy_factor_attribution():
+    """Factor attribution for a strategy's bar-by-bar net returns."""
+    body     = request.get_json(force=True, silent=True) or {}
+    net_ret  = body.get("net_ret", [])
+    dates    = body.get("dates", [])
+    freq     = body.get("freq", "daily")
+    lookback = int(body.get("lookback", 504))
+    if not net_ret or not dates:
+        raise ApiError("SYMBOL_REQUIRED", "net_ret and dates are required", http=400)
+    if len(net_ret) != len(dates):
+        raise errors.validation("net_ret and dates must have equal length")
+    result = fa.compute_factor_attribution(net_ret, dates, freq, lookback)
+    if "error" in result:
+        raise ApiError("COMPUTATION_FAILED", result["error"],
+                       hint=result.get("missing_factors", []) and
+                       "Fetch " + ", ".join(result.get("missing_factors", [])) + " first",
+                       http=422)
+    return jsonify(result)
+
+
+@app.route("/api/strategy/monte-carlo", methods=["POST"])
+def strategy_monte_carlo():
+    """Bootstrap Monte Carlo simulation over a list of trade returns."""
+    body   = request.get_json(force=True, silent=True) or {}
+    trades = body.get("trades", [])
+    n_sim  = int(body.get("n_sim", 1000))
+    if not trades:
+        raise ApiError("SYMBOL_REQUIRED", "trades list required", http=400)
+    result = st.monte_carlo(trades, n_sim)
+    return jsonify(result)
+
+
+# -- Swirligram -----------------------------------------------------------------
+
+@app.route("/api/swirligram/<string:symbol>", methods=["GET"])
+def get_swirligram(symbol):
+    """RSI phase-space (Swirligram) for daily + weekly timeframes."""
+    try:
+        rsi_period   = int(request.args.get("period", 14))
+        daily_trail  = int(request.args.get("trail",  90))
+        weekly_trail = int(request.args.get("wtrail", 52))
+    except (TypeError, ValueError):
+        raise errors.validation("period/trail must be integers")
+    if not (5 <= rsi_period <= 50):
+        raise errors.validation("period must be 5–50")
+    if not (20 <= daily_trail <= 504):
+        raise errors.validation("trail must be 20–504")
+    result = swirl.compute_swirligram(
+        symbol.upper(), rsi_period, daily_trail, weekly_trail)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
+
+
+# -- Market Regime --------------------------------------------------------------
+
+@app.route("/api/market-regime", methods=["GET"])
+def market_regime_route():
+    symbol = request.args.get("symbol", "SPY").upper()
+    result = mr.compute_market_regime(symbol)
+    if "error" in result:
+        return jsonify(result), 422
+    return jsonify(result)
+
+
+# -- Momentum Ranker ------------------------------------------------------------
+
+@app.route("/api/momentum-rank", methods=["GET"])
+def momentum_rank_route():
+    result = mom_rank.compute_momentum_ranks()
+    if "error" in result:
+        return jsonify(result), 422
+    return jsonify(result)
+
+
+# -- Seasonality ----------------------------------------------------------------
+
+@app.route("/api/seasonality/<string:symbol>", methods=["GET"])
+def seasonality_route(symbol: str):
+    result = seas.compute_seasonality(symbol.upper())
+    if "error" in result:
+        return jsonify(result), 422
+    return jsonify(result)
+
+
+# -- Factor Model Analyzer ------------------------------------------------------
+
+@app.route("/api/factor-model", methods=["GET"])
+def factor_model_route():
+    lookback = min(int(request.args.get("lookback", 504)), 1260)
+    result   = fmodel.compute_factor_model(lookback)
+    if "error" in result:
+        return jsonify(result), 422
+    return jsonify(result)
+
+
+# -- KNN Pattern Forecast -------------------------------------------------------
+
+@app.route("/api/knn-forecast/<string:symbol>", methods=["POST"])
+def knn_forecast_route(symbol: str):
+    """
+    Weighted KNN pattern-recognition forecast.
+    Body (all optional):
+      { "freq": "daily"|"weekly", "k": 20,
+        "weights": { "trend":0.25, "momentum":0.25,
+                     "volatility":0.20, "price_action":0.20, "volume":0.10 } }
+    """
+    body   = request.get_json(silent=True) or {}
+    freq   = body.get("freq", "daily")
+    k      = max(5, min(int(body.get("k", 20)), 50))
+    raw_w  = body.get("weights", {})
+
+    # Normalise user-supplied weights so they sum to 1
+    group_weights = None
+    if raw_w:
+        total = sum(float(v) for v in raw_w.values() if v is not None)
+        if total > 1e-10:
+            group_weights = {g: float(raw_w.get(g, 0)) / total
+                             for g in ["trend", "momentum", "volatility",
+                                       "price_action", "volume"]}
+
+    result = knn.compute_knn_forecast(symbol.upper(), freq, k, group_weights)
+    if "error" in result:
+        return jsonify({"error": result["error"]}), 422
+    return jsonify(result)
+
+
+# -- Cache stats (debug) --------------------------------------------------------
+
+@app.route("/api/_cache/stats", methods=["GET"])
+def get_cache_stats():
+    """Return indicator cache hit/miss stats."""
+    import indicator_cache as cache
+    return jsonify(cache.cache_stats())
 
 
 # -- PyCaret AutoML -------------------------------------------------------------
@@ -464,31 +600,28 @@ def fetch_batch():
 @app.route("/api/pycaret/<string:symbol>", methods=["GET"])
 def get_pycaret_prediction(symbol):
     """
-    Train PyCaret classifiers on historical features and predict the current
+    Train PyCaret classifiers on 17 technical features and predict the current
     bar direction (UP / DOWN) for the given symbol.
 
     Query params:
-        horizon  (int, default 5)  – forward return window in trading days
-        n_models (int, default 5)  – number of models to compare (max 7)
+        horizon  (int, default 5)  – forward return window in trading days (1, 5, 10, 20)
+        n_models (int, default 5)  – number of models to compare (1–7)
     """
     try:
         horizon  = int(request.args.get("horizon",  5))
         n_models = int(request.args.get("n_models", 5))
     except (TypeError, ValueError):
-        return jsonify({"error": "horizon and n_models must be integers"}), 400
+        raise errors.validation("horizon and n_models must be integers")
 
     if horizon not in (1, 5, 10, 20):
-        return jsonify({"error": "horizon must be 1, 5, 10, or 20"}), 400
+        raise errors.validation("horizon must be 1, 5, 10, or 20")
     if not (1 <= n_models <= 7):
-        return jsonify({"error": "n_models must be between 1 and 7"}), 400
+        raise errors.validation("n_models must be between 1 and 7")
 
-    try:
-        result = pycaret_model.train_and_predict(symbol.upper(), horizon=horizon, n_models=n_models)
-        if "error" in result:
-            return jsonify(result), 400
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    result = pycaret_model.train_and_predict(symbol.upper(), horizon=horizon, n_models=n_models)
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result)
 
 
 # -- Entry point ----------------------------------------------------------------

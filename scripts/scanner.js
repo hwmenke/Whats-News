@@ -335,6 +335,9 @@ function _td(cls) {
 function sortScanner(key) {
     scannerState.sortDir = scannerState.sortKey === key ? scannerState.sortDir * -1 : 1;
     scannerState.sortKey = key;
+    if (typeof persistence !== 'undefined') {
+        persistence.saveTab('scanner', { sortKey: key, sortDir: scannerState.sortDir });
+    }
     if (scannerState.data) renderScannerTable(scannerState.data);
 }
 
@@ -396,6 +399,14 @@ function toggleScanGroup(id) {
 
 // ── Data loading ───────────────────────────────────────────────────────
 async function loadScannerData() {
+    if (typeof persistence !== 'undefined') {
+        const saved = persistence.loadTab('scanner');
+        if (saved?.sortKey) {
+            scannerState.sortKey = saved.sortKey;
+            scannerState.sortDir = saved.sortDir ?? 1;
+        }
+    }
+
     const loadEl  = document.getElementById('scanner-loading');
     const btnScan = document.getElementById('btn-scan');
     const tsEl    = document.getElementById('scanner-ts');
