@@ -47,7 +47,7 @@ def _vol_target_weights(positions_df: pd.DataFrame, returns_df: pd.DataFrame,
                     .rolling(lookback, min_periods=max(2, lookback // 2))
                     .std(ddof=1) * math.sqrt(ann))
         roll_vol = roll_vol.reindex(positions_df.index)
-        roll_vol = roll_vol.replace(0, np.nan).fillna(method='ffill').fillna(0.01)
+        roll_vol = roll_vol.replace(0, np.nan).ffill().fillna(0.01)
         raw_w = target_vol / roll_vol
         weights[sym] = raw_w * positions_df[sym].abs()   # zero where flat
         # Preserve direction
@@ -71,7 +71,7 @@ def _risk_parity_weights(positions_df: pd.DataFrame, returns_df: pd.DataFrame,
                     .rolling(lookback, min_periods=max(2, lookback // 2))
                     .std(ddof=1))
         roll_vol = roll_vol.reindex(positions_df.index)
-        roll_vol = roll_vol.replace(0, np.nan).fillna(method='ffill').fillna(0.01)
+        roll_vol = roll_vol.replace(0, np.nan).ffill().fillna(0.01)
         weights[sym] = (1.0 / roll_vol) * positions_df[sym].apply(
             lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
 

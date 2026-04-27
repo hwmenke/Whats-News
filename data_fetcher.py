@@ -15,12 +15,13 @@ def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     """Normalize yfinance output to lowercase columns and drop NaN rows."""
     print(f"-- Fetcher: Normalizing {len(raw)} rows of raw data")
     df = raw.copy()
-    df.columns = [c.lower() for c in df.columns]
 
-    # yfinance sometimes returns MultiIndex columns
+    # yfinance sometimes returns MultiIndex columns — must check before lowercasing
     if isinstance(df.columns, pd.MultiIndex):
         print("-- Fetcher: Detected MultiIndex columns, flattening...")
         df.columns = [c[0].lower() for c in df.columns]
+    else:
+        df.columns = [c.lower() for c in df.columns]
 
     # Ensure required columns exist
     required = ["open", "high", "low", "close", "volume"]
