@@ -9,28 +9,7 @@ import ta
 import database as db
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import NearestNeighbors
-
-
-def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> pd.Series:
-    """Kaufman's Adaptive Moving Average."""
-    prices = close.to_numpy(dtype=float, copy=True)
-    kama_vals = np.full(len(prices), np.nan)
-
-    if len(prices) < window:
-        return pd.Series(kama_vals, index=close.index)
-
-    fast_sc = 2.0 / (fast + 1)
-    slow_sc = 2.0 / (slow + 1)
-    kama_vals[window - 1] = prices[window - 1]
-
-    for i in range(window, len(prices)):
-        direction = abs(prices[i] - prices[i - window])
-        volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
-        er = direction / volatility if volatility != 0 else 0
-        sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
-        kama_vals[i] = kama_vals[i - 1] + sc * (prices[i] - kama_vals[i - 1])
-
-    return pd.Series(kama_vals, index=close.index)
+from utils import kama as _kama
 
 
 def _safe_float(val):

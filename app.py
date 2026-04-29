@@ -3,6 +3,7 @@ app.py - Flask REST API server for the Financial Dashboard
 Run: python app.py
 """
 
+import concurrent.futures
 import json
 import os
 import time
@@ -18,6 +19,7 @@ import knn_model
 import backtester
 import scanner
 import adaptive_trend as adaptive
+from utils import kama as kama_fn, rsi as rsi_fn
 import ticker_lists as tl
 
 app = Flask(__name__, static_folder=".", static_url_path="")
@@ -25,6 +27,33 @@ CORS(app)
 
 # Initialise the database on startup
 db.init_db()
+
+
+# -- Helpers --------------------------------------------------------------------
+
+_AT_INT_PARAMS   = ["sb_er","sb_fast","sb_slow","mb_er","mb_fast","mb_slow",
+                    "lb_er","lb_fast","lb_slow","atr_n"]
+_AT_FLOAT_PARAMS = ["confirm_mult"]
+
+
+def _parse_at_config() -> dict:
+    """Parse optional adaptive-trend tuning params from the current request."""
+    config = {}
+    for p in _AT_INT_PARAMS:
+        v = request.args.get(p)
+        if v is not None:
+            try:
+                config[p] = int(v)
+            except ValueError:
+                pass
+    for p in _AT_FLOAT_PARAMS:
+        v = request.args.get(p)
+        if v is not None:
+            try:
+                config[p] = float(v)
+            except ValueError:
+                pass
+    return config
 
 
 # -- Static files ---------------------------------------------------------------
@@ -161,7 +190,10 @@ def get_stats(symbol):
 
 @app.route("/api/knn/<string:symbol>")
 def get_knn(symbol):
-    k = int(request.args.get("k", 15))
+    try:
+        k = int(request.args.get("k", 15))
+    except (TypeError, ValueError):
+        return jsonify({"error": "k must be an integer"}), 400
     result = knn_model.compute_knn_lookalike(symbol.upper(), k=k)
     if "error" in result:
         return jsonify(result), 404
@@ -189,24 +221,8 @@ def get_adaptive_trend(symbol):
     if method not in ("kama", "adma"):
         return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
 
-    # Optional tuning params
-    int_params   = ["sb_er","sb_fast","sb_slow","mb_er","mb_fast","mb_slow",
-                    "lb_er","lb_fast","lb_slow","atr_n"]
-    float_params = ["confirm_mult"]
-    config = {}
-    for p in int_params:
-        v = request.args.get(p)
-        if v is not None:
-            try: config[p] = int(v)
-            except ValueError: pass
-    for p in float_params:
-        v = request.args.get(p)
-        if v is not None:
-            try: config[p] = float(v)
-            except ValueError: pass
-
     try:
-        result = adaptive.compute_adaptive_trend(symbol.upper(), freq, method, **config)
+        result = adaptive.compute_adaptive_trend(symbol.upper(), freq, method, **_parse_at_config())
         if "error" in result:
             return jsonify(result), 404
         return jsonify(result)
@@ -219,31 +235,17 @@ def get_adaptive_trend(symbol):
 @app.route("/api/trend-scan")
 def trend_scan():
     """Compute adaptive-trend metrics for every watchlist symbol."""
-    import concurrent.futures
-    from scanner import _kama as kama_fn, _rsi as rsi_fn
-
     freq       = request.args.get("freq",   "daily")
     method     = request.args.get("method", "kama")
-    rsi_period = int(request.args.get("rsi_period", 14))
+    try:
+        rsi_period = int(request.args.get("rsi_period", 14))
+    except (TypeError, ValueError):
+        return jsonify({"error": "rsi_period must be an integer"}), 400
     symbols    = [s["symbol"] for s in db.list_symbols()]
     if not symbols:
         return jsonify([])
 
-    # Parse the same KAMA/ADMA config params as /api/adaptive-trend
-    int_params   = ["sb_er","sb_fast","sb_slow","mb_er","mb_fast","mb_slow",
-                    "lb_er","lb_fast","lb_slow","atr_n"]
-    float_params = ["confirm_mult"]
-    at_config = {}
-    for p in int_params:
-        v = request.args.get(p)
-        if v is not None:
-            try: at_config[p] = int(v)
-            except ValueError: pass
-    for p in float_params:
-        v = request.args.get(p)
-        if v is not None:
-            try: at_config[p] = float(v)
-            except ValueError: pass
+    at_config = _parse_at_config()
 
     def _one(sym):
         try:
@@ -461,6 +463,7 @@ def fetch_batch():
 # -- Entry point ----------------------------------------------------------------
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8050))
+    port  = int(os.environ.get("PORT", 8050))
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
     print(f"\n  Financial Dashboard running at http://localhost:{port}\n")
-    app.run(debug=True, port=port)
+    app.run(debug=debug, port=port)

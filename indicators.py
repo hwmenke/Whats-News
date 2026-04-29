@@ -7,54 +7,7 @@ Returns a dict ready to be JSON-serialised.
 import numpy as np
 import pandas as pd
 import database as db
-
-
-def _safe(val):
-    """Convert NaN / numpy types to Python-native for JSON."""
-    if val is None:
-        return None
-    try:
-        if np.isnan(val):
-            return None
-    except (TypeError, ValueError):
-        pass
-    if isinstance(val, (np.integer,)):
-        return int(val)
-    if isinstance(val, (np.floating,)):
-        return float(val)
-    return val
-
-
-def _series_to_list(s: pd.Series) -> list:
-    return [{"date": d.strftime("%Y-%m-%d"), "value": _safe(v)}
-            for d, v in zip(s.index, s.values)]
-
-
-def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> pd.Series:
-    """Kaufman's Adaptive Moving Average."""
-    fast_sc = 2.0 / (fast + 1)
-    slow_sc = 2.0 / (slow + 1)
-    prices = close.values
-    kama_vals = np.full(len(prices), np.nan)
-    kama_vals[window - 1] = prices[window - 1]
-    for i in range(window, len(prices)):
-        direction  = abs(prices[i] - prices[i - window])
-        volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
-        er  = direction / volatility if volatility != 0 else 0
-        sc  = (er * (fast_sc - slow_sc) + slow_sc) ** 2
-        kama_vals[i] = kama_vals[i - 1] + sc * (prices[i] - kama_vals[i - 1])
-    return pd.Series(kama_vals, index=close.index)
-
-
-def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
-    """Wilder RSI via exponential moving average."""
-    delta = close.diff()
-    gain  = delta.clip(lower=0)
-    loss  = (-delta).clip(lower=0)
-    avg_gain = gain.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
+from utils import kama as _kama, rsi as _rsi, safe as _safe, series_to_list as _series_to_list
 
 
 def _bollinger(close: pd.Series, window: int = 20, num_std: float = 2.0):

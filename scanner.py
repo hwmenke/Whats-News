@@ -21,6 +21,8 @@ Timeframe lookbacks used for percentile rank windows:
 Also includes S&P 500 bulk-fetch and signal-based scanner (local features).
 """
 
+import threading
+
 import numpy as np
 import pandas as pd
 import ta
@@ -28,6 +30,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import database as db
 import data_fetcher as fetcher
+from utils import kama as _kama, rsi as _rsi
 
 # ── Module-level bulk-fetch status ───────────────────────────────────────────
 _fetch_status = {
@@ -37,6 +40,7 @@ _fetch_status = {
     "done":     0,
     "summary":  None,
 }
+_fetch_status_lock = threading.Lock()
 
 
 # ── type helpers ─────────────────────────────────────────────────────────────
@@ -65,58 +69,20 @@ def _last(s: pd.Series):
 
 # ── indicator implementations ─────────────────────────────────────────────────
 
-def _rsi(close: pd.Series, n: int) -> pd.Series:
-    """Wilder EWM RSI (mirrors `ta` library behaviour)."""
-    delta = close.diff()
-    gain  = delta.clip(lower=0)
-    loss  = (-delta).clip(lower=0)
-    ag    = gain.ewm(alpha=1.0 / n, adjust=False).mean()
-    al    = loss.ewm(alpha=1.0 / n, adjust=False).mean()
-    rs    = ag / al.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
-
-
-def _kama(close: pd.Series, window: int = 10,
-          fast: int = 2, slow: int = 30) -> pd.Series:
-    """Kaufman Adaptive Moving Average (mirrors indicators.py)."""
-    fast_sc = 2.0 / (fast + 1)
-    slow_sc = 2.0 / (slow + 1)
-    prices  = close.values.astype(float)
-    n       = len(prices)
-    out     = np.full(n, np.nan)
-    if n < window:
-        return pd.Series(out, index=close.index)
-    out[window - 1] = prices[window - 1]
-    for i in range(window, n):
-        direction  = abs(prices[i] - prices[i - window])
-        volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
-        er  = direction / volatility if volatility > 1e-12 else 0.0
-        sc  = (er * (fast_sc - slow_sc) + slow_sc) ** 2
-        out[i] = out[i - 1] + sc * (prices[i] - out[i - 1])
-    return pd.Series(out, index=close.index)
-
-
 def _pct_rank(series: pd.Series, lookback: int) -> pd.Series:
+    """Rolling percentile rank: where does current bar sit within the previous
+    `lookback` bars?  Returns 0–100.  Uses rolling apply (raw=True) so the
+    inner sort runs in NumPy rather than a pure-Python loop.
     """
-    Rolling percentile rank: where does the current bar's value sit
-    within the previous `lookback` bars?  Returns 0–100.
-    Uses numpy searchsorted for speed.
-    """
-    arr = series.values.astype(float)
-    n   = len(arr)
-    out = np.full(n, np.nan)
-    for i in range(lookback, n):
-        cur = arr[i]
-        if np.isnan(cur):
-            continue
-        window = arr[i - lookback: i]
-        valid  = window[~np.isnan(window)]
+    def _rank(window: np.ndarray) -> float:
+        hist = window[:-1]          # exclude current bar from the reference set
+        cur  = window[-1]
+        valid = hist[~np.isnan(hist)]
         if len(valid) == 0:
-            continue
-        out[i] = float(
-            np.searchsorted(np.sort(valid), cur, side='right')
-        ) / len(valid) * 100.0
-    return pd.Series(out, index=series.index)
+            return np.nan
+        return float(np.searchsorted(np.sort(valid), cur, side='right')) / len(valid) * 100.0
+
+    return series.rolling(lookback + 1, min_periods=lookback + 1).apply(_rank, raw=True)
 
 
 # ── per-timeframe computation ─────────────────────────────────────────────────
@@ -296,12 +262,14 @@ def bulk_fetch_sp500(max_workers: int = 5, force_refresh: bool = False) -> dict:
             if err:
                 results["errors"].append({"symbol": sym, "error": err})
 
-            _fetch_status["done"] += 1
-            total = _fetch_status["total"] or 1
-            _fetch_status["progress"] = round(_fetch_status["done"] / total * 100, 1)
+            with _fetch_status_lock:
+                _fetch_status["done"] += 1
+                total = _fetch_status["total"] or 1
+                _fetch_status["progress"] = round(_fetch_status["done"] / total * 100, 1)
 
-    _fetch_status["running"] = False
-    _fetch_status["summary"] = results
+    with _fetch_status_lock:
+        _fetch_status["running"] = False
+        _fetch_status["summary"] = results
     return results
 
 
@@ -344,15 +312,15 @@ def _scan_one(sym: str):
         all_nan = rsi_s.isna().iloc[-1] or cci_s.isna().iloc[-1] or macd_h.isna().iloc[-1]
         trend_score = None if all_nan else int(rsi_score + cci_score + macd_score)
 
-        # KAMA distances
-        kama_vals = {}
-        for period in [10, 20, 50]:
-            k_s = _kama(close, window=period)
+        # KAMA series (computed once; used for both distances and crossover signals)
+        kama_series = {p: _kama(close, window=p) for p in [10, 20, 50]}
+        kama_dists = {}
+        for period, k_s in kama_series.items():
             k_last = k_s.iloc[-1]
             if not np.isnan(k_last) and k_last != 0:
-                kama_vals[period] = (price / k_last - 1.0) * 100.0  # as %
+                kama_dists[period] = (price / k_last - 1.0) * 100.0
             else:
-                kama_vals[period] = None
+                kama_dists[period] = None
 
         # Volume ratio
         vol_ma20 = vol.rolling(20).mean().iloc[-1]
@@ -378,8 +346,8 @@ def _scan_one(sym: str):
                 signals.append("RSI_OVERBOUGHT")
 
         # KAMA crossover signals (k10 vs k20)
-        k10_s = _kama(close, window=10)
-        k20_s = _kama(close, window=20)
+        k10_s = kama_series[10]
+        k20_s = kama_series[20]
         if len(k10_s) >= 2 and len(k20_s) >= 2:
             k10_prev, k10_curr = float(k10_s.iloc[-2]), float(k10_s.iloc[-1])
             k20_prev, k20_curr = float(k20_s.iloc[-2]), float(k20_s.iloc[-1])
@@ -426,9 +394,9 @@ def _scan_one(sym: str):
             "week_ret":     _r(week_ret, 4),
             "rsi":          _r(rsi, 2),
             "trend_score":  trend_score,
-            "kama10_dist":  _r(kama_vals[10], 2),
-            "kama20_dist":  _r(kama_vals[20], 2),
-            "kama50_dist":  _r(kama_vals[50], 2),
+            "kama10_dist":  _r(kama_dists[10], 2),
+            "kama20_dist":  _r(kama_dists[20], 2),
+            "kama50_dist":  _r(kama_dists[50], 2),
             "vol_ratio":    _r(vol_ratio, 2),
             "bb_pct":       _r(bb_pct, 4),
             "macd_hist":    _r(macd_hist_val, 6),
@@ -489,56 +457,54 @@ def _to_monthly(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── public API ────────────────────────────────────────────────────────
 
+def _compute_scanner_one(sym: str) -> dict:
+    """Compute D/W/M scanner metrics for a single symbol."""
+    try:
+        d_df = db.get_ohlcv_df(sym, 'daily',  limit=600)
+        w_df = db.get_ohlcv_df(sym, 'weekly', limit=200)
+
+        if d_df.empty:
+            return {
+                'symbol': sym, 'error': 'No data — fetch first',
+                'price': None, 'chg': None,
+                'd': None, 'w': None, 'm': None,
+            }
+
+        price = _safe(d_df['close'].iloc[-1])
+        prev  = _safe(d_df['close'].iloc[-2]) if len(d_df) > 1 else None
+        chg   = round((price - prev) / prev * 100, 2) if price and prev else None
+
+        try:
+            m_df = _to_monthly(d_df)
+        except Exception:
+            m_df = pd.DataFrame()
+
+        def _safe_tf(df, lb):
+            try:
+                return _compute_tf(df, lb)
+            except Exception:
+                return None
+
+        return {
+            'symbol': sym,
+            'price':  price,
+            'chg':    chg,
+            'd':      _safe_tf(d_df, 252),
+            'w':      _safe_tf(w_df, 52),
+            'm':      _safe_tf(m_df, 36),
+        }
+    except Exception as e:
+        return {
+            'symbol': sym, 'error': str(e),
+            'price': None, 'chg': None,
+            'd': None, 'w': None, 'm': None,
+        }
+
+
 def compute_scanner(symbols: list) -> list:
     """
     Compute D/W/M scanner metrics for every symbol in the list.
-    Returns a JSON-serialisable list of row dicts.
+    Returns a JSON-serialisable list of row dicts, preserving input order.
     """
-    results = []
-    for sym in symbols:
-        try:
-            d_df = db.get_ohlcv_df(sym, 'daily',  limit=600)
-            w_df = db.get_ohlcv_df(sym, 'weekly', limit=200)
-
-            if d_df.empty:
-                results.append({
-                    'symbol': sym, 'error': 'No data — fetch first',
-                    'price': None, 'chg': None,
-                    'd': None, 'w': None, 'm': None,
-                })
-                continue
-
-            # Price / change computed before any further processing
-            price = _safe(d_df['close'].iloc[-1])
-            prev  = _safe(d_df['close'].iloc[-2]) if len(d_df) > 1 else None
-            chg   = round((price - prev) / prev * 100, 2) if price and prev else None
-
-            # Monthly resample — isolated so a failure doesn't kill price/D/W
-            try:
-                m_df = _to_monthly(d_df)
-            except Exception:
-                m_df = pd.DataFrame()
-
-            # Each timeframe is isolated — one failure won't blank the others
-            def _safe_tf(df, lb):
-                try:
-                    return _compute_tf(df, lb)
-                except Exception:
-                    return None
-
-            results.append({
-                'symbol': sym,
-                'price':  price,
-                'chg':    chg,
-                'd':      _safe_tf(d_df, 252),
-                'w':      _safe_tf(w_df, 52),
-                'm':      _safe_tf(m_df, 36),
-            })
-        except Exception as e:
-            results.append({
-                'symbol': sym, 'error': str(e),
-                'price': None, 'chg': None,
-                'd': None, 'w': None, 'm': None,
-            })
-
-    return results
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        return list(pool.map(_compute_scanner_one, symbols))
