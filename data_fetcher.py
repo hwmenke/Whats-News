@@ -106,15 +106,15 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
 
 
 def fetch_full_history(symbol: str, start: str = "2000-01-01",
-                       max_retries: int = 3) -> dict:
+                       max_retries: int = 5) -> dict:
     """
     Download full daily history from `start` date to today.
     Resamples to weekly (W-FRI) and monthly (ME).
-    Retries with exponential back-off (5s, 10s, 20s) on failure.
+    Retries with exponential back-off on failure; longer pause on 429.
     Returns a result dict with keys: symbol, daily_rows, weekly_rows, error (on failure).
     """
     sym   = symbol.upper()
-    delay = 5  # initial retry delay seconds
+    delay = 8  # initial retry delay seconds
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -167,10 +167,17 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
             }
 
         except Exception as exc:
-            print(f"!! Fetcher: Attempt {attempt} failed for {sym}: {exc}")
+            msg = str(exc)
+            print(f"!! Fetcher: Attempt {attempt} failed for {sym}: {msg}")
             if attempt < max_retries:
-                print(f"   Retrying in {delay}s …")
-                time.sleep(delay)
+                # Rate-limited: wait much longer before retrying
+                if "429" in msg or "Too Many Requests" in msg or "rate limit" in msg.lower():
+                    wait = delay * 4
+                    print(f"   Rate limited — waiting {wait}s before retry …")
+                else:
+                    wait = delay
+                    print(f"   Retrying in {wait}s …")
+                time.sleep(wait)
                 delay *= 2
             else:
                 return {"symbol": sym, "error": str(exc)}
