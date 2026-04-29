@@ -627,6 +627,7 @@ def get_pycaret_prediction(symbol):
 # -- Entry point ----------------------------------------------------------------
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8050))
+    port  = int(os.environ.get("PORT", 8050))
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
     print(f"\n  Financial Dashboard running at http://localhost:{port}\n")
-    app.run(debug=True, port=port)
+    app.run(debug=debug, port=port)
