@@ -116,6 +116,9 @@
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
         <span class="tab-icon">🗄️</span> Data Manager
       </button>
+      <button id="tab-phase-plane" class="tab-btn" onclick="switchTab('phase-plane')">
+        <span class="tab-icon">🌀</span> Phase Plane
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -710,6 +713,59 @@
       </div><!-- .dm-right -->
 
     </div><!-- #data-manager-area -->
+
+    <!-- ── Phase Plane Area ── -->
+    <div id="phase-plane-area" class="stats-container" style="display:none;">
+
+      <!-- Controls row -->
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
+        <button id="btn-phase-plane-refresh" class="btn btn-primary" onclick="loadPhasePlane(true)">
+          ⟳ Regenerate
+        </button>
+        <span id="phase-plane-status" style="color:var(--text-muted); font-size:12px;"></span>
+      </div>
+
+      <!-- KPI cards -->
+      <div class="kpi-row" style="margin-bottom:24px;">
+        <div class="kpi-card">
+          <div class="kpi-label">VIX</div>
+          <div id="pp-vix" class="kpi-value">--</div>
+          <div id="pp-date" class="kpi-sub">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">ν  (vol-of-vol)</div>
+          <div id="pp-nu" class="kpi-value">--</div>
+          <div class="kpi-sub">21 d ann. std Δlog(VIX)</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">ρ  (correlation)</div>
+          <div id="pp-rho" class="kpi-value">--</div>
+          <div class="kpi-sub">63 d rolling corr SPY↔VIX</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Observations</div>
+          <div id="pp-nobs" class="kpi-value">--</div>
+          <div class="kpi-sub">trading days used</div>
+        </div>
+      </div>
+
+      <!-- Loading state -->
+      <div id="phase-plane-loading"
+           style="display:none; align-items:center; justify-content:center;
+                  gap:10px; padding:60px; color:var(--text-muted);">
+        <span class="spinner"></span> Building phase-plane diagram…
+      </div>
+
+      <!-- Diagram -->
+      <div id="phase-plane-img-wrap"
+           style="display:none; background:#0b1220; border-radius:8px;
+                  padding:12px; text-align:center;">
+        <img id="phase-plane-img"
+             style="max-width:100%; border-radius:6px;"
+             alt="SPY/VIX Phase Plane" />
+      </div>
+
+    </div><!-- #phase-plane-area -->
 
   </main>
 
