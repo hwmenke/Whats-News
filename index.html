@@ -6,10 +6,13 @@
   <title>FinDash – Financial Dashboard</title>
   <meta name="description" content="Professional financial dashboard with Yahoo Finance data, SQLite storage, and technical analysis charts." />
   <link rel="stylesheet" href="styles/main.css" />
+  <link rel="stylesheet" href="styles/newsletter.css" />
   <!-- TradingView Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <!-- Chart.js for statistics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Chart.js annotation plugin (for newsletter charts) -->
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
 </head>
 <body>
 
@@ -115,6 +118,9 @@
       </button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
         <span class="tab-icon">🗄️</span> Data Manager
+      </button>
+      <button id="tab-newsletter" class="tab-btn" onclick="switchTab('newsletter')">
+        <span class="tab-icon">📰</span> Daily Edge
       </button>
     </nav>
     <div class="tab-bar">
@@ -282,12 +288,10 @@
     <!-- ── KNN Area ── -->
     <div id="knn-area" class="stats-container" style="display:none;">
 
-      <!-- Loading state -->
       <div id="knn-loading" style="display:none; align-items:center; justify-content:center; gap:10px; padding:40px; color:var(--text-muted);">
         <span class="spinner"></span> Computing KNN lookalikes…
       </div>
 
-      <!-- Prediction KPI cards -->
       <div class="kpi-row" style="margin-bottom:24px;">
         <div class="kpi-card prediction-card">
           <div class="kpi-label">1D Win Rate</div>
@@ -306,7 +310,6 @@
         </div>
       </div>
 
-      <!-- Feature table + Neighbours table -->
       <div class="stats-grid">
         <div class="stats-card">
           <div class="stats-card-header">Current Market State</div>
@@ -331,13 +334,11 @@
     <!-- ── Backtest Area ── -->
     <div id="backtest-area" class="stats-container" style="display:none;">
 
-      <!-- Controls -->
       <div class="backtest-controls" style="margin-bottom:20px;">
         <button id="btn-run-backtest" class="btn btn-primary">Run Optimization</button>
         <span id="backtest-status" style="color:var(--text-muted); font-size:12px;"></span>
       </div>
 
-      <!-- Best result KPI cards -->
       <div class="kpi-row" style="margin-bottom:24px;">
         <div class="kpi-card">
           <div class="kpi-label">Best Sharpe</div>
@@ -361,7 +362,6 @@
         </div>
       </div>
 
-      <!-- Top 10 results + equity curve -->
       <div class="stats-grid">
         <div class="stats-card">
           <div class="stats-card-header">Top 10 Results</div>
@@ -390,17 +390,14 @@
     <!-- ── Adaptive Trend Area ── -->
     <div id="trend-area" class="trend-container" style="display:none;">
 
-      <!-- Full-area loading overlay -->
       <div id="trend-loading" class="chart-loading" style="display:none;">
         <span class="spinner"></span>
         Computing adaptive trend…
       </div>
 
-      <!-- Sub-tabs: Chart | Scan -->
       <div class="trend-subtabs">
         <button class="trend-stab trend-stab-active" id="trend-stab-chart" onclick="switchTrendTab('chart')">📈 Chart</button>
         <button class="trend-stab" id="trend-stab-scan" onclick="switchTrendTab('scan')">📡 Scan Watchlist</button>
-        <!-- SHARED: Method always visible -->
         <div class="trend-controls-group" style="margin-left:auto; padding:0 8px; display:flex; align-items:center; gap:6px;">
           <span class="overlay-section-label">Method</span>
           <button class="ind-pill trend-active trend-method-btn" data-val="kama" onclick="setTrendMethod('kama')">KAMA</button>
@@ -408,13 +405,10 @@
         </div>
       </div>
 
-      <!-- SHARED: Config panel — KAMA/ADMA params + RSI period — always visible -->
       <div id="trend-config-panel" class="trend-config-row"></div>
 
-      <!-- ══ CHART panel ══ -->
       <div id="trend-chart-panel">
 
-      <!-- Chart-specific controls: Freq + Baselines + Bands -->
       <div class="trend-controls">
         <div class="trend-controls-group">
           <span class="overlay-section-label">Freq</span>
@@ -469,24 +463,16 @@
         </div>
       </div>
 
-      <!-- Description strip — updates on button hover -->
       <div id="trend-line-desc" class="trend-line-desc"></div>
 
-      <!-- Two-panel layout -->
       <div class="trend-panels">
 
-        <!-- ── Main chart panel ── -->
         <div class="trend-panel-main">
           <div class="panel-header">Price · Adaptive Bands</div>
-
-          <!-- Price chart — flex:1 fills remaining height -->
           <div class="trend-price-wrap">
             <div id="trend-chart-price" style="width:100%;height:100%;"></div>
           </div>
-
           <div class="chart-divider"></div>
-
-          <!-- Regime strip — fixed height, shows all 3 horizons -->
           <div class="trend-regime-wrap">
             <div class="chart-label">S / M / L REGIME</div>
             <div id="trend-chart-regime" style="width:100%;height:100%;"></div>
@@ -495,11 +481,9 @@
 
         <div class="panel-divider"></div>
 
-        <!-- ── Signal panel ── -->
         <div class="trend-panel-signal">
           <div class="panel-header">Signal Summary</div>
 
-          <!-- Composite signal badge (most prominent element) -->
           <div class="trend-composite-wrap">
             <div class="trend-composite-label">Composite Signal</div>
             <div id="trend-composite" class="trend-composite-badge neutral">—</div>
@@ -507,7 +491,6 @@
             <div id="trend-align"     class="trend-align-detail">—</div>
           </div>
 
-          <!-- 2 × 4 signal detail grid -->
           <div class="trend-signal-grid">
             <div class="trend-signal-card">
               <div class="trend-signal-label">Short Horizon</div>
@@ -549,10 +532,8 @@
 
       </div><!-- #trend-chart-panel -->
 
-      <!-- ══ SCAN panel ══ -->
       <div id="trend-scan-panel" style="display:none; flex-direction:column; height:100%; overflow:hidden;">
 
-        <!-- Scan controls -->
         <div class="trend-scan-controls">
           <button class="btn btn-primary" id="btn-trend-scan" onclick="loadTrendScan()">⟳ Scan Watchlist</button>
           <div class="trend-controls-group">
@@ -566,7 +547,6 @@
           </div>
         </div>
 
-        <!-- Sortable table -->
         <div class="scanner-table-wrap" style="flex:1; overflow-y:auto;">
           <table id="trend-scan-table" class="scanner-table" style="width:100%;">
             <thead id="trend-scan-thead"></thead>
@@ -586,13 +566,11 @@
     <!-- ── Scanner Area ── -->
     <div id="scanner-area" class="scanner-container" style="display:none;">
 
-      <!-- Loading overlay -->
       <div id="scanner-loading" class="chart-loading" style="display:none;">
         <span class="spinner"></span>
         Scanning watchlist…
       </div>
 
-      <!-- Controls bar -->
       <div class="scanner-controls">
         <div class="scanner-controls-left">
           <button id="btn-scan" class="btn btn-primary" onclick="loadScannerData()">⟳ Scan All</button>
@@ -608,7 +586,6 @@
         </div>
       </div>
 
-      <!-- Scrollable table -->
       <div class="scanner-table-wrap">
         <table id="scanner-table" class="scanner-table">
           <thead id="scanner-thead"></thead>
@@ -616,7 +593,6 @@
         </table>
       </div>
 
-      <!-- Empty state -->
       <div id="scanner-empty" class="scanner-empty" style="display:none;">
         <div class="empty-icon">📡</div>
         <p>No symbols in watchlist, or data not yet fetched.<br>Add tickers, then click <strong>⟳ Scan All</strong>.</p>
@@ -627,21 +603,12 @@
     <!-- ── Data Manager Area ── -->
     <div id="data-manager-area" class="dm-container" style="display:none;">
 
-      <!-- ── Left panel: category browser ── -->
       <div class="dm-left">
         <div class="dm-panel-header">Ticker Library</div>
-
-        <!-- Search / filter -->
         <div class="dm-search-wrap">
           <input id="dm-search" type="text" class="dm-search" placeholder="Search tickers…" oninput="dmFilterTickers()" />
         </div>
-
-        <!-- Category grid -->
-        <div id="dm-categories" class="dm-categories">
-          <!-- Rendered by data_manager.js -->
-        </div>
-
-        <!-- Select / deselect controls -->
+        <div id="dm-categories" class="dm-categories"></div>
         <div class="dm-select-controls">
           <button class="btn btn-ghost btn-sm" onclick="dmSelectAll()">Select All</button>
           <button class="btn btn-ghost btn-sm" onclick="dmSelectNone()">Deselect All</button>
@@ -649,17 +616,13 @@
         </div>
       </div>
 
-      <!-- ── Right panel: settings + progress ── -->
       <div class="dm-right">
         <div class="dm-panel-header">Batch Fetch Settings</div>
-
         <div class="dm-settings">
-
           <div class="dm-field">
             <label class="dm-label" for="dm-start-date">Start Date</label>
             <input id="dm-start-date" type="date" class="dm-input" value="2000-01-01" />
           </div>
-
           <div class="dm-field">
             <label class="dm-label" for="dm-delay">Delay Between Requests</label>
             <select id="dm-delay" class="dm-select">
@@ -669,27 +632,17 @@
               <option value="5.0">5.0 s — very safe</option>
             </select>
           </div>
-
           <div class="dm-field dm-field-row">
             <label class="dm-label dm-label-inline">
               <input id="dm-add-watchlist" type="checkbox" checked />
               Also add to watchlist
             </label>
           </div>
-
         </div>
-
-        <!-- Action buttons -->
         <div class="dm-actions">
-          <button id="btn-dm-fetch" class="btn btn-primary" onclick="dmStartBatch()">
-            ▶ Fetch Selected
-          </button>
-          <button id="btn-dm-abort" class="btn btn-danger" style="display:none;" onclick="dmAbortBatch()">
-            ■ Abort
-          </button>
+          <button id="btn-dm-fetch" class="btn btn-primary" onclick="dmStartBatch()">▶ Fetch Selected</button>
+          <button id="btn-dm-abort" class="btn btn-danger" style="display:none;" onclick="dmAbortBatch()">■ Abort</button>
         </div>
-
-        <!-- Progress section -->
         <div id="dm-progress-section" class="dm-progress-section" style="display:none;">
           <div class="dm-progress-header">
             <span id="dm-progress-label">Starting…</span>
@@ -700,16 +653,57 @@
           </div>
           <div id="dm-summary" class="dm-summary"></div>
         </div>
-
-        <!-- Log -->
         <div class="dm-log-header">Log</div>
         <div id="dm-log" class="dm-log">
           <div class="dm-log-hint">Select tickers and click <strong>Fetch Selected</strong> to begin.</div>
         </div>
-
-      </div><!-- .dm-right -->
+      </div>
 
     </div><!-- #data-manager-area -->
+
+    <!-- ── Newsletter Area ── -->
+    <div id="newsletter-area" class="newsletter-container" style="display:none;">
+
+      <!-- Loading overlay -->
+      <div id="newsletter-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span>
+        Loading Daily Edge…
+      </div>
+
+      <!-- Header -->
+      <div class="nl-header">
+        <div class="nl-header-left">
+          <div class="nl-title">The Daily Edge</div>
+          <div id="nl-edition" class="nl-edition"></div>
+        </div>
+        <div class="nl-header-right">
+          <div id="nl-universe-count" class="nl-stat">-- symbols</div>
+          <button id="btn-nl-refresh" class="btn btn-primary" onclick="loadNewsletterData()">⟳ Refresh</button>
+        </div>
+      </div>
+
+      <!-- Lead Stories -->
+      <div class="nl-lead-section">
+        <div class="nl-section-title">Lead Stories</div>
+        <div id="nl-lead-stories" class="nl-lead-grid"></div>
+      </div>
+
+      <!-- Chart grid (grouped by section, rendered by newsletter.js) -->
+      <div id="nl-chart-grid" class="nl-chart-grid"></div>
+
+      <!-- Error state -->
+      <div id="nl-error" class="nl-empty-state" style="display:none;">
+        <div class="empty-icon">⚠️</div>
+        <p id="nl-error-msg">Failed to load newsletter data.</p>
+      </div>
+
+      <!-- Empty state -->
+      <div id="nl-empty" class="nl-empty-state" style="display:none;">
+        <div class="empty-icon">📰</div>
+        <p>No data available. Add symbols to your watchlist and fetch data first.</p>
+      </div>
+
+    </div><!-- #newsletter-area -->
 
   </main>
 
@@ -718,7 +712,7 @@
 <!-- Toast container -->
 <div id="toast-container" class="toast-container"></div>
 
-<!-- ══ Bulk Add Modal ══════════════════════════════════════════ -->
+<!-- ══ Bulk Add Modal ══════════════════════════════════════════════ -->
 <div id="bulk-modal" class="bulk-modal-overlay" style="display:none;"
      onclick="if(event.target===this)closeBulkModal()">
   <div class="bulk-modal-card" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title">
@@ -738,7 +732,6 @@
       ></textarea>
       <p class="bulk-hint">Duplicates and already-tracked symbols are skipped automatically.</p>
 
-      <!-- Progress (hidden until import starts) -->
       <div id="bulk-progress" class="bulk-progress" style="display:none;">
         <div class="bulk-progress-bar">
           <div id="bulk-progress-fill" class="bulk-progress-fill"></div>
@@ -761,6 +754,7 @@
 <script src="scripts/scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/app.js"></script>
+<script src="scripts/newsletter.js"></script>
 
 </body>
 </html>
