@@ -7,29 +7,7 @@ short/medium/long regime states, and entry signals.
 import numpy as np
 import pandas as pd
 import database as db
-
-
-# ── JSON helpers ──────────────────────────────────────────────
-
-def _safe(val):
-    """Convert NaN / numpy types to Python-native for JSON."""
-    if val is None:
-        return None
-    try:
-        if np.isnan(val):
-            return None
-    except (TypeError, ValueError):
-        pass
-    if isinstance(val, np.integer):
-        return int(val)
-    if isinstance(val, np.floating):
-        return float(val)
-    return val
-
-
-def _series_to_list(s: pd.Series) -> list:
-    return [{"date": d.strftime("%Y-%m-%d"), "value": _safe(v)}
-            for d, v in zip(s.index, s.values)]
+from shared_indicators import _safe, _series_to_list
 
 
 # ── Indicators ────────────────────────────────────────────────

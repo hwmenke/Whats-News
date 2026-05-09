@@ -4,11 +4,19 @@ Run: python app.py
 """
 
 import json
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 import database as db
 import data_fetcher as fetcher
@@ -43,7 +51,7 @@ def get_symbols():
 
 @app.route("/api/symbols", methods=["POST"])
 def add_symbol():
-    data   = request.get_json(force=True)
+    data   = request.get_json(silent=True) or {}
     symbol = data.get("symbol", "").strip().upper()
     if not symbol:
         return jsonify({"error": "symbol is required"}), 400
@@ -61,7 +69,7 @@ def delete_symbol(symbol):
 
 @app.route("/api/symbols/<string:symbol>/group", methods=["PUT"])
 def set_symbol_group(symbol):
-    data      = request.get_json(force=True) or {}
+    data      = request.get_json(silent=True) or {}
     group_tag = data.get("group_tag", "").strip()
     db.set_symbol_group(symbol.upper(), group_tag)
     return jsonify({"message": "ok"})
@@ -71,16 +79,16 @@ def set_symbol_group(symbol):
 
 @app.route("/api/fetch/<string:symbol>", methods=["POST"])
 def fetch_symbol(symbol):
-    print(f">> API: Fetch request for {symbol}")
+    logger.info("Fetch request for %s", symbol)
     try:
         result = fetcher.fetch_and_store(symbol.upper())
         if "error" in result:
-            print(f"!! API: Error fetching {symbol}: {result['error']}")
+            logger.warning("Error fetching %s: %s", symbol, result["error"])
             return jsonify(result), 400
-        print(f"<< API: Successfully fetched {symbol}")
+        logger.info("Successfully fetched %s", symbol)
         return jsonify(result)
     except Exception as e:
-        print(f"!! API: Exception fetching {symbol}: {str(e)}")
+        logger.error("Exception fetching %s: %s", symbol, e)
         return jsonify({"error": str(e)}), 500
 
 
@@ -332,7 +340,7 @@ def get_sp500():
 
 @app.route("/api/scanner/fetch", methods=["POST"])
 def fetch_sp500():
-    force = request.get_json(force=True, silent=True) or {}
+    force = request.get_json(silent=True) or {}
     force_refresh = force.get("force", False)
     if scanner._fetch_status["running"]:
         return jsonify({"message": "Fetch already running", "status": scanner._fetch_status})
@@ -394,7 +402,7 @@ def fetch_batch():
         data: {"type":"result", "index": i, "symbol": "...", "ok": bool, "msg": "..."}
         data: {"type":"done",   "ok": N, "failed": N}
     """
-    body        = request.get_json(force=True) or {}
+    body        = request.get_json(silent=True) or {}
     tickers     = [t.strip().upper() for t in body.get("tickers", []) if t.strip()]
     start_date  = body.get("start_date", "2000-01-01")
     delay       = float(body.get("delay", 1.5))
@@ -461,6 +469,7 @@ def fetch_batch():
 # -- Entry point ----------------------------------------------------------------
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8050))
-    print(f"\n  Financial Dashboard running at http://localhost:{port}\n")
-    app.run(debug=True, port=port)
+    port  = int(os.environ.get("PORT", 8050))
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    logger.info("Financial Dashboard running at http://localhost:%d (debug=%s)", port, debug)
+    app.run(debug=debug, port=port)

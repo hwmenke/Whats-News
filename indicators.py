@@ -7,54 +7,8 @@ Returns a dict ready to be JSON-serialised.
 import numpy as np
 import pandas as pd
 import database as db
-
-
-def _safe(val):
-    """Convert NaN / numpy types to Python-native for JSON."""
-    if val is None:
-        return None
-    try:
-        if np.isnan(val):
-            return None
-    except (TypeError, ValueError):
-        pass
-    if isinstance(val, (np.integer,)):
-        return int(val)
-    if isinstance(val, (np.floating,)):
-        return float(val)
-    return val
-
-
-def _series_to_list(s: pd.Series) -> list:
-    return [{"date": d.strftime("%Y-%m-%d"), "value": _safe(v)}
-            for d, v in zip(s.index, s.values)]
-
-
-def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> pd.Series:
-    """Kaufman's Adaptive Moving Average."""
-    fast_sc = 2.0 / (fast + 1)
-    slow_sc = 2.0 / (slow + 1)
-    prices = close.values
-    kama_vals = np.full(len(prices), np.nan)
-    kama_vals[window - 1] = prices[window - 1]
-    for i in range(window, len(prices)):
-        direction  = abs(prices[i] - prices[i - window])
-        volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
-        er  = direction / volatility if volatility != 0 else 0
-        sc  = (er * (fast_sc - slow_sc) + slow_sc) ** 2
-        kama_vals[i] = kama_vals[i - 1] + sc * (prices[i] - kama_vals[i - 1])
-    return pd.Series(kama_vals, index=close.index)
-
-
-def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
-    """Wilder RSI via exponential moving average."""
-    delta = close.diff()
-    gain  = delta.clip(lower=0)
-    loss  = (-delta).clip(lower=0)
-    avg_gain = gain.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
+from shared_indicators import _kama, _rsi, _safe, _series_to_list
+from config import KAMA_PERIODS, BB_WINDOW, BB_NUM_STD, MACD_FAST, MACD_SLOW, MACD_SIGNAL, CCI_WINDOW
 
 
 def _bollinger(close: pd.Series, window: int = 20, num_std: float = 2.0):
@@ -86,7 +40,7 @@ def _cci(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 20) ->
 
 def compute_indicators(symbol: str, freq: str = "daily", kama_periods: list = None) -> dict:
     if kama_periods is None:
-        kama_periods = [10, 20, 50]
+        kama_periods = KAMA_PERIODS
 
     df = db.get_ohlcv_df(symbol, freq, limit=1000)
     if df.empty:
@@ -107,7 +61,7 @@ def compute_indicators(symbol: str, freq: str = "daily", kama_periods: list = No
 
     # ── Bollinger Bands ───────────────────────────────────────────
     try:
-        bb_upper, bb_mid, bb_lower = _bollinger(close, window=20, num_std=2.0)
+        bb_upper, bb_mid, bb_lower = _bollinger(close, window=BB_WINDOW, num_std=BB_NUM_STD)
         result["bb_upper"]  = _series_to_list(bb_upper)
         result["bb_middle"] = _series_to_list(bb_mid)
         result["bb_lower"]  = _series_to_list(bb_lower)
@@ -127,7 +81,7 @@ def compute_indicators(symbol: str, freq: str = "daily", kama_periods: list = No
 
     # ── MACD (12/26/9) ────────────────────────────────────────────
     try:
-        macd_line, macd_signal, macd_hist = _macd(close, fast=12, slow=26, signal=9)
+        macd_line, macd_signal, macd_hist = _macd(close, fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL)
         result["macd_line"]   = _series_to_list(macd_line)
         result["macd_signal"] = _series_to_list(macd_signal)
         result["macd_hist"]   = _series_to_list(macd_hist)
@@ -137,7 +91,7 @@ def compute_indicators(symbol: str, freq: str = "daily", kama_periods: list = No
 
     # ── CCI (20) ──────────────────────────────────────────────────
     try:
-        cci_vals = _cci(high, low, close, window=20)
+        cci_vals = _cci(high, low, close, window=CCI_WINDOW)
         result["cci"] = _series_to_list(cci_vals)
     except Exception:
         cci_vals = pd.Series(np.nan, index=close.index)

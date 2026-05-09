@@ -28,6 +28,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import database as db
 import data_fetcher as fetcher
+from shared_indicators import _kama, _rsi
+from config import KAMA_PERIODS
 
 # ── Module-level bulk-fetch status ───────────────────────────────────────────
 _fetch_status = {
@@ -64,36 +66,7 @@ def _last(s: pd.Series):
 
 
 # ── indicator implementations ─────────────────────────────────────────────────
-
-def _rsi(close: pd.Series, n: int) -> pd.Series:
-    """Wilder EWM RSI (mirrors `ta` library behaviour)."""
-    delta = close.diff()
-    gain  = delta.clip(lower=0)
-    loss  = (-delta).clip(lower=0)
-    ag    = gain.ewm(alpha=1.0 / n, adjust=False).mean()
-    al    = loss.ewm(alpha=1.0 / n, adjust=False).mean()
-    rs    = ag / al.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
-
-
-def _kama(close: pd.Series, window: int = 10,
-          fast: int = 2, slow: int = 30) -> pd.Series:
-    """Kaufman Adaptive Moving Average (mirrors indicators.py)."""
-    fast_sc = 2.0 / (fast + 1)
-    slow_sc = 2.0 / (slow + 1)
-    prices  = close.values.astype(float)
-    n       = len(prices)
-    out     = np.full(n, np.nan)
-    if n < window:
-        return pd.Series(out, index=close.index)
-    out[window - 1] = prices[window - 1]
-    for i in range(window, n):
-        direction  = abs(prices[i] - prices[i - window])
-        volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
-        er  = direction / volatility if volatility > 1e-12 else 0.0
-        sc  = (er * (fast_sc - slow_sc) + slow_sc) ** 2
-        out[i] = out[i - 1] + sc * (prices[i] - out[i - 1])
-    return pd.Series(out, index=close.index)
+# _kama and _rsi are imported from shared_indicators
 
 
 def _pct_rank(series: pd.Series, lookback: int) -> pd.Series:
@@ -346,7 +319,7 @@ def _scan_one(sym: str):
 
         # KAMA distances
         kama_vals = {}
-        for period in [10, 20, 50]:
+        for period in KAMA_PERIODS:
             k_s = _kama(close, window=period)
             k_last = k_s.iloc[-1]
             if not np.isnan(k_last) and k_last != 0:
