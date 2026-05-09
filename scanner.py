@@ -24,6 +24,7 @@ Also includes S&P 500 bulk-fetch and signal-based scanner (local features).
 import numpy as np
 import pandas as pd
 import ta
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import database as db
@@ -31,7 +32,8 @@ import data_fetcher as fetcher
 from shared_indicators import _kama, _rsi
 from config import KAMA_PERIODS
 
-# ── Module-level bulk-fetch status ───────────────────────────────────────────
+# ── Module-level bulk-fetch status (Lock-guarded) ────────────────────────────
+_fetch_lock = threading.Lock()
 _fetch_status = {
     "running":  False,
     "progress": 0,
@@ -39,6 +41,16 @@ _fetch_status = {
     "done":     0,
     "summary":  None,
 }
+
+
+def get_fetch_status() -> dict:
+    with _fetch_lock:
+        return dict(_fetch_status)
+
+
+def _update_fetch_status(**kwargs):
+    with _fetch_lock:
+        _fetch_status.update(kwargs)
 
 
 # ── type helpers ─────────────────────────────────────────────────────────────
@@ -229,20 +241,16 @@ def bulk_fetch_sp500(max_workers: int = 5, force_refresh: bool = False) -> dict:
     """
     Add all S&P 500 tickers to the DB and fetch their OHLCV data.
     Skips symbols fetched within the last 23 hours unless force_refresh=True.
-    Updates the module-level _fetch_status dict throughout.
+    Updates the module-level _fetch_status dict throughout (Lock-guarded).
     """
-    global _fetch_status
-
     try:
         sp500_df = get_sp500_tickers()
         symbols  = sp500_df["Symbol"].tolist()
     except Exception as e:
-        _fetch_status["running"] = False
+        _update_fetch_status(running=False)
         return {"error": f"Failed to fetch S&P 500 list: {str(e)}"}
 
-    _fetch_status["total"]    = len(symbols)
-    _fetch_status["done"]     = 0
-    _fetch_status["progress"] = 0
+    _update_fetch_status(total=len(symbols), done=0, progress=0)
 
     # Ensure all symbols are in the DB first
     for sym in symbols:
@@ -269,12 +277,12 @@ def bulk_fetch_sp500(max_workers: int = 5, force_refresh: bool = False) -> dict:
             if err:
                 results["errors"].append({"symbol": sym, "error": err})
 
-            _fetch_status["done"] += 1
-            total = _fetch_status["total"] or 1
-            _fetch_status["progress"] = round(_fetch_status["done"] / total * 100, 1)
+            with _fetch_lock:
+                _fetch_status["done"] += 1
+                total = _fetch_status["total"] or 1
+                _fetch_status["progress"] = round(_fetch_status["done"] / total * 100, 1)
 
-    _fetch_status["running"] = False
-    _fetch_status["summary"] = results
+    _update_fetch_status(running=False, summary=results)
     return results
 
 

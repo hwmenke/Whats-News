@@ -39,6 +39,13 @@ def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     df.dropna(inplace=True)
     df.index = pd.to_datetime(df.index)
     df.index = df.index.tz_localize(None)
+
+    # Drop rows with non-positive close prices (bad yfinance data)
+    bad_rows = (df["close"] <= 0).sum() if "close" in df.columns else 0
+    if bad_rows:
+        logger.warning("Dropping %d row(s) with close <= 0", bad_rows)
+        df = df[df["close"] > 0]
+
     return df
 
 

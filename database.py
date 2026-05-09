@@ -13,7 +13,10 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "finance.db")
+DB_PATH = os.environ.get(
+    "DB_PATH",
+    os.path.join(os.path.dirname(__file__), "finance.db"),
+)
 
 
 def get_connection():
