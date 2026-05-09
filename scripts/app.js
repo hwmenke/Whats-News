@@ -500,6 +500,9 @@ async function selectSymbol(symbol) {
         await loadAdaptiveTrendData(symbol);
     }
     // Scanner / portfolio tabs don't depend on the selected symbol
+
+    // Phase 3 hook — fires after symbol load for crosshair, drawings, saved state
+    if (typeof _p3OnSymbolLoad === 'function') _p3OnSymbolLoad(symbol);
 }
 
 async function loadStatsData(symbol) {
@@ -653,7 +656,9 @@ function showEmptyState() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
-    ['news-area','sector-area','compare-area','signals-area'].forEach(id => {
+    ['news-area','sector-area','compare-area','signals-area',
+     'journal-area','analytics-area','pair-area','mtf-area',
+     'calendar-area','strategy-area'].forEach(id => {
         const el = document.getElementById(id); if (el) el.style.display = 'none';
     });
 }
@@ -727,6 +732,28 @@ async function switchTab(tabId) {
     } else if (tabId === 'signals') {
         showArea('signals-area');
         loadSignals();
+    } else if (tabId === 'journal') {
+        showArea('journal-area');
+        loadJournal();
+    } else if (tabId === 'analytics') {
+        showArea('analytics-area');
+        loadPortfolioAnalytics();
+    } else if (tabId === 'pair') {
+        showArea('pair-area');
+        const s1 = document.getElementById('pair-sym1');
+        const s2 = document.getElementById('pair-sym2');
+        if (s1 && !s1.value && state.activeSymbol) s1.value = state.activeSymbol;
+    } else if (tabId === 'mtf') {
+        showArea('mtf-area');
+        const lbl = document.getElementById('mtf-sym-label');
+        if (lbl) lbl.textContent = state.activeSymbol || '';
+        if (state.activeSymbol) loadMultiTF(state.activeSymbol);
+    } else if (tabId === 'calendar') {
+        showArea('calendar-area');
+        loadMacroCalendar();
+    } else if (tabId === 'strategy') {
+        showArea('strategy-area');
+        loadStrategyLab();
     }
 }
 

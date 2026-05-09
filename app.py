@@ -1286,6 +1286,380 @@ def get_anomalies():
     return jsonify(anomalies)
 
 
+# ── Journal ────────────────────────────────────────────────────────────────────
+
+@app.route("/api/journal", methods=["GET"])
+def list_journal():
+    symbol = request.args.get("symbol")
+    tag    = request.args.get("tag")
+    return jsonify(db.list_journal(symbol.upper() if symbol else None, tag))
+
+
+@app.route("/api/journal", methods=["POST"])
+def create_journal_entry():
+    from datetime import datetime as _dt
+    body = request.get_json(silent=True) or {}
+    symbol = body.get("symbol", "").strip().upper()
+    if not symbol:
+        return _err("symbol is required")
+    try:
+        entry_price = float(body["entry_price"])
+        qty         = float(body.get("qty", 1))
+    except (KeyError, TypeError, ValueError):
+        return _err("entry_price (number) is required")
+
+    exit_p = body.get("exit_price")
+    jid = db.add_journal_entry(
+        symbol=symbol,
+        direction=body.get("direction", "long"),
+        entry_date=body.get("entry_date", _dt.now().date().isoformat()),
+        entry_price=entry_price,
+        qty=qty,
+        exit_date=body.get("exit_date"),
+        exit_price=float(exit_p) if exit_p is not None else None,
+        setup=body.get("setup", ""),
+        tags=body.get("tags", ""),
+        thesis=body.get("thesis", ""),
+    )
+    return jsonify({"id": jid, "message": "Journal entry created"}), 201
+
+
+@app.route("/api/journal/<int:entry_id>", methods=["PUT"])
+def update_journal_entry(entry_id):
+    body    = request.get_json(silent=True) or {}
+    allowed = {"direction", "entry_date", "exit_date", "entry_price",
+               "exit_price", "qty", "setup", "tags", "thesis"}
+    updates = {k: body[k] for k in allowed if k in body}
+    if not updates:
+        return _err("No valid fields to update")
+    db.update_journal_entry(entry_id, **updates)
+    return jsonify({"message": "updated"})
+
+
+@app.route("/api/journal/<int:entry_id>", methods=["DELETE"])
+def delete_journal_entry(entry_id):
+    db.delete_journal_entry(entry_id)
+    return jsonify({"message": "deleted"})
+
+
+# ── Portfolio Analytics ────────────────────────────────────────────────────────
+
+@app.route("/api/analytics", methods=["GET"])
+def get_analytics():
+    import numpy as np
+
+    positions = db.list_positions(include_closed=True)
+    closed    = [p for p in positions if p.get("closed_at") and p.get("exit_price")]
+
+    if not closed:
+        return jsonify({
+            "trade_count": 0, "win_rate": None, "profit_factor": None,
+            "avg_win": None, "avg_loss": None, "sharpe": None,
+            "max_drawdown": None, "equity_curve": [], "trades": [],
+        })
+
+    closed.sort(key=lambda p: p.get("closed_at", ""))
+    trades = []
+    for p in closed:
+        pnl = (p["exit_price"] - p["entry_price"]) * p["qty"]
+        trades.append({
+            "symbol": p["symbol"],
+            "date":   p["closed_at"][:10],
+            "pnl":    round(pnl, 2),
+            "pct":    round((p["exit_price"] / p["entry_price"] - 1) * 100, 2),
+        })
+
+    pnls   = [t["pnl"] for t in trades]
+    wins   = [v for v in pnls if v > 0]
+    losses = [v for v in pnls if v <= 0]
+
+    win_rate      = len(wins) / len(pnls) if pnls else None
+    avg_win       = float(np.mean(wins))  if wins   else None
+    avg_loss      = float(np.mean(losses)) if losses else None
+    profit_factor = abs(sum(wins) / sum(losses)) if sum(losses) != 0 else None
+
+    cum = 0
+    equity = []
+    for t in trades:
+        cum += t["pnl"]
+        equity.append({"date": t["date"], "equity": round(cum, 2)})
+
+    arr    = np.array(pnls)
+    sharpe = float(arr.mean() / arr.std() * np.sqrt(252)) if len(arr) >= 3 and arr.std() > 0 else None
+
+    eq_vals = np.array([e["equity"] for e in equity])
+    if len(eq_vals) >= 2:
+        peak   = np.maximum.accumulate(eq_vals)
+        dd     = (eq_vals - peak) / np.where(np.abs(peak) > 0, np.abs(peak), 1.0)
+        max_dd = float(dd.min())
+    else:
+        max_dd = None
+
+    return jsonify({
+        "trade_count":   len(trades),
+        "win_rate":      round(win_rate, 4)      if win_rate      is not None else None,
+        "profit_factor": round(profit_factor, 4) if profit_factor is not None else None,
+        "avg_win":       round(avg_win, 2)       if avg_win       is not None else None,
+        "avg_loss":      round(avg_loss, 2)      if avg_loss      is not None else None,
+        "sharpe":        round(sharpe, 4)        if sharpe        is not None else None,
+        "max_drawdown":  round(max_dd, 4)        if max_dd        is not None else None,
+        "equity_curve":  equity,
+        "trades":        trades,
+    })
+
+
+# ── Pair Trading / Spread ──────────────────────────────────────────────────────
+
+@app.route("/api/spread", methods=["GET"])
+def get_spread():
+    import numpy as np
+
+    sym1 = request.args.get("sym1", "").strip().upper()
+    sym2 = request.args.get("sym2", "").strip().upper()
+    freq = request.args.get("freq", "daily")
+    try:
+        limit  = int(request.args.get("limit",  252))
+        window = int(request.args.get("window",  20))
+    except (TypeError, ValueError):
+        return _err("limit and window must be integers")
+
+    if not sym1 or not sym2:  return _err("sym1 and sym2 are required")
+    if sym1 == sym2:           return _err("sym1 and sym2 must be different")
+    if freq not in ("daily", "weekly"): return _err("freq must be daily or weekly")
+
+    df1 = db.get_ohlcv_df(sym1, freq, limit=limit)
+    df2 = db.get_ohlcv_df(sym2, freq, limit=limit)
+
+    if df1.empty: return _err(f"No data for {sym1}. Fetch it first.", 404)
+    if df2.empty: return _err(f"No data for {sym2}. Fetch it first.", 404)
+
+    common = df1.index.intersection(df2.index)
+    if len(common) < window + 5:
+        return _err("Not enough overlapping data", 404)
+
+    c1    = df1.loc[common, "close"]
+    c2    = df2.loc[common, "close"]
+    ratio = c1 / c2
+
+    rm    = ratio.rolling(window).mean()
+    rs    = ratio.rolling(window).std().replace(0, float("nan"))
+    zs    = (ratio - rm) / rs
+
+    result = [
+        {"date":   d.strftime("%Y-%m-%d"),
+         "ratio":  round(float(r), 6) if np.isfinite(r) else None,
+         "zscore": round(float(z), 4) if np.isfinite(z) else None}
+        for d, r, z in zip(common, ratio.values, zs.values)
+    ]
+
+    last_z = float(zs.dropna().iloc[-1]) if len(zs.dropna()) else None
+    signal = None
+    if last_z is not None:
+        if last_z > 2:    signal = "mean_revert_short"
+        elif last_z < -2: signal = "mean_revert_long"
+        else:             signal = "neutral"
+
+    return jsonify({
+        "sym1": sym1, "sym2": sym2, "window": window,
+        "last_zscore": round(last_z, 4) if last_z and np.isfinite(last_z) else None,
+        "signal":  signal,
+        "series":  result,
+    })
+
+
+# ── Macro Overlay ──────────────────────────────────────────────────────────────
+
+@app.route("/api/macro", methods=["GET"])
+def get_macro():
+    import numpy as np
+    import pandas as pd
+
+    freq  = request.args.get("freq", "daily")
+    try:
+        limit = int(request.args.get("limit", 252))
+    except (TypeError, ValueError):
+        limit = 252
+
+    macro_map = {"VIX": "^VIX", "DXY": "DX-Y.NYB", "US10Y": "^TNX", "OIL": "CL=F"}
+    result = {}
+
+    for label, sym in macro_map.items():
+        df = db.get_ohlcv_df(sym, freq, limit=limit)
+        if df.empty:
+            try:
+                import yfinance as yf
+                hist = yf.Ticker(sym).history(period="2y",
+                                              interval="1d" if freq == "daily" else "1wk")
+                if hist.empty:
+                    continue
+                hist.index = pd.to_datetime(hist.index).tz_localize(None)
+                hist.columns = [c.lower() for c in hist.columns]
+                df = hist[["open", "high", "low", "close", "volume"]]
+                try:
+                    db.upsert_ohlcv(sym, freq, df)
+                except Exception:
+                    pass
+            except Exception as exc:
+                logger.debug("Macro fetch failed for %s: %s", sym, exc)
+                continue
+        if df.empty:
+            continue
+        close = df["close"].tail(limit)
+        result[label] = [
+            {"date": d.strftime("%Y-%m-%d"), "value": round(float(v), 4)}
+            for d, v in zip(close.index, close.values)
+            if np.isfinite(v)
+        ]
+
+    return jsonify(result)
+
+
+# ── Macro Economic Calendar ────────────────────────────────────────────────────
+
+@app.route("/api/calendar", methods=["GET"])
+def get_calendar():
+    import datetime as dt
+
+    today = dt.date.today()
+    year  = today.year
+
+    fomc_dates = [
+        "2025-01-29", "2025-03-19", "2025-05-07", "2025-06-18",
+        "2025-07-30", "2025-09-17", "2025-10-29", "2025-12-17",
+        "2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17",
+        "2026-07-29", "2026-09-16", "2026-10-28", "2026-12-16",
+    ]
+
+    events = [{"date": d, "type": "FOMC", "label": "FOMC Meeting", "color": "#3b82f6"}
+              for d in fomc_dates]
+
+    months = [f"{year:04d}-{m:02d}" for m in range(1, 13)] + \
+             [f"{year+1:04d}-{m:02d}" for m in range(1, 7)]
+    for ym in months:
+        events.append({"date": ym + "-13", "type": "CPI",
+                        "label": "CPI Release", "color": "#f97316"})
+        events.append({"date": ym + "-05", "type": "NFP",
+                        "label": "Jobs Report (NFP)", "color": "#22c55e"})
+
+    for sym in db.list_symbols():
+        ed = sym.get("next_earnings")
+        if ed:
+            events.append({"date": ed, "type": "EARNINGS",
+                            "label": f"{sym['symbol']} Earnings",
+                            "symbol": sym["symbol"], "color": "#a855f7"})
+
+    past_limit   = (today - dt.timedelta(days=30)).isoformat()
+    future_limit = (today + dt.timedelta(days=180)).isoformat()
+    events = sorted(
+        [e for e in events if past_limit <= e["date"] <= future_limit],
+        key=lambda e: e["date"]
+    )
+    return jsonify(events)
+
+
+# ── Strategies ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/strategies", methods=["GET"])
+def list_strategies_route():
+    return jsonify(db.list_strategies())
+
+
+@app.route("/api/strategies", methods=["POST"])
+def create_strategy():
+    body = request.get_json(silent=True) or {}
+    name = body.get("name", "").strip()
+    if not name:
+        return _err("name is required")
+    conditions = body.get("conditions", [])
+    if not isinstance(conditions, list):
+        return _err("conditions must be a list")
+    sid = db.add_strategy(name, conditions)
+    return jsonify({"id": sid, "message": "Strategy created"}), 201
+
+
+@app.route("/api/strategies/<int:strategy_id>", methods=["PUT"])
+def update_strategy_route(strategy_id):
+    body = request.get_json(silent=True) or {}
+    name       = body.get("name")
+    conditions = body.get("conditions")
+    if name is None and conditions is None:
+        return _err("name or conditions required")
+    db.update_strategy(strategy_id, name=name, conditions=conditions)
+    return jsonify({"message": "updated"})
+
+
+@app.route("/api/strategies/<int:strategy_id>", methods=["DELETE"])
+def delete_strategy_route(strategy_id):
+    db.delete_strategy(strategy_id)
+    return jsonify({"message": "deleted"})
+
+
+@app.route("/api/strategies/<int:strategy_id>/run", methods=["POST"])
+def run_strategy_route(strategy_id):
+    import concurrent.futures
+
+    strats = db.list_strategies()
+    strat  = next((s for s in strats if s["id"] == strategy_id), None)
+    if not strat:
+        return _err("Strategy not found", 404)
+
+    try:
+        conditions = (
+            json.loads(strat["conditions"])
+            if isinstance(strat["conditions"], str)
+            else strat["conditions"]
+        )
+    except Exception:
+        return _err("Invalid strategy conditions")
+
+    symbols = [s["symbol"] for s in db.list_symbols()]
+    if not symbols:
+        return jsonify([])
+
+    def _evaluate(sym):
+        try:
+            df = db.get_ohlcv_df(sym, "daily", limit=100)
+            if df.empty or len(df) < 20:
+                return None
+            from shared_indicators import _kama, _rsi
+            close = df["close"]
+            price = float(close.iloc[-1])
+            rsi14 = float(_rsi(close, 14).dropna().iloc[-1])
+            k10   = float(_kama(close, 10).dropna().iloc[-1])
+            k20   = float(_kama(close, 20).dropna().iloc[-1])
+            k50   = float(_kama(close, 50).dropna().iloc[-1])
+
+            values = {
+                "price":      price,
+                "rsi":        rsi14,
+                "kama10_pct": round((price / k10 - 1) * 100, 2) if k10 else None,
+                "kama20_pct": round((price / k20 - 1) * 100, 2) if k20 else None,
+                "kama50_pct": round((price / k50 - 1) * 100, 2) if k50 else None,
+            }
+
+            for cond in conditions:
+                field   = cond.get("field")
+                op      = cond.get("op")
+                val     = cond.get("value")
+                val2    = cond.get("value2")
+                current = values.get(field)
+                if current is None:
+                    return None
+                if op == "above"   and not (current > val):           return None
+                if op == "below"   and not (current < val):           return None
+                if op == "between" and not (val <= current <= val2):  return None
+
+            return {"symbol": sym, "price": round(price, 2),
+                    "rsi": round(rsi14, 1), "kama10_pct": values["kama10_pct"]}
+        except Exception:
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(_evaluate, symbols))
+
+    return jsonify([r for r in results if r is not None])
+
+
 # -- Entry point ----------------------------------------------------------------
 
 if __name__ == "__main__":

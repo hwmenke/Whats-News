@@ -13,6 +13,25 @@ logger = logging.getLogger(__name__)
 _cache: dict[str, tuple[float, list]] = {}
 CACHE_TTL = 300  # seconds
 
+_BULL = {"beat","beats","surge","surges","rally","rallied","gain","gains","record","upgrade",
+         "upgraded","buy","outperform","strong","profit","growth","positive","exceed","rise",
+         "rises","bullish","boost","boosts","breakthrough","deal","acquisition","soar","soars"}
+_BEAR = {"miss","misses","fall","falls","drop","drops","decline","declines","loss","losses",
+         "warn","warns","warning","downgrade","downgraded","sell","underperform","weak","cut",
+         "layoff","bankrupt","debt","probe","recall","lawsuit","bearish","crash","plunge",
+         "concern","disappoints","disappoint","below","shortfall"}
+
+
+def _sentiment(text: str) -> int:
+    if not text:
+        return 0
+    words = set(text.lower().split())
+    bull  = len(words & _BULL)
+    bear  = len(words & _BEAR)
+    if bull > bear:  return 1
+    if bear > bull:  return -1
+    return 0
+
 _RSS = "https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=US&lang=en-US"
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; FinDash/1.0)"}
 
@@ -57,12 +76,14 @@ def _parse_rss(body: bytes) -> list[dict]:
 
         if not title:
             continue
+        combined = title + " " + (desc or "")
         articles.append({
-            "title":    title[:200],
-            "link":     link,
-            "pub_date": pub_date,
-            "source":   source,
-            "summary":  (desc or "")[:300].strip(),
+            "title":     title[:200],
+            "link":      link,
+            "pub_date":  pub_date,
+            "source":    source,
+            "summary":   (desc or "")[:300].strip(),
+            "sentiment": _sentiment(combined),
         })
     return articles
 

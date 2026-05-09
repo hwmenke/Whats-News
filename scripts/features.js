@@ -9,6 +9,8 @@ const ALL_AREAS = [
     'empty-state','chart-area','stats-area','knn-area','backtest-area',
     'trend-area','scanner-area','data-manager-area','portfolio-area',
     'news-area','sector-area','compare-area','signals-area',
+    'journal-area','analytics-area','pair-area','mtf-area',
+    'calendar-area','strategy-area',
 ];
 
 function showArea(id) {
@@ -44,16 +46,20 @@ function renderNews(articles) {
         list.innerHTML = '<div style="color:var(--text-muted); padding:16px;">No headlines found.</div>';
         return;
     }
-    list.innerHTML = articles.map(a => `
+    list.innerHTML = articles.map(a => {
+        const sentClass = a.sentiment > 0 ? 'sentiment-bull' : a.sentiment < 0 ? 'sentiment-bear' : 'sentiment-neutral';
+        const sentDot   = `<span class="sentiment-dot ${sentClass}" title="${a.sentiment > 0 ? 'Bullish' : a.sentiment < 0 ? 'Bearish' : 'Neutral'}"></span>`;
+        return `
         <a class="news-item" href="${a.link}" target="_blank" rel="noopener">
           <div class="news-item-header">
+            ${sentDot}
             <span class="news-source">${a.source || 'Yahoo Finance'}</span>
             <span class="news-date">${_fmtPubDate(a.pub_date)}</span>
           </div>
           <div class="news-title">${_esc(a.title)}</div>
           ${a.summary ? `<div class="news-summary">${_esc(a.summary)}</div>` : ''}
-        </a>
-    `).join('');
+        </a>`;
+    }).join('');
 }
 
 function _fmtPubDate(s) {

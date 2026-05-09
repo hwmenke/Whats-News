@@ -16,6 +16,12 @@ const CMD_TABS = [
     { label: 'Sector Heatmap',icon: '🗺️', action: () => switchTab('sector')     },
     { label: 'Compare Chart', icon: '⚖️', action: () => switchTab('compare')    },
     { label: 'Signals',       icon: '📶', action: () => switchTab('signals')     },
+    { label: 'Journal',       icon: '📓', action: () => switchTab('journal')     },
+    { label: 'Analytics',     icon: '📈', action: () => switchTab('analytics')   },
+    { label: 'Pair Trading',  icon: '🔗', action: () => switchTab('pair')        },
+    { label: 'Multi-TF Grid', icon: '🔲', action: () => switchTab('mtf')         },
+    { label: 'Calendar',      icon: '📅', action: () => switchTab('calendar')    },
+    { label: 'Strategy Lab',  icon: '🧪', action: () => switchTab('strategy')    },
 ];
 
 const CMD_ACTIONS = [
@@ -30,6 +36,10 @@ const CMD_ACTIONS = [
     { label: 'Run Scanner',      icon: '📡',  action: () => { switchTab('scanner'); loadScannerData(); }},
     { label: 'Run Signals',      icon: '📶',  action: () => { switchTab('signals'); loadSignals(); } },
     { label: 'Run Backtest',     icon: '⚙️',  action: () => { if (state.activeSymbol) { switchTab('backtest'); loadBacktest(state.activeSymbol); } }},
+    { label: 'Add Trade',        icon: '📓',  action: () => { switchTab('journal'); setTimeout(openJournalModal, 100); }},
+    { label: 'Screenshot',       icon: '📷',  action: () => takeScreenshot()        },
+    { label: 'Macro Calendar',   icon: '📅',  action: () => switchTab('calendar')   },
+    { label: 'Strategy Lab',     icon: '🧪',  action: () => switchTab('strategy')   },
 ];
 
 let _cmdSelectedIdx = 0;
