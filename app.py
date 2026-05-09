@@ -29,6 +29,7 @@ import backtester
 import scanner
 import adaptive_trend as adaptive
 import ticker_lists as tl
+import news as news_mod
 from config import KAMA_PERIODS
 
 app = Flask(__name__, static_folder=".", static_url_path="")
@@ -939,6 +940,350 @@ def get_volume_profile(symbol):
 @app.route("/api/auto-refresh/status", methods=["GET"])
 def auto_refresh_status():
     return jsonify(_auto_refresh_state)
+
+
+# ── News ───────────────────────────────────────────────────────────────────────
+
+@app.route("/api/news/<string:symbol>", methods=["GET"])
+def get_news(symbol):
+    limit = min(int(request.args.get("limit", 20)), 50)
+    articles = news_mod.fetch_news(symbol, limit=limit)
+    return jsonify(articles)
+
+
+# ── Sector Heatmap ─────────────────────────────────────────────────────────────
+
+@app.route("/api/sector-heatmap", methods=["GET"])
+def sector_heatmap():
+    import datetime
+    import numpy as np
+    symbols = db.list_symbols()
+    if not symbols:
+        return jsonify([])
+
+    today_str = datetime.date.today().isoformat()
+    ytd_start = datetime.date.today().replace(month=1, day=1).isoformat()
+
+    sectors: dict[str, list] = {}
+    for sym in symbols:
+        sector = (sym.get("sector") or "Unknown").strip() or "Unknown"
+        sectors.setdefault(sector, []).append(sym["symbol"])
+
+    result = []
+    for sector, syms in sorted(sectors.items()):
+        rows = []
+        for s in syms:
+            df = db.get_ohlcv_df(s, "daily", limit=260)
+            if df.empty or len(df) < 2:
+                continue
+            close = df["close"]
+
+            def _ret(n):
+                return float(close.iloc[-1] / close.iloc[-n] - 1) if len(close) >= n else None
+
+            ytd_df  = df[df.index.astype(str) >= ytd_start]
+            ret_ytd = float(close.iloc[-1] / ytd_df["close"].iloc[0] - 1) if len(ytd_df) > 0 else None
+
+            rows.append({
+                "symbol": s,
+                "close":  round(float(close.iloc[-1]), 2),
+                "ret_1d":  round(_ret(2), 4)   if _ret(2)   is not None else None,
+                "ret_5d":  round(_ret(6), 4)   if _ret(6)   is not None else None,
+                "ret_20d": round(_ret(21), 4)  if _ret(21)  is not None else None,
+                "ret_ytd": round(ret_ytd, 4)   if ret_ytd   is not None else None,
+            })
+
+        if rows:
+            # Sector-level averages
+            def _avg(key):
+                vals = [r[key] for r in rows if r[key] is not None]
+                return round(float(np.mean(vals)), 4) if vals else None
+
+            result.append({
+                "sector":   sector,
+                "count":    len(rows),
+                "avg_1d":   _avg("ret_1d"),
+                "avg_5d":   _avg("ret_5d"),
+                "avg_20d":  _avg("ret_20d"),
+                "avg_ytd":  _avg("ret_ytd"),
+                "symbols":  rows,
+            })
+
+    return jsonify(result)
+
+
+# ── Signals Dashboard ──────────────────────────────────────────────────────────
+
+@app.route("/api/signals", methods=["GET"])
+def get_signals():
+    symbols = db.list_symbols()
+    if not symbols:
+        return jsonify([])
+
+    results = []
+    for sym_row in symbols:
+        sym = sym_row["symbol"]
+        try:
+            df = db.get_ohlcv_df(sym, "daily", limit=100)
+            if df.empty or len(df) < 30:
+                continue
+            close = df["close"]
+            import ta, numpy as np
+            rsi14   = ta.momentum.RSIIndicator(close, window=14).rsi().iloc[-1]
+            macd    = ta.trend.MACD(close).macd_diff().iloc[-1]
+            bb      = ta.volatility.BollingerBands(close)
+            bb_pct  = bb.bollinger_pband().iloc[-1]
+            vol     = df["volume"]
+            vol_ma  = vol.rolling(20).mean().iloc[-1]
+            vol_z   = (vol.iloc[-1] - vol_ma) / (vol.std() + 1e-9)
+
+            signals = []
+            if rsi14 < 30:   signals.append({"type": "rsi_os", "label": "RSI Oversold",  "bull": True})
+            if rsi14 > 70:   signals.append({"type": "rsi_ob", "label": "RSI Overbought","bull": False})
+            if macd > 0:     signals.append({"type": "macd_bull", "label": "MACD Bull",  "bull": True})
+            if macd < 0:     signals.append({"type": "macd_bear", "label": "MACD Bear",  "bull": False})
+            if bb_pct < 0.1: signals.append({"type": "bb_squeeze_low", "label": "BB Lower",  "bull": True})
+            if bb_pct > 0.9: signals.append({"type": "bb_squeeze_hi",  "label": "BB Upper",  "bull": False})
+            if vol_z > 2.5:  signals.append({"type": "vol_spike",  "label": "Vol Spike",  "bull": None})
+
+            score = sum(1 if s["bull"] else -1 if s["bull"] is False else 0 for s in signals)
+            results.append({
+                "symbol":  sym,
+                "name":    sym_row.get("name", ""),
+                "close":   round(float(close.iloc[-1]), 2),
+                "rsi14":   round(float(rsi14), 1),
+                "macd":    round(float(macd), 4),
+                "bb_pct":  round(float(bb_pct), 3),
+                "vol_z":   round(float(vol_z), 2),
+                "signals": signals,
+                "score":   score,
+            })
+        except Exception as exc:
+            logger.debug("Signals skipped %s: %s", sym, exc)
+
+    results.sort(key=lambda r: -abs(r["score"]))
+    return jsonify(results)
+
+
+# ── Watchlist Export / Import ──────────────────────────────────────────────────
+
+@app.route("/api/export", methods=["GET"])
+def export_watchlist():
+    return jsonify({
+        "version":   2,
+        "symbols":   db.list_symbols(),
+        "alerts":    db.list_alerts(),
+        "positions": db.list_positions(),
+    })
+
+
+@app.route("/api/import", methods=["POST"])
+def import_watchlist():
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict) or "symbols" not in data:
+        return _err("Invalid import format — expected {symbols: [...], ...}")
+
+    added = 0
+    for sym_row in (data.get("symbols") or []):
+        sym = (sym_row.get("symbol") or "").strip().upper()
+        if not sym:
+            continue
+        ok = db.add_symbol(sym, sym_row.get("name", ""), sym_row.get("sector", ""))
+        if ok:
+            added += 1
+            if sym_row.get("group_tag"):
+                db.set_symbol_group(sym, sym_row["group_tag"])
+            if sym_row.get("notes"):
+                db.set_symbol_notes(sym, sym_row["notes"])
+
+    for a in (data.get("alerts") or []):
+        try:
+            db.add_alert(a["symbol"], a["field"], a["condition"], float(a["threshold"]))
+        except Exception:
+            pass
+
+    return jsonify({"imported": added})
+
+
+# ── Risk Calculator ────────────────────────────────────────────────────────────
+
+@app.route("/api/risk/<string:symbol>", methods=["GET"])
+def get_risk(symbol):
+    import numpy as np
+    account = float(request.args.get("account", 10000))
+    risk_pct = float(request.args.get("risk_pct", 1.0)) / 100
+    atr_mult = float(request.args.get("atr_mult", 2.0))
+
+    df = db.get_ohlcv_df(symbol.upper(), "daily", limit=60)
+    if df.empty or len(df) < 15:
+        return _err("Not enough data", 404)
+
+    close = df["close"].iloc[-1]
+    import ta
+    atr14 = ta.volatility.AverageTrueRange(df["high"], df["low"], df["close"], window=14).average_true_range().iloc[-1]
+
+    stop_distance = atr14 * atr_mult
+    stop_loss     = close - stop_distance
+    stop_pct      = stop_distance / close
+
+    risk_amount   = account * risk_pct
+    shares        = int(risk_amount / stop_distance) if stop_distance > 0 else 0
+    position_size = shares * close
+
+    # Simple R:R targets
+    tp1 = close + stop_distance * 1.5
+    tp2 = close + stop_distance * 3.0
+
+    # Annualised vol (20-day)
+    ret     = df["close"].pct_change().dropna()
+    ann_vol = float(ret.tail(20).std() * np.sqrt(252)) if len(ret) >= 20 else None
+
+    # Kelly fraction (very rough: 55% win, 1.5 R:R)
+    kelly = max(0.0, 0.55 - 0.45 / 1.5)
+
+    return jsonify({
+        "symbol":        symbol.upper(),
+        "price":         round(float(close), 2),
+        "atr14":         round(float(atr14), 4),
+        "stop_distance": round(float(stop_distance), 4),
+        "stop_loss":     round(float(stop_loss), 2),
+        "stop_pct":      round(float(stop_pct), 4),
+        "tp1":           round(float(tp1), 2),
+        "tp2":           round(float(tp2), 2),
+        "shares":        shares,
+        "position_size": round(float(position_size), 2),
+        "risk_amount":   round(float(risk_amount), 2),
+        "ann_vol":       round(float(ann_vol), 4) if ann_vol else None,
+        "kelly":         round(kelly, 4),
+    })
+
+
+# ── Options Chain ──────────────────────────────────────────────────────────────
+
+@app.route("/api/options/<string:symbol>", methods=["GET"])
+def get_options(symbol):
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol.upper())
+        expirations = ticker.options
+        if not expirations:
+            return jsonify({"symbol": symbol.upper(), "expirations": [], "chain": None})
+
+        expiry = request.args.get("expiry", expirations[0])
+        if expiry not in expirations:
+            expiry = expirations[0]
+
+        chain    = ticker.option_chain(expiry)
+        calls_df = chain.calls
+        puts_df  = chain.puts
+
+        def df_to_list(df):
+            cols = ["strike", "lastPrice", "bid", "ask", "volume",
+                    "openInterest", "impliedVolatility", "inTheMoney"]
+            rows = []
+            for _, row in df[cols].iterrows():
+                rows.append({
+                    "strike":  round(float(row.strike), 2),
+                    "last":    round(float(row.lastPrice), 2),
+                    "bid":     round(float(row.bid), 2),
+                    "ask":     round(float(row.ask), 2),
+                    "volume":  int(row.volume) if not __import__("math").isnan(row.volume) else 0,
+                    "oi":      int(row.openInterest) if not __import__("math").isnan(row.openInterest) else 0,
+                    "iv":      round(float(row.impliedVolatility), 4),
+                    "itm":     bool(row.inTheMoney),
+                })
+            return rows
+
+        calls = df_to_list(calls_df)
+        puts  = df_to_list(puts_df)
+
+        # Put/call ratio by OI
+        total_call_oi = sum(r["oi"] for r in calls)
+        total_put_oi  = sum(r["oi"] for r in puts)
+        pc_ratio = round(total_put_oi / total_call_oi, 3) if total_call_oi else None
+
+        # Max pain (strike where total option writer profit is maximised)
+        all_strikes = sorted(set(r["strike"] for r in calls + puts))
+        max_pain_strike = None
+        if all_strikes:
+            min_pain = float("inf")
+            for k in all_strikes:
+                pain = (sum(max(0, k - r["strike"]) * r["oi"] for r in calls) +
+                        sum(max(0, r["strike"] - k) * r["oi"] for r in puts))
+                if pain < min_pain:
+                    min_pain = pain
+                    max_pain_strike = k
+
+        return jsonify({
+            "symbol":      symbol.upper(),
+            "expiry":      expiry,
+            "expirations": list(expirations),
+            "calls":       calls[:30],
+            "puts":        puts[:30],
+            "pc_ratio":    pc_ratio,
+            "max_pain":    max_pain_strike,
+        })
+    except Exception as exc:
+        return _err(f"Options fetch failed: {exc}")
+
+
+# ── Anomaly Detection ──────────────────────────────────────────────────────────
+
+@app.route("/api/anomalies", methods=["GET"])
+def get_anomalies():
+    import numpy as np
+    symbols  = db.list_symbols()
+    anomalies = []
+
+    for sym_row in symbols:
+        sym = sym_row["symbol"]
+        df  = db.get_ohlcv_df(sym, "daily", limit=60)
+        if df.empty or len(df) < 21:
+            continue
+
+        flags = []
+        close  = df["close"]
+        volume = df["volume"]
+
+        # Volume spike: today vs 20-day avg
+        vol_avg = volume.iloc[:-1].tail(20).mean()
+        vol_std = volume.iloc[:-1].tail(20).std()
+        if vol_std > 0:
+            vol_z = (volume.iloc[-1] - vol_avg) / vol_std
+            if abs(vol_z) > 2.5:
+                flags.append({"type": "vol_spike", "label": f"Vol spike ({vol_z:+.1f}σ)", "z": round(float(vol_z), 2)})
+
+        # Price gap: open vs prev close
+        if "open" in df.columns and len(df) >= 2:
+            gap_pct = (df["open"].iloc[-1] - close.iloc[-2]) / close.iloc[-2]
+            if abs(gap_pct) > 0.02:
+                flags.append({"type": "price_gap", "label": f"Gap {gap_pct*100:+.1f}%", "z": round(float(gap_pct), 4)})
+
+        # Volatility spike: today range vs avg
+        df["range"] = (df["high"] - df["low"]) / close
+        rng_today = df["range"].iloc[-1]
+        rng_avg   = df["range"].iloc[-21:-1].mean()
+        rng_std   = df["range"].iloc[-21:-1].std()
+        if rng_std > 0 and rng_today > rng_avg + 2.5 * rng_std:
+            flags.append({"type": "vol_range", "label": "High-range candle", "z": round(float((rng_today - rng_avg) / rng_std), 2)})
+
+        # 52-week high/low touch
+        high52 = close.tail(252).max()
+        low52  = close.tail(252).min()
+        if abs(close.iloc[-1] - high52) / high52 < 0.005:
+            flags.append({"type": "high52", "label": "52w High", "z": 0})
+        elif abs(close.iloc[-1] - low52) / low52 < 0.005:
+            flags.append({"type": "low52",  "label": "52w Low",  "z": 0})
+
+        if flags:
+            anomalies.append({
+                "symbol": sym,
+                "name":   sym_row.get("name", ""),
+                "close":  round(float(close.iloc[-1]), 2),
+                "flags":  flags,
+            })
+
+    return jsonify(anomalies)
 
 
 # -- Entry point ----------------------------------------------------------------

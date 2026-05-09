@@ -10,11 +10,12 @@ const DEFAULT_KAMA_PERIODS = [10, 20, 50];
 
 // App state
 let state = {
-    symbols:      [],
-    activeSymbol: null,
-    loading:      false,
-    activeTab:    'charts',
-    statsData:    null,
+    symbols:       [],
+    activeSymbol:  null,
+    loading:       false,
+    activeTab:     'charts',
+    statsData:     null,
+    watchlistSort: 'group',
 };
 
 let statsCharts = {};
@@ -175,9 +176,16 @@ function renderSymbolList() {
         return;
     }
 
+    // Sort symbols
+    let sorted = [...state.symbols];
+    const sortMode = state.watchlistSort || 'group';
+    if (sortMode === 'alpha')   sorted.sort((a, b) => a.symbol.localeCompare(b.symbol));
+    else if (sortMode === 'added') sorted.sort((a, b) => (b.added_at || '').localeCompare(a.added_at || ''));
+    // 'group' and 'perf_1d' fall through to existing group logic (perf_1d would need live data)
+
     // Group symbols by group_tag
     let lastGroup = undefined;
-    state.symbols.forEach(sym => {
+    sorted.forEach(sym => {
         const tag = sym.group_tag || '';
 
         // Render group header when group changes
@@ -198,6 +206,16 @@ function renderSymbolList() {
         const ticker = document.createElement('span');
         ticker.className = 'sym-ticker';
         ticker.textContent = sym.symbol;
+
+        // Anomaly badge
+        const anomalyFlags = _anomalyMap[sym.symbol];
+        if (anomalyFlags && anomalyFlags.length) {
+            const badge = document.createElement('span');
+            badge.className = 'sym-anomaly-badge';
+            badge.title     = anomalyFlags.map(f => f.label).join(', ');
+            badge.textContent = '⚡';
+            ticker.appendChild(badge);
+        }
 
         // Group tag badge (click to edit inline)
         const tagBadge = document.createElement('span');
@@ -635,6 +653,9 @@ function showEmptyState() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    ['news-area','sector-area','compare-area','signals-area'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.style.display = 'none';
+    });
 }
 
 function showChartArea() {
@@ -692,6 +713,20 @@ async function switchTab(tabId) {
     } else if (tabId === 'portfolio') {
         showPortfolioArea();
         loadPortfolio();
+    } else if (tabId === 'news') {
+        showArea('news-area');
+        if (state.activeSymbol) loadNews(state.activeSymbol);
+    } else if (tabId === 'sector') {
+        showArea('sector-area');
+        loadSectorHeatmap();
+    } else if (tabId === 'compare') {
+        showArea('compare-area');
+        // Pre-fill active symbol if nothing entered
+        const inp = document.getElementById('compare-symbols-input');
+        if (inp && !inp.value && state.activeSymbol) inp.value = state.activeSymbol + ', ';
+    } else if (tabId === 'signals') {
+        showArea('signals-area');
+        loadSignals();
     }
 }
 
@@ -1314,6 +1349,10 @@ async function runScanner() {
 // ── Boot ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     startClock();
+    initTheme();
+
+    // Keyboard navigation
+    document.addEventListener('keydown', _handleGlobalKeydown);
 
     // Restore KAMA periods from localStorage, fallback to defaults
     const savedKama = loadKamaFromStorage();
@@ -1386,6 +1425,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check auto-refresh status
     checkAutoRefreshStatus();
     setInterval(checkAutoRefreshStatus, 30000);
+
+    // Anomaly badges (refresh every 10 min)
+    refreshAnomalyBadges();
+    setInterval(refreshAnomalyBadges, 600000);
 });
 
 // ── localStorage helpers ──────────────────────────────────────
@@ -1811,5 +1854,66 @@ async function checkAutoRefreshStatus() {
         } else {
             dot.style.display = 'none';
         }
+    } catch (_) {}
+}
+
+// ── Theme toggle ──────────────────────────────────────────────
+function toggleTheme() {
+    const html = document.documentElement;
+    const next = html.dataset.theme === 'light' ? 'dark' : 'light';
+    html.dataset.theme = next;
+    localStorage.setItem('theme', next);
+    const btn = document.getElementById('btn-theme');
+    if (btn) btn.textContent = next === 'light' ? '☀️' : '🌙';
+}
+
+function initTheme() {
+    const saved = localStorage.getItem('theme') || 'dark';
+    document.documentElement.dataset.theme = saved;
+    const btn = document.getElementById('btn-theme');
+    if (btn) btn.textContent = saved === 'light' ? '☀️' : '🌙';
+}
+
+// ── Watchlist sort ────────────────────────────────────────────
+function setWatchlistSort(mode) {
+    state.watchlistSort = mode;
+    renderSymbolList();
+}
+
+// ── Keyboard navigation ───────────────────────────────────────
+function _handleGlobalKeydown(e) {
+    // Ignore when typing in inputs
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+    const syms = state.symbols;
+    const cur  = state.activeSymbol;
+    const curIdx = cur ? syms.findIndex(s => s.symbol === cur) : -1;
+
+    if (e.key === 'j' || e.key === 'ArrowDown') {
+        // Next symbol
+        if (curIdx < syms.length - 1) selectSymbol(syms[curIdx + 1].symbol);
+    } else if (e.key === 'k' || e.key === 'ArrowUp') {
+        // Previous symbol
+        if (curIdx > 0) selectSymbol(syms[curIdx - 1].symbol);
+    } else if (e.key === '/') {
+        e.preventDefault();
+        document.getElementById('new-symbol-input')?.focus();
+    } else if (e.key === 'r') {
+        openRiskModal();
+    } else if (e.key === 'n') {
+        switchTab('news');
+    }
+}
+
+// ── Anomaly badges in watchlist ───────────────────────────────
+let _anomalyMap = {};
+
+async function refreshAnomalyBadges() {
+    try {
+        const anomalies = await apiFetch(`${API}/anomalies`);
+        _anomalyMap = {};
+        for (const a of anomalies) _anomalyMap[a.symbol] = a.flags;
+        renderSymbolList();
     } catch (_) {}
 }
