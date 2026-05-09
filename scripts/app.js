@@ -20,6 +20,8 @@ let state = {
 let statsCharts = {};
 let backtestEquityChart = null;
 let scannerPollTimer = null;
+let alertPollTimer = null;
+let _closingPositionId = null;
 
 // ── Toast system ─────────────────────────────────────────────
 function toast(message, type = 'info', duration = 3500) {
@@ -98,7 +100,7 @@ function renderKamaPills() {
             e.preventDefault();
             removeKamaPeriod(p);
             renderKamaPills();
-            // re-fetch if symbol loaded so the API param changes
+            saveKamaToStorage();
             if (state.activeSymbol) loadChartData(state.activeSymbol);
         });
 
@@ -123,6 +125,7 @@ function setupKamaAddForm() {
         }
         addKamaPeriod(val);
         renderKamaPills();
+        saveKamaToStorage();
         input.value = '';
 
         // If data is already loaded, populate the new series immediately
@@ -460,7 +463,13 @@ async function refreshAll() {
 // ── Symbol selection & chart loading ─────────────────────────
 async function selectSymbol(symbol) {
     state.activeSymbol = symbol;
+    saveToLocalStorage();
     renderSymbolList();
+
+    // Always update fundamentals + notes when switching symbols
+    loadFundamentals(symbol);
+    loadNotes(symbol);
+
     if (state.activeTab === 'charts') {
         await loadChartData(symbol);
     } else if (state.activeTab === 'stats') {
@@ -468,12 +477,11 @@ async function selectSymbol(symbol) {
     } else if (state.activeTab === 'knn') {
         await loadKNN(symbol);
     } else if (state.activeTab === 'backtest') {
-        // Backtest is triggered manually via the Run button; just update header
         updateSymbolHeader(symbol, null);
     } else if (state.activeTab === 'trend') {
         await loadAdaptiveTrendData(symbol);
     }
-    // Scanner tab doesn't depend on the selected symbol
+    // Scanner / portfolio tabs don't depend on the selected symbol
 }
 
 async function loadStatsData(symbol) {
@@ -503,7 +511,10 @@ async function loadStatsData(symbol) {
 
         state.statsData = stats;
         renderStats(stats);
-        
+        // Show correlation section button so user can load it
+        const corrSection = document.getElementById('correlation-section');
+        if (corrSection) corrSection.style.display = 'block';
+
         const last = ohlcv[ohlcv.length - 1];
         const prev = ohlcv[ohlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
@@ -653,6 +664,7 @@ async function switchTab(tabId) {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('portfolio-area').style.display    = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
     if (tabId === 'charts') {
@@ -666,9 +678,7 @@ async function switchTab(tabId) {
         if (state.activeSymbol) loadKNN(state.activeSymbol);
     } else if (tabId === 'backtest') {
         document.getElementById('backtest-area').style.display = 'block';
-        if (state.activeSymbol) {
-            updateSymbolHeader(state.activeSymbol, null);
-        }
+        if (state.activeSymbol) updateSymbolHeader(state.activeSymbol, null);
     } else if (tabId === 'trend') {
         showTrendArea();
         if (typeof renderTrendConfig === 'function') renderTrendConfig();
@@ -679,6 +689,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
+    } else if (tabId === 'portfolio') {
+        showPortfolioArea();
+        loadPortfolio();
     }
 }
 
@@ -691,6 +704,20 @@ function showStatsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('portfolio-area').style.display    = 'none';
+    document.querySelector('.tab-bar').style.display           = 'none';
+}
+
+function showPortfolioArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('portfolio-area').style.display    = 'block';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -703,6 +730,7 @@ function showChartArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('portfolio-area').style.display    = 'none';
     document.querySelector('.tab-bar').style.display           = 'flex';
 }
 
@@ -1072,12 +1100,15 @@ function renderKNN(data) {
 async function loadBacktest(symbol) {
     const statusEl = document.getElementById('backtest-status');
     const btn      = document.getElementById('btn-run-backtest');
+    const slider   = document.getElementById('train-pct-slider');
+    const trainPct = slider ? (parseInt(slider.value, 10) / 100).toFixed(2) : '0.70';
+
     if (statusEl) statusEl.textContent = 'Running optimization…';
     if (btn) btn.disabled = true;
     try {
-        const data = await apiFetch(`${API}/backtest/${symbol}`);
+        const data = await apiFetch(`${API}/backtest/${symbol}?train_pct=${trainPct}`);
         renderBacktest(data);
-        if (statusEl) statusEl.textContent = `Done — ${data.total_tested} combos tested`;
+        if (statusEl) statusEl.textContent = `Done — ${data.total_tested} combos tested (${data.train_bars} IS / ${data.oos_bars} OOS bars)`;
     } catch (e) {
         toast('Backtest failed: ' + e.message, 'error');
         if (statusEl) statusEl.textContent = 'Error: ' + e.message;
@@ -1089,13 +1120,14 @@ async function loadBacktest(symbol) {
 function renderBacktest(data) {
     const fmt    = (v, dec = 2) => (v !== null && v !== undefined && Number.isFinite(v)) ? v.toFixed(dec) : '--';
     const fmtPct = v => (v !== null && v !== undefined && Number.isFinite(v)) ? (v * 100).toFixed(2) + '%' : '--';
+    const colorV = v => (v !== null && v !== undefined && Number.isFinite(v) && v >= 0) ? 'color:#22c55e' : 'color:#ef4444';
 
     const best = data.best || {};
     const set  = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    set('bt-sharpe',  fmt(best.sharpe, 3));
-    set('bt-annret',  fmtPct(best.ann_ret));
-    set('bt-maxdd',   fmtPct(best.max_dd));
-    set('bt-winrate', fmtPct(best.win_rate));
+    set('bt-sharpe',  fmt(best.is_sharpe ?? best.sharpe, 3));
+    set('bt-annret',  fmtPct(best.is_ann_ret ?? best.ann_ret));
+    set('bt-maxdd',   fmtPct(best.is_max_dd ?? best.max_dd));
+    set('bt-winrate', fmtPct(best.is_win_rate ?? best.win_rate));
     set('bt-trades',  best.n_trades !== undefined ? String(best.n_trades) : '--');
 
     // Top 10 table
@@ -1105,16 +1137,51 @@ function renderBacktest(data) {
         (data.top10 || []).forEach((r, i) => {
             const tr = document.createElement('tr');
             if (i === 0) tr.style.background = 'rgba(59,130,246,0.08)';
+            const sharpe = r.is_sharpe ?? r.sharpe;
+            const annRet = r.is_ann_ret ?? r.ann_ret;
+            const maxDd  = r.is_max_dd  ?? r.max_dd;
+            const winRate= r.is_win_rate?? r.win_rate;
             tr.innerHTML = `
                 <td>${r.label}</td>
-                <td>${fmt(r.sharpe, 3)}</td>
-                <td>${fmtPct(r.ann_ret)}</td>
-                <td>${fmtPct(r.max_dd)}</td>
+                <td>${fmt(sharpe, 3)}</td>
+                <td style="${colorV(annRet)}">${fmtPct(annRet)}</td>
+                <td style="${colorV(maxDd ? -maxDd : null)}">${fmtPct(maxDd)}</td>
                 <td>${r.n_trades}</td>
-                <td>${fmtPct(r.win_rate)}</td>
+                <td>${fmtPct(winRate)}</td>
             `;
             tbody.appendChild(tr);
         });
+    }
+
+    // IS vs OOS comparison table
+    const oosSection = document.getElementById('bt-oos-section');
+    const oosTbody   = document.querySelector('#bt-oos-table tbody');
+    const bmTbody    = document.querySelector('#bt-bm-table tbody');
+    if (oosSection && best && oosTbody) {
+        oosSection.style.display = 'block';
+        const metrics = [
+            ['Sharpe',      fmt(best.is_sharpe  ?? best.sharpe, 3),     fmt(best.oos_sharpe, 3)],
+            ['Ann. Return', fmtPct(best.is_ann_ret ?? best.ann_ret),    fmtPct(best.oos_ann_ret)],
+            ['Ann. Vol',    fmtPct(best.is_ann_vol ?? best.ann_vol),    fmtPct(best.oos_ann_vol)],
+            ['Max DD',      fmtPct(best.is_max_dd  ?? best.max_dd),     fmtPct(best.oos_max_dd)],
+            ['Win Rate',    fmtPct(best.is_win_rate ?? best.win_rate),  fmtPct(best.oos_win_rate)],
+            ['Trades',      String(best.is_n_trades ?? best.n_trades ?? '--'), String(best.oos_n_trades ?? '--')],
+        ];
+        oosTbody.innerHTML = metrics.map(([label, is, oos]) =>
+            `<tr><td>${label}</td><td>${is}</td><td>${oos}</td></tr>`
+        ).join('');
+    }
+    if (bmTbody && data.benchmark) {
+        const bm  = data.benchmark;
+        const strat = best;
+        const bmMetrics = [
+            ['Sharpe',      fmt(strat.is_sharpe ?? strat.sharpe, 3),    fmt(bm.sharpe, 3)],
+            ['Ann. Return', fmtPct(strat.is_ann_ret ?? strat.ann_ret),  fmtPct(bm.ann_ret)],
+            ['Max DD',      fmtPct(strat.is_max_dd  ?? strat.max_dd),   fmtPct(bm.max_dd)],
+        ];
+        bmTbody.innerHTML = bmMetrics.map(([label, s, b]) =>
+            `<tr><td>${label}</td><td>${s}</td><td>${b}</td></tr>`
+        ).join('');
     }
 
     // Equity curve chart
@@ -1248,8 +1315,9 @@ async function runScanner() {
 document.addEventListener('DOMContentLoaded', async () => {
     startClock();
 
-    // Seed default KAMA periods
-    DEFAULT_KAMA_PERIODS.forEach(p => addKamaPeriod(p));
+    // Restore KAMA periods from localStorage, fallback to defaults
+    const savedKama = loadKamaFromStorage();
+    (savedKama.length ? savedKama : DEFAULT_KAMA_PERIODS).forEach(p => addKamaPeriod(p));
     renderKamaPills();
     setupKamaAddForm();
 
@@ -1279,16 +1347,469 @@ document.addEventListener('DOMContentLoaded', async () => {
         else toast('Select a symbol first', 'warning');
     });
 
-    // Close bulk modal on Escape
+    // Close modals on Escape
     document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') closeBulkModal();
+        if (e.key === 'Escape') {
+            closeBulkModal();
+            closeAlertsModal();
+            closeAddPositionModal();
+            closeClosePositionModal();
+        }
+    });
+
+    // Save notes on Ctrl+S
+    document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            if (state.activeSymbol) saveNotes();
+        }
     });
 
     await loadSymbols();
 
-    if (state.symbols.length && state.symbols[0].last_fetch) {
-        selectSymbol(state.symbols[0].symbol);
+    // Restore last active symbol
+    const savedSymbol = localStorage.getItem('activeSymbol');
+    const toSelect = savedSymbol && state.symbols.find(s => s.symbol === savedSymbol)
+        ? savedSymbol
+        : (state.symbols.length && state.symbols[0].last_fetch ? state.symbols[0].symbol : null);
+
+    if (toSelect) {
+        selectSymbol(toSelect);
     } else {
         showEmptyState();
     }
+
+    // Start alert polling (every 60s)
+    checkAlerts();
+    alertPollTimer = setInterval(checkAlerts, 60000);
+
+    // Check auto-refresh status
+    checkAutoRefreshStatus();
+    setInterval(checkAutoRefreshStatus, 30000);
 });
+
+// ── localStorage helpers ──────────────────────────────────────
+function saveToLocalStorage() {
+    try {
+        if (state.activeSymbol) localStorage.setItem('activeSymbol', state.activeSymbol);
+    } catch (_) {}
+}
+
+function saveKamaToStorage() {
+    try {
+        const periods = Object.keys(kamaPeriods).map(Number).filter(p => p > 0);
+        localStorage.setItem('kamaPeriods', JSON.stringify(periods));
+    } catch (_) {}
+}
+
+function loadKamaFromStorage() {
+    try {
+        const raw = localStorage.getItem('kamaPeriods');
+        if (raw) {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr) && arr.length) return arr;
+        }
+    } catch (_) {}
+    return [];
+}
+
+// ── Fundamentals ──────────────────────────────────────────────
+async function loadFundamentals(symbol) {
+    const strip = document.getElementById('fundamentals-strip');
+    if (!strip) return;
+    try {
+        const res = await apiFetch(`${API}/fundamentals/${symbol}`);
+        if (!res || !res.data) { strip.style.display = 'none'; return; }
+        renderFundamentals(strip, res.data);
+    } catch (_) {
+        strip.style.display = 'none';
+    }
+}
+
+function renderFundamentals(strip, data) {
+    const fmtN = (v, dec = 2) => (v !== null && v !== undefined && Number.isFinite(Number(v)))
+        ? Number(v).toFixed(dec) : null;
+    const fmtB = v => {
+        const n = Number(v);
+        if (!v || !isFinite(n)) return null;
+        if (n >= 1e12) return (n / 1e12).toFixed(2) + 'T';
+        if (n >= 1e9)  return (n / 1e9).toFixed(2) + 'B';
+        if (n >= 1e6)  return (n / 1e6).toFixed(2) + 'M';
+        return n.toLocaleString();
+    };
+    const fmtPct = v => (v !== null && v !== undefined && Number.isFinite(Number(v)))
+        ? (Number(v) * 100).toFixed(2) + '%' : null;
+
+    const chips = [
+        ['P/E',   fmtN(data.trailingPE)],
+        ['Fwd PE', fmtN(data.forwardPE)],
+        ['P/B',   fmtN(data.priceToBook)],
+        ['P/S',   fmtN(data.priceToSalesTrailing12Months)],
+        ['Mkt Cap', fmtB(data.marketCap)],
+        ['Beta',  fmtN(data.beta)],
+        ['52w Hi', fmtN(data.fiftyTwoWeekHigh)],
+        ['52w Lo', fmtN(data.fiftyTwoWeekLow)],
+        ['Div',   fmtPct(data.dividendYield)],
+        ['EPS',   fmtN(data.trailingEps)],
+        ['Rev Gr', fmtPct(data.revenueGrowth)],
+        ['Margin', fmtPct(data.profitMargins)],
+        ['D/E',   fmtN(data.debtToEquity)],
+        ['ROE',   fmtPct(data.returnOnEquity)],
+    ].filter(([, v]) => v !== null);
+
+    if (!chips.length) { strip.style.display = 'none'; return; }
+
+    strip.innerHTML = chips.map(([label, value]) => `
+        <div class="fund-chip" title="${label}">
+          <span class="fund-chip-label">${label}</span>
+          <span class="fund-chip-value">${value}</span>
+        </div>
+    `).join('');
+    strip.style.display = 'flex';
+}
+
+// ── Notes ─────────────────────────────────────────────────────
+function loadNotes(symbol) {
+    const section  = document.getElementById('notes-section');
+    const textarea = document.getElementById('sym-notes');
+    const savedEl  = document.getElementById('notes-saved');
+    if (!section || !textarea) return;
+
+    const sym = state.symbols.find(s => s.symbol === symbol);
+    textarea.value = sym?.notes || '';
+    if (savedEl) savedEl.textContent = '';
+    section.style.display = 'block';
+}
+
+async function saveNotes() {
+    if (!state.activeSymbol) return;
+    const textarea = document.getElementById('sym-notes');
+    const savedEl  = document.getElementById('notes-saved');
+    const text     = textarea?.value ?? '';
+    try {
+        await apiFetch(`${API}/symbols/${state.activeSymbol}/notes`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: text }),
+        });
+        // Update local state so it persists without full reload
+        const sym = state.symbols.find(s => s.symbol === state.activeSymbol);
+        if (sym) sym.notes = text;
+        if (savedEl) {
+            savedEl.textContent = 'Saved ✓';
+            setTimeout(() => { if (savedEl) savedEl.textContent = ''; }, 2000);
+        }
+    } catch (e) {
+        toast('Failed to save notes: ' + e.message, 'error');
+    }
+}
+
+// ── Alerts ────────────────────────────────────────────────────
+function openAlertsModal() {
+    const modal    = document.getElementById('alerts-modal');
+    const symInput = document.getElementById('alert-symbol-input');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    if (symInput && state.activeSymbol) symInput.value = state.activeSymbol;
+    loadAlerts();
+}
+
+function closeAlertsModal() {
+    const modal = document.getElementById('alerts-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function loadAlerts() {
+    const list = document.getElementById('alerts-list');
+    if (!list) return;
+    try {
+        const alerts = await apiFetch(`${API}/alerts`);
+        renderAlerts(list, alerts);
+    } catch (_) {
+        list.innerHTML = '<div style="color:var(--text-muted)">Could not load alerts.</div>';
+    }
+}
+
+function renderAlerts(container, alerts) {
+    if (!alerts || !alerts.length) {
+        container.innerHTML = '<div style="color:var(--text-muted); padding:8px 0;">No alerts set.</div>';
+        return;
+    }
+    container.innerHTML = alerts.map(a => {
+        const triggered = a.triggered_at
+            ? `<span class="alert-triggered">✓ triggered ${a.triggered_at.slice(0,10)}</span>`
+            : `<span class="alert-untriggered">pending</span>`;
+        return `
+          <div class="alert-row">
+            <span class="alert-row-sym">${a.symbol}</span>
+            <span class="alert-row-desc">${a.field} ${a.condition} ${a.threshold}</span>
+            ${triggered}
+            <button class="btn btn-ghost btn-sm" onclick="deleteAlert(${a.id})" title="Delete">×</button>
+          </div>`;
+    }).join('');
+}
+
+async function addAlert() {
+    const symbol    = document.getElementById('alert-symbol-input')?.value.trim().toUpperCase();
+    const field     = document.getElementById('alert-field-select')?.value;
+    const condition = document.getElementById('alert-cond-select')?.value;
+    const threshold = parseFloat(document.getElementById('alert-threshold-input')?.value);
+
+    if (!symbol || !field || !condition || isNaN(threshold)) {
+        toast('Fill in all alert fields', 'warning');
+        return;
+    }
+    try {
+        await apiFetch(`${API}/alerts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol, field, condition, threshold }),
+        });
+        document.getElementById('alert-symbol-input').value   = '';
+        document.getElementById('alert-threshold-input').value = '';
+        toast(`Alert added for ${symbol}`, 'success', 2500);
+        loadAlerts();
+        checkAlerts();
+    } catch (e) {
+        toast('Add alert failed: ' + e.message, 'error');
+    }
+}
+
+async function deleteAlert(id) {
+    try {
+        await apiFetch(`${API}/alerts/${id}`, { method: 'DELETE' });
+        loadAlerts();
+        checkAlerts();
+    } catch (e) {
+        toast('Delete alert failed: ' + e.message, 'error');
+    }
+}
+
+async function checkAlerts() {
+    try {
+        const res = await apiFetch(`${API}/alerts/check`, { method: 'POST' });
+        const triggered = (res.triggered || []).length;
+        const badge     = document.getElementById('alerts-badge');
+        if (!badge) return;
+        if (triggered > 0) {
+            badge.textContent    = String(triggered);
+            badge.style.display  = 'inline-block';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (_) {}
+}
+
+// ── Portfolio ─────────────────────────────────────────────────
+async function loadPortfolio() {
+    try {
+        const positions = await apiFetch(`${API}/positions`);
+        renderPortfolio(positions);
+    } catch (e) {
+        toast('Portfolio load failed: ' + e.message, 'error');
+    }
+}
+
+function renderPortfolio(positions) {
+    const open   = positions.filter(p => !p.closed_at);
+    const closed = positions.filter(p =>  p.closed_at);
+
+    const fmtPx = v => (v != null && isFinite(v)) ? `$${Number(v).toFixed(2)}` : '--';
+    const fmtPnl = (qty, entry, exit) => {
+        if (qty == null || entry == null || exit == null) return { pnl: null, pct: null };
+        const pnl = (exit - entry) * qty;
+        const pct = (exit - entry) / entry;
+        return { pnl, pct };
+    };
+
+    // Open positions table
+    const openTbody = document.getElementById('portfolio-open-tbody');
+    if (openTbody) {
+        openTbody.innerHTML = open.length ? open.map(p => `
+          <tr>
+            <td><strong>${p.symbol}</strong></td>
+            <td>${p.qty}</td>
+            <td>${fmtPx(p.entry_price)}</td>
+            <td>${p.opened_at || '--'}</td>
+            <td style="max-width:120px; overflow:hidden; text-overflow:ellipsis;">${p.notes || ''}</td>
+            <td style="white-space:nowrap;">
+              <button class="btn btn-ghost btn-sm" onclick="openClosePositionModal(${p.id})">Close</button>
+              <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="deletePosition(${p.id})">×</button>
+            </td>
+          </tr>`).join('')
+          : '<tr><td colspan="6" style="color:var(--text-muted); text-align:center; padding:16px;">No open positions</td></tr>';
+    }
+
+    // Closed positions table
+    const closedTbody = document.getElementById('portfolio-closed-tbody');
+    if (closedTbody) {
+        closedTbody.innerHTML = closed.length ? closed.map(p => {
+            const { pnl, pct } = fmtPnl(p.qty, p.entry_price, p.exit_price);
+            const color = (pnl != null && pnl >= 0) ? 'color:#22c55e' : 'color:#ef4444';
+            return `<tr>
+              <td><strong>${p.symbol}</strong></td>
+              <td>${p.qty}</td>
+              <td>${fmtPx(p.entry_price)}</td>
+              <td>${fmtPx(p.exit_price)}</td>
+              <td style="${color}">${pnl != null ? '$' + pnl.toFixed(2) : '--'}</td>
+              <td style="${color}">${pct != null ? (pct * 100).toFixed(2) + '%' : '--'}</td>
+              <td>${p.opened_at || '--'}</td>
+              <td>${p.closed_at?.slice(0,10) || '--'}</td>
+            </tr>`;
+        }).join('')
+        : '<tr><td colspan="8" style="color:var(--text-muted); text-align:center; padding:16px;">No closed positions</td></tr>';
+    }
+
+    // KPI summary (open positions only)
+    document.getElementById('port-open-count').textContent = String(open.length);
+    document.getElementById('port-pnl').textContent     = '--';
+    document.getElementById('port-pnl-pct').textContent  = '--';
+}
+
+function openAddPositionModal() {
+    const modal   = document.getElementById('add-position-modal');
+    const dateInp = document.getElementById('pos-date-input');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    if (dateInp) dateInp.value = new Date().toISOString().slice(0, 10);
+    if (state.activeSymbol) {
+        const symInp = document.getElementById('pos-symbol-input');
+        if (symInp) symInp.value = state.activeSymbol;
+    }
+}
+
+function closeAddPositionModal() {
+    const modal = document.getElementById('add-position-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function submitAddPosition() {
+    const symbol     = document.getElementById('pos-symbol-input')?.value.trim().toUpperCase();
+    const qty        = parseFloat(document.getElementById('pos-qty-input')?.value);
+    const entryPrice = parseFloat(document.getElementById('pos-entry-input')?.value);
+    const openedAt   = document.getElementById('pos-date-input')?.value;
+    const notes      = document.getElementById('pos-notes-input')?.value.trim();
+
+    if (!symbol || isNaN(qty) || isNaN(entryPrice)) {
+        toast('Symbol, Qty and Entry Price are required', 'warning');
+        return;
+    }
+    try {
+        await apiFetch(`${API}/positions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol, qty, entry_price: entryPrice, opened_at: openedAt, notes }),
+        });
+        closeAddPositionModal();
+        toast(`Position added: ${symbol}`, 'success');
+        loadPortfolio();
+    } catch (e) {
+        toast('Add position failed: ' + e.message, 'error');
+    }
+}
+
+function openClosePositionModal(posId) {
+    _closingPositionId = posId;
+    const modal   = document.getElementById('close-position-modal');
+    const dateInp = document.getElementById('close-date-input');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    if (dateInp) dateInp.value = new Date().toISOString().slice(0, 10);
+}
+
+function closeClosePositionModal() {
+    _closingPositionId = null;
+    const modal = document.getElementById('close-position-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function confirmClosePosition() {
+    const id        = _closingPositionId;
+    const exitPrice = parseFloat(document.getElementById('close-exit-input')?.value);
+    const closedAt  = document.getElementById('close-date-input')?.value;
+    if (!id || isNaN(exitPrice)) { toast('Enter exit price', 'warning'); return; }
+    try {
+        await apiFetch(`${API}/positions/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ exit_price: exitPrice, closed_at: closedAt }),
+        });
+        closeClosePositionModal();
+        toast('Position closed', 'success');
+        loadPortfolio();
+    } catch (e) {
+        toast('Close position failed: ' + e.message, 'error');
+    }
+}
+
+async function deletePosition(id) {
+    if (!confirm('Delete this position?')) return;
+    try {
+        await apiFetch(`${API}/positions/${id}`, { method: 'DELETE' });
+        toast('Position deleted', 'warning');
+        loadPortfolio();
+    } catch (e) {
+        toast('Delete failed: ' + e.message, 'error');
+    }
+}
+
+// ── Correlations ──────────────────────────────────────────────
+async function loadCorrelations() {
+    const section = document.getElementById('correlation-section');
+    const heatmap = document.getElementById('correlation-heatmap');
+    const btn     = document.getElementById('btn-load-correlations');
+    if (!section || !heatmap) return;
+    if (btn) btn.disabled = true;
+    try {
+        const data = await apiFetch(`${API}/correlations`);
+        renderCorrelationHeatmap(heatmap, data);
+        section.style.display = 'block';
+    } catch (e) {
+        toast('Correlations failed: ' + e.message, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+function renderCorrelationHeatmap(container, data) {
+    const { symbols, matrix } = data;
+    if (!symbols || !matrix) { container.innerHTML = '<div style="color:var(--text-muted)">No data.</div>'; return; }
+
+    // Colour: -1 = red, 0 = neutral, +1 = green
+    const cellColor = v => {
+        if (v === null || !isFinite(v)) return 'background:#1c2230; color:var(--text-dim)';
+        const r = v >= 0
+            ? `rgba(34,197,94,${Math.abs(v).toFixed(2)})`
+            : `rgba(239,68,68,${Math.abs(v).toFixed(2)})`;
+        const text = Math.abs(v) > 0.5 ? '#fff' : 'var(--text-muted)';
+        return `background:${r}; color:${text}`;
+    };
+
+    const th = (txt) => `<th>${txt}</th>`;
+    const header = `<tr>${th('')}${symbols.map(s => th(s)).join('')}</tr>`;
+    const rows   = symbols.map((sym, i) => {
+        const cells = symbols.map((_, j) => {
+            const v = matrix[i]?.[j];
+            const fmt = (v === null || !isFinite(v)) ? '–' : v.toFixed(2);
+            return `<td style="${cellColor(v)}">${fmt}</td>`;
+        }).join('');
+        return `<tr><td class="heatmap-label">${sym}</td>${cells}</tr>`;
+    }).join('');
+
+    container.innerHTML = `<table class="heatmap-table"><thead>${header}</thead><tbody>${rows}</tbody></table>`;
+}
+
+// ── Auto-refresh status ───────────────────────────────────────
+async function checkAutoRefreshStatus() {
+    try {
+        const res = await apiFetch(`${API}/auto-refresh/status`);
+        const dot = document.getElementById('auto-refresh-dot');
+        if (!dot) return;
+        if (res.enabled) {
+            dot.style.display = 'inline-block';
+            dot.title = `Auto-refresh enabled (${res.time || ''})`;
+        } else {
+            dot.style.display = 'none';
+        }
+    } catch (_) {}
+}

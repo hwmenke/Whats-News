@@ -12,6 +12,46 @@ import database as db
 
 logger = logging.getLogger(__name__)
 
+_FUNDAMENTAL_FIELDS = [
+    "trailingPE", "forwardPE", "priceToSalesTrailing12Months",
+    "priceToBook", "marketCap", "enterpriseValue",
+    "revenueGrowth", "earningsGrowth", "profitMargins", "grossMargins",
+    "dividendYield", "trailingEps", "forwardEps",
+    "fiftyTwoWeekHigh", "fiftyTwoWeekLow",
+    "beta", "shortRatio", "sharesOutstanding",
+    "currentRatio", "debtToEquity", "returnOnEquity",
+    "totalRevenue", "freeCashflow",
+    "sector", "industry", "country", "fullTimeEmployees",
+    "longBusinessSummary",
+]
+
+
+def _extract_earnings_date(ticker) -> str | None:
+    """Return the next earnings date as YYYY-MM-DD string, or None."""
+    try:
+        cal = ticker.calendar
+        if cal is None:
+            return None
+        # yfinance returns either a dict or a DataFrame depending on version
+        if isinstance(cal, dict):
+            ed = cal.get("Earnings Date")
+            if ed:
+                val = ed[0] if isinstance(ed, list) else ed
+                return pd.Timestamp(val).strftime("%Y-%m-%d")
+        elif hasattr(cal, "loc"):
+            row = cal.loc["Earnings Date"] if "Earnings Date" in cal.index else None
+            if row is not None:
+                return pd.Timestamp(row.iloc[0]).strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    return None
+
+
+def _store_fundamentals(symbol: str, info: dict):
+    """Extract key fundamental fields from yfinance info dict and persist."""
+    data = {k: info.get(k) for k in _FUNDAMENTAL_FIELDS}
+    db.upsert_fundamentals(symbol.upper(), data)
+
 
 def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     """Normalize yfinance output to lowercase columns and drop NaN rows."""
@@ -93,17 +133,19 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
     logger.info("Database updated for %s (%dd, %dw)", sym, daily_count, weekly_count)
 
-    # Pull meta info (name, sector) - try/except as this can be slow/fail
-    name, sector = "", ""
+    # Pull meta info and fundamentals — best-effort, never fatal
+    name, sector, next_earnings = "", "", None
     try:
-        info   = ticker.info
-        name   = info.get("longName", "")
-        sector = info.get("sector", f"{info.get('industry', '')}").strip()
+        info          = ticker.info
+        name          = info.get("longName", "")
+        sector        = info.get("sector", info.get("industry", "")).strip()
+        next_earnings = _extract_earnings_date(ticker)
+        _store_fundamentals(sym, info)
         logger.debug("Metadata for %s: %s (%s)", sym, name, sector)
     except Exception as e:
         logger.warning("Metadata download failed for %s (skipped): %s", sym, e)
 
-    db.update_symbol_info(sym, name, sector)
+    db.update_symbol_info(sym, name, sector, next_earnings)
     db.update_last_fetch(sym)
 
     return {
@@ -153,15 +195,17 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
             logger.info("Stored %dd / %dw for %s", daily_count, weekly_count, sym)
 
             # Metadata (best-effort)
-            name, sector = "", ""
+            name, sector, next_earnings = "", "", None
             try:
-                info   = ticker.info
-                name   = info.get("longName", "")
-                sector = info.get("sector", info.get("industry", "")).strip()
+                info          = ticker.info
+                name          = info.get("longName", "")
+                sector        = info.get("sector", info.get("industry", "")).strip()
+                next_earnings = _extract_earnings_date(ticker)
+                _store_fundamentals(sym, info)
             except Exception:
                 pass
 
-            db.update_symbol_info(sym, name, sector)
+            db.update_symbol_info(sym, name, sector, next_earnings)
             db.update_last_fetch(sym)
 
             return {

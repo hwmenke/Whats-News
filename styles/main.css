@@ -1978,3 +1978,277 @@ html, body {
   flex: 1;
   min-height: 0;
 }
+
+/* ════════════════════════════════════════════════════════════
+   NEW FEATURE STYLES (Tier 1 + 2 improvements)
+   ════════════════════════════════════════════════════════════ */
+
+/* ── Alerts bell button ──────────────────────────────────── */
+.btn-alerts {
+  position: relative;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-muted);
+  line-height: 1;
+  transition: color 0.15s, border-color 0.15s;
+}
+.btn-alerts:hover { color: var(--text-primary); border-color: var(--border); }
+
+.alerts-badge {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  padding: 0 3px;
+  pointer-events: none;
+}
+
+/* ── Auto-refresh dot ────────────────────────────────────── */
+.auto-refresh-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  animation: pulse 2s infinite;
+  margin-left: 4px;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* ── Fundamentals strip ──────────────────────────────────── */
+.fundamentals-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0 2px;
+  width: 100%;
+}
+.fund-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  min-width: 60px;
+  cursor: default;
+}
+.fund-chip-label {
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.fund-chip-value {
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Notes section ───────────────────────────────────────── */
+.notes-section {
+  width: 100%;
+  padding: 2px 0 4px;
+}
+.notes-details {
+  width: 100%;
+}
+.notes-summary {
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 0;
+  list-style: none;
+}
+.notes-summary::-webkit-details-marker { display: none; }
+.notes-summary::before { content: '▶ '; font-size: 9px; }
+details[open] .notes-summary::before { content: '▼ '; }
+
+.notes-body {
+  margin-top: 6px;
+}
+.sym-notes-input {
+  width: 100%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 6px 8px;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.sym-notes-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.notes-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.notes-saved {
+  font-size: 11px;
+  color: #22c55e;
+  transition: opacity 0.3s;
+}
+
+/* ── Walk-forward slider ─────────────────────────────────── */
+.wf-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.wf-slider {
+  width: 120px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ── Alerts modal list ───────────────────────────────────── */
+.alerts-list {
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+.alert-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.alert-row:last-child { border-bottom: none; }
+.alert-row-sym  { font-weight: 700; color: var(--text-primary); min-width: 52px; }
+.alert-row-desc { flex: 1; color: var(--text-muted); }
+.alert-triggered { color: #22c55e; font-size: 11px; }
+.alert-untriggered { color: var(--text-dim); font-size: 11px; }
+.alert-add-form { border-top: 1px solid var(--border); padding-top: 14px; }
+.alert-add-title { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+.alert-form-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.alert-input {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 5px 8px;
+  width: 80px;
+}
+.alert-input-num { width: 90px; }
+.alert-input:focus { outline: none; border-color: var(--accent); }
+.alert-select {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 5px 6px;
+  cursor: pointer;
+}
+.alert-select:focus { outline: none; border-color: var(--accent); }
+
+/* ── Portfolio area ──────────────────────────────────────── */
+.portfolio-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.portfolio-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Portfolio form in modal */
+.portfolio-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pf-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.pf-input {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: 13px;
+  padding: 6px 10px;
+}
+.pf-input:focus { outline: none; border-color: var(--accent); }
+
+/* ── Correlation heatmap ─────────────────────────────────── */
+.correlation-heatmap {
+  overflow-x: auto;
+  padding: 8px 0;
+}
+.heatmap-table {
+  border-collapse: collapse;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.heatmap-table th {
+  padding: 4px 8px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: center;
+}
+.heatmap-table td {
+  padding: 4px 8px;
+  text-align: center;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 11px;
+  min-width: 50px;
+}
+.heatmap-label {
+  text-align: right !important;
+  color: var(--text-primary);
+  background: none !important;
+  padding-right: 12px !important;
+}
+
+/* ── Wide stats card for correlation ────────────────────── */
+.stats-card-wide {
+  grid-column: 1 / -1;
+}
+
+/* ── btn-sm utility ──────────────────────────────────────── */
+.btn-sm {
+  font-size: 11px;
+  padding: 4px 10px;
+}

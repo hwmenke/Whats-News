@@ -23,6 +23,8 @@
 
     <div class="status-dot" title="Connected"></div>
     <span id="market-time" class="market-time">--</span>
+    <span id="auto-refresh-dot" class="auto-refresh-dot" title="Auto-refresh off" style="display:none;"></span>
+    <button id="btn-alerts" class="btn-alerts" title="View Alerts" onclick="openAlertsModal()">🔔<span id="alerts-badge" class="alerts-badge" style="display:none;"></span></button>
   </header>
 
   <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
@@ -90,6 +92,21 @@
         </div>
       </div>
 
+      <div id="fundamentals-strip" class="fundamentals-strip" style="display:none;"></div>
+
+      <div id="notes-section" class="notes-section" style="display:none;">
+        <details id="notes-details" class="notes-details">
+          <summary class="notes-summary">📝 Notes</summary>
+          <div class="notes-body">
+            <textarea id="sym-notes" class="sym-notes-input" placeholder="Notes for this symbol…" rows="3"></textarea>
+            <div class="notes-footer">
+              <button id="btn-save-notes" class="btn btn-ghost btn-sm" onclick="saveNotes()">Save</button>
+              <span id="notes-saved" class="notes-saved"></span>
+            </div>
+          </div>
+        </details>
+      </div>
+
       <div class="header-spacer"></div>
     </div>
 
@@ -115,6 +132,9 @@
       </button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
         <span class="tab-icon">🗄️</span> Data Manager
+      </button>
+      <button id="tab-portfolio" class="tab-btn" onclick="switchTab('portfolio')">
+        <span class="tab-icon">💼</span> Portfolio
       </button>
     </nav>
     <div class="tab-bar">
@@ -277,6 +297,17 @@
         </div>
       </div>
 
+      <!-- Correlation heatmap -->
+      <div id="correlation-section" style="display:none; margin-top:16px;">
+        <div class="stats-card stats-card-wide">
+          <div class="stats-card-header" style="display:flex; align-items:center; justify-content:space-between;">
+            Watchlist Correlations (Daily Returns)
+            <button id="btn-load-correlations" class="btn btn-ghost btn-sm" onclick="loadCorrelations()">Load</button>
+          </div>
+          <div id="correlation-heatmap" class="correlation-heatmap"></div>
+        </div>
+      </div>
+
     </div><!-- #stats-area -->
 
     <!-- ── KNN Area ── -->
@@ -332,8 +363,11 @@
     <div id="backtest-area" class="stats-container" style="display:none;">
 
       <!-- Controls -->
-      <div class="backtest-controls" style="margin-bottom:20px;">
+      <div class="backtest-controls" style="margin-bottom:20px; flex-wrap:wrap; gap:10px;">
         <button id="btn-run-backtest" class="btn btn-primary">Run Optimization</button>
+        <label class="wf-label">Train: <strong id="train-pct-label">70%</strong></label>
+        <input id="train-pct-slider" type="range" min="50" max="95" value="70" step="5" class="wf-slider"
+               oninput="document.getElementById('train-pct-label').textContent=this.value+'%'" />
         <span id="backtest-status" style="color:var(--text-muted); font-size:12px;"></span>
       </div>
 
@@ -381,6 +415,30 @@
           <div class="stats-card-header">Best Equity Curve</div>
           <div class="chart-container-js">
             <canvas id="chart-backtest-equity"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- IS vs OOS walk-forward comparison -->
+      <div id="bt-oos-section" style="display:none; margin-top:16px;">
+        <div class="stats-grid">
+          <div class="stats-card">
+            <div class="stats-card-header">In-Sample vs Out-of-Sample (Best Config)</div>
+            <div style="overflow-x:auto;">
+              <table class="backtest-table" id="bt-oos-table">
+                <thead><tr><th>Metric</th><th>In-Sample</th><th>Out-of-Sample</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-card-header">Strategy vs Buy &amp; Hold</div>
+            <div style="overflow-x:auto;">
+              <table class="backtest-table" id="bt-bm-table">
+                <thead><tr><th>Metric</th><th>Strategy (IS)</th><th>Buy &amp; Hold</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -711,6 +769,55 @@
 
     </div><!-- #data-manager-area -->
 
+    <!-- ── Portfolio Area ── -->
+    <div id="portfolio-area" class="stats-container" style="display:none;">
+
+      <div class="portfolio-header">
+        <span class="portfolio-title">Portfolio Positions</span>
+        <button class="btn btn-primary btn-sm" onclick="openAddPositionModal()">+ Add Position</button>
+      </div>
+
+      <div class="kpi-row" style="margin-bottom:20px;">
+        <div class="kpi-card">
+          <div class="kpi-label">Unrealised P&amp;L</div>
+          <div id="port-pnl" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">P&amp;L %</div>
+          <div id="port-pnl-pct" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Open Positions</div>
+          <div id="port-open-count" class="kpi-value">--</div>
+        </div>
+      </div>
+
+      <div class="stats-card">
+        <div class="stats-card-header">Open Positions</div>
+        <div style="overflow-x:auto;">
+          <table class="backtest-table" id="portfolio-open-table">
+            <thead>
+              <tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Opened</th><th>Notes</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="portfolio-open-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="stats-card" style="margin-top:16px;">
+        <div class="stats-card-header">Closed Positions</div>
+        <div style="overflow-x:auto;">
+          <table class="backtest-table" id="portfolio-closed-table">
+            <thead>
+              <tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Exit</th><th>P&amp;L</th><th>P&amp;L %</th><th>Opened</th><th>Closed</th></tr>
+            </thead>
+            <tbody id="portfolio-closed-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- #portfolio-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -752,6 +859,100 @@
       <button id="btn-bulk-submit" class="btn btn-primary" onclick="bulkAddSymbols()">Import Tickers</button>
     </div>
 
+  </div>
+</div>
+
+<!-- ══ Alerts Modal ══════════════════════════════════════════ -->
+<div id="alerts-modal" class="bulk-modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeAlertsModal()">
+  <div class="bulk-modal-card" role="dialog" aria-modal="true" aria-label="Alerts">
+
+    <div class="bulk-modal-header">
+      <span>Price Alerts</span>
+      <button class="bulk-modal-close" onclick="closeAlertsModal()">×</button>
+    </div>
+
+    <div class="bulk-modal-body">
+      <div id="alerts-list" class="alerts-list">
+        <div style="color:var(--text-muted); padding:8px 0;">No alerts set.</div>
+      </div>
+      <div class="alert-add-form">
+        <div class="alert-add-title">New Alert</div>
+        <div class="alert-form-row">
+          <input id="alert-symbol-input" type="text" placeholder="Symbol" class="alert-input" maxlength="10" />
+          <select id="alert-field-select" class="alert-select">
+            <option value="close">Close</option>
+            <option value="rsi14">RSI 14</option>
+          </select>
+          <select id="alert-cond-select" class="alert-select">
+            <option value="above">above</option>
+            <option value="below">below</option>
+          </select>
+          <input id="alert-threshold-input" type="number" step="any" placeholder="Value" class="alert-input alert-input-num" />
+          <button class="btn btn-primary btn-sm" onclick="addAlert()">Add</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ Add Position Modal ══════════════════════════════════════ -->
+<div id="add-position-modal" class="bulk-modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeAddPositionModal()">
+  <div class="bulk-modal-card" role="dialog" aria-modal="true" aria-label="Add Position" style="max-width:380px;">
+    <div class="bulk-modal-header">
+      <span>Add Position</span>
+      <button class="bulk-modal-close" onclick="closeAddPositionModal()">×</button>
+    </div>
+    <div class="bulk-modal-body">
+      <div class="portfolio-form">
+        <label class="pf-label">Symbol
+          <input id="pos-symbol-input" type="text" class="pf-input" placeholder="AAPL" maxlength="10" />
+        </label>
+        <label class="pf-label">Quantity
+          <input id="pos-qty-input" type="number" step="any" class="pf-input" placeholder="100" />
+        </label>
+        <label class="pf-label">Entry Price
+          <input id="pos-entry-input" type="number" step="any" class="pf-input" placeholder="150.00" />
+        </label>
+        <label class="pf-label">Opened At
+          <input id="pos-date-input" type="date" class="pf-input" />
+        </label>
+        <label class="pf-label">Notes
+          <input id="pos-notes-input" type="text" class="pf-input" placeholder="Optional" />
+        </label>
+      </div>
+    </div>
+    <div class="bulk-modal-footer">
+      <button class="btn btn-ghost" onclick="closeAddPositionModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddPosition()">Add Position</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Close Position Modal ══════════════════════════════════════ -->
+<div id="close-position-modal" class="bulk-modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeClosePositionModal()">
+  <div class="bulk-modal-card" role="dialog" aria-modal="true" aria-label="Close Position" style="max-width:340px;">
+    <div class="bulk-modal-header">
+      <span>Close Position</span>
+      <button class="bulk-modal-close" onclick="closeClosePositionModal()">×</button>
+    </div>
+    <div class="bulk-modal-body">
+      <div class="portfolio-form">
+        <label class="pf-label">Exit Price
+          <input id="close-exit-input" type="number" step="any" class="pf-input" placeholder="160.00" />
+        </label>
+        <label class="pf-label">Closed At
+          <input id="close-date-input" type="date" class="pf-input" />
+        </label>
+      </div>
+    </div>
+    <div class="bulk-modal-footer">
+      <button class="btn btn-ghost" onclick="closeClosePositionModal()">Cancel</button>
+      <button class="btn btn-primary" id="btn-confirm-close-position" onclick="confirmClosePosition()">Close Position</button>
+    </div>
   </div>
 </div>
 

@@ -58,6 +58,46 @@ def _shutdown_fetch_thread():
 
 atexit.register(_shutdown_fetch_thread)
 
+# ── Auto-refresh scheduler ────────────────────────────────────────────────────
+# Set AUTO_REFRESH_TIME=17:00 (24h, ET) to enable daily auto-refresh.
+_auto_refresh_state = {"enabled": False, "next_run": None, "last_run": None}
+
+def _auto_refresh_loop():
+    import datetime as _dt
+    refresh_time_str = os.environ.get("AUTO_REFRESH_TIME", "")
+    if not refresh_time_str:
+        return
+    try:
+        hh, mm = map(int, refresh_time_str.split(":"))
+    except ValueError:
+        logger.warning("AUTO_REFRESH_TIME must be HH:MM, got %r", refresh_time_str)
+        return
+
+    _auto_refresh_state["enabled"] = True
+    logger.info("Auto-refresh enabled at %02d:%02d daily", hh, mm)
+
+    while True:
+        now    = _dt.datetime.now()
+        target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if target <= now:
+            target += _dt.timedelta(days=1)
+        _auto_refresh_state["next_run"] = target.isoformat()
+        wait = (target - now).total_seconds()
+        time.sleep(wait)
+
+        logger.info("Auto-refresh: starting daily data refresh")
+        symbols = db.list_symbols()
+        for s in symbols:
+            try:
+                fetcher.fetch_and_store(s["symbol"])
+            except Exception as e:
+                logger.warning("Auto-refresh failed for %s: %s", s["symbol"], e)
+        _auto_refresh_state["last_run"] = _dt.datetime.now().isoformat()
+        logger.info("Auto-refresh: complete")
+
+_ar_thread = threading.Thread(target=_auto_refresh_loop, daemon=True)
+_ar_thread.start()
+
 # Initialise the database on startup
 db.init_db()
 
@@ -248,7 +288,12 @@ def get_knn(symbol):
 @app.route("/api/backtest/<string:symbol>")
 def get_backtest(symbol):
     try:
-        result = backtester.run_optimization(symbol.upper())
+        train_pct = float(request.args.get("train_pct", 0.7))
+        train_pct = max(0.5, min(train_pct, 0.95))
+    except (TypeError, ValueError):
+        train_pct = 0.7
+    try:
+        result = backtester.run_optimization(symbol.upper(), train_pct=train_pct)
         if "error" in result:
             return _err(result["error"], 404)
         return jsonify(result)
@@ -540,6 +585,360 @@ def fetch_batch():
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# -- Notes ---------------------------------------------------------------------
+
+@app.route("/api/symbols/<string:symbol>/notes", methods=["PUT"])
+def set_notes(symbol):
+    body  = request.get_json(silent=True) or {}
+    notes = body.get("notes", "")
+    db.set_symbol_notes(symbol.upper(), notes)
+    return jsonify({"message": "ok"})
+
+
+# -- Fundamentals ---------------------------------------------------------------
+
+@app.route("/api/fundamentals/<string:symbol>", methods=["GET"])
+def get_fundamentals(symbol):
+    row = db.get_fundamentals(symbol.upper())
+    if row is None:
+        return _err("No fundamental data. Fetch the symbol first.", 404)
+    return jsonify(row)
+
+
+# -- Alerts --------------------------------------------------------------------
+
+@app.route("/api/alerts", methods=["GET"])
+def list_alerts():
+    symbol = request.args.get("symbol")
+    return jsonify(db.list_alerts(symbol.upper() if symbol else None))
+
+
+@app.route("/api/alerts", methods=["POST"])
+def create_alert():
+    body = request.get_json(silent=True) or {}
+    symbol    = body.get("symbol", "").strip().upper()
+    field     = body.get("field", "").strip()
+    condition = body.get("condition", "").strip()
+    threshold = body.get("threshold")
+
+    if not symbol:
+        return _err("symbol is required")
+    if field not in ("price", "rsi_14", "kama10_pct", "kama20_pct", "kama50_pct"):
+        return _err("field must be one of: price, rsi_14, kama10_pct, kama20_pct, kama50_pct")
+    if condition not in ("above", "below"):
+        return _err("condition must be 'above' or 'below'")
+    try:
+        threshold = float(threshold)
+    except (TypeError, ValueError):
+        return _err("threshold must be a number")
+
+    alert_id = db.add_alert(symbol, field, condition, threshold)
+    return jsonify({"id": alert_id, "message": "Alert created"}), 201
+
+
+@app.route("/api/alerts/<int:alert_id>", methods=["DELETE"])
+def delete_alert(alert_id):
+    db.delete_alert(alert_id)
+    return jsonify({"message": "deleted"})
+
+
+@app.route("/api/alerts/<int:alert_id>/reset", methods=["POST"])
+def reset_alert(alert_id):
+    db.reset_alert(alert_id)
+    return jsonify({"message": "reset"})
+
+
+@app.route("/api/alerts/check", methods=["GET"])
+def check_alerts():
+    """
+    Evaluate all untriggered alerts against latest stored indicator values.
+    Returns list of newly triggered alerts.
+    """
+    import concurrent.futures
+
+    alerts = [a for a in db.list_alerts() if not a.get("triggered_at")]
+    if not alerts:
+        return jsonify([])
+
+    # Group by symbol so we fetch indicators once per symbol
+    by_symbol: dict[str, list] = {}
+    for a in alerts:
+        by_symbol.setdefault(a["symbol"], []).append(a)
+
+    triggered = []
+
+    def _check_symbol(sym, sym_alerts):
+        result = []
+        try:
+            ohlcv = db.get_ohlcv_df(sym, "daily", limit=100)
+            if ohlcv.empty:
+                return result
+            close  = ohlcv["close"]
+            price  = float(close.iloc[-1])
+            from shared_indicators import _kama, _rsi
+            rsi14  = float(_rsi(close, 14).dropna().iloc[-1])
+            kama10 = float(_kama(close, 10).dropna().iloc[-1])
+            kama20 = float(_kama(close, 20).dropna().iloc[-1])
+            kama50 = float(_kama(close, 50).dropna().iloc[-1])
+            values = {
+                "price":      price,
+                "rsi_14":     rsi14,
+                "kama10_pct": round((price / kama10 - 1) * 100, 2) if kama10 else None,
+                "kama20_pct": round((price / kama20 - 1) * 100, 2) if kama20 else None,
+                "kama50_pct": round((price / kama50 - 1) * 100, 2) if kama50 else None,
+            }
+            for alert in sym_alerts:
+                val = values.get(alert["field"])
+                if val is None:
+                    continue
+                fired = (alert["condition"] == "above" and val > alert["threshold"]) or \
+                        (alert["condition"] == "below" and val < alert["threshold"])
+                if fired:
+                    db.mark_alert_triggered(alert["id"])
+                    result.append({**alert, "current_value": val})
+        except Exception as e:
+            logger.warning("Alert check failed for %s: %s", sym, e)
+        return result
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        futs = {pool.submit(_check_symbol, sym, alts): sym
+                for sym, alts in by_symbol.items()}
+        for f in concurrent.futures.as_completed(futs):
+            triggered.extend(f.result())
+
+    return jsonify(triggered)
+
+
+# -- Relative Strength ---------------------------------------------------------
+
+@app.route("/api/relative-strength/<string:symbol>", methods=["GET"])
+def get_relative_strength(symbol):
+    """
+    Returns the symbol's close divided by a benchmark close, both normalised
+    to 1.0 at the start of the window.  Query params:
+      bench : benchmark symbol (default SPY)
+      freq  : daily | weekly (default daily)
+      limit : number of bars (default 252)
+    """
+    bench = request.args.get("bench", "SPY").strip().upper()
+    freq  = request.args.get("freq", "daily")
+    try:
+        limit = int(request.args.get("limit", 252))
+        if limit < 2:
+            raise ValueError
+    except (TypeError, ValueError):
+        return _err("limit must be an integer >= 2")
+    if freq not in ("daily", "weekly"):
+        return _err("freq must be 'daily' or 'weekly'")
+
+    sym_df   = db.get_ohlcv_df(symbol.upper(), freq, limit=limit)
+    bench_df = db.get_ohlcv_df(bench, freq, limit=limit)
+
+    if sym_df.empty:
+        return _err(f"No data for {symbol.upper()}. Fetch it first.", 404)
+    if bench_df.empty:
+        return _err(f"No data for benchmark {bench}. Fetch it first.", 404)
+
+    import numpy as np
+    # Align on common dates
+    common = sym_df.index.intersection(bench_df.index)
+    if len(common) < 2:
+        return _err("Not enough overlapping dates between symbol and benchmark", 404)
+
+    sym_close   = sym_df.loc[common, "close"]
+    bench_close = bench_df.loc[common, "close"]
+
+    # Normalise both to 1.0 at the first common date
+    sym_norm   = sym_close   / sym_close.iloc[0]
+    bench_norm = bench_close / bench_close.iloc[0]
+    rs         = sym_norm / bench_norm
+
+    from shared_indicators import _safe
+    result = [
+        {"date": d.strftime("%Y-%m-%d"), "rs": _safe(round(float(v), 6)),
+         "sym": _safe(round(float(s), 6)), "bench": _safe(round(float(b), 6))}
+        for d, v, s, b in zip(common, rs.values, sym_norm.values, bench_norm.values)
+    ]
+    return jsonify({"symbol": symbol.upper(), "bench": bench, "series": result})
+
+
+# -- Correlations --------------------------------------------------------------
+
+@app.route("/api/correlations", methods=["GET"])
+def get_correlations():
+    """
+    Pairwise Pearson correlation of daily returns across all watchlist symbols.
+    Query params:
+      freq  : daily | weekly (default daily)
+      limit : bars to use   (default 252)
+    """
+    freq = request.args.get("freq", "daily")
+    try:
+        limit = int(request.args.get("limit", 252))
+        if limit < 5:
+            raise ValueError
+    except (TypeError, ValueError):
+        return _err("limit must be an integer >= 5")
+    if freq not in ("daily", "weekly"):
+        return _err("freq must be 'daily' or 'weekly'")
+
+    symbols = [s["symbol"] for s in db.list_symbols()]
+    if len(symbols) < 2:
+        return _err("Need at least 2 symbols in the watchlist", 400)
+
+    import numpy as np
+
+    frames = {}
+    for sym in symbols:
+        df = db.get_ohlcv_df(sym, freq, limit=limit)
+        if not df.empty and len(df) >= 5:
+            frames[sym] = df["close"].pct_change().dropna()
+
+    if len(frames) < 2:
+        return _err("Not enough symbols with data", 400)
+
+    import pandas as pd
+    prices = pd.DataFrame(frames)
+    corr   = prices.corr(method="pearson")
+
+    syms = list(corr.columns)
+    matrix = []
+    for s1 in syms:
+        row = []
+        for s2 in syms:
+            v = corr.loc[s1, s2]
+            row.append(None if (v is None or (isinstance(v, float) and np.isnan(v)))
+                       else round(float(v), 4))
+        matrix.append(row)
+
+    return jsonify({"symbols": syms, "matrix": matrix})
+
+
+# -- Positions (Portfolio) -----------------------------------------------------
+
+@app.route("/api/positions", methods=["GET"])
+def list_positions():
+    include_closed = request.args.get("include_closed", "true").lower() != "false"
+    positions = db.list_positions(include_closed=include_closed)
+
+    # Enrich with current price and unrealised P&L
+    for pos in positions:
+        if pos.get("closed_at"):
+            if pos.get("exit_price") and pos.get("entry_price"):
+                pos["realised_pnl"] = round(
+                    (pos["exit_price"] - pos["entry_price"]) * pos["qty"], 2)
+            continue
+        ohlcv = db.get_ohlcv(pos["symbol"], "daily", limit=1)
+        if ohlcv:
+            cur_price = ohlcv[-1]["close"]
+            pos["current_price"]  = round(cur_price, 2)
+            pos["current_value"]  = round(cur_price * pos["qty"], 2)
+            pos["unrealised_pnl"] = round(
+                (cur_price - pos["entry_price"]) * pos["qty"], 2)
+            pos["pnl_pct"] = round(
+                (cur_price / pos["entry_price"] - 1) * 100, 2)
+
+    return jsonify(positions)
+
+
+@app.route("/api/positions", methods=["POST"])
+def create_position():
+    body = request.get_json(silent=True) or {}
+    symbol = body.get("symbol", "").strip().upper()
+    if not symbol:
+        return _err("symbol is required")
+    try:
+        qty         = float(body["qty"])
+        entry_price = float(body["entry_price"])
+        if qty == 0:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        return _err("qty (non-zero) and entry_price are required numbers")
+
+    opened_at = body.get("opened_at")
+    notes     = body.get("notes", "")
+    pos_id    = db.add_position(symbol, qty, entry_price, opened_at, notes)
+    return jsonify({"id": pos_id, "message": "Position created"}), 201
+
+
+@app.route("/api/positions/<int:pos_id>", methods=["PUT"])
+def update_position(pos_id):
+    body = request.get_json(silent=True) or {}
+    allowed = {"qty", "entry_price", "opened_at", "closed_at", "exit_price", "notes"}
+    updates = {k: body[k] for k in allowed if k in body}
+    if not updates:
+        return _err("No valid fields to update")
+    db.update_position(pos_id, **updates)
+    return jsonify({"message": "updated"})
+
+
+@app.route("/api/positions/<int:pos_id>", methods=["DELETE"])
+def delete_position(pos_id):
+    db.delete_position(pos_id)
+    return jsonify({"message": "deleted"})
+
+
+# -- Volume Profile ------------------------------------------------------------
+
+@app.route("/api/volume-profile/<string:symbol>", methods=["GET"])
+def get_volume_profile(symbol):
+    """
+    Returns a price histogram weighted by volume.
+    Query params:
+      freq  : daily | weekly (default daily)
+      limit : bars to use   (default 252)
+      bins  : number of price buckets (default 40)
+    """
+    freq = request.args.get("freq", "daily")
+    try:
+        limit = int(request.args.get("limit", 252))
+        bins  = int(request.args.get("bins",  40))
+        if limit < 5 or bins < 2:
+            raise ValueError
+    except (TypeError, ValueError):
+        return _err("limit (>=5) and bins (>=2) must be positive integers")
+    if freq not in ("daily", "weekly"):
+        return _err("freq must be 'daily' or 'weekly'")
+
+    df = db.get_ohlcv_df(symbol.upper(), freq, limit=limit)
+    if df.empty:
+        return _err("No data. Fetch the symbol first.", 404)
+
+    import numpy as np
+    prices = ((df["high"] + df["low"]) / 2).values
+    vols   = df["volume"].values
+    lo, hi = prices.min(), prices.max()
+    if lo >= hi:
+        return _err("Insufficient price range", 400)
+
+    edges   = np.linspace(lo, hi, bins + 1)
+    buckets = []
+    for i in range(bins):
+        mask   = (prices >= edges[i]) & (prices < edges[i + 1])
+        vol_sum = float(vols[mask].sum())
+        buckets.append({
+            "price_low":  round(float(edges[i]),     4),
+            "price_high": round(float(edges[i + 1]), 4),
+            "price_mid":  round(float((edges[i] + edges[i + 1]) / 2), 4),
+            "volume":     vol_sum,
+        })
+
+    total = sum(b["volume"] for b in buckets) or 1
+    for b in buckets:
+        b["volume_pct"] = round(b["volume"] / total * 100, 2)
+
+    return jsonify({"symbol": symbol.upper(), "buckets": buckets,
+                    "price_range": {"low": round(float(lo), 4),
+                                    "high": round(float(hi), 4)}})
+
+
+# -- Auto-refresh status -------------------------------------------------------
+
+@app.route("/api/auto-refresh/status", methods=["GET"])
+def auto_refresh_status():
+    return jsonify(_auto_refresh_state)
 
 
 # -- Entry point ----------------------------------------------------------------

@@ -140,7 +140,7 @@ def _weekly_equity(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
     return curve
 
 
-def run_optimization(symbol: str) -> dict:
+def run_optimization(symbol: str, train_pct: float = 0.7) -> dict:
     """
     Test all FAST × SLOW KAMA period combinations, with and without trend filter.
     Returns top-10 results sorted by Sharpe, plus equity curve and heatmap data.
@@ -149,65 +149,88 @@ def run_optimization(symbol: str) -> dict:
     if df.empty or len(df) < 220:
         return {"error": f"Not enough data for {symbol}"}
 
-    close = df["close"]
+    # ── Walk-forward split ────────────────────────────────────────
+    train_pct = max(0.5, min(train_pct, 0.95))
+    split_idx = int(len(df) * train_pct)
+    df_train  = df.iloc[:split_idx]
+    df_oos    = df.iloc[split_idx:]
 
-    # Pre-compute trend score once
-    trend_score = _compute_trend_score(df)
+    close       = df["close"]
+    close_train = df_train["close"]
+    close_oos   = df_oos["close"]
 
-    # Pre-compute all KAMA series
+    # Pre-compute trend score on full series (needs warmup bars)
+    trend_score     = _compute_trend_score(df)
+    trend_score_oos = trend_score.iloc[split_idx:]
+
+    # Pre-compute all KAMA series on full series
     kama_cache = {}
     for p in set(FAST_PERIODS + SLOW_PERIODS):
         kama_cache[p] = _kama(close, window=p)
 
-    # Buy-and-hold benchmark
-    daily_ret = close.pct_change().dropna()
-    bh_ann_ret = daily_ret.mean() * 252
-    bh_ann_vol = daily_ret.std() * np.sqrt(252)
-    bh_sharpe  = bh_ann_ret / bh_ann_vol if bh_ann_vol != 0 else 0.0
-    equity_bh  = (1 + daily_ret).cumprod()
-    peak_bh    = equity_bh.cummax()
-    bh_max_dd  = ((equity_bh - peak_bh) / peak_bh).min()
+    def _bh_stats(c: pd.Series) -> dict:
+        ret = c.pct_change().dropna()
+        if ret.empty:
+            return {"ann_ret": None, "ann_vol": None, "sharpe": None, "max_dd": None}
+        ann_ret = ret.mean() * 252
+        ann_vol = ret.std() * np.sqrt(252)
+        sharpe  = ann_ret / ann_vol if ann_vol != 0 else 0.0
+        eq      = (1 + ret).cumprod()
+        pk      = eq.cummax()
+        max_dd  = ((eq - pk) / pk).min()
+        return {"ann_ret": _safe(ann_ret), "ann_vol": _safe(ann_vol),
+                "sharpe": _safe(sharpe), "max_dd": _safe(max_dd)}
 
-    benchmark = {
-        "ann_ret": _safe(bh_ann_ret),
-        "ann_vol": _safe(bh_ann_vol),
-        "sharpe":  _safe(bh_sharpe),
-        "max_dd":  _safe(bh_max_dd),
-    }
+    benchmark     = _bh_stats(close)
+    benchmark_oos = _bh_stats(close_oos)
 
+    # ── In-sample optimisation ────────────────────────────────────
     all_results = []
     for fast_p in FAST_PERIODS:
         for slow_p in SLOW_PERIODS:
             if fast_p >= slow_p:
                 continue
+            kf_full = kama_cache[fast_p]
+            ks_full = kama_cache[slow_p]
+
+            # In-sample slice (use full KAMA for warmup continuity)
+            kf_train = kf_full.iloc[:split_idx]
+            ks_train = ks_full.iloc[:split_idx]
+            ts_train = trend_score.iloc[:split_idx]
+
             for use_trend in (False, True):
-                label = f"K{fast_p}/K{slow_p}" + (" +Trend" if use_trend else "")
-                metrics = _run_strategy(
-                    close,
-                    kama_cache[fast_p],
-                    kama_cache[slow_p],
-                    trend_score=trend_score,
-                    use_trend=use_trend,
-                )
+                label  = f"K{fast_p}/K{slow_p}" + (" +Trend" if use_trend else "")
+                is_met = _run_strategy(close_train, kf_train, ks_train,
+                                       trend_score=ts_train, use_trend=use_trend)
+
+                # Out-of-sample evaluation with same params
+                kf_oos = kf_full.iloc[split_idx:]
+                ks_oos = ks_full.iloc[split_idx:]
+                oos_met = _run_strategy(close_oos, kf_oos, ks_oos,
+                                        trend_score=trend_score_oos,
+                                        use_trend=use_trend)
+
                 all_results.append({
-                    "label":      label,
-                    "fast":       fast_p,
-                    "slow":       slow_p,
-                    "use_trend":  use_trend,
-                    **metrics,
+                    "label":     label,
+                    "fast":      fast_p,
+                    "slow":      slow_p,
+                    "use_trend": use_trend,
+                    **{f"is_{k}": v for k, v in is_met.items()},
+                    **{f"oos_{k}": v for k, v in oos_met.items()},
+                    # Keep legacy keys from in-sample for backward compat
+                    **is_met,
                 })
 
     total_tested = len(all_results)
 
-    # Sort by Sharpe descending (None → treated as -inf)
     def sharpe_key(r):
-        s = r.get("sharpe")
+        s = r.get("is_sharpe") or r.get("sharpe")
         return s if s is not None else -1e9
 
     all_results.sort(key=sharpe_key, reverse=True)
     top10 = all_results[:10]
 
-    # Equity curve for the best result
+    # Equity curve for the best result (full period)
     best = all_results[0] if all_results else None
     equity_curve = []
     if best:
@@ -219,16 +242,17 @@ def run_optimization(symbol: str) -> dict:
             use_trend=best["use_trend"],
         )
 
-    # Heatmap data: Sharpe indexed by (fast, slow) — no-trend version
+    # Heatmap: in-sample Sharpe, no-trend version
     heatmap = {}
     for r in all_results:
         if not r["use_trend"]:
             key = f"{r['fast']}x{r['slow']}"
-            heatmap[key] = r.get("sharpe")
+            heatmap[key] = r.get("is_sharpe") or r.get("sharpe")
 
     return {
         "symbol":        symbol,
         "benchmark":     benchmark,
+        "benchmark_oos": benchmark_oos,
         "top10":         top10,
         "best":          best,
         "equity_curve":  equity_curve,
@@ -236,4 +260,7 @@ def run_optimization(symbol: str) -> dict:
         "total_tested":  total_tested,
         "fast_periods":  FAST_PERIODS,
         "slow_periods":  SLOW_PERIODS,
+        "train_pct":     train_pct,
+        "train_bars":    split_idx,
+        "oos_bars":      len(df_oos),
     }
