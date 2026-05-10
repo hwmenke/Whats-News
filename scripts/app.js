@@ -682,16 +682,8 @@ async function switchTab(tabId) {
     });
 
     // Hide all content areas first
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('knn-area').style.display          = 'none';
-    document.getElementById('backtest-area').style.display     = 'none';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'none';
-    document.getElementById('portfolio-area').style.display    = 'none';
-    document.querySelector('.tab-bar').style.display           = 'none';
+    ALL_AREAS.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+    document.querySelector('.tab-bar').style.display = 'none';
 
     if (tabId === 'charts') {
         showChartArea();

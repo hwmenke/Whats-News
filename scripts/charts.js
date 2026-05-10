@@ -334,6 +334,8 @@ function applyOverlayVisibility(freq) {
 function toggleOverlay(key) {
     activeOverlays[key] = !activeOverlays[key];
     ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
+    if (typeof saveChartStateForSymbol === 'function' && typeof state !== 'undefined' && state.activeSymbol)
+        saveChartStateForSymbol(state.activeSymbol);
     return activeOverlays[key];
 }
 
@@ -360,6 +362,8 @@ function addKamaPeriod(period) {
             color, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false,
         });
     }
+    if (typeof saveChartStateForSymbol === 'function' && typeof state !== 'undefined' && state.activeSymbol)
+        saveChartStateForSymbol(state.activeSymbol);
     return color;
 }
 
@@ -374,6 +378,8 @@ function removeKamaPeriod(period) {
         }
     });
     delete kamaPeriods[p];
+    if (typeof saveChartStateForSymbol === 'function' && typeof state !== 'undefined' && state.activeSymbol)
+        saveChartStateForSymbol(state.activeSymbol);
 }
 
 function toggleKamaPeriod(period) {
