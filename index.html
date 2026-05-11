@@ -34,7 +34,7 @@
   <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
   <aside class="sidebar">
     <div class="sidebar-header">
-      <div class="sidebar-title">Watchlist</div>
+      <div class="sidebar-title">Watchlist <span id="wl-count" class="wl-count"></span></div>
       <div class="add-symbol-form">
         <input
           id="new-symbol-input"
@@ -49,24 +49,37 @@
       </div>
     </div>
 
-    <!-- Filter + sort bar -->
-    <div class="sidebar-filter-bar">
-      <input id="watchlist-search" class="sidebar-search" type="text" placeholder="Filter…" oninput="renderSymbolList()" autocomplete="off" spellcheck="false" />
-      <select id="watchlist-sort" class="sidebar-sort-select" onchange="setWatchlistSort(this.value)">
-        <option value="group">Group</option>
-        <option value="sector">Sector</option>
-        <option value="alpha">A–Z</option>
-        <option value="perf_1d">1D%</option>
-        <option value="rsi14">RSI(14)</option>
-        <option value="added">Added</option>
-      </select>
+    <!-- Search -->
+    <div class="sidebar-search-row">
+      <input id="watchlist-search" class="sidebar-search" type="text" placeholder="Search tickers or names…" oninput="renderSymbolList()" autocomplete="off" spellcheck="false" />
+      <button class="sidebar-search-clear" onclick="clearWatchlistSearch()" title="Clear">×</button>
     </div>
-    <div class="sidebar-filter-chips">
-      <button class="wl-chip wl-chip-on" data-filter="all"    onclick="setWatchlistFilter('all')">All</button>
-      <button class="wl-chip"            data-filter="up"     onclick="setWatchlistFilter('up')">↑</button>
-      <button class="wl-chip"            data-filter="down"   onclick="setWatchlistFilter('down')">↓</button>
-      <button class="wl-chip"            data-filter="ob"     onclick="setWatchlistFilter('ob')">RSI&gt;70</button>
-      <button class="wl-chip"            data-filter="os"     onclick="setWatchlistFilter('os')">RSI&lt;30</button>
+
+    <!-- Sort row -->
+    <div class="wl-controls-row">
+      <span class="wl-label">Sort</span>
+      <select id="watchlist-sort" class="wl-select" onchange="setWatchlistSort(this.value)">
+        <option value="group">Group tag</option>
+        <option value="sector">Sector</option>
+        <option value="alpha">A – Z</option>
+        <option value="perf_1d">1D return</option>
+        <option value="ret_1m">1M return</option>
+        <option value="rsi14">RSI (14)</option>
+        <option value="added">Date added</option>
+      </select>
+      <button id="wl-sort-dir" class="wl-dir-btn" title="Reverse sort order" onclick="toggleWatchlistSortDir()">↓</button>
+    </div>
+
+    <!-- Filter chips -->
+    <div class="wl-controls-row">
+      <span class="wl-label">Filter</span>
+      <div class="wl-chips">
+        <button class="wl-chip wl-chip-on" data-filter="all"  onclick="setWatchlistFilter('all')">All</button>
+        <button class="wl-chip" data-filter="up"              onclick="setWatchlistFilter('up')">Gainers</button>
+        <button class="wl-chip" data-filter="down"            onclick="setWatchlistFilter('down')">Losers</button>
+        <button class="wl-chip" data-filter="ob"              onclick="setWatchlistFilter('ob')">OB&gt;70</button>
+        <button class="wl-chip" data-filter="os"              onclick="setWatchlistFilter('os')">OS&lt;30</button>
+      </div>
     </div>
 
     <div id="symbol-list" class="symbol-list">

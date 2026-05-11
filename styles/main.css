@@ -2902,14 +2902,59 @@ details[open] .notes-summary::before { content: '▼ '; }
   resize: vertical;
 }
 
-/* ── Watchlist filter bar ─────────────────────────────── */
-.sidebar-filter-bar {
+/* ── Watchlist controls ───────────────────────────────── */
+.wl-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.sidebar-search-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 8px 2px;
+  gap: 0;
+  padding: 6px 8px 3px;
 }
 .sidebar-search {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 4px 7px;
+  outline: none;
+}
+.sidebar-search:focus { border-color: var(--accent); }
+.sidebar-search-clear {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 0 7px;
+  cursor: pointer;
+  line-height: 1;
+  height: 100%;
+}
+.sidebar-search-clear:hover { color: var(--text-primary); }
+
+.wl-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+}
+.wl-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 28px;
+}
+.wl-select {
   flex: 1;
   min-width: 0;
   background: var(--bg-tertiary);
@@ -2917,20 +2962,26 @@ details[open] .notes-summary::before { content: '▼ '; }
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 11px;
-  padding: 3px 6px;
-  outline: none;
-}
-.sidebar-search:focus { border-color: var(--accent); }
-.sidebar-filter-bar .sidebar-sort-select {
-  width: auto;
-  font-size: 11px;
   padding: 2px 4px;
+  outline: none;
+  cursor: pointer;
 }
+.wl-dir-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 1px 6px;
+  cursor: pointer;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.wl-dir-btn:hover { color: var(--accent); border-color: var(--accent); }
 
-.sidebar-filter-chips {
+.wl-chips {
   display: flex;
-  gap: 4px;
-  padding: 3px 8px 4px;
+  gap: 3px;
   flex-wrap: wrap;
 }
 .wl-chip {
@@ -2939,15 +2990,20 @@ details[open] .notes-summary::before { content: '▼ '; }
   color: var(--text-muted);
   border-radius: 10px;
   font-size: 10px;
-  padding: 2px 7px;
+  padding: 2px 6px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 .wl-chip:hover { color: var(--text-primary); border-color: var(--accent); }
-.wl-chip-on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+.wl-chip-on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.wl-empty {
+  padding: 14px;
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.6;
 }
 
 /* ── Symbol row mini live badges ─────────────────────── */

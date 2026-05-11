@@ -588,6 +588,49 @@ def fetch_batch():
     )
 
 
+# -- Quick stats (lightweight watchlist badges) ---------------------------------
+
+@app.route("/api/symbols/quick-stats", methods=["GET"])
+def quick_stats():
+    """
+    Return price, 1-day change%, and RSI(14) for every watched symbol.
+    Uses only DB data — no network calls. Fast enough to run on page load.
+    """
+    import numpy as np
+    from shared_indicators import _rsi
+
+    symbols = [s["symbol"] for s in db.list_symbols()]
+    results = []
+    for sym in symbols:
+        try:
+            df = db.get_ohlcv_df(sym, "daily", limit=30)
+            if df.empty or len(df) < 2:
+                results.append({"symbol": sym, "price": None, "chg": None, "rsi14": None})
+                continue
+            close = df["close"]
+            price = float(close.iloc[-1])
+            prev  = float(close.iloc[-2])
+            chg   = round((price - prev) / prev * 100, 2) if prev else None
+            # RSI needs at least 15 bars
+            rsi14 = None
+            if len(close) >= 15:
+                r = _rsi(close, 14)
+                v = r.iloc[-1]
+                if not np.isnan(v):
+                    rsi14 = round(float(v), 1)
+            # 1-month return (21 bars)
+            ret_1m = None
+            if len(close) >= 22:
+                p1m = float(close.iloc[-22])
+                ret_1m = round((price - p1m) / p1m * 100, 2) if p1m else None
+            results.append({"symbol": sym, "price": price, "chg": chg,
+                            "rsi14": rsi14, "ret_1m": ret_1m})
+        except Exception:
+            results.append({"symbol": sym, "price": None, "chg": None,
+                            "rsi14": None, "ret_1m": None})
+    return jsonify(results)
+
+
 # -- Notes ---------------------------------------------------------------------
 
 @app.route("/api/symbols/<string:symbol>/notes", methods=["PUT"])

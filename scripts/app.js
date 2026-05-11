@@ -16,8 +16,12 @@ let state = {
     activeTab:        'charts',
     statsData:        null,
     watchlistSort:    'group',
+    watchlistSortDir: -1,   // -1 = desc (high first), +1 = asc (low first)
     watchlistFilter:  'all',
 };
+
+// Quick-stats cache: symbol → {price, chg, rsi14, ret_1m}
+let _wlStats = {};
 
 let statsCharts = {};
 let backtestEquityChart = null;
@@ -169,121 +173,142 @@ async function loadSymbols() {
     }
 }
 
+// Load quick stats for all watchlist symbols from the DB-only endpoint.
+// Runs in background on startup and after refreshAll.
+async function loadQuickStats() {
+    try {
+        const rows = await apiFetch(`${API}/symbols/quick-stats`);
+        _wlStats = {};
+        for (const r of rows) _wlStats[r.symbol] = r;
+        renderSymbolList();
+    } catch (_) { /* non-fatal — badges just won't show */ }
+}
+
+function _liveFor(symbol) {
+    // Merge quick-stats with scanner data; scanner wins when richer
+    const qs = _wlStats[symbol] || {};
+    const sc = (typeof scannerState !== 'undefined' && Array.isArray(scannerState.data))
+        ? scannerState.data.find(r => r.symbol === symbol) : null;
+    return {
+        chg:    sc?.chg    ?? qs.chg    ?? null,
+        rsi14:  sc?.d?.rsi_14 ?? qs.rsi14  ?? null,
+        ret_1m: sc?.ret_1m  ?? qs.ret_1m ?? null,
+    };
+}
+
 function renderSymbolList() {
     const list   = document.getElementById('symbol-list');
     const search = (document.getElementById('watchlist-search')?.value || '').trim().toUpperCase();
     list.innerHTML = '';
 
     if (!state.symbols.length) {
-        list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No symbols yet.</div>';
+        list.innerHTML = '<div class="wl-empty">No symbols yet.<br><small>Type a ticker above and press +</small></div>';
         return;
     }
 
-    // Build live data index from scanner cache (populated after scanner runs)
-    const liveIdx = {};
-    if (typeof scannerState !== 'undefined' && Array.isArray(scannerState.data)) {
-        for (const row of scannerState.data) {
-            liveIdx[row.symbol] = row; // has .chg, .d.rsi_14, .price
-        }
-    }
-
-    // Apply text search + active filter
+    // Filter
     const filt = state.watchlistFilter || 'all';
     let visible = state.symbols.filter(sym => {
         if (search && !sym.symbol.includes(search) && !(sym.name || '').toUpperCase().includes(search)) return false;
-        const live = liveIdx[sym.symbol];
-        if (filt === 'up'   && !(live?.chg > 0))   return false;
-        if (filt === 'down' && !(live?.chg < 0))    return false;
-        if (filt === 'ob'   && !(live?.d?.rsi_14 > 70)) return false;
-        if (filt === 'os'   && !(live?.d?.rsi_14 < 30)) return false;
+        const live = _liveFor(sym.symbol);
+        if (filt === 'up'   && !(live.chg > 0))    return false;
+        if (filt === 'down' && !(live.chg < 0))     return false;
+        if (filt === 'ob'   && !(live.rsi14 > 70))  return false;
+        if (filt === 'os'   && !(live.rsi14 < 30))  return false;
         return true;
     });
 
     // Sort
-    const sortMode = state.watchlistSort || 'group';
-    if (sortMode === 'alpha')   visible.sort((a, b) => a.symbol.localeCompare(b.symbol));
-    else if (sortMode === 'added')  visible.sort((a, b) => (b.added_at || '').localeCompare(a.added_at || ''));
-    else if (sortMode === 'perf_1d') visible.sort((a, b) => (liveIdx[b.symbol]?.chg ?? -Infinity) - (liveIdx[a.symbol]?.chg ?? -Infinity));
-    else if (sortMode === 'rsi14')   visible.sort((a, b) => (liveIdx[b.symbol]?.d?.rsi_14 ?? 0) - (liveIdx[a.symbol]?.d?.rsi_14 ?? 0));
-    else if (sortMode === 'sector')  visible.sort((a, b) => (a.sector || 'zzz').localeCompare(b.sector || 'zzz') || a.symbol.localeCompare(b.symbol));
-    // 'group' sort: DB already returns symbols ordered by group_tag then symbol
+    const dir  = state.watchlistSortDir ?? -1;   // -1 = desc (high→low)
+    const mode = state.watchlistSort || 'group';
+    const numSort = (fn) => visible.sort((a, b) => {
+        const va = fn(a), vb = fn(b);
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        return (va - vb) * dir;
+    });
+    if (mode === 'alpha')   visible.sort((a, b) => a.symbol.localeCompare(b.symbol) * dir);
+    else if (mode === 'added')   visible.sort((a, b) => (a.added_at || '').localeCompare(b.added_at || '') * dir);
+    else if (mode === 'sector')  visible.sort((a, b) => ((a.sector || 'zzz').localeCompare(b.sector || 'zzz') || a.symbol.localeCompare(b.symbol)) * dir);
+    else if (mode === 'perf_1d') numSort(s => _liveFor(s.symbol).chg);
+    else if (mode === 'ret_1m')  numSort(s => _liveFor(s.symbol).ret_1m);
+    else if (mode === 'rsi14')   numSort(s => _liveFor(s.symbol).rsi14);
+    // 'group': keep DB order (already sorted by group_tag, symbol)
+
+    // Count badge
+    const countEl = document.getElementById('wl-count');
+    if (countEl) countEl.textContent = visible.length < state.symbols.length
+        ? `${visible.length} / ${state.symbols.length}` : state.symbols.length;
 
     if (!visible.length) {
-        list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No matches.</div>';
+        list.innerHTML = '<div class="wl-empty">No matches.</div>';
         return;
     }
 
-    // Grouping key function
-    const groupKey = sym => {
-        if (sortMode === 'sector') return sym.sector || 'Other';
-        return sym.group_tag || '';
-    };
+    // Group headers — only for modes that have a natural grouping
+    const showGroups = mode === 'group' || mode === 'sector';
+    const groupKey   = sym => mode === 'sector' ? (sym.sector || 'Other') : (sym.group_tag || '');
 
     let lastGroup = undefined;
     visible.forEach(sym => {
-        const gk = groupKey(sym);
-
-        if (gk !== lastGroup) {
-            lastGroup = gk;
-            if (gk) {
-                const hdr = document.createElement('div');
-                hdr.className = 'sym-group-header';
-                hdr.textContent = gk;
-                list.appendChild(hdr);
+        if (showGroups) {
+            const gk = groupKey(sym);
+            if (gk !== lastGroup) {
+                lastGroup = gk;
+                if (gk) {
+                    const hdr = document.createElement('div');
+                    hdr.className   = 'sym-group-header';
+                    hdr.textContent = gk;
+                    list.appendChild(hdr);
+                }
             }
         }
 
-        const live = liveIdx[sym.symbol];
+        const live = _liveFor(sym.symbol);
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
         item.dataset.symbol = sym.symbol;
 
+        // Ticker + anomaly badge
         const ticker = document.createElement('span');
         ticker.className = 'sym-ticker';
         ticker.textContent = sym.symbol;
-
-        // Anomaly badge
         const anomalyFlags = _anomalyMap[sym.symbol];
-        if (anomalyFlags && anomalyFlags.length) {
+        if (anomalyFlags?.length) {
             const badge = document.createElement('span');
-            badge.className = 'sym-anomaly-badge';
-            badge.title     = anomalyFlags.map(f => f.label).join(', ');
+            badge.className   = 'sym-anomaly-badge';
+            badge.title       = anomalyFlags.map(f => f.label).join(', ');
             badge.textContent = '⚡';
             ticker.appendChild(badge);
         }
         item.appendChild(ticker);
 
-        // Live mini badges: 1D chg% + RSI(14)
-        if (live) {
-            const miniRow = document.createElement('span');
-            miniRow.className = 'sym-mini-row';
-            if (live.chg != null) {
-                const chgSpan = document.createElement('span');
-                chgSpan.className = 'sym-mini-chg ' + (live.chg >= 0 ? 'sym-mini-pos' : 'sym-mini-neg');
-                chgSpan.textContent = (live.chg >= 0 ? '+' : '') + live.chg.toFixed(1) + '%';
-                miniRow.appendChild(chgSpan);
-            }
-            const rsi = live.d?.rsi_14;
-            if (rsi != null) {
-                const rsiSpan = document.createElement('span');
-                rsiSpan.className = 'sym-mini-rsi' + (rsi > 70 ? ' sym-mini-ob' : rsi < 30 ? ' sym-mini-os' : '');
-                rsiSpan.textContent = 'RSI ' + rsi.toFixed(0);
-                miniRow.appendChild(rsiSpan);
-            }
-            item.appendChild(miniRow);
+        // Live mini badges
+        const miniRow = document.createElement('span');
+        miniRow.className = 'sym-mini-row';
+        if (live.chg != null) {
+            const s = document.createElement('span');
+            s.className   = 'sym-mini-chg ' + (live.chg >= 0 ? 'sym-mini-pos' : 'sym-mini-neg');
+            s.textContent = (live.chg >= 0 ? '+' : '') + live.chg.toFixed(1) + '%';
+            miniRow.appendChild(s);
         }
+        if (live.rsi14 != null) {
+            const s = document.createElement('span');
+            s.className   = 'sym-mini-rsi' + (live.rsi14 > 70 ? ' sym-mini-ob' : live.rsi14 < 30 ? ' sym-mini-os' : '');
+            s.textContent = 'RSI ' + live.rsi14.toFixed(0);
+            miniRow.appendChild(s);
+        }
+        item.appendChild(miniRow);
 
-        // Group tag badge (click to edit inline) — hidden in sector-sort mode
-        const tag = sym.group_tag || '';
-        if (sortMode !== 'sector') {
+        // Group tag badge — only in group mode, click to edit
+        if (mode !== 'sector') {
+            const tag = sym.group_tag || '';
             const tagBadge = document.createElement('span');
             tagBadge.className   = 'sym-tag';
             tagBadge.textContent = tag || '+ tag';
             tagBadge.title       = 'Click to set group';
-            tagBadge.addEventListener('click', e => {
-                e.stopPropagation();
-                startTagEdit(sym.symbol, tag, tagBadge);
-            });
+            tagBadge.addEventListener('click', e => { e.stopPropagation(); startTagEdit(sym.symbol, tag, tagBadge); });
             item.appendChild(tagBadge);
         }
 
@@ -299,11 +324,23 @@ function renderSymbolList() {
     });
 }
 
+function clearWatchlistSearch() {
+    const inp = document.getElementById('watchlist-search');
+    if (inp) { inp.value = ''; inp.focus(); }
+    renderSymbolList();
+}
+
 function setWatchlistFilter(f) {
     state.watchlistFilter = f;
-    document.querySelectorAll('.wl-chip').forEach(el => {
-        el.classList.toggle('wl-chip-on', el.dataset.filter === f);
-    });
+    document.querySelectorAll('.wl-chip').forEach(el =>
+        el.classList.toggle('wl-chip-on', el.dataset.filter === f));
+    renderSymbolList();
+}
+
+function toggleWatchlistSortDir() {
+    state.watchlistSortDir = (state.watchlistSortDir ?? -1) * -1;
+    const btn = document.getElementById('wl-sort-dir');
+    if (btn) btn.textContent = state.watchlistSortDir === -1 ? '↓' : '↑';
     renderSymbolList();
 }
 
@@ -535,6 +572,7 @@ async function refreshAll() {
             else toast(`${r.symbol}: updated`, 'success', 2000);
         });
         await loadSymbols();
+        loadQuickStats();
         if (state.activeSymbol) await loadChartData(state.activeSymbol);
     } catch (e) {
         toast('Refresh failed: ' + e.message, 'error');
@@ -1506,6 +1544,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     await loadSymbols();
+    loadQuickStats();   // background — no await, updates badges when ready
 
     // Restore last active symbol
     const savedSymbol = localStorage.getItem('activeSymbol');
