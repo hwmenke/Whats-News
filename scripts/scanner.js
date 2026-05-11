@@ -22,6 +22,7 @@ const scannerState = {
     sortKey: null,
     sortDir: 1,
     visible: { rsi: true, kama: true, mom: true, vol: true, trend: true },
+    groupBy: 'none',   // 'none' | 'sector' | 'group_tag'
 };
 
 // ── Column definitions ─────────────────────────────────────────────────
@@ -207,12 +208,13 @@ function _buildHeader() {
     const tr2 = document.createElement('tr');  // metric sub-headers
     const tr3 = document.createElement('tr');  // D / W / M sort cells
 
-    // Fixed columns — Symbol, Score, Price, Chg% — rowspan 3
+    // Fixed columns — Symbol, Score, Price, Chg%, 1M% — rowspan 3
     const fixed = [
         { label: 'Symbol', key: 'symbol' },
         { label: 'Score',  key: '_score'  },
         { label: 'Price',  key: 'price'   },
-        { label: 'Chg%',   key: 'chg'     },
+        { label: '1D%',    key: 'chg'     },
+        { label: '1M%',    key: 'ret_1m'  },
     ];
     for (const fc of fixed) {
         const th = _th('scan-th scan-th-fixed scan-sortable');
@@ -262,9 +264,18 @@ function _buildRow(row) {
     tr.className = 'scan-row';
     if (row.error) tr.classList.add('scan-row-error');
 
-    // Symbol — click to load
+    // Symbol — click to load; show sector/group sub-label
     const tdSym = _td('scan-td scan-td-sym');
-    tdSym.textContent = row.symbol;
+    const symName = document.createElement('span');
+    symName.textContent = row.symbol;
+    tdSym.appendChild(symName);
+    const subLabel = row.sector || row.group_tag;
+    if (subLabel) {
+        const sub = document.createElement('span');
+        sub.className = 'scan-sym-sub';
+        sub.textContent = subLabel;
+        tdSym.appendChild(sub);
+    }
     tdSym.title = row.error ? `Error: ${row.error}` : `Load ${row.symbol}`;
     tdSym.addEventListener('click', () => {
         if (typeof selectSymbol === 'function') selectSymbol(row.symbol);
@@ -290,13 +301,21 @@ function _buildRow(row) {
         : '—';
     tr.appendChild(tdPrice);
 
-    // Chg%
+    // 1D Chg%
     const chgCls = row.chg != null ? (row.chg >= 0 ? 'sc-s1' : 'sc-b1') : 'sc-n';
     const tdChg  = _td(`scan-td ${chgCls}`);
     tdChg.textContent = row.chg != null
         ? (row.chg >= 0 ? '+' : '') + row.chg.toFixed(2) + '%'
         : '—';
     tr.appendChild(tdChg);
+
+    // 1M Return%
+    const m1Cls = row.ret_1m != null ? (row.ret_1m >= 0 ? 'sc-s1' : 'sc-b1') : 'sc-n';
+    const tdM1  = _td(`scan-td ${m1Cls}`);
+    tdM1.textContent = row.ret_1m != null
+        ? (row.ret_1m >= 0 ? '+' : '') + row.ret_1m.toFixed(1) + '%'
+        : '—';
+    tr.appendChild(tdM1);
 
     // Metric cells
     for (const grp of SCAN_GROUPS) {
@@ -343,10 +362,11 @@ function _sorted(data) {
     if (!key) return data;
     return [...data].sort((a, b) => {
         let va, vb;
-        if      (key === 'symbol') { va = a.symbol;  vb = b.symbol; }
-        else if (key === '_score') { va = _score(a); vb = _score(b); }
-        else if (key === 'price')  { va = a.price;   vb = b.price;  }
-        else if (key === 'chg')    { va = a.chg;     vb = b.chg;    }
+        if      (key === 'symbol')  { va = a.symbol;  vb = b.symbol; }
+        else if (key === '_score')  { va = _score(a); vb = _score(b); }
+        else if (key === 'price')   { va = a.price;   vb = b.price;  }
+        else if (key === 'chg')     { va = a.chg;     vb = b.chg;    }
+        else if (key === 'ret_1m')  { va = a.ret_1m;  vb = b.ret_1m; }
         else {
             const [tf, metric] = key.split('.');
             va = a[tf]?.[metric];
@@ -383,10 +403,49 @@ function renderScannerTable(data) {
         return;
     }
     empty.style.display = 'none';
-    rows.forEach(row => tbody.appendChild(_buildRow(row)));
+
+    // Optional group separators
+    const gb = scannerState.groupBy;
+    let lastGrpKey = undefined;
+    // Count total columns for the separator span
+    const totalCols = 5 + SCAN_GROUPS.reduce((s, g) =>
+        scannerState.visible[g.id] ? s + g.metrics.reduce((ms, m) => ms + m.tfs.length, 0) : s, 0);
+
+    rows.forEach(row => {
+        if (gb !== 'none') {
+            const gk = gb === 'sector' ? (row.sector || 'Other') : (row.group_tag || 'Ungrouped');
+            if (gk !== lastGrpKey) {
+                lastGrpKey = gk;
+                const sepTr = document.createElement('tr');
+                sepTr.className = 'scan-group-sep';
+                const sepTd = document.createElement('td');
+                sepTd.colSpan = totalCols;
+                sepTd.textContent = gk;
+                sepTr.appendChild(sepTd);
+                tbody.appendChild(sepTr);
+            }
+        }
+        tbody.appendChild(_buildRow(row));
+    });
 }
 
-// ── Group visibility toggle ────────────────────────────────────────────
+// ── Group-by toggle ────────────────────────────────────────────────────
+function setScanGroupBy(val) {
+    scannerState.groupBy = val;
+    if (scannerState.data) {
+        // Re-sort data by the group key first so separators appear in order
+        if (val !== 'none') {
+            scannerState.data.sort((a, b) => {
+                const ka = val === 'sector' ? (a.sector || 'zzz') : (a.group_tag || 'zzz');
+                const kb = val === 'sector' ? (b.sector || 'zzz') : (b.group_tag || 'zzz');
+                return ka.localeCompare(kb);
+            });
+        }
+        renderScannerTable(scannerState.data);
+    }
+}
+
+// ── Column-group visibility toggle ─────────────────────────────────────
 function toggleScanGroup(id) {
     scannerState.visible[id] = !scannerState.visible[id];
     const btn = document.querySelector(`.scan-grp-btn[data-grp="${id}"]`);

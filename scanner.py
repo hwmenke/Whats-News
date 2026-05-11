@@ -475,24 +475,32 @@ def compute_scanner(symbols: list) -> list:
     Compute D/W/M scanner metrics for every symbol in the list.
     Returns a JSON-serialisable list of row dicts.
     """
+    # Build symbol metadata index (sector, group_tag, name) from DB in one pass
+    sym_meta = {s['symbol']: s for s in db.list_symbols()}
+
     results = []
     for sym in symbols:
         try:
             d_df = db.get_ohlcv_df(sym, 'daily',  limit=600)
             w_df = db.get_ohlcv_df(sym, 'weekly', limit=200)
+            meta = sym_meta.get(sym, {})
 
             if d_df.empty:
                 results.append({
                     'symbol': sym, 'error': 'No data — fetch first',
-                    'price': None, 'chg': None,
+                    'price': None, 'chg': None, 'ret_1m': None,
+                    'sector': meta.get('sector') or '', 'group_tag': meta.get('group_tag') or '',
                     'd': None, 'w': None, 'm': None,
                 })
                 continue
 
             # Price / change computed before any further processing
-            price = _safe(d_df['close'].iloc[-1])
-            prev  = _safe(d_df['close'].iloc[-2]) if len(d_df) > 1 else None
-            chg   = round((price - prev) / prev * 100, 2) if price and prev else None
+            price  = _safe(d_df['close'].iloc[-1])
+            prev   = _safe(d_df['close'].iloc[-2]) if len(d_df) > 1 else None
+            chg    = round((price - prev) / prev * 100, 2) if price and prev else None
+            # 1-month (21 trading days) return
+            prev1m = _safe(d_df['close'].iloc[-22]) if len(d_df) >= 22 else None
+            ret_1m = round((price - prev1m) / prev1m * 100, 2) if price and prev1m else None
 
             # Monthly resample — isolated so a failure doesn't kill price/D/W
             try:
@@ -508,12 +516,16 @@ def compute_scanner(symbols: list) -> list:
                     return None
 
             results.append({
-                'symbol': sym,
-                'price':  price,
-                'chg':    chg,
-                'd':      _safe_tf(d_df, 252),
-                'w':      _safe_tf(w_df, 52),
-                'm':      _safe_tf(m_df, 36),
+                'symbol':    sym,
+                'name':      meta.get('name') or '',
+                'sector':    meta.get('sector') or '',
+                'group_tag': meta.get('group_tag') or '',
+                'price':     price,
+                'chg':       chg,
+                'ret_1m':    ret_1m,
+                'd':         _safe_tf(d_df, 252),
+                'w':         _safe_tf(w_df, 52),
+                'm':         _safe_tf(m_df, 36),
             })
         except Exception as e:
             results.append({

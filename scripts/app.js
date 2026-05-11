@@ -10,12 +10,13 @@ const DEFAULT_KAMA_PERIODS = [10, 20, 50];
 
 // App state
 let state = {
-    symbols:       [],
-    activeSymbol:  null,
-    loading:       false,
-    activeTab:     'charts',
-    statsData:     null,
-    watchlistSort: 'group',
+    symbols:          [],
+    activeSymbol:     null,
+    loading:          false,
+    activeTab:        'charts',
+    statsData:        null,
+    watchlistSort:    'group',
+    watchlistFilter:  'all',
 };
 
 let statsCharts = {};
@@ -155,6 +156,7 @@ function toggleSidebar() {
     if (!app) return;
     const collapsed = app.classList.toggle('sidebar-collapsed');
     if (btn) btn.textContent = collapsed ? '▶' : '☰';
+    localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
 }
 
 // ── Symbol Watchlist ─────────────────────────────────────────
@@ -168,7 +170,8 @@ async function loadSymbols() {
 }
 
 function renderSymbolList() {
-    const list = document.getElementById('symbol-list');
+    const list   = document.getElementById('symbol-list');
+    const search = (document.getElementById('watchlist-search')?.value || '').trim().toUpperCase();
     list.innerHTML = '';
 
     if (!state.symbols.length) {
@@ -176,29 +179,61 @@ function renderSymbolList() {
         return;
     }
 
-    // Sort symbols
-    let sorted = [...state.symbols];
+    // Build live data index from scanner cache (populated after scanner runs)
+    const liveIdx = {};
+    if (typeof scannerState !== 'undefined' && Array.isArray(scannerState.data)) {
+        for (const row of scannerState.data) {
+            liveIdx[row.symbol] = row; // has .chg, .d.rsi_14, .price
+        }
+    }
+
+    // Apply text search + active filter
+    const filt = state.watchlistFilter || 'all';
+    let visible = state.symbols.filter(sym => {
+        if (search && !sym.symbol.includes(search) && !(sym.name || '').toUpperCase().includes(search)) return false;
+        const live = liveIdx[sym.symbol];
+        if (filt === 'up'   && !(live?.chg > 0))   return false;
+        if (filt === 'down' && !(live?.chg < 0))    return false;
+        if (filt === 'ob'   && !(live?.d?.rsi_14 > 70)) return false;
+        if (filt === 'os'   && !(live?.d?.rsi_14 < 30)) return false;
+        return true;
+    });
+
+    // Sort
     const sortMode = state.watchlistSort || 'group';
-    if (sortMode === 'alpha')   sorted.sort((a, b) => a.symbol.localeCompare(b.symbol));
-    else if (sortMode === 'added') sorted.sort((a, b) => (b.added_at || '').localeCompare(a.added_at || ''));
-    // 'group' and 'perf_1d' fall through to existing group logic (perf_1d would need live data)
+    if (sortMode === 'alpha')   visible.sort((a, b) => a.symbol.localeCompare(b.symbol));
+    else if (sortMode === 'added')  visible.sort((a, b) => (b.added_at || '').localeCompare(a.added_at || ''));
+    else if (sortMode === 'perf_1d') visible.sort((a, b) => (liveIdx[b.symbol]?.chg ?? -Infinity) - (liveIdx[a.symbol]?.chg ?? -Infinity));
+    else if (sortMode === 'rsi14')   visible.sort((a, b) => (liveIdx[b.symbol]?.d?.rsi_14 ?? 0) - (liveIdx[a.symbol]?.d?.rsi_14 ?? 0));
+    else if (sortMode === 'sector')  visible.sort((a, b) => (a.sector || 'zzz').localeCompare(b.sector || 'zzz') || a.symbol.localeCompare(b.symbol));
+    // 'group' sort: DB already returns symbols ordered by group_tag then symbol
 
-    // Group symbols by group_tag
+    if (!visible.length) {
+        list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No matches.</div>';
+        return;
+    }
+
+    // Grouping key function
+    const groupKey = sym => {
+        if (sortMode === 'sector') return sym.sector || 'Other';
+        return sym.group_tag || '';
+    };
+
     let lastGroup = undefined;
-    sorted.forEach(sym => {
-        const tag = sym.group_tag || '';
+    visible.forEach(sym => {
+        const gk = groupKey(sym);
 
-        // Render group header when group changes
-        if (tag !== lastGroup) {
-            lastGroup = tag;
-            if (tag) {
+        if (gk !== lastGroup) {
+            lastGroup = gk;
+            if (gk) {
                 const hdr = document.createElement('div');
                 hdr.className = 'sym-group-header';
-                hdr.textContent = tag;
+                hdr.textContent = gk;
                 list.appendChild(hdr);
             }
         }
 
+        const live = liveIdx[sym.symbol];
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
         item.dataset.symbol = sym.symbol;
@@ -216,29 +251,60 @@ function renderSymbolList() {
             badge.textContent = '⚡';
             ticker.appendChild(badge);
         }
+        item.appendChild(ticker);
 
-        // Group tag badge (click to edit inline)
-        const tagBadge = document.createElement('span');
-        tagBadge.className   = 'sym-tag';
-        tagBadge.textContent = tag || '+ tag';
-        tagBadge.title       = 'Click to set group';
-        tagBadge.addEventListener('click', e => {
-            e.stopPropagation();
-            startTagEdit(sym.symbol, tag, tagBadge);
-        });
+        // Live mini badges: 1D chg% + RSI(14)
+        if (live) {
+            const miniRow = document.createElement('span');
+            miniRow.className = 'sym-mini-row';
+            if (live.chg != null) {
+                const chgSpan = document.createElement('span');
+                chgSpan.className = 'sym-mini-chg ' + (live.chg >= 0 ? 'sym-mini-pos' : 'sym-mini-neg');
+                chgSpan.textContent = (live.chg >= 0 ? '+' : '') + live.chg.toFixed(1) + '%';
+                miniRow.appendChild(chgSpan);
+            }
+            const rsi = live.d?.rsi_14;
+            if (rsi != null) {
+                const rsiSpan = document.createElement('span');
+                rsiSpan.className = 'sym-mini-rsi' + (rsi > 70 ? ' sym-mini-ob' : rsi < 30 ? ' sym-mini-os' : '');
+                rsiSpan.textContent = 'RSI ' + rsi.toFixed(0);
+                miniRow.appendChild(rsiSpan);
+            }
+            item.appendChild(miniRow);
+        }
+
+        // Group tag badge (click to edit inline) — hidden in sector-sort mode
+        const tag = sym.group_tag || '';
+        if (sortMode !== 'sector') {
+            const tagBadge = document.createElement('span');
+            tagBadge.className   = 'sym-tag';
+            tagBadge.textContent = tag || '+ tag';
+            tagBadge.title       = 'Click to set group';
+            tagBadge.addEventListener('click', e => {
+                e.stopPropagation();
+                startTagEdit(sym.symbol, tag, tagBadge);
+            });
+            item.appendChild(tagBadge);
+        }
 
         const removeBtn = document.createElement('span');
-        removeBtn.className  = 'sym-remove';
+        removeBtn.className   = 'sym-remove';
         removeBtn.textContent = '×';
         removeBtn.title       = 'Remove';
         removeBtn.addEventListener('click', e => { e.stopPropagation(); removeSymbol(sym.symbol); });
-
-        item.appendChild(ticker);
-        item.appendChild(tagBadge);
         item.appendChild(removeBtn);
+
         item.addEventListener('click', () => selectSymbol(sym.symbol));
         list.appendChild(item);
     });
+}
+
+function setWatchlistFilter(f) {
+    state.watchlistFilter = f;
+    document.querySelectorAll('.wl-chip').forEach(el => {
+        el.classList.toggle('wl-chip-on', el.dataset.filter === f);
+    });
+    renderSymbolList();
 }
 
 function startTagEdit(symbol, currentTag, badgeEl) {
@@ -1370,6 +1436,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     startClock();
     initTheme();
 
+    // Restore sidebar collapsed state
+    if (localStorage.getItem('sidebarCollapsed') === '1') {
+        const app = document.querySelector('.app');
+        const btn = document.getElementById('btn-sidebar-toggle');
+        if (app) app.classList.add('sidebar-collapsed');
+        if (btn) btn.textContent = '▶';
+    }
+
     // Keyboard navigation
     document.addEventListener('keydown', _handleGlobalKeydown);
 
@@ -1532,15 +1606,24 @@ function renderFundamentals(strip, data) {
 
 // ── Notes ─────────────────────────────────────────────────────
 function loadNotes(symbol) {
-    const section  = document.getElementById('notes-section');
+    const btn      = document.getElementById('btn-notes-toggle');
     const textarea = document.getElementById('sym-notes');
     const savedEl  = document.getElementById('notes-saved');
-    if (!section || !textarea) return;
+    const sym      = state.symbols.find(s => s.symbol === symbol);
+    if (textarea)  textarea.value = sym?.notes || '';
+    if (savedEl)   savedEl.textContent = '';
+    if (btn)       btn.style.display = 'inline-flex';
+    // Close panel when switching symbols
+    const panel = document.getElementById('notes-panel');
+    if (panel) panel.style.display = 'none';
+}
 
-    const sym = state.symbols.find(s => s.symbol === symbol);
-    textarea.value = sym?.notes || '';
-    if (savedEl) savedEl.textContent = '';
-    section.style.display = 'block';
+function toggleNotesPanel() {
+    const panel = document.getElementById('notes-panel');
+    if (!panel) return;
+    const open = panel.style.display === 'none';
+    panel.style.display = open ? 'block' : 'none';
+    if (open) document.getElementById('sym-notes')?.focus();
 }
 
 async function saveNotes() {

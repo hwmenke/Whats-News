@@ -48,21 +48,32 @@
       </div>
     </div>
 
+    <!-- Filter + sort bar -->
+    <div class="sidebar-filter-bar">
+      <input id="watchlist-search" class="sidebar-search" type="text" placeholder="Filter…" oninput="renderSymbolList()" autocomplete="off" spellcheck="false" />
+      <select id="watchlist-sort" class="sidebar-sort-select" onchange="setWatchlistSort(this.value)">
+        <option value="group">Group</option>
+        <option value="sector">Sector</option>
+        <option value="alpha">A–Z</option>
+        <option value="perf_1d">1D%</option>
+        <option value="rsi14">RSI(14)</option>
+        <option value="added">Added</option>
+      </select>
+    </div>
+    <div class="sidebar-filter-chips">
+      <button class="wl-chip wl-chip-on" data-filter="all"    onclick="setWatchlistFilter('all')">All</button>
+      <button class="wl-chip"            data-filter="up"     onclick="setWatchlistFilter('up')">↑</button>
+      <button class="wl-chip"            data-filter="down"   onclick="setWatchlistFilter('down')">↓</button>
+      <button class="wl-chip"            data-filter="ob"     onclick="setWatchlistFilter('ob')">RSI&gt;70</button>
+      <button class="wl-chip"            data-filter="os"     onclick="setWatchlistFilter('os')">RSI&lt;30</button>
+    </div>
+
     <div id="symbol-list" class="symbol-list">
       <!-- Rendered by app.js -->
     </div>
 
     <div class="sidebar-actions">
       <button id="btn-refresh-all" class="btn btn-ghost">⟳ Refresh All</button>
-      <div class="sidebar-sort-row">
-        <span class="sidebar-sort-label">Sort:</span>
-        <select id="watchlist-sort" class="sidebar-sort-select" onchange="setWatchlistSort(this.value)">
-          <option value="group">Group</option>
-          <option value="alpha">A–Z</option>
-          <option value="perf_1d">1D Perf</option>
-          <option value="added">Date Added</option>
-        </select>
-      </div>
       <div class="sidebar-io-row">
         <button class="btn btn-ghost btn-sm" onclick="exportWatchlist()" title="Export watchlist as JSON">⬇ Export</button>
         <label class="btn btn-ghost btn-sm" title="Import watchlist from JSON" style="cursor:pointer;">
@@ -112,20 +123,19 @@
 
       <div id="fundamentals-strip" class="fundamentals-strip" style="display:none;"></div>
 
-      <div id="notes-section" class="notes-section" style="display:none;">
-        <details id="notes-details" class="notes-details">
-          <summary class="notes-summary">📝 Notes</summary>
-          <div class="notes-body">
-            <textarea id="sym-notes" class="sym-notes-input" placeholder="Notes for this symbol…" rows="3"></textarea>
-            <div class="notes-footer">
-              <button id="btn-save-notes" class="btn btn-ghost btn-sm" onclick="saveNotes()">Save</button>
-              <span id="notes-saved" class="notes-saved"></span>
-            </div>
-          </div>
-        </details>
-      </div>
+      <button id="btn-notes-toggle" class="btn btn-ghost btn-sm btn-notes-toggle" title="Notes for this symbol" onclick="toggleNotesPanel()" style="display:none;">📝</button>
 
       <div class="header-spacer"></div>
+    </div>
+
+    <!-- Notes floating panel (outside symbol-header flow) -->
+    <div id="notes-panel" class="notes-panel" style="display:none;">
+      <textarea id="sym-notes" class="sym-notes-input" placeholder="Notes for this symbol…" rows="4"></textarea>
+      <div class="notes-footer">
+        <button class="btn btn-ghost btn-sm" onclick="saveNotes()">Save</button>
+        <span id="notes-saved" class="notes-saved"></span>
+        <button class="btn btn-ghost btn-sm" onclick="toggleNotesPanel()" style="margin-left:auto;">✕</button>
+      </div>
     </div>
 
     <!-- ═══════════════════ MAIN TABS ═══════════════════ -->
@@ -742,7 +752,13 @@
           <span id="scanner-ts" class="scanner-ts"></span>
         </div>
         <div class="scanner-controls-right">
-          <span class="overlay-section-label">Groups</span>
+          <span class="overlay-section-label">Group by</span>
+          <select class="sidebar-sort-select" onchange="setScanGroupBy(this.value)" style="margin-right:12px;">
+            <option value="none">None</option>
+            <option value="sector">Sector</option>
+            <option value="group_tag">Watchlist Group</option>
+          </select>
+          <span class="overlay-section-label">Show</span>
           <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="rsi"   onclick="toggleScanGroup('rsi')">RSI</button>
           <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="kama"  onclick="toggleScanGroup('kama')">KAMA Ratios</button>
           <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="mom"   onclick="toggleScanGroup('mom')">Momentum</button>

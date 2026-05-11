@@ -314,6 +314,7 @@ html, body {
   gap: 20px;
   flex-wrap: wrap;
   background: var(--bg-elevated);
+  position: relative;
 }
 
 .symbol-header-name {
@@ -2865,4 +2866,121 @@ details[open] .notes-summary::before { content: '▼ '; }
     .btn, button { display: none !important; }
     .main { margin: 0; padding: 0; }
     .chart-area { break-inside: avoid; }
+}
+
+/* ── Notes floating panel ─────────────────────────────── */
+.btn-notes-toggle {
+  padding: 2px 7px;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+.notes-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 200;
+  width: 280px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+.notes-panel .sym-notes-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+/* ── Watchlist filter bar ─────────────────────────────── */
+.sidebar-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 2px;
+}
+.sidebar-search {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 3px 6px;
+  outline: none;
+}
+.sidebar-search:focus { border-color: var(--accent); }
+.sidebar-filter-bar .sidebar-sort-select {
+  width: auto;
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+.sidebar-filter-chips {
+  display: flex;
+  gap: 4px;
+  padding: 3px 8px 4px;
+  flex-wrap: wrap;
+}
+.wl-chip {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 10px;
+  font-size: 10px;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.wl-chip:hover { color: var(--text-primary); border-color: var(--accent); }
+.wl-chip-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ── Symbol row mini live badges ─────────────────────── */
+.sym-mini-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.sym-mini-chg, .sym-mini-rsi {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  border-radius: 3px;
+  padding: 0 3px;
+  line-height: 14px;
+}
+.sym-mini-pos { color: var(--green); }
+.sym-mini-neg { color: var(--red); }
+.sym-mini-rsi { color: var(--text-muted); }
+.sym-mini-ob  { color: var(--red); font-weight: 600; }
+.sym-mini-os  { color: var(--green); font-weight: 600; }
+
+/* ── Scanner group separator row ─────────────────────── */
+.scan-group-sep td {
+  background: var(--bg-secondary);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .05em;
+  padding: 4px 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Scanner symbol sub-label (sector/group) ──────────── */
+.scan-sym-sub {
+  display: block;
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
 }

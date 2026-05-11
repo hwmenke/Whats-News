@@ -353,6 +353,27 @@ function loadTrendData(data, ohlcvRows) {
         }))
     );
 
+    // Entry signal markers — arrows drawn directly on the candle series
+    const markers = [];
+    (data.entry_long  || []).filter(d => d.value).forEach(d => markers.push({
+        time:     d.date,
+        position: 'belowBar',
+        color:    '#22c55e',
+        shape:    'arrowUp',
+        text:     'L',
+        size:     1,
+    }));
+    (data.entry_short || []).filter(d => d.value).forEach(d => markers.push({
+        time:     d.date,
+        position: 'aboveBar',
+        color:    '#ef4444',
+        shape:    'arrowDown',
+        text:     'S',
+        size:     1,
+    }));
+    markers.sort((a, b) => a.time.localeCompare(b.time));
+    trendSeries.candle.setMarkers(markers);
+
     // Background regime shading — driven by medium_state (master regime)
     // bgLong fills green  when medium is long;  invisible otherwise
     // bgShort fills red   when medium is short; invisible otherwise
