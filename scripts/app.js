@@ -1444,6 +1444,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (btn) btn.textContent = '▶';
     }
 
+    // Restore focus mode
+    if (localStorage.getItem('focusMode') === '1') {
+        const main = document.querySelector('.main');
+        const btn  = document.getElementById('btn-focus-mode');
+        if (main) main.classList.add('focus-mode');
+        if (btn)  btn.textContent = '⊞';
+    }
+
     // Keyboard navigation
     document.addEventListener('keydown', _handleGlobalKeydown);
 
@@ -1959,6 +1967,16 @@ async function checkAutoRefreshStatus() {
     } catch (_) {}
 }
 
+// ── Focus mode ────────────────────────────────────────────────
+function toggleFocusMode() {
+    const main = document.querySelector('.main');
+    const btn  = document.getElementById('btn-focus-mode');
+    if (!main) return;
+    const on = main.classList.toggle('focus-mode');
+    if (btn) btn.textContent = on ? '⊞' : '⊟';
+    localStorage.setItem('focusMode', on ? '1' : '0');
+}
+
 // ── Theme toggle ──────────────────────────────────────────────
 function toggleTheme() {
     const html = document.documentElement;
@@ -2005,6 +2023,8 @@ function _handleGlobalKeydown(e) {
         openRiskModal();
     } else if (e.key === 'n') {
         switchTab('news');
+    } else if (e.key === '\\') {
+        toggleFocusMode();
     }
 }
 

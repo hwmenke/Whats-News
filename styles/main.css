@@ -305,6 +305,14 @@ html, body {
   background: var(--bg-base);
 }
 
+/* Focus mode — hide all chrome above the content area */
+.main.focus-mode .symbol-header,
+.main.focus-mode .main-nav-tabs,
+.main.focus-mode .tab-bar { display: none !important; }
+.main.focus-mode .dm-container {
+  height: calc(100vh - var(--topbar-h));
+}
+
 /* Symbol Header Bar */
 .symbol-header {
   padding: 12px 20px;
