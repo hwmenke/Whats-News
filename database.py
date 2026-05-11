@@ -8,6 +8,8 @@ Tables:
   - positions    : portfolio positions
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import sqlite3

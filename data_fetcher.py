@@ -3,6 +3,8 @@ data_fetcher.py - Download OHLCV from Yahoo Finance and store in DB
 Supports incremental fetching: only downloads bars newer than what's in the DB.
 """
 
+from __future__ import annotations
+
 import datetime
 import logging
 import time
