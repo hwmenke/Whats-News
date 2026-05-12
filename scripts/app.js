@@ -10,17 +10,16 @@ const DEFAULT_KAMA_PERIODS = [10, 20, 50];
 
 // App state
 let state = {
-    symbols:          [],
-    activeSymbol:     null,
-    loading:          false,
-    activeTab:        'charts',
-    statsData:        null,
-    watchlistSort:    'group',
-    watchlistSortDir: -1,   // -1 = desc (high first), +1 = asc (low first)
-    watchlistFilter:  'all',
+    symbols:         [],
+    activeSymbol:    null,
+    loading:         false,
+    activeTab:       'charts',
+    statsData:       null,
+    watchlistSort:   'group_asc',
+    watchlistFilter: 'all',
 };
 
-// Quick-stats cache: symbol → {price, chg, rsi14, ret_1m}
+// Quick-stats cache: symbol → {price, chg, ret_5d, ret_1m, rsi14, vol_ratio, above_sma20}
 let _wlStats = {};
 
 let statsCharts = {};
@@ -185,15 +184,28 @@ async function loadQuickStats() {
 }
 
 function _liveFor(symbol) {
-    // Merge quick-stats with scanner data; scanner wins when richer
+    // Merge quick-stats with scanner data; scanner wins when available
     const qs = _wlStats[symbol] || {};
     const sc = (typeof scannerState !== 'undefined' && Array.isArray(scannerState.data))
         ? scannerState.data.find(r => r.symbol === symbol) : null;
     return {
-        chg:    sc?.chg    ?? qs.chg    ?? null,
-        rsi14:  sc?.d?.rsi_14 ?? qs.rsi14  ?? null,
-        ret_1m: sc?.ret_1m  ?? qs.ret_1m ?? null,
+        price:       sc?.price       ?? qs.price       ?? null,
+        chg:         sc?.chg         ?? qs.chg         ?? null,
+        ret_5d:      qs.ret_5d       ?? null,
+        ret_1m:      sc?.ret_1m      ?? qs.ret_1m      ?? null,
+        rsi14:       sc?.d?.rsi_14   ?? qs.rsi14       ?? null,
+        vol_ratio:   qs.vol_ratio    ?? null,
+        above_sma20: qs.above_sma20  ?? null,
     };
+}
+
+// Parse sort value like "perf_1d_desc" → {key, dir}
+function _parseSortVal(v) {
+    const asc  = v.endsWith('_asc');
+    const desc = v.endsWith('_desc');
+    const key  = asc ? v.slice(0, -4) : desc ? v.slice(0, -5) : v;
+    const dir  = asc ? 1 : -1;   // -1 = desc (big first), 1 = asc (small first)
+    return { key, dir };
 }
 
 function renderSymbolList() {
@@ -206,21 +218,32 @@ function renderSymbolList() {
         return;
     }
 
-    // Filter
+    // ── Filter ────────────────────────────────────────────────
     const filt = state.watchlistFilter || 'all';
     let visible = state.symbols.filter(sym => {
         if (search && !sym.symbol.includes(search) && !(sym.name || '').toUpperCase().includes(search)) return false;
-        const live = _liveFor(sym.symbol);
-        if (filt === 'up'   && !(live.chg > 0))    return false;
-        if (filt === 'down' && !(live.chg < 0))     return false;
-        if (filt === 'ob'   && !(live.rsi14 > 70))  return false;
-        if (filt === 'os'   && !(live.rsi14 < 30))  return false;
-        return true;
+        const L = _liveFor(sym.symbol);
+        switch (filt) {
+            case 'up':        return L.chg > 0;
+            case 'down':      return L.chg < 0;
+            case '1w_up':     return L.ret_5d > 2;
+            case '1w_down':   return L.ret_5d < -2;
+            case '1m_up':     return L.ret_1m > 5;
+            case '1m_down':   return L.ret_1m < -5;
+            case 'ob':        return L.rsi14 > 70;
+            case 'os':        return L.rsi14 < 30;
+            case 'bull_rsi':  return L.rsi14 >= 50 && L.rsi14 <= 70;
+            case 'bear_rsi':  return L.rsi14 >= 30 && L.rsi14 < 50;
+            case 'above_sma': return L.above_sma20 === true;
+            case 'below_sma': return L.above_sma20 === false;
+            case 'high_vol':  return L.vol_ratio > 2;
+            default:          return true;
+        }
     });
 
-    // Sort
-    const dir  = state.watchlistSortDir ?? -1;   // -1 = desc (high→low)
-    const mode = state.watchlistSort || 'group';
+    // ── Sort ──────────────────────────────────────────────────
+    const { key, dir } = _parseSortVal(state.watchlistSort || 'group_asc');
+
     const numSort = (fn) => visible.sort((a, b) => {
         const va = fn(a), vb = fn(b);
         if (va == null && vb == null) return 0;
@@ -228,27 +251,33 @@ function renderSymbolList() {
         if (vb == null) return -1;
         return (va - vb) * dir;
     });
-    if (mode === 'alpha')   visible.sort((a, b) => a.symbol.localeCompare(b.symbol) * dir);
-    else if (mode === 'added')   visible.sort((a, b) => (a.added_at || '').localeCompare(b.added_at || '') * dir);
-    else if (mode === 'sector')  visible.sort((a, b) => ((a.sector || 'zzz').localeCompare(b.sector || 'zzz') || a.symbol.localeCompare(b.symbol)) * dir);
-    else if (mode === 'perf_1d') numSort(s => _liveFor(s.symbol).chg);
-    else if (mode === 'ret_1m')  numSort(s => _liveFor(s.symbol).ret_1m);
-    else if (mode === 'rsi14')   numSort(s => _liveFor(s.symbol).rsi14);
-    // 'group': keep DB order (already sorted by group_tag, symbol)
+
+    switch (key) {
+        case 'alpha':   visible.sort((a, b) => a.symbol.localeCompare(b.symbol) * dir); break;
+        case 'added':   visible.sort((a, b) => (a.added_at || '').localeCompare(b.added_at || '') * dir); break;
+        case 'sector':  visible.sort((a, b) => ((a.sector || 'zzz').localeCompare(b.sector || 'zzz') || a.symbol.localeCompare(b.symbol)) * dir); break;
+        case 'perf_1d': numSort(s => _liveFor(s.symbol).chg); break;
+        case 'ret_5d':  numSort(s => _liveFor(s.symbol).ret_5d); break;
+        case 'ret_1m':  numSort(s => _liveFor(s.symbol).ret_1m); break;
+        case 'rsi14':   numSort(s => _liveFor(s.symbol).rsi14); break;
+        case 'price':   numSort(s => _liveFor(s.symbol).price); break;
+        case 'vol':     numSort(s => _liveFor(s.symbol).vol_ratio); break;
+        // 'group': DB order (pre-sorted by group_tag, symbol)
+    }
 
     // Count badge
     const countEl = document.getElementById('wl-count');
     if (countEl) countEl.textContent = visible.length < state.symbols.length
-        ? `${visible.length} / ${state.symbols.length}` : state.symbols.length;
+        ? `${visible.length} / ${state.symbols.length}` : `${state.symbols.length}`;
 
     if (!visible.length) {
-        list.innerHTML = '<div class="wl-empty">No matches.</div>';
+        list.innerHTML = '<div class="wl-empty">No matches for current filter.</div>';
         return;
     }
 
-    // Group headers — only for modes that have a natural grouping
-    const showGroups = mode === 'group' || mode === 'sector';
-    const groupKey   = sym => mode === 'sector' ? (sym.sector || 'Other') : (sym.group_tag || '');
+    // ── Render ────────────────────────────────────────────────
+    const showGroups = key === 'group' || key === 'sector';
+    const groupKey   = sym => key === 'sector' ? (sym.sector || 'Other') : (sym.group_tag || '');
 
     let lastGroup = undefined;
     visible.forEach(sym => {
@@ -284,25 +313,41 @@ function renderSymbolList() {
         }
         item.appendChild(ticker);
 
-        // Live mini badges
+        // Live mini badges — show the stat most relevant to current sort
         const miniRow = document.createElement('span');
         miniRow.className = 'sym-mini-row';
-        if (live.chg != null) {
+
+        const addBadge = (text, cls) => {
             const s = document.createElement('span');
-            s.className   = 'sym-mini-chg ' + (live.chg >= 0 ? 'sym-mini-pos' : 'sym-mini-neg');
-            s.textContent = (live.chg >= 0 ? '+' : '') + live.chg.toFixed(1) + '%';
+            s.className   = cls;
+            s.textContent = text;
             miniRow.appendChild(s);
-        }
-        if (live.rsi14 != null) {
-            const s = document.createElement('span');
-            s.className   = 'sym-mini-rsi' + (live.rsi14 > 70 ? ' sym-mini-ob' : live.rsi14 < 30 ? ' sym-mini-os' : '');
-            s.textContent = 'RSI ' + live.rsi14.toFixed(0);
-            miniRow.appendChild(s);
-        }
+        };
+
+        if (live.chg != null)
+            addBadge((live.chg >= 0 ? '+' : '') + live.chg.toFixed(1) + '%',
+                     'sym-mini-chg ' + (live.chg >= 0 ? 'sym-mini-pos' : 'sym-mini-neg'));
+
+        if (live.rsi14 != null)
+            addBadge('RSI ' + live.rsi14.toFixed(0),
+                     'sym-mini-rsi' + (live.rsi14 > 70 ? ' sym-mini-ob' : live.rsi14 < 30 ? ' sym-mini-os' : ''));
+
+        // Show extra stat when sorted by something non-default
+        if (key === 'ret_5d' && live.ret_5d != null)
+            addBadge('1W ' + (live.ret_5d >= 0 ? '+' : '') + live.ret_5d.toFixed(1) + '%',
+                     'sym-mini-chg ' + (live.ret_5d >= 0 ? 'sym-mini-pos' : 'sym-mini-neg'));
+        if (key === 'ret_1m' && live.ret_1m != null)
+            addBadge('1M ' + (live.ret_1m >= 0 ? '+' : '') + live.ret_1m.toFixed(1) + '%',
+                     'sym-mini-chg ' + (live.ret_1m >= 0 ? 'sym-mini-pos' : 'sym-mini-neg'));
+        if (key === 'vol' && live.vol_ratio != null)
+            addBadge(live.vol_ratio.toFixed(1) + '×', 'sym-mini-rsi');
+        if (key === 'price' && live.price != null)
+            addBadge('$' + live.price.toLocaleString(), 'sym-mini-rsi');
+
         item.appendChild(miniRow);
 
-        // Group tag badge — only in group mode, click to edit
-        if (mode !== 'sector') {
+        // Group tag badge — only in group mode
+        if (key !== 'sector') {
             const tag = sym.group_tag || '';
             const tagBadge = document.createElement('span');
             tagBadge.className   = 'sym-tag';
@@ -332,15 +377,15 @@ function clearWatchlistSearch() {
 
 function setWatchlistFilter(f) {
     state.watchlistFilter = f;
-    document.querySelectorAll('.wl-chip').forEach(el =>
-        el.classList.toggle('wl-chip-on', el.dataset.filter === f));
+    const sel = document.getElementById('watchlist-filter');
+    if (sel) sel.value = f;
     renderSymbolList();
 }
 
-function toggleWatchlistSortDir() {
-    state.watchlistSortDir = (state.watchlistSortDir ?? -1) * -1;
-    const btn = document.getElementById('wl-sort-dir');
-    if (btn) btn.textContent = state.watchlistSortDir === -1 ? '↓' : '↑';
+function setWatchlistSort(v) {
+    state.watchlistSort = v;
+    const sel = document.getElementById('watchlist-sort');
+    if (sel) sel.value = v;
     renderSymbolList();
 }
 
@@ -2034,11 +2079,6 @@ function initTheme() {
 }
 
 // ── Watchlist sort ────────────────────────────────────────────
-function setWatchlistSort(mode) {
-    state.watchlistSort = mode;
-    renderSymbolList();
-}
-
 // ── Keyboard navigation ───────────────────────────────────────
 function _handleGlobalKeydown(e) {
     // Ignore when typing in inputs

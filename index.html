@@ -55,31 +55,67 @@
       <button class="sidebar-search-clear" onclick="clearWatchlistSearch()" title="Clear">×</button>
     </div>
 
-    <!-- Sort row -->
-    <div class="wl-controls-row">
-      <span class="wl-label">Sort</span>
-      <select id="watchlist-sort" class="wl-select" onchange="setWatchlistSort(this.value)">
-        <option value="group">Group tag</option>
-        <option value="sector">Sector</option>
-        <option value="alpha">A – Z</option>
-        <option value="perf_1d">1D return</option>
-        <option value="ret_1m">1M return</option>
-        <option value="rsi14">RSI (14)</option>
-        <option value="added">Date added</option>
+    <!-- Sort + Filter dropdowns -->
+    <div class="wl-sf-row">
+      <select id="watchlist-sort" class="wl-sf-select" onchange="setWatchlistSort(this.value)" title="Sort watchlist">
+        <optgroup label="— Group / Sector">
+          <option value="group_asc">Group tag</option>
+          <option value="sector_asc">Sector</option>
+        </optgroup>
+        <optgroup label="— Alphabet">
+          <option value="alpha_asc">A → Z</option>
+          <option value="alpha_desc">Z → A</option>
+        </optgroup>
+        <optgroup label="— 1-Day">
+          <option value="perf_1d_desc">1D% Best first</option>
+          <option value="perf_1d_asc">1D% Worst first</option>
+        </optgroup>
+        <optgroup label="— 1-Week">
+          <option value="ret_5d_desc">1W% Best first</option>
+          <option value="ret_5d_asc">1W% Worst first</option>
+        </optgroup>
+        <optgroup label="— 1-Month">
+          <option value="ret_1m_desc">1M% Best first</option>
+          <option value="ret_1m_asc">1M% Worst first</option>
+        </optgroup>
+        <optgroup label="— RSI">
+          <option value="rsi14_desc">RSI High → Low</option>
+          <option value="rsi14_asc">RSI Low → High</option>
+        </optgroup>
+        <optgroup label="— Price">
+          <option value="price_desc">Price High → Low</option>
+          <option value="price_asc">Price Low → High</option>
+        </optgroup>
+        <optgroup label="— Other">
+          <option value="added_desc">Recently added</option>
+          <option value="vol_desc">Volume spike first</option>
+        </optgroup>
       </select>
-      <button id="wl-sort-dir" class="wl-dir-btn" title="Reverse sort order" onclick="toggleWatchlistSortDir()">↓</button>
-    </div>
 
-    <!-- Filter chips -->
-    <div class="wl-controls-row">
-      <span class="wl-label">Filter</span>
-      <div class="wl-chips">
-        <button class="wl-chip wl-chip-on" data-filter="all"  onclick="setWatchlistFilter('all')">All</button>
-        <button class="wl-chip" data-filter="up"              onclick="setWatchlistFilter('up')">Gainers</button>
-        <button class="wl-chip" data-filter="down"            onclick="setWatchlistFilter('down')">Losers</button>
-        <button class="wl-chip" data-filter="ob"              onclick="setWatchlistFilter('ob')">OB&gt;70</button>
-        <button class="wl-chip" data-filter="os"              onclick="setWatchlistFilter('os')">OS&lt;30</button>
-      </div>
+      <select id="watchlist-filter" class="wl-sf-select" onchange="setWatchlistFilter(this.value)" title="Filter watchlist">
+        <option value="all">All symbols</option>
+        <optgroup label="— Performance">
+          <option value="up">Gainers (1D &gt; 0)</option>
+          <option value="down">Losers (1D &lt; 0)</option>
+          <option value="1w_up">1W leaders (&gt; 2%)</option>
+          <option value="1w_down">1W laggards (&lt; −2%)</option>
+          <option value="1m_up">1M leaders (&gt; 5%)</option>
+          <option value="1m_down">1M laggards (&lt; −5%)</option>
+        </optgroup>
+        <optgroup label="— RSI">
+          <option value="ob">Overbought (RSI &gt; 70)</option>
+          <option value="os">Oversold (RSI &lt; 30)</option>
+          <option value="bull_rsi">Bullish (RSI 50–70)</option>
+          <option value="bear_rsi">Bearish (RSI 30–50)</option>
+        </optgroup>
+        <optgroup label="— Trend">
+          <option value="above_sma">Above SMA 20</option>
+          <option value="below_sma">Below SMA 20</option>
+        </optgroup>
+        <optgroup label="— Volume">
+          <option value="high_vol">High volume (&gt; 2×)</option>
+        </optgroup>
+      </select>
     </div>
 
     <div id="symbol-list" class="symbol-list">

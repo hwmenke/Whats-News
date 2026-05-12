@@ -360,7 +360,6 @@ function loadTrendData(data, ohlcvRows) {
         position: 'belowBar',
         color:    '#22c55e',
         shape:    'arrowUp',
-        text:     'L',
         size:     1,
     }));
     (data.entry_short || []).filter(d => d.value).forEach(d => markers.push({
@@ -368,7 +367,6 @@ function loadTrendData(data, ohlcvRows) {
         position: 'aboveBar',
         color:    '#ef4444',
         shape:    'arrowDown',
-        text:     'S',
         size:     1,
     }));
     markers.sort((a, b) => a.time.localeCompare(b.time));
