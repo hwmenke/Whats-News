@@ -148,3 +148,160 @@ def compute_knn_lookalike(symbol: str, k: int = 15) -> dict:
         "neighbors":        neighbors,
         "summary":          summary,
     }
+
+
+def scan_watchlist(symbols: list, k: int = 10) -> list:
+    """
+    Run KNN lookalike on every symbol in `symbols`.
+    Returns a compact summary row per symbol (sorted by 5D win rate desc).
+    """
+    results = []
+    for sym in symbols:
+        try:
+            r = compute_knn_lookalike(sym, k=k)
+            if "error" in r:
+                results.append({"symbol": sym, "error": r["error"]})
+                continue
+            s = r["summary"]
+            results.append({
+                "symbol":      sym,
+                "as_of":       r["as_of"],
+                "fwd_1d_win":  s["fwd_1d"]["positive_pct"],
+                "fwd_1d_mean": s["fwd_1d"]["mean"],
+                "fwd_5d_win":  s["fwd_5d"]["positive_pct"],
+                "fwd_5d_mean": s["fwd_5d"]["mean"],
+                "fwd_20d_win": s["fwd_20d"]["positive_pct"],
+                "fwd_20d_mean":s["fwd_20d"]["mean"],
+                "k":           r["k"],
+            })
+        except Exception as e:
+            results.append({"symbol": sym, "error": str(e)})
+
+    results.sort(key=lambda x: (x.get("fwd_5d_win") or 0), reverse=True)
+    return results
+
+
+def walk_forward_backtest(symbol: str, min_train: int = 200,
+                          step: int = 21, k: int = 10, horizon: int = 5) -> dict:
+    """
+    Walk-forward backtest of KNN directional predictions.
+
+    At each evaluation bar (spaced `step` bars apart, starting after `min_train`
+    bars of history) the model:
+      1. Fits KNN on all bars up to (but not including) the evaluation bar.
+      2. Finds the K nearest historical moments.
+      3. Predicts direction from the mean neighbour forward-return.
+      4. Compares to actual `horizon`-bar forward return.
+
+    Returns accuracy stats and an equity curve (long if bullish, short if bearish).
+    """
+    df = db.get_ohlcv_df(symbol, "daily", limit=5000)
+    if df.empty or len(df) < min_train + horizon + 60:
+        return {"error": f"Not enough data for {symbol}"}
+
+    close  = df["close"]
+    high   = df["high"]
+    low    = df["low"]
+    volume = df["volume"]
+
+    # ── Build feature matrix ─────────────────────────────────────────────
+    feat = pd.DataFrame(index=df.index)
+    feat["rsi14"]     = ta.momentum.RSIIndicator(close, window=14).rsi()
+    feat["vol20_ann"] = close.pct_change().rolling(20).std() * np.sqrt(252)
+    macd_ind          = ta.trend.MACD(close, window_slow=26, window_fast=12, window_sign=9)
+    feat["macd_hist"] = macd_ind.macd_diff()
+    cci_ind           = ta.trend.CCIIndicator(high, low, close, window=20)
+    feat["cci_norm"]  = cci_ind.cci() / 200.0
+    vol_ma20          = volume.rolling(20).mean()
+    feat["vol_ratio"] = volume / vol_ma20.replace(0, np.nan)
+    for period in KAMA_PERIODS:
+        kama_s = _kama(close, window=period)
+        feat[f"kama_dist_{period}"] = (close / kama_s.replace(0, np.nan)) - 1.0
+
+    feat["close"] = close.values
+
+    FEATURE_COLS = [
+        "rsi14", "vol20_ann", "macd_hist", "cci_norm",
+        "vol_ratio", "kama_dist_10", "kama_dist_20", "kama_dist_50",
+    ]
+
+    # Keep only rows where all features are valid, then reset to integer index
+    valid  = feat[FEATURE_COLS + ["close"]].dropna(subset=FEATURE_COLS)
+    valid  = valid.reset_index()          # original DatetimeIndex → "date" column
+    n      = len(valid)
+
+    if n < min_train + horizon + 20:
+        return {"error": f"Only {n} valid feature rows — need {min_train + horizon + 20}"}
+
+    X_all     = valid[FEATURE_COLS].values.astype(float)
+    close_arr = valid["close"].values.astype(float)
+    date_arr  = valid["date"].values   # numpy datetime64
+
+    records = []
+    for eval_i in range(min_train, n - horizon, step):
+        X_train    = X_all[:eval_i]
+        scaler     = StandardScaler()
+        X_train_sc = scaler.fit_transform(X_train)
+
+        x_q = scaler.transform(X_all[eval_i:eval_i + 1])
+
+        nn_k = min(k, len(X_train_sc) - 1)
+        if nn_k < 3:
+            continue
+        nn_model = NearestNeighbors(n_neighbors=nn_k, metric="euclidean")
+        nn_model.fit(X_train_sc)
+        _, idxs = nn_model.kneighbors(x_q)
+
+        # Neighbour forward returns (only include those far enough from eval_i)
+        nbr_fwd = []
+        for nbr_i in idxs[0]:
+            fwd_i = nbr_i + horizon
+            if fwd_i < eval_i and close_arr[nbr_i] != 0:
+                nbr_fwd.append(
+                    (close_arr[fwd_i] - close_arr[nbr_i]) / close_arr[nbr_i]
+                )
+
+        if len(nbr_fwd) < 3:
+            continue
+
+        pred_mean = float(np.mean(nbr_fwd))
+        pred_dir  = 1 if pred_mean > 0 else -1
+
+        c0 = close_arr[eval_i]
+        c1 = close_arr[eval_i + horizon]
+        actual_ret = (c1 - c0) / c0 if c0 != 0 else 0.0
+        actual_dir = 1 if actual_ret > 0 else -1
+
+        date_str = str(date_arr[eval_i])[:10]
+        records.append({
+            "date":       date_str,
+            "predicted":  pred_dir,
+            "pred_mean":  round(pred_mean * 100, 3),
+            "actual_ret": round(actual_ret * 100, 3),
+            "correct":    pred_dir == actual_dir,
+        })
+
+    if not records:
+        return {"error": "No evaluation points generated (try reducing min_train)"}
+
+    n_total   = len(records)
+    n_correct = sum(1 for r in records if r["correct"])
+    accuracy  = n_correct / n_total
+
+    # Equity curve — 1 unit long or short at each evaluation bar
+    cum = 0.0
+    equity = [{"date": records[0]["date"], "equity": 0.0}]
+    for r in records:
+        pnl = r["predicted"] * (r["actual_ret"] / 100)
+        cum += pnl
+        equity.append({"date": r["date"], "equity": round(cum * 100, 4)})
+
+    return {
+        "symbol":       symbol,
+        "horizon_days": horizon,
+        "n_total":      n_total,
+        "n_correct":    n_correct,
+        "accuracy":     round(accuracy, 4),
+        "equity_curve": equity,
+        "records":      records[-60:],   # last 60 rows for the detail table
+    }

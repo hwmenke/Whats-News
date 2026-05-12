@@ -284,6 +284,63 @@ def get_knn(symbol):
         return _err(str(e), 500)
 
 
+# -- KNN Watchlist Scan --------------------------------------------------------
+
+@app.route("/api/knn/scan", methods=["GET", "POST"])
+def knn_scan():
+    try:
+        k = int(request.args.get("k", 10))
+    except (TypeError, ValueError):
+        k = 10
+    try:
+        symbols = [s["symbol"] for s in db.list_symbols()]
+        if not symbols:
+            return jsonify([])
+        results = knn_model.scan_watchlist(symbols, k=k)
+        return jsonify(results)
+    except Exception as e:
+        return _err(str(e), 500)
+
+
+# -- KNN Walk-Forward Backtest -------------------------------------------------
+
+@app.route("/api/knn/walk-forward/<string:symbol>")
+def knn_walk_forward(symbol):
+    try:
+        min_train = int(request.args.get("min_train", 200))
+        step      = int(request.args.get("step",      21))
+        k         = int(request.args.get("k",         10))
+        horizon   = int(request.args.get("horizon",   5))
+    except (TypeError, ValueError):
+        return _err("Invalid parameter")
+    try:
+        result = knn_model.walk_forward_backtest(
+            symbol.upper(), min_train=min_train, step=step, k=k, horizon=horizon
+        )
+        if "error" in result:
+            return _err(result["error"], 404)
+        return jsonify(result)
+    except Exception as e:
+        return _err(str(e), 500)
+
+
+# -- Scanner Custom Indicator --------------------------------------------------
+
+@app.route("/api/scanner/custom-indicator", methods=["POST"])
+def scanner_custom_indicator():
+    body = request.get_json(silent=True) or {}
+    symbols = body.get("symbols") or [s["symbol"] for s in db.list_symbols()]
+    indic   = body.get("indicator", {})
+    if not indic or not indic.get("type"):
+        return _err("indicator.type is required")
+    try:
+        from scanner import compute_custom_indicator
+        results = compute_custom_indicator(symbols, indic)
+        return jsonify(results)
+    except Exception as e:
+        return _err(str(e), 500)
+
+
 # -- Backtester -----------------------------------------------------------------
 
 @app.route("/api/backtest/<string:symbol>")

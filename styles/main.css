@@ -3013,3 +3013,181 @@ details[open] .notes-summary::before { content: '▼ '; }
   text-overflow: ellipsis;
   max-width: 90px;
 }
+
+/* ══════════════════════════════════════════════════════════
+   Signal panel collapse
+   ══════════════════════════════════════════════════════════ */
+.trend-signal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.btn-panel-collapse {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  padding: 1px 6px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.btn-panel-collapse:hover { color: var(--text); background: var(--bg-hover); }
+
+.trend-panel-signal.signal-panel-collapsed .trend-composite-wrap,
+.trend-panel-signal.signal-panel-collapsed .trend-signal-grid {
+  display: none;
+}
+.trend-panel-signal.signal-panel-collapsed {
+  min-width: 36px;
+  max-width: 36px;
+  padding: 8px 4px;
+  overflow: hidden;
+}
+.trend-panel-signal.signal-panel-collapsed .panel-header {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 11px;
+  letter-spacing: .1em;
+  padding: 4px 2px;
+}
+
+/* ══════════════════════════════════════════════════════════
+   KNN sub-tabs
+   ══════════════════════════════════════════════════════════ */
+.knn-subtabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+.knn-stab {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 5px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.knn-stab:hover { background: var(--bg-hover); color: var(--text); }
+.knn-stab-active {
+  background: var(--accent);
+  color: #fff !important;
+  border-color: var(--accent);
+}
+
+/* ── KNN Scan table ────────────────────────────────────── */
+.knn-scan-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.knn-scan-table td, .knn-scan-table th {
+  padding: 6px 10px;
+  text-align: right;
+}
+.knn-scan-table td:first-child,
+.knn-scan-table th:first-child { text-align: left; }
+.knn-scan-row { cursor: pointer; }
+.knn-scan-row:hover td { background: var(--bg-hover); }
+
+/* ── Walk-forward ─────────────────────────────────────── */
+.knn-wf-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.knn-wf-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ══════════════════════════════════════════════════════════
+   Custom Indicator Builder
+   ══════════════════════════════════════════════════════════ */
+.custom-ind-builder {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+.custom-ind-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.custom-ind-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.cib-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.cib-input {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 4px 7px;
+  font-size: 12px;
+  width: 110px;
+}
+.cib-num { width: 70px; }
+.cib-select {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 4px 7px;
+  font-size: 12px;
+}
+.cib-add { align-self: flex-end; margin-left: 6px; }
+.cib-active-list {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.cib-active-label { font-size: 11px; color: var(--text-muted); }
+.cib-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.cib-chip button {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,.75);
+  cursor: pointer;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+}
+.cib-chip button:hover { color: #fff; }

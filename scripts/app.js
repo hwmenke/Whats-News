@@ -1299,6 +1299,240 @@ function renderKNN(data) {
     }
 }
 
+// ── KNN Sub-tab switching ─────────────────────────────────────
+function switchKNNTab(tab) {
+    ['lookalike', 'scan', 'wf'].forEach(t => {
+        const panel = document.getElementById(`knn-panel-${t}`);
+        const btn   = document.getElementById(`knn-stab-${t}`);
+        if (panel) panel.style.display = t === tab ? '' : 'none';
+        if (btn)   btn.classList.toggle('knn-stab-active', t === tab);
+    });
+}
+
+// ── KNN Watchlist Scan ────────────────────────────────────────
+async function loadKNNScan() {
+    const loading  = document.getElementById('knn-scan-loading');
+    const statusEl = document.getElementById('knn-scan-status');
+    if (loading)  loading.style.display = 'flex';
+    if (statusEl) statusEl.textContent  = '';
+    try {
+        const data = await apiFetch(`${API}/knn/scan?k=10`);
+        renderKNNScan(data);
+        if (statusEl) statusEl.textContent = `${data.length} symbols scanned`;
+    } catch (e) {
+        toast('KNN Scan failed: ' + e.message, 'error');
+    } finally {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+function renderKNNScan(rows) {
+    const tbody = document.getElementById('knn-scan-tbody');
+    if (!tbody) return;
+    const fmt  = v => (v != null && Number.isFinite(v)) ? (v * 100).toFixed(1) + '%' : '—';
+    const fmtM = v => (v != null && Number.isFinite(v)) ? (v * 100).toFixed(2) + '%' : '—';
+    const winCls = v => {
+        if (v == null) return '';
+        if (v >= 0.65) return 'style="color:var(--green);font-weight:600"';
+        if (v <= 0.35) return 'style="color:var(--red);font-weight:600"';
+        return '';
+    };
+    tbody.innerHTML = rows.map(r => {
+        if (r.error) return `<tr><td><strong>${r.symbol}</strong></td><td colspan="7" style="color:var(--text-muted)">${r.error}</td></tr>`;
+        return `<tr class="knn-scan-row" onclick="selectSymbol('${r.symbol}')">
+            <td><strong>${r.symbol}</strong></td>
+            <td ${winCls(r.fwd_1d_win)}>${fmt(r.fwd_1d_win)}</td>
+            <td>${fmtM(r.fwd_1d_mean)}</td>
+            <td ${winCls(r.fwd_5d_win)}>${fmt(r.fwd_5d_win)}</td>
+            <td>${fmtM(r.fwd_5d_mean)}</td>
+            <td ${winCls(r.fwd_20d_win)}>${fmt(r.fwd_20d_win)}</td>
+            <td>${fmtM(r.fwd_20d_mean)}</td>
+            <td style="color:var(--text-muted);font-size:11px">${r.as_of || '—'}</td>
+        </tr>`;
+    }).join('');
+}
+
+// ── KNN Walk-Forward Backtest ─────────────────────────────────
+async function loadKNNWalkForward() {
+    if (!state.activeSymbol) { toast('Select a symbol first', 'warn'); return; }
+    const horizon  = document.getElementById('knn-wf-horizon')?.value  || 5;
+    const step     = document.getElementById('knn-wf-step')?.value     || 21;
+    const k        = document.getElementById('knn-wf-k')?.value        || 10;
+    const loading  = document.getElementById('knn-wf-loading');
+    const statusEl = document.getElementById('knn-wf-status');
+    const results  = document.getElementById('knn-wf-results');
+
+    if (loading)  { loading.style.display = 'flex'; }
+    if (results)  { results.style.display = 'none'; }
+    if (statusEl) { statusEl.textContent  = ''; }
+
+    try {
+        const url  = `${API}/knn/walk-forward/${state.activeSymbol}?horizon=${horizon}&step=${step}&k=${k}`;
+        const data = await apiFetch(url);
+        renderKNNWalkForward(data);
+        if (statusEl) statusEl.textContent = `${data.n_total} eval points · accuracy ${(data.accuracy * 100).toFixed(1)}%`;
+    } catch (e) {
+        toast('Walk-forward failed: ' + e.message, 'error');
+    } finally {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+function renderKNNWalkForward(data) {
+    const results = document.getElementById('knn-wf-results');
+    if (!results) return;
+    results.style.display = '';
+
+    // KPI row
+    const kpiEl = document.getElementById('knn-wf-kpis');
+    if (kpiEl) {
+        const acc  = (data.accuracy * 100).toFixed(1);
+        const accC = data.accuracy >= 0.55 ? '#22c55e' : data.accuracy <= 0.45 ? '#ef4444' : '#f59e0b';
+        const lastEq = data.equity_curve?.length ? data.equity_curve[data.equity_curve.length - 1].equity : 0;
+        const eqC    = lastEq >= 0 ? '#22c55e' : '#ef4444';
+        kpiEl.innerHTML = `
+            <div class="kpi-card prediction-card">
+                <div class="kpi-label">Accuracy</div>
+                <div class="kpi-value" style="color:${accC}">${acc}%</div>
+                <div class="kpi-sub">${data.n_correct} / ${data.n_total} correct</div>
+            </div>
+            <div class="kpi-card prediction-card">
+                <div class="kpi-label">Total Return</div>
+                <div class="kpi-value" style="color:${eqC}">${lastEq >= 0 ? '+' : ''}${lastEq.toFixed(2)}%</div>
+                <div class="kpi-sub">Horizon: ${data.horizon_days}D</div>
+            </div>
+            <div class="kpi-card prediction-card">
+                <div class="kpi-label">Eval Points</div>
+                <div class="kpi-value">${data.n_total}</div>
+                <div class="kpi-sub">Symbol: ${data.symbol}</div>
+            </div>
+        `;
+    }
+
+    // Equity curve via canvas (simple line chart)
+    const canvas = document.getElementById('knn-wf-chart');
+    if (canvas && data.equity_curve?.length) {
+        _drawEquityCurve(canvas, data.equity_curve);
+    }
+
+    // Detail table
+    const tbody = document.getElementById('knn-wf-tbody');
+    if (tbody) {
+        tbody.innerHTML = (data.records || []).map(r => {
+            const dirLabel = r.predicted === 1 ? '<span style="color:var(--green)">▲ Long</span>' : '<span style="color:var(--red)">▼ Short</span>';
+            const actStyle = r.actual_ret >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+            const tick     = r.correct ? '✓' : '✗';
+            const tickC    = r.correct ? 'color:var(--green)' : 'color:var(--red)';
+            return `<tr>
+                <td style="color:var(--text-muted);font-size:11px">${r.date}</td>
+                <td>${dirLabel}</td>
+                <td style="${r.pred_mean >= 0 ? 'color:var(--green)' : 'color:var(--red)'}">${r.pred_mean >= 0 ? '+' : ''}${r.pred_mean}%</td>
+                <td style="${actStyle}">${r.actual_ret >= 0 ? '+' : ''}${r.actual_ret}%</td>
+                <td style="${tickC};font-weight:700">${tick}</td>
+            </tr>`;
+        }).join('');
+    }
+}
+
+function _drawEquityCurve(canvas, curve) {
+    const ctx    = canvas.getContext('2d');
+    const W      = canvas.offsetWidth || 600;
+    const H      = canvas.height;
+    canvas.width = W;
+    ctx.clearRect(0, 0, W, H);
+
+    const vals   = curve.map(p => p.equity);
+    const minV   = Math.min(...vals);
+    const maxV   = Math.max(...vals);
+    const range  = maxV - minV || 1;
+    const pad    = 20;
+
+    const toX = i => pad + (i / (vals.length - 1)) * (W - pad * 2);
+    const toY = v => H - pad - ((v - minV) / range) * (H - pad * 2);
+
+    // Zero line
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    const y0 = toY(0);
+    ctx.beginPath(); ctx.moveTo(pad, y0); ctx.lineTo(W - pad, y0); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Fill
+    const lastY = toY(vals[vals.length - 1]);
+    const fillColor = vals[vals.length - 1] >= 0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)';
+    ctx.beginPath();
+    ctx.moveTo(toX(0), y0);
+    vals.forEach((v, i) => ctx.lineTo(toX(i), toY(v)));
+    ctx.lineTo(toX(vals.length - 1), y0);
+    ctx.closePath();
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    ctx.strokeStyle = vals[vals.length - 1] >= 0 ? '#22c55e' : '#ef4444';
+    ctx.lineWidth = 2;
+    vals.forEach((v, i) => i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v)));
+    ctx.stroke();
+}
+
+// ── Scanner Custom Indicator Builder ─────────────────────────
+const _customIndicators = [];   // [{name, type, period, period2, tf, values:{sym:val}}]
+
+function toggleCustomIndBuilder() {
+    const el = document.getElementById('custom-ind-builder');
+    if (!el) return;
+    el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+async function addCustomIndicator() {
+    const name    = document.getElementById('cib-name')?.value.trim()    || 'Custom';
+    const type    = document.getElementById('cib-type')?.value           || 'rsi';
+    const period  = parseInt(document.getElementById('cib-period')?.value || 14);
+    const period2 = parseInt(document.getElementById('cib-period2')?.value) || null;
+    const tf      = document.getElementById('cib-tf')?.value             || 'd';
+
+    const symbols = scannerState.data?.map(r => r.symbol) || [];
+    if (!symbols.length) { toast('Run scanner first', 'warn'); return; }
+
+    const btn = document.querySelector('.cib-add');
+    if (btn) { btn.disabled = true; btn.textContent = 'Computing…'; }
+    try {
+        const resp = await apiFetch(`${API}/scanner/custom-indicator`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbols, indicator: { type, period, period2, timeframe: tf } }),
+        });
+        const valMap = {};
+        resp.forEach(r => { valMap[r.symbol] = r.value; });
+        _customIndicators.push({ name, type, period, period2, tf, values: valMap });
+        _renderCustomIndList();
+        renderScannerTable();
+        toast(`Added "${name}"`, 'success');
+    } catch (e) {
+        toast('Custom indicator failed: ' + e.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '+ Add Column'; }
+    }
+}
+
+function removeCustomIndicator(idx) {
+    _customIndicators.splice(idx, 1);
+    _renderCustomIndList();
+    renderScannerTable();
+}
+
+function _renderCustomIndList() {
+    const el = document.getElementById('cib-active');
+    if (!el) return;
+    if (!_customIndicators.length) { el.innerHTML = ''; return; }
+    el.innerHTML = '<div class="cib-active-label">Active:</div>' +
+        _customIndicators.map((ind, i) =>
+            `<span class="cib-chip">${ind.name} <button onclick="removeCustomIndicator(${i})">✕</button></span>`
+        ).join('');
+}
+
 // ── Backtest Functions ────────────────────────────────────────
 async function loadBacktest(symbol) {
     const statusEl = document.getElementById('backtest-status');

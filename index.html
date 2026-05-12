@@ -458,49 +458,135 @@
     <!-- ── KNN Area ── -->
     <div id="knn-area" class="stats-container" style="display:none;">
 
-      <!-- Loading state -->
-      <div id="knn-loading" style="display:none; align-items:center; justify-content:center; gap:10px; padding:40px; color:var(--text-muted);">
-        <span class="spinner"></span> Computing KNN lookalikes…
+      <!-- Sub-tab bar -->
+      <div class="knn-subtabs">
+        <button class="knn-stab knn-stab-active" id="knn-stab-lookalike" onclick="switchKNNTab('lookalike')">🔍 Lookalike</button>
+        <button class="knn-stab" id="knn-stab-scan" onclick="switchKNNTab('scan')">📡 Scan Watchlist</button>
+        <button class="knn-stab" id="knn-stab-wf" onclick="switchKNNTab('wf')">📈 Walk-Forward</button>
       </div>
 
-      <!-- Prediction KPI cards -->
-      <div class="kpi-row" style="margin-bottom:24px;">
-        <div class="kpi-card prediction-card">
-          <div class="kpi-label">1D Win Rate</div>
-          <div id="knn-win-1d" class="kpi-value">--</div>
-          <div id="knn-mean-1d" class="kpi-sub">Mean: --</div>
+      <!-- ── Lookalike panel ── -->
+      <div id="knn-panel-lookalike">
+        <!-- Loading state -->
+        <div id="knn-loading" style="display:none; align-items:center; justify-content:center; gap:10px; padding:40px; color:var(--text-muted);">
+          <span class="spinner"></span> Computing KNN lookalikes…
         </div>
-        <div class="kpi-card prediction-card">
-          <div class="kpi-label">5D Win Rate</div>
-          <div id="knn-win-5d" class="kpi-value">--</div>
-          <div id="knn-mean-5d" class="kpi-sub">Mean: --</div>
-        </div>
-        <div class="kpi-card prediction-card">
-          <div class="kpi-label">20D Win Rate</div>
-          <div id="knn-win-20d" class="kpi-value">--</div>
-          <div id="knn-mean-20d" class="kpi-sub">Mean: --</div>
-        </div>
-      </div>
 
-      <!-- Feature table + Neighbours table -->
-      <div class="stats-grid">
-        <div class="stats-card">
-          <div class="stats-card-header">Current Market State</div>
-          <table class="knn-feature-table" id="knn-feature-table">
-            <thead><tr><th>Feature</th><th>Value</th></tr></thead>
-            <tbody></tbody>
-          </table>
+        <!-- Prediction KPI cards -->
+        <div class="kpi-row" style="margin-bottom:24px;">
+          <div class="kpi-card prediction-card">
+            <div class="kpi-label">1D Win Rate</div>
+            <div id="knn-win-1d" class="kpi-value">--</div>
+            <div id="knn-mean-1d" class="kpi-sub">Mean: --</div>
+          </div>
+          <div class="kpi-card prediction-card">
+            <div class="kpi-label">5D Win Rate</div>
+            <div id="knn-win-5d" class="kpi-value">--</div>
+            <div id="knn-mean-5d" class="kpi-sub">Mean: --</div>
+          </div>
+          <div class="kpi-card prediction-card">
+            <div class="kpi-label">20D Win Rate</div>
+            <div id="knn-win-20d" class="kpi-value">--</div>
+            <div id="knn-mean-20d" class="kpi-sub">Mean: --</div>
+          </div>
         </div>
-        <div class="stats-card">
-          <div class="stats-card-header">Historical Lookalikes (K=15)</div>
-          <div style="overflow-x:auto;">
-            <table class="knn-feature-table" id="knn-neighbors-table">
-              <thead><tr><th>Date</th><th>Distance</th><th>1D</th><th>5D</th><th>20D</th></tr></thead>
+
+        <!-- Feature table + Neighbours table -->
+        <div class="stats-grid">
+          <div class="stats-card">
+            <div class="stats-card-header">Current Market State</div>
+            <table class="knn-feature-table" id="knn-feature-table">
+              <thead><tr><th>Feature</th><th>Value</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
+          <div class="stats-card">
+            <div class="stats-card-header">Historical Lookalikes (K=15)</div>
+            <div style="overflow-x:auto;">
+              <table class="knn-feature-table" id="knn-neighbors-table">
+                <thead><tr><th>Date</th><th>Distance</th><th>1D</th><th>5D</th><th>20D</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      </div><!-- #knn-panel-lookalike -->
+
+      <!-- ── Scan Watchlist panel ── -->
+      <div id="knn-panel-scan" style="display:none;">
+        <div class="knn-scan-controls">
+          <button class="btn btn-primary" onclick="loadKNNScan()">⟳ Scan All Symbols</button>
+          <span id="knn-scan-status" class="scanner-ts"></span>
+        </div>
+        <div id="knn-scan-loading" style="display:none; align-items:center; gap:10px; padding:30px; color:var(--text-muted);">
+          <span class="spinner"></span> Running KNN on all watchlist symbols…
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="knn-feature-table knn-scan-table" id="knn-scan-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>1D Win%</th><th>1D Mean</th>
+                <th>5D Win%</th><th>5D Mean</th>
+                <th>20D Win%</th><th>20D Mean</th>
+                <th>As Of</th>
+              </tr>
+            </thead>
+            <tbody id="knn-scan-tbody"></tbody>
+          </table>
+        </div>
+      </div><!-- #knn-panel-scan -->
+
+      <!-- ── Walk-Forward panel ── -->
+      <div id="knn-panel-wf" style="display:none;">
+        <div class="knn-wf-controls">
+          <label class="knn-wf-label">Horizon (days)
+            <select id="knn-wf-horizon" class="wl-sf-select" style="width:80px;">
+              <option value="5" selected>5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+            </select>
+          </label>
+          <label class="knn-wf-label">Step (bars)
+            <select id="knn-wf-step" class="wl-sf-select" style="width:80px;">
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="21" selected>21</option>
+            </select>
+          </label>
+          <label class="knn-wf-label">K neighbours
+            <select id="knn-wf-k" class="wl-sf-select" style="width:80px;">
+              <option value="5">5</option>
+              <option value="10" selected>10</option>
+              <option value="15">15</option>
+            </select>
+          </label>
+          <button class="btn btn-primary" onclick="loadKNNWalkForward()">▶ Run Backtest</button>
+          <span id="knn-wf-status" class="scanner-ts"></span>
+        </div>
+        <div id="knn-wf-loading" style="display:none; align-items:center; gap:10px; padding:30px; color:var(--text-muted);">
+          <span class="spinner"></span> Running walk-forward backtest…
+        </div>
+        <div id="knn-wf-results" style="display:none;">
+          <!-- KPI row -->
+          <div class="kpi-row" style="margin-bottom:16px;" id="knn-wf-kpis"></div>
+          <!-- Equity curve canvas -->
+          <div class="stats-card" style="margin-bottom:16px;">
+            <div class="stats-card-header">Equity Curve (cumulative %)</div>
+            <canvas id="knn-wf-chart" height="160" style="width:100%;"></canvas>
+          </div>
+          <!-- Detail table -->
+          <div class="stats-card">
+            <div class="stats-card-header">Recent Trades</div>
+            <div style="overflow-x:auto;">
+              <table class="knn-feature-table" id="knn-wf-table">
+                <thead><tr><th>Date</th><th>Predicted</th><th>Pred Mean%</th><th>Actual%</th><th>Correct</th></tr></thead>
+                <tbody id="knn-wf-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div><!-- #knn-panel-wf -->
 
     </div><!-- #knn-area -->
 
@@ -699,8 +785,11 @@
         <div class="panel-divider"></div>
 
         <!-- ── Signal panel ── -->
-        <div class="trend-panel-signal">
-          <div class="panel-header">Signal Summary</div>
+        <div class="trend-panel-signal" id="trend-panel-signal">
+          <div class="panel-header trend-signal-header">
+            Signal Summary
+            <button class="btn-panel-collapse" id="btn-signal-collapse" onclick="toggleSignalPanel()" title="Collapse signal panel">⊟</button>
+          </div>
 
           <!-- Composite signal badge (most prominent element) -->
           <div class="trend-composite-wrap">
@@ -814,7 +903,49 @@
           <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="mom"   onclick="toggleScanGroup('mom')">Momentum</button>
           <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="vol"   onclick="toggleScanGroup('vol')">Volatility</button>
           <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="trend" onclick="toggleScanGroup('trend')">Trend</button>
+          <button class="ind-pill scan-grp-btn" style="background:var(--accent-blue);color:#fff;border-color:var(--accent-blue);" onclick="toggleCustomIndBuilder()">+ Custom</button>
         </div>
+      </div>
+
+      <!-- Custom Indicator Builder -->
+      <div id="custom-ind-builder" class="custom-ind-builder" style="display:none;">
+        <div class="custom-ind-header">
+          <span>Custom Indicator</span>
+          <button class="btn-panel-collapse" onclick="toggleCustomIndBuilder()">✕</button>
+        </div>
+        <div class="custom-ind-form">
+          <label class="cib-label">Name
+            <input id="cib-name" type="text" class="cib-input" placeholder="e.g. RSI(20)" value="Custom" />
+          </label>
+          <label class="cib-label">Type
+            <select id="cib-type" class="cib-select">
+              <option value="rsi">RSI</option>
+              <option value="roc">ROC %</option>
+              <option value="sma">SMA (or SMA cross %)</option>
+              <option value="ema">EMA (or EMA cross %)</option>
+              <option value="atr_pct">ATR %</option>
+              <option value="macd_hist">MACD Hist</option>
+              <option value="bb_b">Bollinger %B</option>
+              <option value="vol_ratio">Volume Ratio</option>
+              <option value="cci">CCI</option>
+            </select>
+          </label>
+          <label class="cib-label">Period
+            <input id="cib-period" type="number" class="cib-input cib-num" value="14" min="2" max="200" />
+          </label>
+          <label class="cib-label" title="Second period for cross calculations">Period 2
+            <input id="cib-period2" type="number" class="cib-input cib-num" placeholder="—" min="2" max="500" />
+          </label>
+          <label class="cib-label">Timeframe
+            <select id="cib-tf" class="cib-select">
+              <option value="d" selected>Daily</option>
+              <option value="w">Weekly</option>
+              <option value="m">Monthly</option>
+            </select>
+          </label>
+          <button class="btn btn-primary cib-add" onclick="addCustomIndicator()">+ Add Column</button>
+        </div>
+        <div id="cib-active" class="cib-active-list"></div>
       </div>
 
       <!-- Scrollable table -->

@@ -106,8 +106,10 @@ def _pct_rank(series: pd.Series, lookback: int) -> pd.Series:
 
 # ── per-timeframe computation ─────────────────────────────────────────────────
 
-def _compute_tf(df: pd.DataFrame, lookback: int):
-    """Compute all scanner metrics for one symbol × timeframe."""
+def _compute_tf(df: pd.DataFrame, lookback: int, roc_periods: tuple | None = None):
+    """Compute all scanner metrics for one symbol × timeframe.
+    roc_periods = (1m_bars, 3m_bars, 6m_bars) — pass explicitly for non-daily data.
+    """
     min_bars = max(22, lookback // 8)
     if df is None or len(df) < min_bars:
         return None
@@ -154,10 +156,16 @@ def _compute_tf(df: pd.DataFrame, lookback: int):
     atr_pct = atr / close.replace(0, np.nan) * 100
 
     # ── Rate of change ────────────────────────────────────────────────
-    nb     = len(close)
-    roc_1m = close.pct_change(min(max(1, lookback // 12), nb - 1)) * 100
-    roc_3m = close.pct_change(min(max(1, lookback //  4), nb - 1)) * 100
-    roc_6m = close.pct_change(min(max(1, lookback //  2), nb - 1)) * 100
+    nb = len(close)
+    if roc_periods is not None:
+        p1, p2, p3 = (min(max(1, p), nb - 1) for p in roc_periods)
+    else:
+        p1 = min(max(1, lookback // 12), nb - 1)
+        p2 = min(max(1, lookback //  4), nb - 1)
+        p3 = min(max(1, lookback //  2), nb - 1)
+    roc_1m = close.pct_change(p1) * 100
+    roc_3m = close.pct_change(p2) * 100
+    roc_6m = close.pct_change(p3) * 100
 
     # ── Volume ratio (5-bar / 20-bar avg) ─────────────────────────────
     v5        = vol.rolling(5).mean()
@@ -524,8 +532,8 @@ def compute_scanner(symbols: list) -> list:
                 'chg':       chg,
                 'ret_1m':    ret_1m,
                 'd':         _safe_tf(d_df, 252),
-                'w':         _safe_tf(w_df, 52),
-                'm':         _safe_tf(m_df, 36),
+                'w':         _safe_tf(w_df,  52, (4, 13, 26)),
+                'm':         _safe_tf(m_df,  36, (1,  3,  6)),
             })
         except Exception as e:
             results.append({
@@ -533,5 +541,98 @@ def compute_scanner(symbols: list) -> list:
                 'price': None, 'chg': None,
                 'd': None, 'w': None, 'm': None,
             })
+
+    return results
+
+
+# ── Custom indicator builder ──────────────────────────────────────────────────
+
+def compute_custom_indicator(symbols: list, indic: dict) -> list:
+    """
+    Compute a single user-defined indicator for every symbol.
+
+    indic keys:
+      type      — 'rsi' | 'roc' | 'sma' | 'ema' | 'atr_pct' | 'macd_hist' | 'bb_b' | 'vol_ratio' | 'cci'
+      period    — primary period (int)
+      period2   — secondary period for SMA cross / MACD slow (int, optional)
+      timeframe — 'd' | 'w' | 'm'  (default 'd')
+
+    Returns list of {symbol, value} dicts.
+    """
+    tf      = indic.get('timeframe', 'd')
+    itype   = indic.get('type', 'rsi').lower()
+    period  = int(indic.get('period', 14))
+    period2 = int(indic.get('period2', 26)) if indic.get('period2') else None
+
+    freq_map = {'d': 'daily', 'w': 'weekly', 'm': 'daily'}
+    freq     = freq_map.get(tf, 'daily')
+    limit    = {'d': 300, 'w': 150, 'm': 600}.get(tf, 300)
+
+    results = []
+    for sym in symbols:
+        try:
+            df = db.get_ohlcv_df(sym, freq, limit=limit)
+            if tf == 'm':
+                df = _to_monthly(df)
+            if df is None or df.empty or len(df) < max(period + 5, 30):
+                results.append({'symbol': sym, 'value': None})
+                continue
+
+            close  = df['close']
+            high   = df['high']
+            low    = df['low']
+            volume = df['volume'] if 'volume' in df.columns else pd.Series(dtype=float)
+
+            if itype == 'rsi':
+                series = _rsi(close, period)
+            elif itype == 'roc':
+                series = close.pct_change(period) * 100
+            elif itype == 'sma':
+                series = close.rolling(period).mean()
+                if period2:
+                    s2 = close.rolling(period2).mean()
+                    series = (close / s2.replace(0, np.nan) - 1.0) * 100
+            elif itype == 'ema':
+                series = close.ewm(span=period, adjust=False).mean()
+                if period2:
+                    s2 = close.ewm(span=period2, adjust=False).mean()
+                    series = (close / s2.replace(0, np.nan) - 1.0) * 100
+            elif itype == 'atr_pct':
+                prev_c = close.shift(1)
+                tr = pd.concat([
+                    high - low,
+                    (high - prev_c).abs(),
+                    (low  - prev_c).abs(),
+                ], axis=1).max(axis=1)
+                atr = tr.ewm(alpha=1.0 / period, adjust=False).mean()
+                series = atr / close.replace(0, np.nan) * 100
+            elif itype == 'macd_hist':
+                slow = period2 or period * 2
+                ema_fast  = close.ewm(span=period, adjust=False).mean()
+                ema_slow  = close.ewm(span=slow,   adjust=False).mean()
+                macd_line = ema_fast - ema_slow
+                series    = macd_line - macd_line.ewm(span=9, adjust=False).mean()
+            elif itype == 'bb_b':
+                mid  = close.rolling(period).mean()
+                std  = close.rolling(period).std(ddof=0)
+                series = (close - (mid - 2 * std)) / (4 * std.replace(0, np.nan)) * 100
+            elif itype == 'vol_ratio':
+                slow   = period2 or period * 4
+                v_fast = volume.rolling(period).mean()
+                v_slow = volume.rolling(slow).mean()
+                series = v_fast / v_slow.replace(0, np.nan)
+            elif itype == 'cci':
+                hlc3 = (high + low + close) / 3.0
+                sma  = hlc3.rolling(period).mean()
+                mad  = hlc3.rolling(period).apply(lambda x: np.abs(x - x.mean()).mean(), raw=True)
+                series = (hlc3 - sma) / (0.015 * mad.replace(0, np.nan))
+            else:
+                results.append({'symbol': sym, 'value': None})
+                continue
+
+            val = _last(series)
+            results.append({'symbol': sym, 'value': round(val, 4) if val is not None else None})
+        except Exception:
+            results.append({'symbol': sym, 'value': None})
 
     return results

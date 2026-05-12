@@ -628,6 +628,28 @@ function _updateSignalPanel(data, ohlcvRows) {
     }
 }
 
+// ── Signal panel collapse ─────────────────────────────────────
+function toggleSignalPanel() {
+    const panel  = document.getElementById('trend-panel-signal');
+    const btn    = document.getElementById('btn-signal-collapse');
+    if (!panel) return;
+    const collapsed = panel.classList.toggle('signal-panel-collapsed');
+    if (btn) btn.textContent = collapsed ? '⊞' : '⊟';
+    try { localStorage.setItem('wn_signal_collapsed', collapsed ? '1' : '0'); } catch(_) {}
+}
+
+// Restore collapse state on load
+(function _restoreSignalPanel() {
+    try {
+        if (localStorage.getItem('wn_signal_collapsed') === '1') {
+            const panel = document.getElementById('trend-panel-signal');
+            const btn   = document.getElementById('btn-signal-collapse');
+            if (panel) { panel.classList.add('signal-panel-collapsed'); }
+            if (btn)   { btn.textContent = '⊞'; }
+        }
+    } catch(_) {}
+})();
+
 // ── Config panel ──────────────────────────────────────────────
 function renderTrendConfig() {
     const el = document.getElementById('trend-config-panel');

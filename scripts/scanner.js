@@ -255,6 +255,25 @@ function _buildHeader() {
         }
     }
 
+    // Custom indicator header columns
+    if (typeof _customIndicators !== 'undefined' && _customIndicators.length) {
+        const thG = _th('scan-th scan-th-group');
+        thG.textContent = 'Custom';
+        thG.colSpan     = _customIndicators.length;
+        tr1.appendChild(thG);
+
+        for (const ci of _customIndicators) {
+            const thM = _th('scan-th scan-th-metric');
+            thM.textContent = ci.name;
+            thM.colSpan     = 1;
+            tr2.appendChild(thM);
+
+            const thT = _th('scan-th scan-th-tf');
+            thT.textContent = ci.tf.toUpperCase();
+            tr3.appendChild(thT);
+        }
+    }
+
     return [tr1, tr2, tr3];
 }
 
@@ -331,6 +350,24 @@ function _buildRow(row) {
                 }
                 tr.appendChild(td);
             }
+        }
+    }
+
+    // Custom indicator columns (from _customIndicators in app.js)
+    if (typeof _customIndicators !== 'undefined') {
+        for (const ci of _customIndicators) {
+            const val = ci.values[row.symbol];
+            const td  = _td('scan-td');
+            if (val != null) {
+                td.textContent = val.toFixed(2);
+                // Generic coloring: positive = soft bull, negative = soft bear
+                td.className  += val > 0 ? ' sc-s1' : ' sc-b1';
+                td.title       = `${row.symbol} ${ci.name} = ${val}`;
+            } else {
+                td.textContent = '—';
+                td.className  += ' sc-n';
+            }
+            tr.appendChild(td);
         }
     }
 
