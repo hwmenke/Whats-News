@@ -3,6 +3,8 @@ knn_model.py - KNN Lookalike Engine
 Finds K most similar historical moments based on current market conditions.
 """
 
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 import ta

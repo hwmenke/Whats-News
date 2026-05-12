@@ -21,6 +21,8 @@ Timeframe lookbacks used for percentile rank windows:
 Also includes S&P 500 bulk-fetch and signal-based scanner (local features).
 """
 
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 import ta
