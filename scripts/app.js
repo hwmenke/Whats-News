@@ -1301,7 +1301,7 @@ function renderKNN(data) {
 
 // ── KNN Sub-tab switching ─────────────────────────────────────
 function switchKNNTab(tab) {
-    ['lookalike', 'scan', 'wf'].forEach(t => {
+    ['lookalike', 'scan', 'wf', 'imp'].forEach(t => {
         const panel = document.getElementById(`knn-panel-${t}`);
         const btn   = document.getElementById(`knn-stab-${t}`);
         if (panel) panel.style.display = t === tab ? '' : 'none';

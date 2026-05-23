@@ -23,6 +23,7 @@
 
     <button id="btn-focus-mode" class="btn-topbar-icon" title="Focus mode — hide header &amp; tabs (\\)" onclick="toggleFocusMode()">⊟</button>
     <button id="btn-cmd-palette" class="btn-topbar-icon" title="Command palette (⌘K)" onclick="openCommandPalette()">⌘</button>
+    <button class="btn-topbar-icon" title="Keyboard shortcuts (?)" onclick="toggleShortcutsPanel()">?</button>
     <button id="btn-theme" class="btn-topbar-icon" title="Toggle theme" onclick="toggleTheme()">🌙</button>
     <button class="btn-topbar-icon" title="Screenshot" onclick="takeScreenshot()">📷</button>
     <div class="status-dot" title="Connected"></div>
@@ -463,6 +464,7 @@
         <button class="knn-stab knn-stab-active" id="knn-stab-lookalike" onclick="switchKNNTab('lookalike')">🔍 Lookalike</button>
         <button class="knn-stab" id="knn-stab-scan" onclick="switchKNNTab('scan')">📡 Scan Watchlist</button>
         <button class="knn-stab" id="knn-stab-wf" onclick="switchKNNTab('wf')">📈 Walk-Forward</button>
+        <button class="knn-stab" id="knn-stab-imp" onclick="switchKNNTab('imp')">🔬 Feature Importance</button>
       </div>
 
       <!-- ── Lookalike panel ── -->
@@ -587,6 +589,24 @@
           </div>
         </div>
       </div><!-- #knn-panel-wf -->
+
+      <!-- ── Feature Importance panel ── -->
+      <div id="knn-panel-imp" style="display:none;">
+        <div class="knn-scan-controls">
+          <button class="btn btn-primary" onclick="loadKNNImportance()">🔬 Compute Importance</button>
+          <span style="color:var(--text-muted); font-size:12px;">Permutation importance — shows which features drive the KNN similarity search</span>
+          <span id="knn-imp-status" class="scanner-ts"></span>
+        </div>
+        <div id="knn-imp-loading" style="display:none; align-items:center; gap:10px; padding:30px; color:var(--text-muted);">
+          <span class="spinner"></span> Running permutation importance…
+        </div>
+        <div id="knn-imp-results" style="display:none;">
+          <div class="stats-card">
+            <div class="stats-card-header" id="knn-imp-header">Feature Importance</div>
+            <div id="knn-imp-bars"></div>
+          </div>
+        </div>
+      </div><!-- #knn-panel-imp -->
 
     </div><!-- #knn-area -->
 
@@ -1113,11 +1133,43 @@
 
     <!-- ── Sector Heatmap Area ── -->
     <div id="sector-area" class="stats-container" style="display:none;">
-      <div class="sector-toolbar">
-        <span class="sector-title">Sector Performance</span>
-        <button class="btn btn-ghost btn-sm" onclick="loadSectorHeatmap()">⟳ Refresh</button>
+      <!-- Sub-tabs -->
+      <div class="knn-subtabs" style="margin-bottom:12px;">
+        <button class="knn-stab knn-stab-active" id="sector-stab-heat" onclick="switchSectorTab('heat')">🗺️ Heatmap</button>
+        <button class="knn-stab" id="sector-stab-rrg" onclick="switchSectorTab('rrg')">🔄 Rotation (RRG)</button>
       </div>
-      <div id="sector-heatmap-container"></div>
+
+      <!-- Heatmap panel -->
+      <div id="sector-panel-heat">
+        <div class="sector-toolbar">
+          <span class="sector-title">Sector Performance</span>
+          <button class="btn btn-ghost btn-sm" onclick="loadSectorHeatmap()">⟳ Refresh</button>
+        </div>
+        <div id="sector-heatmap-container"></div>
+      </div>
+
+      <!-- RRG panel -->
+      <div id="sector-panel-rrg" style="display:none;">
+        <div class="sector-toolbar">
+          <span class="sector-title">Relative Rotation Graph</span>
+          <label class="overlay-section-label" style="margin-left:12px;">Benchmark
+            <input id="rrg-benchmark" type="text" class="alert-input" value="SPY" maxlength="10" style="width:70px;"/>
+          </label>
+          <label class="overlay-section-label" style="margin-left:8px;">Period
+            <select id="rrg-period" class="alert-select" style="width:60px;">
+              <option value="5">5W</option>
+              <option value="10" selected>10W</option>
+              <option value="20">20W</option>
+            </select>
+          </label>
+          <button class="btn btn-primary btn-sm" style="margin-left:8px;" onclick="loadRRG()">▶ Plot</button>
+        </div>
+        <div id="rrg-loading" style="display:none; padding:32px; text-align:center; color:var(--text-muted);">
+          <span class="spinner"></span> Computing RRG…
+        </div>
+        <canvas id="rrg-canvas" style="width:100%; max-height:520px; display:block;"></canvas>
+        <div id="rrg-legend" class="rrg-legend"></div>
+      </div>
     </div><!-- #sector-area -->
 
     <!-- ── Compare Area ── -->
@@ -1222,6 +1274,37 @@
       <div id="strategy-list" style="margin-bottom:16px;"></div>
       <div id="strategy-results" style="margin-top:8px;"></div>
     </div><!-- #strategy-area -->
+
+    <!-- ── Keyboard Shortcuts Modal ── -->
+    <div id="shortcuts-modal" class="bulk-modal-overlay" style="display:none;"
+         onclick="if(event.target===this)toggleShortcutsPanel()">
+      <div class="bulk-modal-card" role="dialog" aria-label="Keyboard Shortcuts" style="max-width:520px;">
+        <div class="bulk-modal-header">
+          <span>Keyboard Shortcuts</span>
+          <button class="bulk-modal-close" onclick="toggleShortcutsPanel()">×</button>
+        </div>
+        <div class="bulk-modal-body" style="padding:16px;">
+          <table class="shortcuts-table">
+            <tbody>
+              <tr class="shortcuts-group"><td colspan="2">Navigation</td></tr>
+              <tr><td><kbd>⌘K</kbd></td><td>Open command palette</td></tr>
+              <tr><td><kbd>?</kbd></td><td>Show this shortcuts panel</td></tr>
+              <tr><td><kbd>\</kbd></td><td>Toggle focus mode</td></tr>
+              <tr class="shortcuts-group"><td colspan="2">Charts</td></tr>
+              <tr><td><kbd>v</kbd></td><td>Toggle volume profile</td></tr>
+              <tr><td><kbd>r</kbd></td><td>Start chart replay</td></tr>
+              <tr><td><kbd>Esc</kbd></td><td>Stop replay</td></tr>
+              <tr><td><kbd>→</kbd></td><td>Next replay bar</td></tr>
+              <tr><td><kbd>←</kbd></td><td>Previous replay bar</td></tr>
+              <tr class="shortcuts-group"><td colspan="2">Watchlist</td></tr>
+              <tr><td><kbd>/</kbd></td><td>Focus watchlist search</td></tr>
+              <tr class="shortcuts-group"><td colspan="2">Modals</td></tr>
+              <tr><td><kbd>Esc</kbd></td><td>Close modal / panel</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
     <!-- ── Risk Calculator Modal ── -->
     <div id="risk-modal" class="bulk-modal-overlay" style="display:none;"

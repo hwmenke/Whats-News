@@ -3191,3 +3191,91 @@ details[open] .notes-summary::before { content: '▼ '; }
   line-height: 1;
 }
 .cib-chip button:hover { color: #fff; }
+
+/* ══════════════════════════════════════════════════════════
+   Keyboard Shortcuts Modal
+   ══════════════════════════════════════════════════════════ */
+.shortcuts-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.shortcuts-table td {
+  padding: 5px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.shortcuts-table td:first-child {
+  width: 100px;
+  white-space: nowrap;
+}
+.shortcuts-group td {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--accent);
+  text-transform: uppercase;
+  padding-top: 12px;
+  border-bottom: 1px solid var(--accent);
+}
+kbd {
+  display: inline-block;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* ══════════════════════════════════════════════════════════
+   RRG Legend
+   ══════════════════════════════════════════════════════════ */
+.rrg-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+}
+.rrg-chip {
+  font-size: 11px;
+  border: 1px solid;
+  border-radius: 12px;
+  padding: 2px 10px;
+}
+
+/* ══════════════════════════════════════════════════════════
+   KNN Feature Importance bars
+   ══════════════════════════════════════════════════════════ */
+.imp-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 70px 70px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.imp-row:last-child { border-bottom: none; }
+.imp-label { font-size: 12px; color: var(--text); }
+.imp-bar-wrap {
+  background: var(--bg-primary);
+  border-radius: 3px;
+  height: 12px;
+  overflow: hidden;
+}
+.imp-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .3s ease;
+}
+.imp-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+  color: #3b82f6;
+}
+.imp-cur {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: right;
+}

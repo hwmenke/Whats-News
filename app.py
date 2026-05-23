@@ -1785,6 +1785,140 @@ def run_strategy_route(strategy_id):
     return jsonify([r for r in results if r is not None])
 
 
+# -- Relative Rotation Graph ---------------------------------------------------
+
+@app.route("/api/rrg", methods=["GET"])
+def get_rrg():
+    import numpy as np
+
+    benchmark = request.args.get("benchmark", "SPY").upper()
+    period    = max(2, min(int(request.args.get("period", 10)), 52))
+    trail_n   = max(2, min(int(request.args.get("trail", 5)), 12))
+
+    bdf = db.get_ohlcv_df(benchmark, "weekly", limit=120)
+    if bdf.empty:
+        return _err(f"No data for benchmark {benchmark}. Fetch it first.", 404)
+
+    symbols = [s["symbol"] for s in db.list_symbols() if s["symbol"] != benchmark]
+    if not symbols:
+        return jsonify({"benchmark": benchmark, "symbols": []})
+
+    def _quadrant(rs_r, rs_m):
+        if rs_r >= 100 and rs_m >= 100: return "leading"
+        if rs_r >= 100 and rs_m <  100: return "weakening"
+        if rs_r <  100 and rs_m <  100: return "lagging"
+        return "improving"
+
+    results = []
+    for sym in symbols:
+        try:
+            df = db.get_ohlcv_df(sym, "weekly", limit=120)
+            if df.empty:
+                continue
+            common = df.index.intersection(bdf.index)
+            if len(common) < period + 10:
+                continue
+
+            sc = df.loc[common, "close"]
+            bc = bdf.loc[common, "close"]
+
+            # JdK RS-Ratio: relative strength smoothed and normalised to 100
+            rs_raw    = sc / bc.replace(0, float("nan"))
+            rs_ema    = rs_raw.ewm(span=period, adjust=False).mean()
+            rs_roll   = rs_ema.rolling(min(52, len(rs_ema))).mean().replace(0, float("nan"))
+            rs_ratio  = (rs_ema / rs_roll * 100).fillna(100)
+
+            # JdK RS-Momentum: rate of change of RS-Ratio
+            rs_mom    = rs_ratio.pct_change(period) * 100 + 100
+
+            # Build trail (last trail_n non-NaN points)
+            valid = [(r, m) for r, m in zip(rs_ratio.values, rs_mom.values)
+                     if np.isfinite(r) and np.isfinite(m)]
+            trail = [{"rs_ratio": round(r, 3), "rs_mom": round(m, 3)}
+                     for r, m in valid[-trail_n:]]
+            if not trail:
+                continue
+
+            last = trail[-1]
+            results.append({
+                "symbol":   sym,
+                "rs_ratio": last["rs_ratio"],
+                "rs_mom":   last["rs_mom"],
+                "trail":    trail,
+                "quadrant": _quadrant(last["rs_ratio"], last["rs_mom"]),
+            })
+        except Exception:
+            continue
+
+    return jsonify({"benchmark": benchmark, "symbols": results})
+
+
+# -- KNN Feature Importance ----------------------------------------------------
+
+@app.route("/api/knn/feature-importance/<string:symbol>", methods=["GET"])
+def knn_feature_importance(symbol):
+    try:
+        k = int(request.args.get("k", 15))
+        n = int(request.args.get("n_perms", 20))
+    except (TypeError, ValueError):
+        k, n = 15, 20
+    try:
+        result = knn_model.feature_importance(symbol.upper(), k=k, n_perms=n)
+        if "error" in result:
+            return _err(result["error"], 404)
+        return jsonify(result)
+    except Exception as e:
+        return _err(str(e), 500)
+
+
+# -- Earnings markers for chart ------------------------------------------------
+
+@app.route("/api/earnings/<string:symbol>", methods=["GET"])
+def get_earnings_dates(symbol):
+    """Return upcoming + recent past earnings dates for a symbol."""
+    import datetime as dt
+    sym = symbol.upper()
+    sym_row = next((s for s in db.list_symbols() if s["symbol"] == sym), None)
+    dates = []
+
+    # Next earnings from DB
+    if sym_row and sym_row.get("next_earnings"):
+        dates.append({"date": sym_row["next_earnings"], "source": "db"})
+
+    # Try yfinance calendar for historical earnings
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(sym)
+        cal    = ticker.calendar
+        if cal is not None and not (hasattr(cal, "empty") and cal.empty):
+            for col in (cal.columns if hasattr(cal, "columns") else []):
+                if "earnings" in col.lower():
+                    for v in cal[col].values:
+                        try:
+                            d = str(v)[:10]
+                            if len(d) == 10:
+                                dates.append({"date": d, "source": "yf"})
+                        except Exception:
+                            pass
+    except Exception:
+        pass
+
+    # Deduplicate
+    seen = set()
+    unique = []
+    for d in dates:
+        if d["date"] not in seen:
+            seen.add(d["date"])
+            unique.append(d)
+
+    today   = dt.date.today().isoformat()
+    cutoff  = (dt.date.today() - dt.timedelta(days=730)).isoformat()
+    unique  = [d for d in unique if d["date"] >= cutoff]
+    unique.sort(key=lambda x: x["date"])
+
+    return jsonify({"symbol": sym, "dates": unique})
+
+
 # -- Entry point ----------------------------------------------------------------
 
 if __name__ == "__main__":

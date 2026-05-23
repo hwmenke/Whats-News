@@ -964,4 +964,269 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-replay-stop')?.addEventListener('click', stopReplay);
     document.getElementById('btn-replay-next')?.addEventListener('click', () => replayNext(1));
     document.getElementById('btn-replay-prev')?.addEventListener('click', replayPrev);
+
+    // ? key → shortcuts panel
+    document.addEventListener('keydown', e => {
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (e.key === '?') { e.preventDefault(); toggleShortcutsPanel(); }
+    });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// KEYBOARD SHORTCUTS PANEL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function toggleShortcutsPanel() {
+    const m = document.getElementById('shortcuts-modal');
+    if (!m) return;
+    m.style.display = m.style.display === 'none' ? 'flex' : 'none';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EARNINGS MARKERS ON CHART
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function loadEarningsMarkers(symbol) {
+    if (!symbol) return;
+    try {
+        const data = await apiFetch(`${API}/earnings/${symbol}`);
+        _applyEarningsMarkers(symbol, data.dates || []);
+    } catch (_) {}
+}
+
+function _applyEarningsMarkers(symbol, dates) {
+    if (!dates.length) return;
+    const candle = typeof series !== 'undefined' ? series.daily?.candle : null;
+    if (!candle) return;
+
+    // Add earnings as small circle markers (merged with existing entry signal markers)
+    const existing = (typeof trendState !== 'undefined' && trendState.earningsMarkers) || [];
+    const eMarkers = dates.map(d => ({
+        time:     d.date,
+        position: 'aboveBar',
+        color:    '#a855f7',
+        shape:    'circle',
+        size:     1,
+        text:     'E',
+    }));
+
+    // Store so they can be re-applied when chart data reloads
+    if (typeof window !== 'undefined') {
+        window._earningsMarkers = window._earningsMarkers || {};
+        window._earningsMarkers[symbol] = eMarkers;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTOR SUB-TAB SWITCH
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function switchSectorTab(tab) {
+    ['heat', 'rrg'].forEach(t => {
+        const panel = document.getElementById(`sector-panel-${t}`);
+        const btn   = document.getElementById(`sector-stab-${t}`);
+        if (panel) panel.style.display = t === tab ? '' : 'none';
+        if (btn)   btn.classList.toggle('knn-stab-active', t === tab);
+    });
+    if (tab === 'rrg') loadRRG();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RELATIVE ROTATION GRAPH (RRG)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function loadRRG() {
+    const benchmark = document.getElementById('rrg-benchmark')?.value.trim().toUpperCase() || 'SPY';
+    const period    = document.getElementById('rrg-period')?.value || 10;
+    const loading   = document.getElementById('rrg-loading');
+    const canvas    = document.getElementById('rrg-canvas');
+
+    if (loading) loading.style.display = 'block';
+    if (canvas)  canvas.style.display  = 'none';
+
+    try {
+        const data = await apiFetch(`${API}/rrg?benchmark=${benchmark}&period=${period}&trail=5`);
+        renderRRG(data);
+    } catch (e) {
+        toast('RRG failed: ' + e.message, 'error');
+    } finally {
+        if (loading) loading.style.display = 'none';
+        if (canvas)  canvas.style.display  = 'block';
+    }
+}
+
+function renderRRG(data) {
+    const canvas = document.getElementById('rrg-canvas');
+    const legend = document.getElementById('rrg-legend');
+    if (!canvas) return;
+
+    const symbols = data.symbols || [];
+    const W = canvas.offsetWidth || 640;
+    const H = Math.min(W * 0.75, 520);
+    canvas.width  = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    // ── Find data range ──────────────────────────────────────────
+    const allX = symbols.flatMap(s => s.trail.map(p => p.rs_ratio));
+    const allY = symbols.flatMap(s => s.trail.map(p => p.rs_mom));
+    if (!allX.length) {
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('No data — fetch symbols and benchmark first', W / 2, H / 2);
+        return;
+    }
+
+    const pad   = 48;
+    const cx    = W / 2;
+    const cy    = H / 2;
+    const xMin  = Math.min(...allX, 97)  - 1;
+    const xMax  = Math.max(...allX, 103) + 1;
+    const yMin  = Math.min(...allY, 97)  - 1;
+    const yMax  = Math.max(...allY, 103) + 1;
+
+    const toX = v => pad + (v - xMin) / (xMax - xMin) * (W - pad * 2);
+    const toY = v => H - pad - (v - yMin) / (yMax - yMin) * (H - pad * 2);
+    const x100 = toX(100);
+    const y100 = toY(100);
+
+    // ── Quadrant fills ────────────────────────────────────────────
+    const quads = [
+        { x: x100, y: pad,  w: W - pad - x100, h: y100 - pad, color: 'rgba(34,197,94,0.08)',  label: 'Leading'   },
+        { x: x100, y: y100, w: W - pad - x100, h: H - pad - y100, color: 'rgba(234,179,8,0.08)',  label: 'Weakening' },
+        { x: pad,  y: y100, w: x100 - pad,     h: H - pad - y100, color: 'rgba(239,68,68,0.08)', label: 'Lagging'   },
+        { x: pad,  y: pad,  w: x100 - pad,     h: y100 - pad, color: 'rgba(59,130,246,0.08)', label: 'Improving' },
+    ];
+    const qColors = { Leading: '#22c55e', Weakening: '#eab308', Lagging: '#ef4444', Improving: '#3b82f6' };
+    quads.forEach(q => {
+        ctx.fillStyle = q.color;
+        ctx.fillRect(q.x, q.y, q.w, q.h);
+        ctx.fillStyle = q.color.replace(/0\.08/, '0.5');
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = q.x < cx ? 'left' : 'right';
+        ctx.fillText(q.label, q.x < cx ? q.x + 6 : q.x + q.w - 6,
+                               q.y < cy ? q.y + 16 : q.y + q.h - 6);
+    });
+
+    // ── Axes ───────────────────────────────────────────────────────
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(x100, pad); ctx.lineTo(x100, H - pad); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad, y100); ctx.lineTo(W - pad, y100); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Axis labels
+    ctx.fillStyle   = '#8b949e';
+    ctx.font        = '10px monospace';
+    ctx.textAlign   = 'center';
+    ctx.fillText('RS-Ratio →', W / 2, H - 6);
+    ctx.save();
+    ctx.translate(12, H / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('RS-Momentum ↑', 0, 0);
+    ctx.restore();
+
+    // ── Symbols ────────────────────────────────────────────────────
+    const qMap = { leading: '#22c55e', weakening: '#eab308', lagging: '#ef4444', improving: '#3b82f6' };
+
+    symbols.forEach(sym => {
+        const color = qMap[sym.quadrant] || '#8b949e';
+        const trail = sym.trail;
+        if (trail.length < 2) return;
+
+        // Trail line (faded)
+        ctx.beginPath();
+        ctx.strokeStyle = color + '60';
+        ctx.lineWidth   = 1.5;
+        trail.forEach((p, i) => {
+            const px = toX(p.rs_ratio);
+            const py = toY(p.rs_mom);
+            i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+
+        // Current dot
+        const last = trail[trail.length - 1];
+        const px   = toX(last.rs_ratio);
+        const py   = toY(last.rs_mom);
+        ctx.beginPath();
+        ctx.arc(px, py, 6, 0, Math.PI * 2);
+        ctx.fillStyle   = color;
+        ctx.fill();
+        ctx.strokeStyle = '#0d1117';
+        ctx.lineWidth   = 1.5;
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle  = '#e6edf3';
+        ctx.font       = 'bold 10px monospace';
+        ctx.textAlign  = 'left';
+        ctx.fillText(sym.symbol, px + 8, py + 4);
+    });
+
+    // ── Legend ─────────────────────────────────────────────────────
+    if (legend) {
+        const counts = { leading: 0, weakening: 0, lagging: 0, improving: 0 };
+        symbols.forEach(s => { if (counts[s.quadrant] !== undefined) counts[s.quadrant]++; });
+        legend.innerHTML = Object.entries(qMap).map(([q, c]) =>
+            `<span class="rrg-chip" style="border-color:${c}; color:${c};">
+              ${q.charAt(0).toUpperCase() + q.slice(1)}: ${counts[q]}
+            </span>`
+        ).join('');
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// KNN FEATURE IMPORTANCE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function loadKNNImportance() {
+    if (!state.activeSymbol) { toast('Select a symbol first', 'warn'); return; }
+    const loading = document.getElementById('knn-imp-loading');
+    const results = document.getElementById('knn-imp-results');
+    const status  = document.getElementById('knn-imp-status');
+    if (loading) loading.style.display = 'flex';
+    if (results) results.style.display = 'none';
+    if (status)  status.textContent    = '';
+
+    try {
+        const data = await apiFetch(`${API}/knn/feature-importance/${state.activeSymbol}?k=15&n_perms=20`);
+        renderKNNImportance(data);
+        if (status) status.textContent = `Base dist: ${data.base_dist?.toFixed(3)} · ${state.activeSymbol}`;
+    } catch (e) {
+        toast('Feature importance failed: ' + e.message, 'error');
+    } finally {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+function renderKNNImportance(data) {
+    const results = document.getElementById('knn-imp-results');
+    const header  = document.getElementById('knn-imp-header');
+    const bars    = document.getElementById('knn-imp-bars');
+    if (!results || !bars) return;
+
+    results.style.display = '';
+    if (header) header.textContent = `Feature Importance — ${data.symbol}`;
+
+    const features = data.features || [];
+    const maxImp   = Math.max(...features.map(f => Math.max(f.importance, 0)), 0.01);
+
+    bars.innerHTML = features.map(f => {
+        const pct   = Math.max(0, f.importance) / maxImp * 100;
+        const color = f.importance > 0 ? '#3b82f6' : '#8b949e';
+        const sign  = f.importance >= 0 ? '+' : '';
+        return `<div class="imp-row">
+            <div class="imp-label">${f.label}</div>
+            <div class="imp-bar-wrap">
+                <div class="imp-bar" style="width:${pct.toFixed(1)}%; background:${color};"></div>
+            </div>
+            <div class="imp-value">${sign}${f.importance.toFixed(4)}</div>
+            <div class="imp-cur" style="color:var(--text-muted);">(${f.value >= 0 ? '+' : ''}${f.value.toFixed(3)})</div>
+        </div>`;
+    }).join('');
+}

@@ -307,3 +307,94 @@ def walk_forward_backtest(symbol: str, min_train: int = 200,
         "equity_curve": equity,
         "records":      records[-60:],   # last 60 rows for the detail table
     }
+
+
+def feature_importance(symbol: str, k: int = 15, n_perms: int = 20) -> dict:
+    """
+    Permutation importance: for each feature, shuffle it n_perms times and
+    measure how much the mean distance to the K nearest neighbours increases.
+    Larger increase = more important feature.
+    """
+    df = db.get_ohlcv_df(symbol, "daily", limit=5000)
+    if df.empty or len(df) < 60:
+        return {"error": f"Not enough data for {symbol}"}
+
+    close = df["close"]
+    high  = df["high"]
+    low   = df["low"]
+    vol   = df["volume"]
+
+    df["rsi14"]     = ta.momentum.RSIIndicator(close, window=14).rsi()
+    df["vol20_ann"] = close.pct_change().rolling(20).std() * np.sqrt(252)
+    macd_ind        = ta.trend.MACD(close, window_slow=26, window_fast=12, window_sign=9)
+    df["macd_hist"] = macd_ind.macd_diff()
+    cci_ind         = ta.trend.CCIIndicator(high, low, close, window=20)
+    df["cci_norm"]  = cci_ind.cci() / 200.0
+    vol_ma20        = vol.rolling(20).mean()
+    df["vol_ratio"] = vol / vol_ma20.replace(0, np.nan)
+    for period in KAMA_PERIODS:
+        kama_s = _kama(close, window=period)
+        df[f"kama_dist_{period}"] = (close / kama_s.replace(0, np.nan)) - 1.0
+
+    FEATURE_COLS = [
+        "rsi14", "vol20_ann", "macd_hist", "cci_norm",
+        "vol_ratio", "kama_dist_10", "kama_dist_20", "kama_dist_50",
+    ]
+    FEATURE_LABELS = {
+        "rsi14":        "RSI(14)",
+        "vol20_ann":    "Volatility 20D",
+        "macd_hist":    "MACD Histogram",
+        "cci_norm":     "CCI / 200",
+        "vol_ratio":    "Volume Ratio",
+        "kama_dist_10": "vs KAMA-10",
+        "kama_dist_20": "vs KAMA-20",
+        "kama_dist_50": "vs KAMA-50",
+    }
+
+    df_feat = df[FEATURE_COLS].dropna(subset=FEATURE_COLS)
+    if len(df_feat) < k + 10:
+        return {"error": "Not enough valid rows"}
+
+    X      = df_feat[FEATURE_COLS].values.astype(float)
+    scaler = StandardScaler()
+    Xs     = scaler.fit_transform(X)
+
+    current_vec = Xs[-1:].copy()
+    X_hist      = Xs[:-1]
+
+    nn = NearestNeighbors(n_neighbors=min(k, len(X_hist) - 1), metric="euclidean")
+    nn.fit(X_hist)
+    base_dists, _ = nn.kneighbors(current_vec)
+    base_mean     = float(base_dists[0].mean())
+
+    importances = []
+    rng = np.random.default_rng(42)
+    for i, col in enumerate(FEATURE_COLS):
+        increases = []
+        for _ in range(n_perms):
+            X_perm        = Xs.copy()
+            perm_idx      = rng.permutation(len(X_perm))
+            X_perm[:, i]  = X_perm[perm_idx, i]
+            c_perm        = X_perm[-1:]
+            h_perm        = X_perm[:-1]
+            nn_p = NearestNeighbors(n_neighbors=min(k, len(h_perm) - 1), metric="euclidean")
+            nn_p.fit(h_perm)
+            d_perm, _     = nn_p.kneighbors(c_perm)
+            increases.append(float(d_perm[0].mean()) - base_mean)
+        importances.append({
+            "feature":   col,
+            "label":     FEATURE_LABELS.get(col, col),
+            "importance": round(float(np.mean(increases)), 6),
+            "value":     round(float(df_feat[col].iloc[-1]), 6),
+        })
+
+    importances.sort(key=lambda x: x["importance"], reverse=True)
+    max_imp = max(abs(x["importance"]) for x in importances) or 1
+    for x in importances:
+        x["pct"] = round(x["importance"] / max_imp * 100, 1)
+
+    return {
+        "symbol":      symbol,
+        "base_dist":   round(base_mean, 4),
+        "features":    importances,
+    }
