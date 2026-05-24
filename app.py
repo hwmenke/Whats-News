@@ -31,11 +31,13 @@ import portfolio_backtest as pb
 import knn_forecast as knn
 import errors
 import pycaret_model
+import features_api
 from errors import ApiError
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 errors.register(app)
+app.register_blueprint(features_api.features_bp)
 
 # Initialise the database on startup
 db.init_db()
