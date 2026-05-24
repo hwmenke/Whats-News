@@ -449,8 +449,13 @@ async function selectSymbol(symbol) {
     const sym = state.symbols.find(s => s.symbol === symbol);
     const headerEl = document.getElementById('sym-title');
     if (headerEl) headerEl.textContent = _displaySymbol(symbol);
+    if (typeof _extrasOnSymbolLoad === 'function') _extrasOnSymbolLoad(symbol);
     if (state.activeTab === 'charts') {
         await loadChartData(symbol);
+    } else if (state.activeTab === 'compare') {
+        if (typeof runCompare === 'function') runCompare();
+    } else if (state.activeTab === 'mtf') {
+        if (typeof loadMultiTF === 'function') loadMultiTF(symbol);
     } else if (state.activeTab === 'stats') {
         await loadStatsData(symbol);
     } else if (state.activeTab === 'trend') {
@@ -660,6 +665,8 @@ const _AREA_DISPLAY = {
     'journal-area':      'flex',
     'pair-area':         'flex',
     'analytics-area':    'flex',
+    'compare-area':      'flex',
+    'mtf-area':          'flex',
 };
 
 function _showOnly(activeId) {
@@ -754,6 +761,12 @@ async function switchTab(tabId) {
     } else if (tabId === 'analytics') {
         _showOnly('analytics-area');
         if (typeof initAnalytics === 'function') initAnalytics();
+    } else if (tabId === 'compare') {
+        _showOnly('compare-area');
+        if (typeof initCompare === 'function') initCompare();
+    } else if (tabId === 'mtf') {
+        _showOnly('mtf-area');
+        if (typeof initMtf === 'function') initMtf();
     }
 }
 

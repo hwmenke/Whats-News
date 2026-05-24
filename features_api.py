@@ -1075,3 +1075,17 @@ def get_newsletter_data():
         return jsonify(newsletter_engine.compute_newsletter_data(n_charts=n_charts))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ── Earnings Dates ────────────────────────────────────────────────────────────
+
+@features_bp.route("/api/earnings/<string:symbol>", methods=["GET"])
+def get_earnings_dates(symbol):
+    """Return known earnings dates for a symbol from the watchlist metadata."""
+    sym = symbol.upper()
+    rows = db.list_symbols()
+    entry = next((r for r in rows if r["symbol"] == sym), None)
+    dates = []
+    if entry and entry.get("next_earnings"):
+        dates.append({"date": entry["next_earnings"], "type": "scheduled"})
+    return jsonify({"symbol": sym, "dates": dates})

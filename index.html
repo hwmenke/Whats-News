@@ -33,6 +33,8 @@
       <span id="regime-badge-icon">○</span>
       <span id="regime-badge-label">—</span>
     </div>
+    <button id="btn-theme-toggle" class="btn btn-ghost btn-icon topbar-icon" title="Switch to light mode" onclick="toggleTheme()">☀️</button>
+    <button id="btn-focus-mode"   class="btn btn-ghost btn-icon topbar-icon" title="Focus mode (F)" onclick="toggleFocusMode()">⛶</button>
   </header>
 
   <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
@@ -189,6 +191,12 @@
       <button id="tab-newsletter" class="tab-btn" onclick="switchTab('newsletter')">
         <span class="tab-icon">📈</span> Daily Edge
       </button>
+      <button id="tab-compare" class="tab-btn" onclick="switchTab('compare')">
+        <span class="tab-icon">⚖️</span> Compare
+      </button>
+      <button id="tab-mtf" class="tab-btn" onclick="switchTab('mtf')">
+        <span class="tab-icon">🔢</span> Multi-TF
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -203,6 +211,31 @@
       <div class="indicator-toggles">
         <span class="overlay-section-label">Overlays</span>
         <button id="pill-bb" class="ind-pill active-bb">Bol. Bands</button>
+        <button id="btn-vol-profile" class="ind-pill" onclick="toggleVolProfile()" title="Volume Profile">Vol Profile</button>
+      </div>
+      <div class="tab-spacer"></div>
+      <!-- Drawing tools -->
+      <div class="indicator-toggles drawing-tools-bar">
+        <span class="overlay-section-label">Levels</span>
+        <input id="drawing-price-input" type="number" step="0.01" placeholder="Price" class="kama-input" style="width:74px;" />
+        <input id="drawing-label-input" type="text" placeholder="Label" class="kama-input" style="width:64px;" maxlength="20" />
+        <input id="drawing-color-input" type="color" value="#f97316" class="drawing-color-picker" title="Level color" />
+        <button class="btn btn-primary btn-icon" onclick="addDrawingLevel()" title="Add price level">+</button>
+        <div id="drawings-list" class="drawings-list"></div>
+      </div>
+      <div class="tab-spacer"></div>
+      <!-- Replay controls -->
+      <div class="indicator-toggles">
+        <span class="overlay-section-label">Replay</span>
+        <input id="replay-start-date" type="date" class="kama-input" style="width:120px;" />
+        <button id="btn-replay-start" class="btn btn-ghost btn-icon" onclick="startReplay()" title="Start replay">▶</button>
+        <div id="replay-controls" class="hidden" style="display:contents;">
+          <button class="btn btn-ghost btn-icon" onclick="replayPrev()" title="Previous bar">◀</button>
+          <span id="replay-bar-label" style="font-size:11px; color:var(--text-muted); white-space:nowrap;"></span>
+          <button class="btn btn-ghost btn-icon" onclick="replayNext(1)" title="Next bar">▶</button>
+          <button class="btn btn-ghost btn-icon" onclick="replayNext(5)" title="+5 bars">▶▶</button>
+          <button class="btn btn-ghost btn-icon" onclick="stopReplay()" title="Stop replay" style="color:var(--red);">■</button>
+        </div>
       </div>
     </div>
 
@@ -216,11 +249,17 @@
     <!-- ── Chart Area ── -->
     <div id="chart-area" class="charts-container" style="display:none; position:relative;">
 
+      <!-- Crosshair OHLC tooltip -->
+      <div id="crosshair-tooltip" class="crosshair-tooltip" style="display:none; position:absolute; z-index:10; pointer-events:none;"></div>
+
       <!-- Loading overlay -->
       <div id="chart-loading" class="chart-loading" style="display:none;">
         <span class="spinner"></span>
         Loading chart data…
       </div>
+
+      <!-- Volume Profile panel (right side overlay) -->
+      <div id="vol-profile-panel" class="vp-panel" style="display:none;"></div>
 
       <!-- ── Daily Panel ── -->
       <div class="chart-panel">
@@ -1556,6 +1595,31 @@
       </div>
     </div><!-- #newsletter-area -->
 
+    <!-- ── Compare Area ── -->
+    <div id="compare-area" class="feat-container" style="display:none;">
+      <div class="feat-header">
+        <h2 class="feat-title">Symbol Compare</h2>
+        <div class="feat-controls">
+          <input id="cmp-symbols-input" type="text" class="feat-input" placeholder="SPY, QQQ, IWM, DIA" style="width:260px;" autocomplete="off" spellcheck="false" />
+          <select id="cmp-freq" class="feat-select">
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+          <button class="btn btn-primary" onclick="runCompare()">Compare</button>
+        </div>
+      </div>
+      <div id="cmp-legend" class="cmp-legend"></div>
+      <div id="cmp-chart" class="cmp-chart-wrap"></div>
+    </div><!-- #compare-area -->
+
+    <!-- ── Multi-TF Area ── -->
+    <div id="mtf-area" class="feat-container" style="display:none;">
+      <div class="feat-header">
+        <h2 class="feat-title">Multi-Timeframe</h2>
+      </div>
+      <div id="mtf-grid"></div>
+    </div><!-- #mtf-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -1625,6 +1689,9 @@
 <script src="scripts/news.js"></script>
 <script src="scripts/calendar.js"></script>
 <script src="scripts/newsletter.js"></script>
+<script src="scripts/compare.js"></script>
+<script src="scripts/mtf.js"></script>
+<script src="scripts/chart_extras.js"></script>
 <script src="scripts/command_palette.js"></script>
 <script src="scripts/app.js"></script>
 

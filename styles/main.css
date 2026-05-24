@@ -3536,3 +3536,82 @@ html, body {
   color: var(--text-dim); font-size: 11px; }
 .cmdk-foot kbd { background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px;
   padding: 1px 5px; margin-right: 3px; font-family: var(--font-mono); font-size: 10px; }
+
+/* ═══════════════════ Topbar extras ═══════════════════ */
+.topbar-icon { font-size: 16px; padding: 4px 8px; margin-left: 2px; }
+
+/* ═══════════════════ Focus Mode ═══════════════════ */
+body.focus-mode .sidebar,
+body.focus-mode .topbar,
+body.focus-mode .main-nav-tabs { display: none !important; }
+body.focus-mode .main { margin-left: 0; }
+body.focus-mode .symbol-header { display: none; }
+
+/* ═══════════════════ Light Theme ═══════════════════ */
+[data-theme="light"] {
+  --bg-base:       #f5f7fa;
+  --bg-elevated:   #ffffff;
+  --bg-card:       #ffffff;
+  --bg-hover:      #f0f2f5;
+  --border:        #dde1e7;
+  --border-accent: #4f8ef7;
+  --text-primary:  #0d1117;
+  --text-muted:    #57606a;
+  --text-dim:      #8c959f;
+  --accent:        #1f6feb;
+  --accent-bright: #4f8ef7;
+  --accent-glow:   rgba(79,142,247,0.1);
+}
+
+/* ═══════════════════ Crosshair Tooltip ═══════════════════ */
+.crosshair-tooltip {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  box-shadow: var(--shadow-card);
+}
+
+/* ═══════════════════ Drawing Tools ═══════════════════ */
+.drawing-tools-bar { flex-wrap: wrap; gap: 6px; }
+.drawing-color-picker { width: 28px; height: 24px; padding: 0; border: 1px solid var(--border);
+  border-radius: 4px; cursor: pointer; background: none; }
+.drawings-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.drawing-item { display: inline-flex; align-items: center; gap: 5px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 10px; padding: 2px 8px; font-size: 11px; }
+.drawing-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.drawing-rm { background: none; border: none; cursor: pointer; color: var(--text-dim);
+  font-size: 13px; padding: 0 2px; line-height: 1; }
+.drawing-rm:hover { color: var(--red); }
+
+/* ═══════════════════ Volume Profile Panel ═══════════════════ */
+.vp-panel { position: absolute; right: 0; top: 0; bottom: 0; width: 140px;
+  background: rgba(13,17,23,0.85); border-left: 1px solid var(--border);
+  overflow-y: auto; z-index: 5; flex-direction: column; padding: 4px; }
+.vp-inner { display: flex; flex-direction: column; gap: 1px; }
+.vp-row { display: flex; align-items: center; gap: 4px; height: 14px; }
+.vp-price { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted);
+  width: 42px; flex-shrink: 0; text-align: right; }
+.vp-bar { height: 8px; background: rgba(59,130,246,0.55); border-radius: 1px; min-width: 2px; }
+
+/* ═══════════════════ Compare Tab ═══════════════════ */
+.cmp-legend { display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 0 10px; }
+.cmp-legend-item { display: inline-flex; gap: 8px; align-items: center; padding: 3px 10px 3px 7px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+  font-family: var(--font-mono); font-size: 12px; }
+.cmp-chart-wrap { flex: 1; min-height: 380px; border-radius: var(--radius-md);
+  overflow: hidden; background: #0d1117; }
+
+/* ═══════════════════ Multi-TF Tab ═══════════════════ */
+.mtf-grid-inner { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; padding: 4px; }
+.mtf-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.mtf-panel-label { padding: 8px 12px; font-size: 11px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); }
+.mtf-canvas-wrap { height: 200px; width: 100%; }
+
+/* ═══════════════════ Replay hidden helper ═══════════════════ */
+.hidden { display: none !important; }
