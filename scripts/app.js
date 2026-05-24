@@ -624,6 +624,7 @@ function showEmptyState() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('social-area').style.display       = 'none';
 }
 
 function showChartArea() {
@@ -652,6 +653,7 @@ async function switchTab(tabId) {
     document.getElementById('backtest-area').style.display     = 'none';
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('social-area').style.display       = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
@@ -676,6 +678,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'scanner') {
         showScannerArea();
         loadScannerData();
+    } else if (tabId === 'social') {
+        showSocialArea();
+        if (typeof loadSocialTrends === 'function' && !socialState.data) loadSocialTrends();
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
@@ -691,6 +696,7 @@ function showStatsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('social-area').style.display       = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -703,6 +709,7 @@ function showChartArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('social-area').style.display       = 'none';
     document.querySelector('.tab-bar').style.display           = 'flex';
 }
 
@@ -715,6 +722,7 @@ function showTrendArea() {
     document.getElementById('trend-area').style.display        = 'flex';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('social-area').style.display       = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -727,6 +735,20 @@ function showScannerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'flex';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('social-area').style.display       = 'none';
+    document.querySelector('.tab-bar').style.display           = 'none';
+}
+
+function showSocialArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('social-area').style.display       = 'flex';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 

@@ -113,6 +113,9 @@
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">
         <span class="tab-icon">📡</span> Scanner
       </button>
+      <button id="tab-social" class="tab-btn" onclick="switchTab('social')">
+        <span class="tab-icon">🔥</span> Social Trends
+      </button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
         <span class="tab-icon">🗄️</span> Data Manager
       </button>
@@ -624,6 +627,74 @@
 
     </div><!-- #scanner-area -->
 
+    <!-- ── Social Trends Area ── -->
+    <div id="social-area" class="social-container" style="display:none;">
+
+      <!-- Loading overlay -->
+      <div id="social-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span>
+        Scanning social trends…
+      </div>
+
+      <!-- Controls bar -->
+      <div class="social-controls">
+        <div class="social-controls-left">
+          <button id="btn-social-scan" class="btn btn-primary" onclick="loadSocialTrends()">⟳ Scan Trends</button>
+          <span class="overlay-section-label">Window</span>
+          <button class="ind-pill social-days-btn" data-days="7"  onclick="setSocialDays(7)">7d</button>
+          <button class="ind-pill social-days-btn" data-days="14" onclick="setSocialDays(14)">14d</button>
+          <button class="ind-pill social-days-btn social-toggle-on" data-days="30" onclick="setSocialDays(30)">30d</button>
+          <button class="ind-pill social-days-btn" data-days="90" onclick="setSocialDays(90)">90d</button>
+        </div>
+        <div class="social-controls-right">
+          <span class="overlay-section-label">Sources</span>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="google"    onclick="toggleSocialSource('google')">Google</button>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="tiktok"    onclick="toggleSocialSource('tiktok')">TikTok</button>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="twitter"   onclick="toggleSocialSource('twitter')">Twitter/X</button>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="instagram" onclick="toggleSocialSource('instagram')">Instagram</button>
+        </div>
+      </div>
+
+      <!-- Status strip: live/seed badges + timestamp -->
+      <div id="social-status" class="social-status"></div>
+
+      <!-- Two-panel layout: trending words | pure-play ideas -->
+      <div class="social-panels">
+
+        <!-- ── Trending words ── -->
+        <div class="social-panel social-panel-trends">
+          <div class="panel-header">Trending Words · biggest movers</div>
+          <div id="social-trend-grid" class="social-trend-grid"></div>
+          <div id="social-trend-empty" class="scanner-empty" style="display:none;">
+            <div class="empty-icon">🔥</div>
+            <p>No trends — click <strong>⟳ Scan Trends</strong>.</p>
+          </div>
+        </div>
+
+        <!-- ── Pure-play ideas ── -->
+        <div class="social-panel social-panel-ideas">
+          <div class="panel-header">Pure-Play Stock Ideas · ranked</div>
+          <div class="social-ideas-wrap">
+            <table id="social-ideas-table" class="social-ideas-table">
+              <thead>
+                <tr>
+                  <th>#</th><th>Ticker</th><th>Theme</th>
+                  <th>Purity</th><th>Mom.</th><th>Score</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="social-ideas-tbody"></tbody>
+            </table>
+          </div>
+          <div id="social-ideas-empty" class="scanner-empty" style="display:none;">
+            <div class="empty-icon">📈</div>
+            <p>No stock ideas matched the current trends.</p>
+          </div>
+        </div>
+
+      </div><!-- .social-panels -->
+
+    </div><!-- #social-area -->
+
     <!-- ── Data Manager Area ── -->
     <div id="data-manager-area" class="dm-container" style="display:none;">
 
@@ -759,6 +830,7 @@
 <script src="scripts/charts.js"></script>
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
+<script src="scripts/social_trends.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/app.js"></script>
 

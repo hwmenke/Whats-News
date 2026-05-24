@@ -19,6 +19,7 @@ import backtester
 import scanner
 import adaptive_trend as adaptive
 import ticker_lists as tl
+import social_trends
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -367,6 +368,28 @@ def get_scanner():
             return jsonify([])
         data = scanner.compute_scanner(symbols)
         return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -- Social Trends --------------------------------------------------------------
+
+@app.route("/api/social-trends", methods=["GET"])
+def get_social_trends_route():
+    """Trending words across Google/TikTok/Twitter/Instagram + pure-play ideas."""
+    try:
+        days = int(request.args.get("days", 30))
+    except (TypeError, ValueError):
+        return jsonify({"error": "days must be an integer"}), 400
+
+    geo = (request.args.get("geo", "US") or "US").upper()
+
+    src_param = request.args.get("sources", "")
+    valid = {s["id"] for s in social_trends.SOURCES}
+    sources = [s.strip().lower() for s in src_param.split(",") if s.strip().lower() in valid] or None
+
+    try:
+        return jsonify(social_trends.get_social_trends(days, geo, sources))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -33,6 +33,23 @@ Open your web browser and go to:
 - **Technical Analysis**: SMA, EMA, Bollinger Bands, RSI, MACD, and Volume.
 - **Daily & Weekly Views**: Toggle between daily and weekly timeframes.
 - **Persistent Storage**: All data is saved locally in an SQLite database.
+- **Social Trends Radar**: Surfaces the words moving most across Google Trends, TikTok, Twitter/X and Instagram over the last 30 days, then maps each trend to the listed stocks that are the cleanest *pure plays* on that theme (ranked by purity × momentum).
+
+### 🔥 Social Trends — live data sources
+The Social Trends tab works out of the box on **curated sample data** so the UI
+is always populated. To pull live feeds, run locally (full network) and provide
+keys via environment variables — each source falls back to sample data when its
+key/integration is absent, and the UI labels every source `LIVE` or `SEED`:
+
+| Source        | How it goes live                                              |
+|---------------|---------------------------------------------------------------|
+| Google Trends | Automatic via `pytrends` (no key needed) when reachable       |
+| TikTok        | `TIKTOK_API_KEY` + an integration in `social_trends._fetch_keyed` |
+| Twitter / X   | `TWITTER_BEARER_TOKEN` + integration (X trends API is paid)   |
+| Instagram     | `INSTAGRAM_API_KEY` + integration                             |
+
+The trend → ticker knowledge base lives in `social_trends.THEME_MAP` — edit it
+to add themes, tickers, or tune the `purity` scores.
 
 ## 📁 Project Structure
 - `app.py`: Flask REST API server.
