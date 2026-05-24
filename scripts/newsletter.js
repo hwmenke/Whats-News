@@ -30,44 +30,11 @@ if (window.Chart && window.ChartAnnotation) {
     try { Chart.register(window.ChartAnnotation); } catch (_) {}
 }
 
-// ── Patch global switchTab to intercept newsletter tab ────────
-(function patchSwitchTab() {
-    const _orig = window.switchTab;
-
-    window.switchTab = async function (tabId) {
-        // Hide newsletter area whenever any tab is activated
-        const nlEl = document.getElementById('newsletter-area');
-        if (nlEl) nlEl.style.display = 'none';
-
-        if (tabId === 'newsletter') {
-            // Mirror what app.js does for other tabs
-            if (typeof state !== 'undefined') state.activeTab = 'newsletter';
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.id === 'tab-newsletter');
-            });
-            showNewsletterArea();
-            loadNewsletterData();
-        } else if (typeof _orig === 'function') {
-            return _orig(tabId);
-        }
-    };
-})();
-
-// ── Show / hide ───────────────────────────────────────────────
-function showNewsletterArea() {
-    const hideIds = [
-        'empty-state', 'chart-area', 'stats-area', 'knn-area',
-        'backtest-area', 'trend-area', 'scanner-area', 'data-manager-area',
-    ];
-    hideIds.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    });
-    const tabBar = document.querySelector('.tab-bar');
-    if (tabBar) tabBar.style.display = 'none';
-
-    const nl = document.getElementById('newsletter-area');
-    if (nl) nl.style.display = 'flex';
+// ── Native tab entry point (app.js switchTab dispatches here) ──
+// app.js handles area show/hide via _showOnly('newsletter-area');
+// this just (re)loads the data when the tab is opened.
+function initNewsletter() {
+    loadNewsletterData();
 }
 
 // ── Main loader ───────────────────────────────────────────────

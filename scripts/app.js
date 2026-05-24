@@ -652,6 +652,14 @@ const _AREA_DISPLAY = {
     'momentum-area':     'flex',
     'seasonality-area':  'flex',
     'factor-model-area': 'flex',
+    'newsletter-area':   'flex',
+    'news-area':         'flex',
+    'signals-area':      'flex',
+    'sector-area':       'flex',
+    'calendar-area':     'flex',
+    'journal-area':      'flex',
+    'pair-area':         'flex',
+    'analytics-area':    'flex',
 };
 
 function _showOnly(activeId) {
@@ -722,6 +730,30 @@ async function switchTab(tabId) {
     } else if (tabId === 'factor-model') {
         showFactorModelArea();
         if (typeof initFactorModel === 'function') initFactorModel();
+    } else if (tabId === 'newsletter') {
+        _showOnly('newsletter-area');
+        if (typeof initNewsletter === 'function') initNewsletter();
+    } else if (tabId === 'news') {
+        _showOnly('news-area');
+        if (typeof initNews === 'function') initNews();
+    } else if (tabId === 'signals') {
+        _showOnly('signals-area');
+        if (typeof initSignals === 'function') initSignals();
+    } else if (tabId === 'sector') {
+        _showOnly('sector-area');
+        if (typeof initSector === 'function') initSector();
+    } else if (tabId === 'calendar') {
+        _showOnly('calendar-area');
+        if (typeof initCalendar === 'function') initCalendar();
+    } else if (tabId === 'journal') {
+        _showOnly('journal-area');
+        if (typeof initJournal === 'function') initJournal();
+    } else if (tabId === 'pair') {
+        _showOnly('pair-area');
+        if (typeof initPair === 'function') initPair();
+    } else if (tabId === 'analytics') {
+        _showOnly('analytics-area');
+        if (typeof initAnalytics === 'function') initAnalytics();
     }
 }
 

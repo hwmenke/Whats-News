@@ -6,10 +6,13 @@
   <title>FinDash – Financial Dashboard</title>
   <meta name="description" content="Professional financial dashboard with Yahoo Finance data, SQLite storage, and technical analysis charts." />
   <link rel="stylesheet" href="styles/main.css" />
+  <link rel="stylesheet" href="styles/newsletter.css" />
   <!-- TradingView Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <!-- Chart.js for statistics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Chart.js annotation plugin (for Daily Edge newsletter charts) -->
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
 </head>
 <body>
 
@@ -161,6 +164,30 @@
       </button>
       <button id="tab-factor-model" class="tab-btn" onclick="switchTab('factor-model')">
         <span class="tab-icon">🧮</span> Factors
+      </button>
+      <button id="tab-signals" class="tab-btn" onclick="switchTab('signals')">
+        <span class="tab-icon">🚦</span> Signals
+      </button>
+      <button id="tab-sector" class="tab-btn" onclick="switchTab('sector')">
+        <span class="tab-icon">🗺️</span> Sector
+      </button>
+      <button id="tab-pair" class="tab-btn" onclick="switchTab('pair')">
+        <span class="tab-icon">🔗</span> Pair
+      </button>
+      <button id="tab-analytics" class="tab-btn" onclick="switchTab('analytics')">
+        <span class="tab-icon">📒</span> Analytics
+      </button>
+      <button id="tab-journal" class="tab-btn" onclick="switchTab('journal')">
+        <span class="tab-icon">📝</span> Journal
+      </button>
+      <button id="tab-news" class="tab-btn" onclick="switchTab('news')">
+        <span class="tab-icon">📰</span> News
+      </button>
+      <button id="tab-calendar" class="tab-btn" onclick="switchTab('calendar')">
+        <span class="tab-icon">🗓️</span> Calendar
+      </button>
+      <button id="tab-newsletter" class="tab-btn" onclick="switchTab('newsletter')">
+        <span class="tab-icon">📈</span> Daily Edge
       </button>
     </nav>
     <div class="tab-bar">
@@ -1412,6 +1439,123 @@
       </div>
     </div><!-- #factor-model-area -->
 
+    <!-- ── Signals Dashboard ── -->
+    <div id="signals-area" class="feat-container" style="display:none;">
+      <div class="feat-header"><h2>🚦 Technical Signals</h2>
+        <span class="feat-sub">RSI / MACD / Bollinger / volume signals across your watchlist, ranked by strength.</span></div>
+      <div class="feat-table-wrap">
+        <table class="feat-table">
+          <thead><tr><th>Symbol</th><th>Close</th><th>Score</th><th>RSI</th><th>MACD</th><th>Vol Z</th><th>Signals</th></tr></thead>
+          <tbody id="signals-body"></tbody>
+        </table>
+      </div>
+    </div><!-- #signals-area -->
+
+    <!-- ── Sector Heatmap ── -->
+    <div id="sector-area" class="feat-container" style="display:none;">
+      <div class="feat-header"><h2>🗺️ Sector Heatmap</h2>
+        <span class="feat-sub">Return heatmap grouped by sector. Click a sector to expand its symbols.</span></div>
+      <div class="feat-table-wrap"><table id="sector-table" class="feat-table heat-table"></table></div>
+    </div><!-- #sector-area -->
+
+    <!-- ── Pair / Spread ── -->
+    <div id="pair-area" class="feat-container" style="display:none;">
+      <div class="feat-header"><h2>🔗 Pair Trading</h2>
+        <span class="feat-sub">Ratio z-score spread for mean-reversion pairs.</span></div>
+      <div class="feat-controls">
+        <input id="pair-sym1" class="feat-input" placeholder="Symbol A" />
+        <span class="feat-divider">/</span>
+        <input id="pair-sym2" class="feat-input" placeholder="Symbol B" />
+        <label class="feat-label">Window <input id="pair-window" class="feat-input feat-input-sm" type="number" value="20" min="5" max="120" /></label>
+        <button class="btn btn-primary" onclick="runPairAnalysis()">Analyze</button>
+        <span id="pair-status" class="feat-status"></span>
+      </div>
+      <div class="feat-chart-wrap"><canvas id="pair-chart"></canvas></div>
+    </div><!-- #pair-area -->
+
+    <!-- ── Portfolio Analytics ── -->
+    <div id="analytics-area" class="feat-container" style="display:none;">
+      <div class="feat-header"><h2>📒 Trade Analytics</h2>
+        <span class="feat-sub">Performance metrics derived from your closed positions.</span></div>
+      <div id="analytics-kpis" class="an-kpi-grid"></div>
+      <div class="feat-chart-wrap"><canvas id="analytics-equity"></canvas></div>
+      <div class="feat-table-wrap">
+        <table class="feat-table">
+          <thead><tr><th>Symbol</th><th>Closed</th><th>P&L</th><th>Return</th></tr></thead>
+          <tbody id="analytics-trades"></tbody>
+        </table>
+      </div>
+    </div><!-- #analytics-area -->
+
+    <!-- ── Trade Journal ── -->
+    <div id="journal-area" class="feat-container" style="display:none;">
+      <div class="feat-header"><h2>📝 Trade Journal</h2>
+        <span class="feat-sub">Log trade ideas, setups, and outcomes.</span></div>
+      <div class="feat-controls feat-controls-wrap">
+        <input id="jnl-symbol" class="feat-input" placeholder="Symbol" />
+        <select id="jnl-direction" class="feat-input">
+          <option value="long">Long</option><option value="short">Short</option>
+        </select>
+        <input id="jnl-entry-date" class="feat-input" type="date" />
+        <input id="jnl-entry-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="Entry" />
+        <input id="jnl-exit-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="Exit" />
+        <input id="jnl-qty" class="feat-input feat-input-sm" type="number" step="any" placeholder="Qty" />
+        <input id="jnl-setup" class="feat-input" placeholder="Setup" />
+        <input id="jnl-tags" class="feat-input" placeholder="Tags" />
+        <button class="btn btn-primary" onclick="submitJournalEntry()">Add Entry</button>
+      </div>
+      <div class="feat-table-wrap">
+        <table class="feat-table">
+          <thead><tr><th>Symbol</th><th>Dir</th><th>Entry Date</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Tags</th><th></th></tr></thead>
+          <tbody id="journal-body"></tbody>
+        </table>
+      </div>
+    </div><!-- #journal-area -->
+
+    <!-- ── News & Sentiment ── -->
+    <div id="news-area" class="feat-container" style="display:none;">
+      <div class="feat-header"><h2>📰 News <span id="news-symbol" class="feat-accent"></span></h2>
+        <span class="feat-sub">Recent headlines with naive sentiment tagging.</span></div>
+      <div id="news-list" class="news-list"></div>
+    </div><!-- #news-area -->
+
+    <!-- ── Macro Calendar ── -->
+    <div id="calendar-area" class="feat-container" style="display:none;">
+      <div class="feat-header"><h2>🗓️ Macro &amp; Earnings Calendar</h2>
+        <span class="feat-sub">FOMC, CPI, jobs reports, and watchlist earnings dates.</span></div>
+      <div id="calendar-list" class="cal-list"></div>
+    </div><!-- #calendar-area -->
+
+    <!-- ── Daily Edge Newsletter ── -->
+    <div id="newsletter-area" class="newsletter-container" style="display:none;">
+      <div id="newsletter-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span> Loading Daily Edge…
+      </div>
+      <div class="nl-header">
+        <div class="nl-header-left">
+          <div class="nl-title">The Daily Edge</div>
+          <div id="nl-edition" class="nl-edition"></div>
+        </div>
+        <div class="nl-header-right">
+          <div id="nl-universe-count" class="nl-stat">-- symbols</div>
+          <button id="btn-nl-refresh" class="btn btn-primary" onclick="loadNewsletterData()">⟳ Refresh</button>
+        </div>
+      </div>
+      <div class="nl-lead-section">
+        <div class="nl-section-title">Lead Stories</div>
+        <div id="nl-lead-stories" class="nl-lead-grid"></div>
+      </div>
+      <div id="nl-chart-grid" class="nl-chart-grid"></div>
+      <div id="nl-error" class="nl-empty-state" style="display:none;">
+        <div class="empty-icon">⚠️</div>
+        <p id="nl-error-msg">Failed to load newsletter data.</p>
+      </div>
+      <div id="nl-empty" class="nl-empty-state" style="display:none;">
+        <div class="empty-icon">📰</div>
+        <p>No data available. Add symbols to your watchlist and fetch data first.</p>
+      </div>
+    </div><!-- #newsletter-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -1473,6 +1617,14 @@
 <script src="scripts/momentum_ranker.js"></script>
 <script src="scripts/seasonality.js"></script>
 <script src="scripts/factor_model.js"></script>
+<script src="scripts/signals.js"></script>
+<script src="scripts/sector.js"></script>
+<script src="scripts/pair.js"></script>
+<script src="scripts/analytics.js"></script>
+<script src="scripts/journal.js"></script>
+<script src="scripts/news.js"></script>
+<script src="scripts/calendar.js"></script>
+<script src="scripts/newsletter.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>
