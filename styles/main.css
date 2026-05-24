@@ -3333,3 +3333,36 @@ kbd {
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
+
+/* ══════════════════════════════════════════════════════════
+   Portfolio Heat-Map
+   ══════════════════════════════════════════════════════════ */
+.portfolio-heatmap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px;
+}
+.port-heat-cell {
+  flex-basis: 90px;
+  min-height: 64px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: transform .1s ease;
+}
+.port-heat-cell:hover { transform: scale(1.03); }
+.port-heat-sym {
+  font-weight: 700;
+  font-size: 13px;
+  color: #fff;
+}
+.port-heat-pct {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: rgba(255,255,255,0.85);
+}

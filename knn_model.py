@@ -138,6 +138,34 @@ def compute_knn_lookalike(symbol: str, k: int = 15) -> dict:
         "fwd_20d": horizon_summary("fwd_20d"),
     }
 
+    # ── Ensemble composite + confidence ───────────────────────────────────────
+    # Composite: weighted blend of the three horizon win-rates, mapped to -100..+100
+    weights = {"fwd_1d": 0.2, "fwd_5d": 0.4, "fwd_20d": 0.4}
+    comp_num, comp_den = 0.0, 0.0
+    for key, w in weights.items():
+        pp = summary[key]["positive_pct"]
+        if pp is not None:
+            comp_num += w * (pp - 0.5) * 2  # center 50% → 0, scale to -1..+1
+            comp_den += w
+    ensemble_score = round(comp_num / comp_den * 100, 1) if comp_den else None
+
+    # Confidence: how tight are the K neighbour distances? Lower spread = higher
+    # confidence. Normalised so 0 spread → 1.0, large spread → →0.
+    dist_arr = np.array([n["distance"] for n in neighbors], dtype=float)
+    if len(dist_arr) >= 2 and dist_arr.mean() > 0:
+        cv = dist_arr.std() / dist_arr.mean()           # coefficient of variation
+        confidence = round(float(max(0.0, min(1.0, 1.0 - cv))), 3)
+    else:
+        confidence = None
+
+    if ensemble_score is None:
+        ensemble_label = "—"
+    elif ensemble_score >=  40: ensemble_label = "STRONG BULL"
+    elif ensemble_score >=  15: ensemble_label = "BULLISH"
+    elif ensemble_score <= -40: ensemble_label = "STRONG BEAR"
+    elif ensemble_score <= -15: ensemble_label = "BEARISH"
+    else:                       ensemble_label = "NEUTRAL"
+
     # ── Current feature values (unscaled) ─────────────────────────────────────
     current_raw = df_feat[FEATURE_COLS].iloc[-1]
     current_features = {col: _safe_float(current_raw[col]) for col in FEATURE_COLS}
@@ -149,6 +177,9 @@ def compute_knn_lookalike(symbol: str, k: int = 15) -> dict:
         "current_features": current_features,
         "neighbors":        neighbors,
         "summary":          summary,
+        "ensemble_score":   ensemble_score,
+        "ensemble_label":   ensemble_label,
+        "confidence":       confidence,
     }
 
 

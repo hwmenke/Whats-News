@@ -480,6 +480,11 @@
         <!-- Prediction KPI cards -->
         <div class="kpi-row" style="margin-bottom:24px;">
           <div class="kpi-card prediction-card">
+            <div class="kpi-label">Composite</div>
+            <div id="knn-composite" class="kpi-value">--</div>
+            <div id="knn-confidence" class="kpi-sub">Confidence: --</div>
+          </div>
+          <div class="kpi-card prediction-card">
             <div class="kpi-label">1D Win Rate</div>
             <div id="knn-win-1d" class="kpi-value">--</div>
             <div id="knn-mean-1d" class="kpi-sub">Mean: --</div>
@@ -1097,12 +1102,17 @@
         </div>
       </div>
 
+      <div class="stats-card" id="portfolio-heatmap-card" style="display:none;">
+        <div class="stats-card-header">Position Heat-Map <span style="font-weight:400; color:var(--text-muted); font-size:11px;">(size = position value · colour = unrealised P&amp;L %)</span></div>
+        <div id="portfolio-heatmap" class="portfolio-heatmap"></div>
+      </div>
+
       <div class="stats-card">
         <div class="stats-card-header">Open Positions</div>
         <div style="overflow-x:auto;">
           <table class="backtest-table" id="portfolio-open-table">
             <thead>
-              <tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Opened</th><th>Notes</th><th>Actions</th></tr>
+              <tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Price</th><th>P&amp;L</th><th>P&amp;L %</th><th>Opened</th><th>Actions</th></tr>
             </thead>
             <tbody id="portfolio-open-tbody"></tbody>
           </table>

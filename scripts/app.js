@@ -1249,6 +1249,26 @@ function renderKNN(data) {
     const fmt  = v => (v !== null && v !== undefined && Number.isFinite(v)) ? (v * 100).toFixed(2) + '%' : '--';
     const fmtF = (v, dec) => (v !== null && v !== undefined && Number.isFinite(v)) ? v.toFixed(dec) : '--';
 
+    // Composite / confidence card
+    const compEl = document.getElementById('knn-composite');
+    const confEl = document.getElementById('knn-confidence');
+    if (compEl) {
+        const score = data.ensemble_score;
+        if (score != null) {
+            const col = score >= 15 ? '#22c55e' : score <= -15 ? '#ef4444' : 'var(--text-muted)';
+            compEl.textContent = data.ensemble_label || '--';
+            compEl.style.color = col;
+            compEl.style.fontSize = '18px';
+        } else {
+            compEl.textContent = '--';
+        }
+    }
+    if (confEl) {
+        confEl.textContent = data.confidence != null
+            ? `Confidence: ${(data.confidence * 100).toFixed(0)}%`
+            : 'Confidence: --';
+    }
+
     // Prediction KPI cards
     const horizons = { '1d': 'fwd_1d', '5d': 'fwd_5d', '20d': 'fwd_20d' };
     for (const [suffix, key] of Object.entries(horizons)) {
@@ -2079,6 +2099,10 @@ async function checkAlerts() {
 // ── Portfolio ─────────────────────────────────────────────────
 async function loadPortfolio() {
     try {
+        // Ensure we have live quote prices for unrealised P&L
+        if (typeof loadQuickStats === 'function' && Object.keys(_wlStats || {}).length === 0) {
+            await loadQuickStats();
+        }
         const positions = await apiFetch(`${API}/positions`);
         renderPortfolio(positions);
     } catch (e) {
@@ -2098,23 +2122,43 @@ function renderPortfolio(positions) {
         return { pnl, pct };
     };
 
+    // Compute live unrealised P&L per open position using cached quote prices
+    let totalCost = 0, totalValue = 0;
+    const openLive = open.map(p => {
+        const live  = (typeof _liveFor === 'function') ? _liveFor(p.symbol) : {};
+        const price = live.price ?? null;
+        const cost  = p.entry_price * p.qty;
+        const value = price != null ? price * p.qty : null;
+        const pnl   = (price != null) ? (price - p.entry_price) * p.qty : null;
+        const pct   = (price != null && p.entry_price) ? (price / p.entry_price - 1) : null;
+        if (value != null) { totalCost += cost; totalValue += value; }
+        return { ...p, price, value, pnl, pct };
+    });
+
     // Open positions table
     const openTbody = document.getElementById('portfolio-open-tbody');
     if (openTbody) {
-        openTbody.innerHTML = open.length ? open.map(p => `
+        openTbody.innerHTML = openLive.length ? openLive.map(p => {
+            const color = p.pnl == null ? '' : p.pnl >= 0 ? 'color:#22c55e' : 'color:#ef4444';
+            return `
           <tr>
-            <td><strong>${p.symbol}</strong></td>
+            <td><strong style="cursor:pointer;" onclick="selectSymbol('${p.symbol}')">${p.symbol}</strong></td>
             <td>${p.qty}</td>
             <td>${fmtPx(p.entry_price)}</td>
+            <td>${fmtPx(p.price)}</td>
+            <td style="${color}">${p.pnl != null ? (p.pnl >= 0 ? '+' : '') + '$' + p.pnl.toFixed(2) : '--'}</td>
+            <td style="${color}">${p.pct != null ? (p.pct >= 0 ? '+' : '') + (p.pct * 100).toFixed(2) + '%' : '--'}</td>
             <td>${p.opened_at || '--'}</td>
-            <td style="max-width:120px; overflow:hidden; text-overflow:ellipsis;">${p.notes || ''}</td>
             <td style="white-space:nowrap;">
               <button class="btn btn-ghost btn-sm" onclick="openClosePositionModal(${p.id})">Close</button>
               <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="deletePosition(${p.id})">×</button>
             </td>
-          </tr>`).join('')
-          : '<tr><td colspan="6" style="color:var(--text-muted); text-align:center; padding:16px;">No open positions</td></tr>';
+          </tr>`;
+        }).join('')
+          : '<tr><td colspan="8" style="color:var(--text-muted); text-align:center; padding:16px;">No open positions</td></tr>';
     }
+
+    _renderPortfolioHeatmap(openLive);
 
     // Closed positions table
     const closedTbody = document.getElementById('portfolio-closed-tbody');
@@ -2136,10 +2180,54 @@ function renderPortfolio(positions) {
         : '<tr><td colspan="8" style="color:var(--text-muted); text-align:center; padding:16px;">No closed positions</td></tr>';
     }
 
-    // KPI summary (open positions only)
+    // KPI summary (open positions, live)
     document.getElementById('port-open-count').textContent = String(open.length);
-    document.getElementById('port-pnl').textContent     = '--';
-    document.getElementById('port-pnl-pct').textContent  = '--';
+    const pnlEl    = document.getElementById('port-pnl');
+    const pnlPctEl = document.getElementById('port-pnl-pct');
+    if (totalValue > 0) {
+        const totalPnl = totalValue - totalCost;
+        const totalPct = totalCost > 0 ? totalPnl / totalCost : 0;
+        const col      = totalPnl >= 0 ? '#22c55e' : '#ef4444';
+        if (pnlEl)    { pnlEl.textContent    = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2); pnlEl.style.color = col; }
+        if (pnlPctEl) { pnlPctEl.textContent = (totalPct >= 0 ? '+' : '') + (totalPct * 100).toFixed(2) + '%'; pnlPctEl.style.color = col; }
+    } else {
+        if (pnlEl)    { pnlEl.textContent = '--'; pnlEl.style.color = ''; }
+        if (pnlPctEl) { pnlPctEl.textContent = '--'; pnlPctEl.style.color = ''; }
+    }
+}
+
+function _renderPortfolioHeatmap(openLive) {
+    const card = document.getElementById('portfolio-heatmap-card');
+    const grid = document.getElementById('portfolio-heatmap');
+    if (!card || !grid) return;
+
+    const withValue = openLive.filter(p => p.value != null && p.value > 0);
+    if (!withValue.length) { card.style.display = 'none'; return; }
+    card.style.display = '';
+
+    const maxValue = Math.max(...withValue.map(p => p.value));
+    // P&L %-driven background colour
+    const bg = pct => {
+        if (pct == null) return 'var(--bg-secondary)';
+        const clamped = Math.max(-0.1, Math.min(0.1, pct)); // ±10% saturates
+        const intensity = Math.abs(clamped) / 0.1;
+        return pct >= 0
+            ? `rgba(34,197,94,${(0.15 + intensity * 0.55).toFixed(2)})`
+            : `rgba(239,68,68,${(0.15 + intensity * 0.55).toFixed(2)})`;
+    };
+
+    grid.innerHTML = withValue
+        .sort((a, b) => b.value - a.value)
+        .map(p => {
+            // flex-grow proportional to value so bigger positions take more space
+            const grow = Math.max(1, Math.round(p.value / maxValue * 12));
+            return `<div class="port-heat-cell" style="flex-grow:${grow}; background:${bg(p.pct)};"
+                         onclick="selectSymbol('${p.symbol}')"
+                         title="${p.symbol} — $${p.value.toFixed(0)} (${p.pct != null ? (p.pct*100).toFixed(2)+'%' : 'n/a'})">
+                <span class="port-heat-sym">${p.symbol}</span>
+                <span class="port-heat-pct">${p.pct != null ? (p.pct >= 0 ? '+' : '') + (p.pct*100).toFixed(1) + '%' : '--'}</span>
+            </div>`;
+        }).join('');
 }
 
 function openAddPositionModal() {
