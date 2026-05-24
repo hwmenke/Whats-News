@@ -740,6 +740,8 @@ async function loadChartData(symbol) {
         const last = dailyOhlcv[dailyOhlcv.length - 1];
         const prev = dailyOhlcv[dailyOhlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
+
+        if (typeof loadEarningsMarkers === 'function') loadEarningsMarkers(symbol);
     } catch (e) {
         toast('Chart load failed: ' + e.message, 'error');
         showEmptyState();
@@ -873,6 +875,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'signals') {
         showArea('signals-area');
         loadSignals();
+    } else if (tabId === 'regime') {
+        showArea('regime-area');
+        loadRegime();
     } else if (tabId === 'journal') {
         showArea('journal-area');
         loadJournal();

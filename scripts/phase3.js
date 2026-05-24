@@ -996,12 +996,9 @@ async function loadEarningsMarkers(symbol) {
 }
 
 function _applyEarningsMarkers(symbol, dates) {
-    if (!dates.length) return;
     const candle = typeof series !== 'undefined' ? series.daily?.candle : null;
     if (!candle) return;
 
-    // Add earnings as small circle markers (merged with existing entry signal markers)
-    const existing = (typeof trendState !== 'undefined' && trendState.earningsMarkers) || [];
     const eMarkers = dates.map(d => ({
         time:     d.date,
         position: 'aboveBar',
@@ -1011,11 +1008,13 @@ function _applyEarningsMarkers(symbol, dates) {
         text:     'E',
     }));
 
-    // Store so they can be re-applied when chart data reloads
-    if (typeof window !== 'undefined') {
-        window._earningsMarkers = window._earningsMarkers || {};
-        window._earningsMarkers[symbol] = eMarkers;
-    }
+    // Merge with any existing markers already set on the candle series
+    window._earningsMarkers = window._earningsMarkers || {};
+    window._earningsMarkers[symbol] = eMarkers;
+
+    const prior = (window._priorCandleMarkers && window._priorCandleMarkers[symbol]) || [];
+    const merged = [...prior, ...eMarkers].sort((a, b) => String(a.time).localeCompare(String(b.time)));
+    try { candle.setMarkers(merged); } catch (_) {}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

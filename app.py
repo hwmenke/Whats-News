@@ -467,6 +467,7 @@ def trend_scan():
 
             if "error" in trend:
                 mrt = mdb = signal = None
+                ss = ms = ls = None
             else:
                 mrt    = _tlast("mrt")
                 mdb    = _tlast("mdb")
@@ -496,6 +497,9 @@ def trend_scan():
                 "price_stop": price_stop,
                 "rr":         rr,
                 "signal":     signal,
+                "short_state":  int(ss) if "error" not in trend and ss is not None else None,
+                "medium_state": int(ms) if "error" not in trend and ms is not None else None,
+                "long_state":   int(ls) if "error" not in trend and ls is not None else None,
                 "mrt":        round(mrt, 2) if mrt else None,
                 "mdb":        round(mdb, 2) if mdb else None,
             }

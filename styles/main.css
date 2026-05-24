@@ -3279,3 +3279,57 @@ kbd {
   font-size: 10px;
   text-align: right;
 }
+
+/* ══════════════════════════════════════════════════════════
+   Regime Dashboard
+   ══════════════════════════════════════════════════════════ */
+.regime-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+.regime-cell {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: transform .1s ease, border-color .15s;
+}
+.regime-cell:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+.regime-cell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.regime-sym {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text);
+}
+.regime-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  border-radius: 10px;
+  padding: 2px 7px;
+}
+.regime-states {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-bottom: 8px;
+}
+.regime-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}

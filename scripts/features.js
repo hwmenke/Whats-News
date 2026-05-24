@@ -9,7 +9,7 @@ const ALL_AREAS = [
     'empty-state','chart-area','stats-area','knn-area','backtest-area',
     'trend-area','scanner-area','data-manager-area','portfolio-area',
     'news-area','sector-area','compare-area','signals-area',
-    'journal-area','analytics-area','pair-area','mtf-area',
+    'regime-area','journal-area','analytics-area','pair-area','mtf-area',
     'calendar-area','strategy-area',
 ];
 
@@ -292,6 +292,94 @@ function renderSignals(signals, anomalies = []) {
             <td>${signalPills}${anomalyPills}</td>
             <td style="font-weight:700; color:${scoreColor(r.score)}">${r.score > 0 ? '+' : ''}${r.score}</td>
         </tr>`;
+    }).join('');
+}
+
+// ── Regime Dashboard ──────────────────────────────────────────────────────────
+let _regimeCache = [];
+
+async function loadRegime() {
+    const freq    = document.getElementById('regime-freq')?.value || 'daily';
+    const loading = document.getElementById('regime-loading');
+    const grid    = document.getElementById('regime-grid');
+    if (loading) loading.style.display = 'block';
+    if (grid)    grid.innerHTML = '';
+    try {
+        const data = await apiFetch(`${API}/trend-scan?freq=${freq}&method=kama`);
+        _regimeCache = Array.isArray(data) ? data : [];
+        renderRegimeFromCache();
+    } catch (e) {
+        toast('Regime load failed: ' + e.message, 'error');
+    } finally {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+function renderRegimeFromCache() {
+    const grid    = document.getElementById('regime-grid');
+    const summary = document.getElementById('regime-summary');
+    if (!grid) return;
+
+    const sortVal = document.getElementById('regime-sort')?.value || 'signal_desc';
+    const rows = _regimeCache.filter(r => !r.error);
+
+    rows.sort((a, b) => {
+        switch (sortVal) {
+            case 'signal_asc':  return (a.signal ?? 0) - (b.signal ?? 0);
+            case 'rsi_desc':    return (b.rsi ?? 0) - (a.rsi ?? 0);
+            case 'rsi_asc':     return (a.rsi ?? 0) - (b.rsi ?? 0);
+            case 'symbol':      return a.symbol.localeCompare(b.symbol);
+            default:            return (b.signal ?? 0) - (a.signal ?? 0);
+        }
+    });
+
+    // Summary KPIs
+    if (summary) {
+        const buckets = { 3:0, 2:0, 1:0, 0:0, '-1':0, '-2':0, '-3':0 };
+        rows.forEach(r => { const s = r.signal ?? 0; if (buckets[s] !== undefined) buckets[s]++; });
+        const strongBull = buckets[3] + buckets[2];
+        const strongBear = buckets['-3'] + buckets['-2'];
+        const neutral    = buckets[0] + buckets[1] + buckets['-1'];
+        summary.innerHTML = `
+            <div class="kpi-card"><div class="kpi-label">Symbols</div><div class="kpi-value">${rows.length}</div></div>
+            <div class="kpi-card"><div class="kpi-label">Bullish (≥+2)</div><div class="kpi-value" style="color:#22c55e">${strongBull}</div></div>
+            <div class="kpi-card"><div class="kpi-label">Bearish (≤−2)</div><div class="kpi-value" style="color:#ef4444">${strongBear}</div></div>
+            <div class="kpi-card"><div class="kpi-label">Neutral</div><div class="kpi-value">${neutral}</div></div>`;
+    }
+
+    if (!rows.length) {
+        grid.innerHTML = '<div style="padding:32px; text-align:center; color:var(--text-muted);">No data — fetch watchlist symbols first.</div>';
+        return;
+    }
+
+    const sigMap = {
+         3: ['STRONG LONG', '#16a34a'],  2: ['LONG', '#22c55e'],  1: ['LEAN LONG', '#86efac'],
+         0: ['NEUTRAL', '#6b7280'],
+        '-1': ['LEAN SHORT', '#fca5a5'], '-2': ['SHORT', '#ef4444'], '-3': ['STRONG SHORT', '#dc2626'],
+    };
+    const arrow = s => s > 0 ? '▲' : s < 0 ? '▼' : '–';
+    const arrowColor = s => s > 0 ? '#22c55e' : s < 0 ? '#ef4444' : '#6b7280';
+
+    grid.innerHTML = rows.map(r => {
+        const sig = r.signal ?? 0;
+        const [label, color] = sigMap[String(sig)] || ['—', '#6b7280'];
+        const rsiC = r.rsi == null ? '#6b7280' : r.rsi > 70 ? '#ef4444' : r.rsi < 30 ? '#22c55e' : 'var(--text-muted)';
+        return `<div class="regime-cell" style="border-left:4px solid ${color};" onclick="selectSymbol('${r.symbol}')">
+            <div class="regime-cell-head">
+                <span class="regime-sym">${r.symbol}</span>
+                <span class="regime-badge" style="background:${color}22; color:${color};">${label}</span>
+            </div>
+            <div class="regime-states">
+                <span title="Short">S <strong style="color:${arrowColor(r.short_state)}">${arrow(r.short_state)}</strong></span>
+                <span title="Medium">M <strong style="color:${arrowColor(r.medium_state)}">${arrow(r.medium_state)}</strong></span>
+                <span title="Long">L <strong style="color:${arrowColor(r.long_state)}">${arrow(r.long_state)}</strong></span>
+            </div>
+            <div class="regime-meta">
+                <span>$${r.price?.toFixed(2) ?? '–'}</span>
+                <span style="color:${rsiC}">RSI ${r.rsi?.toFixed(0) ?? '–'}</span>
+                <span>R:R ${r.rr ?? '–'}</span>
+            </div>
+        </div>`;
     }).join('');
 }
 

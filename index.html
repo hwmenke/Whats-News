@@ -227,6 +227,9 @@
       <button id="tab-signals" class="tab-btn" onclick="switchTab('signals')">
         <span class="tab-icon">📶</span> Signals
       </button>
+      <button id="tab-regime" class="tab-btn" onclick="switchTab('regime')">
+        <span class="tab-icon">🌡️</span> Regime
+      </button>
       <button id="tab-journal" class="tab-btn" onclick="switchTab('journal')">
         <span class="tab-icon">📓</span> Journal
       </button>
@@ -1207,6 +1210,34 @@
         </table>
       </div>
     </div><!-- #signals-area -->
+
+    <!-- ── Regime Dashboard Area ── -->
+    <div id="regime-area" class="stats-container" style="display:none;">
+      <div class="signals-toolbar">
+        <span class="sector-title">Market Regime Dashboard</span>
+        <label class="overlay-section-label" style="margin-left:12px;">Timeframe
+          <select id="regime-freq" class="alert-select" style="width:90px;" onchange="loadRegime()">
+            <option value="daily" selected>Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </label>
+        <label class="overlay-section-label" style="margin-left:8px;">Sort
+          <select id="regime-sort" class="alert-select" style="width:120px;" onchange="renderRegimeFromCache()">
+            <option value="signal_desc">Signal ↓</option>
+            <option value="signal_asc">Signal ↑</option>
+            <option value="rsi_desc">RSI ↓</option>
+            <option value="rsi_asc">RSI ↑</option>
+            <option value="symbol">Symbol A–Z</option>
+          </select>
+        </label>
+        <button class="btn btn-ghost btn-sm" style="margin-left:8px;" onclick="loadRegime()">⟳ Refresh</button>
+      </div>
+      <div id="regime-summary" class="kpi-row" style="margin-bottom:16px; flex-wrap:wrap;"></div>
+      <div id="regime-loading" style="display:none; padding:32px; text-align:center; color:var(--text-muted);">
+        <span class="spinner"></span> Computing regimes across watchlist…
+      </div>
+      <div id="regime-grid" class="regime-grid"></div>
+    </div><!-- #regime-area -->
 
     <!-- ── Journal Area ── -->
     <div id="journal-area" class="stats-container" style="display:none;">
