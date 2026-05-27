@@ -140,20 +140,11 @@
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
         <span class="tab-icon">🗄️</span> Data Manager
       </button>
-      <button id="tab-regression" class="tab-btn" onclick="switchTab('regression')">
-        <span class="tab-icon">📐</span> Regression
-      </button>
-      <button id="tab-strategy" class="tab-btn" onclick="switchTab('strategy')">
-        <span class="tab-icon">🧪</span> Strategy
-      </button>
       <button id="tab-swirl" class="tab-btn" onclick="switchTab('swirl')">
         <span class="tab-icon">🌀</span> Swirligram
       </button>
       <button id="tab-portfolio" class="tab-btn" onclick="switchTab('portfolio')">
         <span class="tab-icon">📂</span> Portfolio
-      </button>
-      <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">
-        <span class="tab-icon">🔮</span> KNN
       </button>
       <button id="tab-regime" class="tab-btn" onclick="switchTab('regime')">
         <span class="tab-icon">🌡</span> Regime
@@ -164,17 +155,8 @@
       <button id="tab-seasonality" class="tab-btn" onclick="switchTab('seasonality')">
         <span class="tab-icon">📅</span> Seasonality
       </button>
-      <button id="tab-factor-model" class="tab-btn" onclick="switchTab('factor-model')">
-        <span class="tab-icon">🧮</span> Factors
-      </button>
-      <button id="tab-signals" class="tab-btn" onclick="switchTab('signals')">
-        <span class="tab-icon">🚦</span> Signals
-      </button>
       <button id="tab-sector" class="tab-btn" onclick="switchTab('sector')">
         <span class="tab-icon">🗺️</span> Sector
-      </button>
-      <button id="tab-pair" class="tab-btn" onclick="switchTab('pair')">
-        <span class="tab-icon">🔗</span> Pair
       </button>
       <button id="tab-analytics" class="tab-btn" onclick="switchTab('analytics')">
         <span class="tab-icon">📒</span> Analytics
@@ -774,305 +756,6 @@
 
     </div><!-- #data-manager-area -->
 
-    <!-- ── Regression Area ── -->
-    <div id="regression-area" class="reg-container" style="display:none;">
-
-      <!-- ── Left panel: factor status ── -->
-      <div class="reg-left">
-        <div class="reg-panel-header">Macro Factors</div>
-        <div id="reg-factor-list" class="reg-factor-list">
-          <div class="reg-factor-summary">Loading…</div>
-        </div>
-        <button id="btn-fetch-factors" class="btn btn-ghost reg-fetch-btn"
-                onclick="fetchMissingFactors()">
-          ⬇ Fetch Missing Factors
-        </button>
-        <div class="reg-factor-hint">
-          Factors must be in your local DB before running a regression.
-          Click above to auto-fetch any missing ones.
-        </div>
-      </div>
-
-      <!-- ── Right panel: controls + results ── -->
-      <div class="reg-right">
-
-        <!-- Controls bar -->
-        <div class="reg-controls">
-          <div class="reg-controls-group">
-            <span class="overlay-section-label">Freq</span>
-            <button class="ind-pill reg-active reg-freq-btn" data-val="daily"
-                    onclick="setRegFreq('daily')">Daily</button>
-            <button class="ind-pill reg-freq-btn" data-val="weekly"
-                    onclick="setRegFreq('weekly')">Weekly</button>
-          </div>
-          <div class="reg-controls-group">
-            <span class="overlay-section-label">Forward horizon</span>
-            <button class="ind-pill reg-hor-btn" data-val="1"
-                    onclick="setRegHorizon(1)">1d</button>
-            <button class="ind-pill reg-active reg-hor-btn" data-val="5"
-                    onclick="setRegHorizon(5)">5d</button>
-            <button class="ind-pill reg-hor-btn" data-val="10"
-                    onclick="setRegHorizon(10)">10d</button>
-            <button class="ind-pill reg-hor-btn" data-val="20"
-                    onclick="setRegHorizon(20)">20d</button>
-          </div>
-          <div class="reg-controls-group">
-            <span class="overlay-section-label">Lookback</span>
-            <button class="ind-pill reg-lb-btn" data-val="252"
-                    onclick="setRegLookback(252)">1y</button>
-            <button class="ind-pill reg-active reg-lb-btn" data-val="504"
-                    onclick="setRegLookback(504)">2y</button>
-            <button class="ind-pill reg-lb-btn" data-val="756"
-                    onclick="setRegLookback(756)">3y</button>
-            <button class="ind-pill reg-lb-btn" data-val="1260"
-                    onclick="setRegLookback(1260)">5y</button>
-          </div>
-          <button id="btn-run-regression" class="btn btn-primary reg-run-btn"
-                  onclick="runRegression()">▶ Run</button>
-        </div>
-
-        <!-- Loading overlay -->
-        <div id="reg-loading" class="chart-loading" style="display:none;">
-          <span class="spinner"></span>Running regression…
-        </div>
-
-        <!-- Empty state -->
-        <div id="reg-empty" class="reg-empty">
-          <div class="empty-icon">📐</div>
-          <p>Select a symbol, then click <strong>▶ Run</strong> to regress its forward
-             returns on macro factor features.</p>
-          <p style="font-size:11px;color:var(--text-dim);margin-top:6px;">
-            Macro factors must be fetched first (use the left panel).
-          </p>
-        </div>
-
-        <!-- Results -->
-        <div id="reg-results" class="reg-results" style="display:none;">
-
-          <!-- KPI row -->
-          <div class="reg-kpi-row">
-            <div class="reg-kpi">
-              <div class="reg-kpi-label">R²</div>
-              <div id="reg-r2" class="reg-kpi-value">—</div>
-            </div>
-            <div class="reg-kpi">
-              <div class="reg-kpi-label">Adj R²</div>
-              <div id="reg-adj-r2" class="reg-kpi-value">—</div>
-            </div>
-            <div class="reg-kpi">
-              <div class="reg-kpi-label">Observations</div>
-              <div id="reg-n-obs" class="reg-kpi-value">—</div>
-            </div>
-            <div class="reg-kpi">
-              <div class="reg-kpi-label">Features used</div>
-              <div id="reg-n-features" class="reg-kpi-value">—</div>
-            </div>
-          </div>
-
-          <!-- Factor note -->
-          <div id="reg-factor-note" class="reg-factor-note"></div>
-
-          <!-- Body: bars + table side-by-side -->
-          <div class="reg-body">
-
-            <!-- Feature importance bars -->
-            <div class="reg-body-left">
-              <div class="reg-section-header">
-                Feature Importance  <span class="reg-sec-note">ranked by |t-statistic|</span>
-              </div>
-              <div id="reg-importance" class="reg-importance"></div>
-            </div>
-
-            <!-- Coefficient table -->
-            <div class="reg-body-right">
-              <div class="reg-section-header">
-                Coefficients
-                <span class="reg-sec-note">standardised · *** p&lt;0.001  ** p&lt;0.01  * p&lt;0.05  . p&lt;0.10</span>
-              </div>
-              <div class="reg-coef-wrap">
-                <table class="reg-coef-table">
-                  <thead>
-                    <tr>
-                      <th>Feature</th>
-                      <th>Coef</th>
-                      <th>Std Err</th>
-                      <th>t-stat</th>
-                      <th>p-value</th>
-                      <th>Sig</th>
-                    </tr>
-                  </thead>
-                  <tbody id="reg-coef-tbody"></tbody>
-                </table>
-              </div>
-            </div>
-
-          </div><!-- .reg-body -->
-
-        </div><!-- #reg-results -->
-
-      </div><!-- .reg-right -->
-
-    </div><!-- #regression-area -->
-
-    <!-- ══ Strategy Tester ══════════════════════════════════════ -->
-    <div id="strategy-area" class="st-container" style="display:none;">
-
-      <!-- Left panel: condition builder -->
-      <div class="st-left">
-        <div class="st-section-title">Symbol &amp; Frequency</div>
-        <div class="st-freq-row">
-          <button class="st-freq-btn st-active" data-val="daily"  onclick="stSetFreq('daily')">Daily</button>
-          <button class="st-freq-btn"           data-val="weekly" onclick="stSetFreq('weekly')">Weekly</button>
-        </div>
-
-        <div class="st-section-title" style="margin-top:14px;">Entry Long</div>
-        <div id="st-entry-long-rows"></div>
-        <button class="st-add-btn" onclick="stAddConditionRow('entry_long','st-entry-long-rows')">+ Condition</button>
-
-        <div class="st-section-title" style="margin-top:12px;">Exit Long</div>
-        <div id="st-exit-long-rows"></div>
-        <button class="st-add-btn" onclick="stAddConditionRow('exit_long','st-exit-long-rows')">+ Condition</button>
-
-        <div class="st-section-title" style="margin-top:12px;">
-          <label style="display:flex;gap:6px;align-items:center;cursor:pointer;">
-            <input type="checkbox" id="st-allow-short" onchange="stToggleShort(this.checked)"> Allow Short
-          </label>
-        </div>
-        <div id="st-short-conditions" style="display:none;">
-          <div class="st-section-title" style="margin-top:8px;">Entry Short</div>
-          <div id="st-entry-short-rows"></div>
-          <button class="st-add-btn" onclick="stAddConditionRow('entry_short','st-entry-short-rows')">+ Condition</button>
-          <div class="st-section-title" style="margin-top:8px;">Exit Short</div>
-          <div id="st-exit-short-rows"></div>
-          <button class="st-add-btn" onclick="stAddConditionRow('exit_short','st-exit-short-rows')">+ Condition</button>
-        </div>
-
-        <div class="st-section-title" style="margin-top:14px;">Settings</div>
-        <div class="st-setting-row">
-          <label>Regime Filter
-            <select id="st-regime-filter">
-              <option value="none">None</option>
-              <option value="long_only">Long Only</option>
-              <option value="short_only">Short Only</option>
-              <option value="trend_aligned">Trend Aligned</option>
-            </select>
-          </label>
-        </div>
-        <div class="st-setting-row">
-          <label>Commission %&nbsp;<input type="number" id="st-commission" value="0.05" step="0.01" min="0" max="5"></label>
-          <label>Slippage %&nbsp;<input type="number" id="st-slippage" value="0.05" step="0.01" min="0" max="5"></label>
-        </div>
-        <div class="st-setting-row">
-          <label>Bar Delay&nbsp;
-            <select id="st-bar-delay">
-              <option value="0">0 (same bar)</option>
-              <option value="1" selected>1 (next bar)</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="st-setting-row">
-          <label title="Adds Politis-Romano stationary block bootstrap 95% CI on Sharpe and CAGR. Adds ~2s.">
-            <input type="checkbox" id="st-bootstrap-ci"> Bootstrap CIs <span style="font-size:10px;color:var(--text-dim)">(slow)</span>
-          </label>
-        </div>
-
-        <div class="st-action-row">
-          <button id="btn-st-run" class="st-run-btn" onclick="stRunBacktest()">▶ Run Backtest</button>
-          <button id="btn-st-wf"  class="st-wf-btn"  onclick="stRunWalkForward()">⚡ Walk-Forward</button>
-        </div>
-
-        <!-- Walk-forward settings (collapsed) -->
-        <div id="st-wf-settings" style="display:none; margin-top:10px;">
-          <div class="st-section-title">Walk-Forward Options</div>
-          <div class="st-setting-row">
-            <label>Folds&nbsp;<input type="number" id="st-wf-folds" value="5" min="2" max="20"></label>
-            <label>Train %&nbsp;<input type="number" id="st-wf-train-pct" value="70" min="30" max="90"></label>
-          </div>
-          <div class="st-setting-row">
-            <label><input type="checkbox" id="st-wf-anchored"> Anchored (expanding)</label>
-          </div>
-          <div class="st-section-title" style="margin-top:8px;">Param Grid</div>
-          <div id="st-param-grid-rows"></div>
-          <button class="st-add-btn" onclick="stAddParamGridRow()">+ Param</button>
-        </div>
-        <button class="st-toggle-btn" onclick="stToggleWfSettings()">⚙ Walk-Forward Settings</button>
-
-        <!-- Monte Carlo -->
-        <div style="margin-top:8px;">
-          <button id="btn-st-mc" class="st-mc-btn" onclick="stRunMonteCarlo()" style="display:none;">🎲 Monte Carlo</button>
-          <button id="btn-st-fa" class="st-mc-btn" onclick="stRunFactorAttribution()" style="display:none;">📊 Factor Attribution</button>
-        </div>
-      </div><!-- .st-left -->
-
-      <!-- Right panel: results -->
-      <div class="st-right">
-        <div id="st-loading" class="st-loading" style="display:none;">
-          <span class="st-spinner">⏳</span> Running…
-        </div>
-
-        <div id="st-empty" class="st-empty">
-          <div class="empty-icon">🧪</div>
-          <p>Select a symbol, build entry conditions, then click Run Backtest.</p>
-        </div>
-
-        <div id="st-results" style="display:none;">
-          <!-- KPI row -->
-          <div id="st-metrics-row" class="st-kpi-row"></div>
-
-          <!-- Charts -->
-          <div class="st-chart-label">Price &amp; Signals</div>
-          <div id="st-price-chart" class="st-chart"></div>
-
-          <div class="st-chart-label">Equity vs Benchmark</div>
-          <div id="st-equity-chart" class="st-chart"></div>
-
-          <!-- Walk-forward section -->
-          <div id="st-wf-section" style="display:none;">
-            <div class="st-chart-label">Walk-Forward: OOS Sharpe per Fold</div>
-            <div class="st-chart st-chart-sm"><canvas id="st-wf-fold-chart"></canvas></div>
-            <div id="st-wf-stability" class="st-wf-stability"></div>
-            <div id="st-wf-fold-table" class="st-fold-table-wrap"></div>
-          </div>
-
-          <!-- Monte Carlo section -->
-          <div id="st-mc-section" style="display:none;">
-            <div class="st-chart-label">Monte Carlo (1000 simulations)</div>
-            <div class="st-chart st-chart-sm"><canvas id="st-mc-chart"></canvas></div>
-          </div>
-
-          <!-- Factor Attribution section -->
-          <div id="st-factor-section" style="display:none;">
-            <div class="st-chart-label">Factor Attribution — Rolling 63-bar Betas
-              <span id="st-factor-missing" style="font-size:10px;color:var(--red);margin-left:8px;"></span>
-            </div>
-            <div class="st-chart st-chart-sm"><canvas id="st-factor-beta-chart"></canvas></div>
-            <div class="st-chart-label" style="margin-top:8px;">Cumulative Alpha (daily)</div>
-            <div class="st-chart st-chart-sm"><canvas id="st-factor-alpha-chart"></canvas></div>
-            <div id="st-factor-stats-table" class="st-fold-table-wrap" style="margin-top:8px;"></div>
-          </div>
-
-          <!-- Trades table -->
-          <div class="st-chart-label" style="margin-top:14px;">Trades
-            <span id="st-trades-count" class="st-badge"></span>
-          </div>
-          <div id="st-trades-table-wrap" class="st-trades-wrap">
-            <table class="st-trades-table">
-              <thead>
-                <tr>
-                  <th>Entry</th><th>Exit</th><th>Dir</th>
-                  <th>Bars</th><th>Gross</th><th>Net</th>
-                  <th>MFE</th><th>MAE</th>
-                </tr>
-              </thead>
-              <tbody id="st-trades-tbody"></tbody>
-            </table>
-          </div>
-        </div><!-- #st-results -->
-      </div><!-- .st-right -->
-
-    </div><!-- #strategy-area -->
-
     <!-- ══ Swirligram ═══════════════════════════════════════════ -->
     <div id="swirl-area" class="sw-container" style="display:none;">
 
@@ -1255,112 +938,6 @@
 
     </div><!-- #portfolio-area -->
 
-    <!-- ── KNN Pattern Forecast Area ── -->
-    <div id="knn-area" class="knn-container" style="display:none;">
-
-      <div id="knn-loading" class="chart-loading" style="display:none;">
-        <span class="spinner"></span> Searching for similar patterns…
-      </div>
-
-      <!-- Controls bar -->
-      <div class="knn-controls">
-        <!-- Left: Freq + K + Run -->
-        <div class="knn-controls-left">
-          <div class="knn-ctrl-group">
-            <span class="knn-ctrl-label">Freq</span>
-            <button class="ind-pill knn-freq-btn knn-active" data-val="daily"  onclick="knnSetFreq('daily')">Daily</button>
-            <button class="ind-pill knn-freq-btn"            data-val="weekly" onclick="knnSetFreq('weekly')">Weekly</button>
-          </div>
-          <div class="knn-ctrl-group">
-            <span class="knn-ctrl-label">Neighbours</span>
-            <input id="knn-k-input" type="number" class="knn-k-input" value="20" min="5" max="50" step="5" />
-          </div>
-          <button id="btn-knn-run" class="btn btn-primary knn-run-btn" onclick="knnRunForecast()">
-            🔮 Find Patterns
-          </button>
-        </div>
-
-        <!-- Right: Weight sliders -->
-        <div class="knn-controls-right">
-          <span class="knn-ctrl-label">Feature Weights</span>
-          <div class="knn-sliders">
-            <div class="knn-slider-row">
-              <span class="knn-slider-icon">📊</span>
-              <span class="knn-slider-label">Trend</span>
-              <input id="knn-slider-trend" class="knn-slider" type="range" min="0" max="1" step="0.05"
-                     value="0.25" oninput="knnUpdateWeight('trend',this.value)">
-              <span id="knn-w-val-trend" class="knn-slider-val">0.25</span>
-            </div>
-            <div class="knn-slider-row">
-              <span class="knn-slider-icon">⚡</span>
-              <span class="knn-slider-label">Momentum</span>
-              <input id="knn-slider-momentum" class="knn-slider" type="range" min="0" max="1" step="0.05"
-                     value="0.25" oninput="knnUpdateWeight('momentum',this.value)">
-              <span id="knn-w-val-momentum" class="knn-slider-val">0.25</span>
-            </div>
-            <div class="knn-slider-row">
-              <span class="knn-slider-icon">🌊</span>
-              <span class="knn-slider-label">Volatility</span>
-              <input id="knn-slider-volatility" class="knn-slider" type="range" min="0" max="1" step="0.05"
-                     value="0.20" oninput="knnUpdateWeight('volatility',this.value)">
-              <span id="knn-w-val-volatility" class="knn-slider-val">0.20</span>
-            </div>
-            <div class="knn-slider-row">
-              <span class="knn-slider-icon">🕯</span>
-              <span class="knn-slider-label">Price Action</span>
-              <input id="knn-slider-price_action" class="knn-slider" type="range" min="0" max="1" step="0.05"
-                     value="0.20" oninput="knnUpdateWeight('price_action',this.value)">
-              <span id="knn-w-val-price_action" class="knn-slider-val">0.20</span>
-            </div>
-            <div class="knn-slider-row">
-              <span class="knn-slider-icon">📦</span>
-              <span class="knn-slider-label">Volume</span>
-              <input id="knn-slider-volume" class="knn-slider" type="range" min="0" max="1" step="0.05"
-                     value="0.10" oninput="knnUpdateWeight('volume',this.value)">
-              <span id="knn-w-val-volume" class="knn-slider-val">0.10</span>
-            </div>
-          </div>
-          <div class="knn-weight-row">
-            <span class="knn-ctrl-label">Total:</span>
-            <span id="knn-weight-total" class="knn-weight-total knn-wt-ok">1.00</span>
-            <button class="ind-pill" onclick="knnResetWeights()" style="font-size:10px;padding:2px 8px;">↺ Reset</button>
-          </div>
-        </div>
-      </div><!-- .knn-controls -->
-
-      <!-- Meta row (shown after run) -->
-      <div id="knn-meta" class="knn-meta" style="display:none;"></div>
-
-      <!-- Empty state -->
-      <div id="knn-empty" class="empty-state">
-        <div class="empty-icon">🔮</div>
-        <p>Select a symbol and click <b>Find Patterns</b> to run KNN analysis across 5 feature groups and 4 time horizons.</p>
-      </div>
-
-      <!-- Results -->
-      <div id="knn-results" style="display:none;" class="knn-results">
-
-        <!-- Horizon cards (4 across) -->
-        <div id="knn-horizon-cards" class="knn-horizon-cards"></div>
-
-        <!-- Bottom: neighbour table + feature panel -->
-        <div class="knn-bottom">
-
-          <!-- Neighbour table -->
-          <div id="knn-neighbor-table" class="knn-neighbor-table"></div>
-
-          <!-- Feature snapshot -->
-          <div class="knn-feature-sidebar">
-            <div class="knn-feat-title">Current Feature Snapshot</div>
-            <div id="knn-feature-panel" class="knn-feature-panel"></div>
-          </div>
-
-        </div><!-- .knn-bottom -->
-
-      </div><!-- #knn-results -->
-
-    </div><!-- #knn-area -->
-
     <!-- ── Market Regime Area ── -->
     <div id="regime-area" class="rg-container" style="display:none;">
       <div id="regime-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Computing regime…</div>
@@ -1459,79 +1036,12 @@
       </div>
     </div><!-- #seasonality-area -->
 
-    <!-- ── Factor Model Area ── -->
-    <div id="factor-model-area" class="fm-container" style="display:none;">
-      <div id="fm-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Running factor regressions…</div>
-      <div class="fm-controls">
-        <span class="fm-ctrl-label">Lookback (bars)</span>
-        <input id="fm-lookback-input" type="number" class="fm-lookback-input" value="504" min="126" max="1260" step="63" />
-        <button id="btn-fm-load" class="btn btn-primary btn-sm" onclick="loadFactorModel()">▶ Run Model</button>
-        <div id="fm-missing-warn" class="fm-warn" style="display:none;"></div>
-      </div>
-      <div id="fm-empty" class="empty-state">
-        <div class="empty-icon">🧮</div>
-        <p>Run factor regressions for all watchlist symbols. Requires SPY, IWM, IWD, IWF, TLT, GLD in your watchlist.</p>
-      </div>
-      <div id="fm-results" style="display:none;" class="fm-results">
-        <div class="fm-top">
-          <div id="fm-exposure-matrix" class="fm-matrix-panel"></div>
-          <div class="fm-alpha-panel">
-            <div class="fm-section-title">Alpha Ranking</div>
-            <canvas id="fm-alpha-chart" style="width:100%;height:260px;"></canvas>
-          </div>
-        </div>
-        <div class="fm-middle">
-          <div class="fm-perf-panel">
-            <div class="fm-section-title">Factor Cumulative Performance</div>
-            <canvas id="fm-factor-perf-chart" style="width:100%;height:180px;"></canvas>
-          </div>
-        </div>
-        <div id="fm-drilldown" class="fm-drilldown" style="display:none;">
-          <div id="fm-drill-header" class="fm-drill-header"></div>
-          <div class="fm-drill-charts">
-            <div class="fm-drill-chart-wrap">
-              <div class="fm-section-title">Rolling 63-bar Factor Betas</div>
-              <canvas id="fm-rolling-beta-chart" style="width:100%;height:160px;"></canvas>
-            </div>
-            <div id="fm-attribution" class="fm-drill-attr"></div>
-          </div>
-        </div>
-      </div>
-    </div><!-- #factor-model-area -->
-
-    <!-- ── Signals Dashboard ── -->
-    <div id="signals-area" class="feat-container" style="display:none;">
-      <div class="feat-header"><h2>🚦 Technical Signals</h2>
-        <span class="feat-sub">RSI / MACD / Bollinger / volume signals across your watchlist, ranked by strength.</span></div>
-      <div class="feat-table-wrap">
-        <table class="feat-table">
-          <thead><tr><th>Symbol</th><th>Close</th><th>Score</th><th>RSI</th><th>MACD</th><th>Vol Z</th><th>Signals</th></tr></thead>
-          <tbody id="signals-body"></tbody>
-        </table>
-      </div>
-    </div><!-- #signals-area -->
-
     <!-- ── Sector Heatmap ── -->
     <div id="sector-area" class="feat-container" style="display:none;">
       <div class="feat-header"><h2>🗺️ Sector Heatmap</h2>
         <span class="feat-sub">Return heatmap grouped by sector. Click a sector to expand its symbols.</span></div>
       <div class="feat-table-wrap"><table id="sector-table" class="feat-table heat-table"></table></div>
     </div><!-- #sector-area -->
-
-    <!-- ── Pair / Spread ── -->
-    <div id="pair-area" class="feat-container" style="display:none;">
-      <div class="feat-header"><h2>🔗 Pair Trading</h2>
-        <span class="feat-sub">Ratio z-score spread for mean-reversion pairs.</span></div>
-      <div class="feat-controls">
-        <input id="pair-sym1" class="feat-input" placeholder="Symbol A" />
-        <span class="feat-divider">/</span>
-        <input id="pair-sym2" class="feat-input" placeholder="Symbol B" />
-        <label class="feat-label">Window <input id="pair-window" class="feat-input feat-input-sm" type="number" value="20" min="5" max="120" /></label>
-        <button class="btn btn-primary" onclick="runPairAnalysis()">Analyze</button>
-        <span id="pair-status" class="feat-status"></span>
-      </div>
-      <div class="feat-chart-wrap"><canvas id="pair-chart"></canvas></div>
-    </div><!-- #pair-area -->
 
     <!-- ── Portfolio Analytics ── -->
     <div id="analytics-area" class="feat-container" style="display:none;">
@@ -1796,18 +1306,12 @@
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
-<script src="scripts/regression.js"></script>
-<script src="scripts/strategy_tester.js"></script>
 <script src="scripts/swirligram.js"></script>
 <script src="scripts/portfolio.js"></script>
-<script src="scripts/knn_forecast.js"></script>
 <script src="scripts/market_regime.js"></script>
 <script src="scripts/momentum_ranker.js"></script>
 <script src="scripts/seasonality.js"></script>
-<script src="scripts/factor_model.js"></script>
-<script src="scripts/signals.js"></script>
 <script src="scripts/sector.js"></script>
-<script src="scripts/pair.js"></script>
 <script src="scripts/analytics.js"></script>
 <script src="scripts/journal.js"></script>
 <script src="scripts/news.js"></script>

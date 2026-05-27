@@ -648,22 +648,16 @@ const _AREA_DISPLAY = {
     'trend-area':        'flex',
     'scanner-area':      'flex',
     'data-manager-area': 'flex',
-    'regression-area':   'flex',
-    'strategy-area':     'flex',
     'swirl-area':        'flex',
     'portfolio-area':    'flex',
-    'knn-area':          'flex',
     'regime-area':       'flex',
     'momentum-area':     'flex',
     'seasonality-area':  'flex',
-    'factor-model-area': 'flex',
     'newsletter-area':   'flex',
     'news-area':         'flex',
-    'signals-area':      'flex',
     'sector-area':       'flex',
     'calendar-area':     'flex',
     'journal-area':      'flex',
-    'pair-area':         'flex',
     'analytics-area':    'flex',
     'compare-area':      'flex',
     'mtf-area':          'flex',
@@ -716,21 +710,12 @@ async function switchTab(tabId) {
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
-    } else if (tabId === 'regression') {
-        showRegressionArea();
-        if (typeof initRegression === 'function') initRegression();
-    } else if (tabId === 'strategy') {
-        showStrategyArea();
-        if (typeof initStrategyTester === 'function') initStrategyTester();
     } else if (tabId === 'swirl') {
         showSwirlogramArea();
         if (typeof initSwirligram === 'function') initSwirligram();
     } else if (tabId === 'portfolio') {
         showPortfolioArea();
         if (typeof initPortfolioTester === 'function') initPortfolioTester();
-    } else if (tabId === 'knn') {
-        showKnnArea();
-        if (typeof initKnnForecast === 'function') initKnnForecast();
     } else if (tabId === 'regime') {
         showRegimeArea();
         if (typeof initRegime === 'function') initRegime();
@@ -740,18 +725,12 @@ async function switchTab(tabId) {
     } else if (tabId === 'seasonality') {
         showSeasonalityArea();
         if (typeof initSeasonality === 'function') initSeasonality();
-    } else if (tabId === 'factor-model') {
-        showFactorModelArea();
-        if (typeof initFactorModel === 'function') initFactorModel();
     } else if (tabId === 'newsletter') {
         _showOnly('newsletter-area');
         if (typeof initNewsletter === 'function') initNewsletter();
     } else if (tabId === 'news') {
         _showOnly('news-area');
         if (typeof initNews === 'function') initNews();
-    } else if (tabId === 'signals') {
-        _showOnly('signals-area');
-        if (typeof initSignals === 'function') initSignals();
     } else if (tabId === 'sector') {
         _showOnly('sector-area');
         if (typeof initSector === 'function') initSector();
@@ -761,9 +740,6 @@ async function switchTab(tabId) {
     } else if (tabId === 'journal') {
         _showOnly('journal-area');
         if (typeof initJournal === 'function') initJournal();
-    } else if (tabId === 'pair') {
-        _showOnly('pair-area');
-        if (typeof initPair === 'function') initPair();
     } else if (tabId === 'analytics') {
         _showOnly('analytics-area');
         if (typeof initAnalytics === 'function') initAnalytics();
@@ -789,11 +765,8 @@ function showStatsArea()       { _showOnly('stats-area'); }
 function showTrendArea()       { _showOnly('trend-area'); }
 function showScannerArea()     { _showOnly('scanner-area'); }
 function showDataManagerArea() { _showOnly('data-manager-area'); }
-function showRegressionArea()  { _showOnly('regression-area'); }
-function showStrategyArea()    { _showOnly('strategy-area'); }
 function showSwirlogramArea()  { _showOnly('swirl-area'); }
 function showPortfolioArea()   { _showOnly('portfolio-area'); }
-function showKnnArea()         { _showOnly('knn-area'); }
 function showRegimeArea()      { _showOnly('regime-area'); }
 function showMomentumArea()    { _showOnly('momentum-area'); }
 function showSeasonalityArea() { _showOnly('seasonality-area'); }
@@ -1142,7 +1115,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Keyboard shortcuts
-    const TAB_ORDER = ['charts','stats','trend','scanner','data-manager','regression','strategy','swirl','portfolio','knn'];
+    const TAB_ORDER = ['charts','stats','trend','scanner','data-manager','swirl','portfolio'];
     TAB_ORDER.forEach((id, i) =>
         registerShortcut({ key: String(i + 1), handler: () => switchTab(id), description: `Go to ${id}` })
     );
