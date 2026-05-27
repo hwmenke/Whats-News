@@ -68,6 +68,7 @@ def init_db():
         ('entry_rvol',    'REAL'),
         ('lod_dist_atr',  'REAL'),
         ('mistake_tags',  "TEXT    DEFAULT ''"),
+        ('stop_loss',     'REAL'),
     ]:
         try:
             cur.execute(f"ALTER TABLE journal ADD COLUMN {col} {defn}")
@@ -515,17 +516,19 @@ def list_journal(symbol: str = None, tag: str = None) -> list:
 
 def add_journal_entry(symbol: str, direction: str, entry_date: str, entry_price: float,
                       qty: float = 1, exit_date: str = None, exit_price: float = None,
+                      stop_loss: float = None,
                       setup: str = "", tags: str = "", thesis: str = "") -> int:
     conn = get_connection()
     now  = datetime.now(timezone.utc).isoformat()
     cur  = conn.execute(
         """INSERT INTO journal
            (symbol, direction, entry_date, exit_date, entry_price, exit_price,
-            qty, setup, tags, thesis, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            stop_loss, qty, setup, tags, thesis, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         (symbol.upper(), direction, entry_date, exit_date,
          float(entry_price),
          float(exit_price) if exit_price is not None else None,
+         float(stop_loss) if stop_loss is not None else None,
          float(qty), setup, tags, thesis, now)
     )
     jid = cur.lastrowid
@@ -536,7 +539,7 @@ def add_journal_entry(symbol: str, direction: str, entry_date: str, entry_price:
 
 def update_journal_entry(entry_id: int, **kwargs):
     allowed = {"direction", "entry_date", "exit_date", "entry_price",
-               "exit_price", "qty", "setup", "tags", "thesis"}
+               "exit_price", "stop_loss", "qty", "setup", "tags", "thesis"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return

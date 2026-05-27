@@ -2,14 +2,32 @@
  * risk_calc.js — R-based position sizer + 3-stop strategy calculator
  */
 
+const _RC_KEY = 'risk_calc_prefs';
+
 function initRiskCalc() {
     const sym = typeof state !== 'undefined' ? state.activeSymbol : null;
-    // Pre-fill symbol label
     const lbl = document.getElementById('rc-sym-label');
     if (lbl && sym) lbl.textContent = sym;
-    // Try to pre-fill entry from last known price
+
+    // Restore persisted account size and risk %
+    try {
+        const saved = JSON.parse(localStorage.getItem(_RC_KEY) || '{}');
+        const acctEl = document.getElementById('rc-account');
+        const riskEl = document.getElementById('rc-risk-pct');
+        if (acctEl && saved.account) acctEl.value = saved.account;
+        if (riskEl && saved.risk_pct) riskEl.value = saved.risk_pct;
+    } catch (_) {}
+
     if (sym) _riskPrefill(sym);
     _render3Stop();
+}
+
+function _saveRiskPrefs() {
+    try {
+        const acct = document.getElementById('rc-account')?.value;
+        const risk = document.getElementById('rc-risk-pct')?.value;
+        localStorage.setItem(_RC_KEY, JSON.stringify({ account: acct, risk_pct: risk }));
+    } catch (_) {}
 }
 
 async function _riskPrefill(symbol) {
@@ -28,6 +46,7 @@ async function _riskPrefill(symbol) {
 // ── Position Sizer ────────────────────────────────────────────────────────────
 
 async function _calcPositionSize() {
+    _saveRiskPrefs();
     const g = id => document.getElementById(id)?.value;
     const account  = parseFloat(g('rc-account')  || '100000');
     const risk_pct = parseFloat(g('rc-risk-pct') || '0.5');

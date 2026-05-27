@@ -1046,7 +1046,10 @@
     <!-- ── Portfolio Analytics ── -->
     <div id="analytics-area" class="feat-container" style="display:none;">
       <div class="feat-header"><h2>📒 Trade Analytics</h2>
-        <span class="feat-sub">Performance metrics derived from your closed positions.</span></div>
+        <span class="feat-sub">Dollar P&L from positions · R-distribution from journal.</span></div>
+
+      <!-- Dollar P&L section -->
+      <div class="an-section-header">Closed Position P&L</div>
       <div id="analytics-kpis" class="an-kpi-grid"></div>
       <div class="feat-chart-wrap"><canvas id="analytics-equity"></canvas></div>
       <div class="feat-table-wrap">
@@ -1055,6 +1058,9 @@
           <tbody id="analytics-trades"></tbody>
         </table>
       </div>
+
+      <!-- R-distribution section -->
+      <div id="r-analytics-panel" class="rh-panel"></div>
     </div><!-- #analytics-area -->
 
     <!-- ── Trade Journal ── -->
@@ -1067,8 +1073,9 @@
           <option value="long">Long</option><option value="short">Short</option>
         </select>
         <input id="jnl-entry-date" class="feat-input" type="date" />
-        <input id="jnl-entry-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="Entry" />
-        <input id="jnl-exit-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="Exit" />
+        <input id="jnl-entry-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="Entry $" />
+        <input id="jnl-stop-loss"   class="feat-input feat-input-sm" type="number" step="any" placeholder="Stop $" title="Planned stop price (used for R calculations)" />
+        <input id="jnl-exit-price"  class="feat-input feat-input-sm" type="number" step="any" placeholder="Exit $" />
         <input id="jnl-qty" class="feat-input feat-input-sm" type="number" step="any" placeholder="Qty" />
         <input id="jnl-setup" class="feat-input" placeholder="Setup" />
         <input id="jnl-tags" class="feat-input" placeholder="Tags" />
@@ -1076,7 +1083,7 @@
       </div>
       <div class="feat-table-wrap">
         <table class="feat-table">
-          <thead><tr><th>Symbol</th><th>Dir</th><th>Entry Date</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Tags</th><th></th></tr></thead>
+          <thead><tr><th>Symbol</th><th>Dir</th><th>Entry Date</th><th>Entry</th><th>Stop</th><th>Exit</th><th>R</th><th>P&L</th><th></th></tr></thead>
           <tbody id="journal-body"></tbody>
         </table>
       </div>

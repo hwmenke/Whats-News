@@ -3867,3 +3867,46 @@ body.focus-mode .symbol-header { display: none; }
 .cov-icon-err        { color: var(--red); font-weight: 700; text-align: center; }
 .cov-row-stale td    { background: rgba(234,179,8,0.04); }
 .cov-row-empty td    { background: rgba(239,68,68,0.04); }
+
+/* ── Analytics — section header ────────────────────────────────────────────── */
+.an-section-header {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  color: var(--text-muted); letter-spacing: 0.06em;
+  border-top: 1px solid var(--border); padding-top: 10px; margin: 14px 0 8px;
+}
+.an-warn { color: var(--yellow); }
+
+/* ── R-Distribution Histogram ───────────────────────────────────────────────── */
+.rh-panel         { margin-top: 16px; }
+.rh-kpis          { margin-bottom: 10px; }
+.rh-slip-note     { font-size: 11px; margin-bottom: 10px; padding: 6px 10px;
+                    background: var(--bg-elevated); border-radius: var(--radius-sm);
+                    border-left: 3px solid var(--border-accent); }
+.rh-histogram     { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.rh-row           { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.rh-label         { width: 100px; flex-shrink: 0; font-size: 10px;
+                    color: var(--text-muted); text-align: right; }
+.rh-track         { flex: 1; height: 16px; background: var(--bg-elevated);
+                    border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+.rh-bar           { height: 100%; border-radius: 3px; transition: width 0.4s; min-width: 2px; }
+.rh-bar-win       { background: var(--green); opacity: 0.75; }
+.rh-bar-loss      { background: var(--red);   opacity: 0.75; }
+.rh-bar-scratch   { background: var(--yellow);opacity: 0.60; }
+.rh-count         { width: 28px; text-align: right; font-family: var(--font-mono); font-size: 10px; }
+.rh-pct           { width: 36px; text-align: right; font-family: var(--font-mono);
+                    font-size: 10px; color: var(--text-muted); }
+.rh-grade-table   { width: 100%; border-collapse: collapse; font-size: 11px; }
+.rh-grade-table th{ padding: 5px 8px; text-align: left; font-size: 10px; text-transform: uppercase;
+                    color: var(--text-muted); border-bottom: 1px solid var(--border); }
+.rh-grade-table td{ padding: 5px 8px; border-bottom: 1px solid rgba(48,54,61,0.5);
+                    font-family: var(--font-mono); }
+.rh-grade-table tr:hover td { background: var(--bg-hover); }
+
+/* ── Market Dashboard — EW/CW row ───────────────────────────────────────────── */
+.dash-ew-row   { display: flex; align-items: center; gap: 10px; margin-top: 10px;
+                 padding: 8px 10px; background: var(--bg-elevated);
+                 border-radius: var(--radius-sm); border: 1px solid var(--border); }
+.dash-ew-label { font-size: 11px; color: var(--text-muted); flex: 1; }
+.dash-ew-chg   { font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
+.dash-ew-pos   { color: var(--green); }
+.dash-ew-neg   { color: var(--red); }

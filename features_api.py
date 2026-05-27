@@ -729,6 +729,7 @@ def create_journal_entry():
         return _err("entry_price (number) is required")
 
     exit_p = body.get("exit_price")
+    stop_p = body.get("stop_loss")
     jid = db.add_journal_entry(
         symbol=symbol,
         direction=body.get("direction", "long"),
@@ -737,6 +738,7 @@ def create_journal_entry():
         qty=qty,
         exit_date=body.get("exit_date"),
         exit_price=float(exit_p) if exit_p is not None else None,
+        stop_loss=float(stop_p) if stop_p is not None else None,
         setup=body.get("setup", ""),
         tags=body.get("tags", ""),
         thesis=body.get("thesis", ""),
@@ -748,7 +750,7 @@ def create_journal_entry():
 def update_journal_entry(entry_id):
     body    = request.get_json(silent=True) or {}
     allowed = {"direction", "entry_date", "exit_date", "entry_price",
-               "exit_price", "qty", "setup", "tags", "thesis"}
+               "exit_price", "stop_loss", "qty", "setup", "tags", "thesis"}
     updates = {k: body[k] for k in allowed if k in body}
     if not updates:
         return _err("No valid fields to update")
@@ -825,6 +827,94 @@ def get_analytics():
         "max_drawdown":  round(max_dd, 4)        if max_dd        is not None else None,
         "equity_curve":  equity,
         "trades":        trades,
+    })
+
+
+# ── R-Multiple Analytics ───────────────────────────────────────────────────────
+
+@features_bp.route("/api/r-analytics", methods=["GET"])
+def get_r_analytics():
+    """R-distribution from journal entries that have stop_loss recorded."""
+    entries = db.list_journal()
+
+    BUCKETS = [
+        {"label": "< −2R",       "min": -999, "max": -2  },
+        {"label": "−2R to −1R",  "min": -2,   "max": -1  },
+        {"label": "−1R to −0.5R","min": -1,   "max": -0.5},
+        {"label": "−0.5R to 0",  "min": -0.5, "max":  0  },
+        {"label": "0 to +1R",    "min":  0,   "max":  1  },
+        {"label": "+1R to +3R",  "min":  1,   "max":  3  },
+        {"label": "+3R to +10R", "min":  3,   "max": 10  },
+        {"label": "> +10R",      "min": 10,   "max": 999 },
+    ]
+
+    r_trades = []
+    for e in entries:
+        if e.get("exit_price") is None or e.get("stop_loss") is None:
+            continue
+        entry = float(e["entry_price"])
+        stop  = float(e["stop_loss"])
+        exit_ = float(e["exit_price"])
+        risk  = abs(entry - stop)
+        if risk < 0.0001:
+            continue
+        r = (exit_ - entry) / risk if e.get("direction", "long") != "short" else (entry - exit_) / risk
+        r_trades.append({
+            "symbol":      e["symbol"],
+            "date":        (e.get("exit_date") or e.get("entry_date") or "")[:10],
+            "r":           round(r, 3),
+            "setup_grade": e.get("setup_grade") or "",
+        })
+
+    if not r_trades:
+        return jsonify({"count": 0, "histogram": BUCKETS})
+
+    rs     = [t["r"] for t in r_trades]
+    wins   = [r for r in rs if r > 0]
+    losses = [r for r in rs if r <= 0]
+    n      = len(rs)
+
+    win_rate     = len(wins) / n
+    avg_win_r    = float(np.mean(wins))   if wins   else 0.0
+    avg_loss_r   = float(np.mean(losses)) if losses else 0.0
+    payoff_ratio = abs(avg_win_r / avg_loss_r) if avg_loss_r else None
+    expectancy   = round(win_rate * avg_win_r + (1 - win_rate) * avg_loss_r, 3)
+
+    # Slippage: how much worse than -1R are average losses?
+    avg_loss_slippage = round(avg_loss_r - (-1.0), 3) if losses else None
+
+    for b in BUCKETS:
+        b["count"] = sum(1 for r in rs if b["min"] <= r < b["max"])
+        b["pct"]   = round(b["count"] / n * 100, 1)
+
+    # Per-grade breakdown
+    grade_stats = {}
+    for grade in ("A", "B", "C", ""):
+        g_rs = [t["r"] for t in r_trades if t["setup_grade"] == grade]
+        if not g_rs:
+            continue
+        g_wins   = [r for r in g_rs if r > 0]
+        g_losses = [r for r in g_rs if r <= 0]
+        g_wr     = len(g_wins) / len(g_rs)
+        g_aw     = float(np.mean(g_wins))   if g_wins   else 0.0
+        g_al     = float(np.mean(g_losses)) if g_losses else 0.0
+        grade_stats[grade or "Ungraded"] = {
+            "count":      len(g_rs),
+            "win_rate":   round(g_wr, 3),
+            "avg_r":      round(float(np.mean(g_rs)), 3),
+            "expectancy": round(g_wr * g_aw + (1 - g_wr) * g_al, 3),
+        }
+
+    return jsonify({
+        "count":              n,
+        "win_rate":           round(win_rate, 4),
+        "avg_win_r":          round(avg_win_r, 3),
+        "avg_loss_r":         round(avg_loss_r, 3),
+        "payoff_ratio":       round(payoff_ratio, 3) if payoff_ratio else None,
+        "expectancy":         expectancy,
+        "avg_loss_slippage":  avg_loss_slippage,
+        "histogram":          BUCKETS,
+        "grade_stats":        grade_stats,
     })
 
 
@@ -1349,6 +1439,26 @@ def get_market_breadth():
             pass
 
     pct = lambda n: round(n / total * 100, 1) if total else 0
+
+    # Equal-weight vs cap-weight divergence (RSP = EW S&P 500, SPY = CW S&P 500)
+    ew_cw = None
+    try:
+        import yfinance as yf
+        raw = yf.download(["SPY", "RSP"], period="2mo", auto_adjust=True, progress=False)["Close"]
+        spy = raw["SPY"].dropna()
+        rsp = raw["RSP"].dropna()
+        if len(spy) >= 22 and len(rsp) >= 22:
+            ratio_now  = float(rsp.iloc[-1])  / float(spy.iloc[-1])
+            ratio_prev = float(rsp.iloc[-22]) / float(spy.iloc[-22])
+            chg = round((ratio_now / ratio_prev - 1) * 100, 2)
+            ew_cw = {
+                "ratio":   round(ratio_now, 4),
+                "chg_20d": chg,
+                "signal":  "broadening" if chg > 0.5 else "narrowing" if chg < -0.5 else "neutral",
+            }
+    except Exception:
+        pass
+
     return jsonify({
         "total":          total,
         "pct_above_20ma": pct(above_20),
@@ -1359,6 +1469,7 @@ def get_market_breadth():
         "ad_ratio":       round(advances / declines, 2) if declines else advances,
         "new_highs":      new_highs,
         "new_lows":       new_lows,
+        "ew_cw":          ew_cw,
     })
 
 

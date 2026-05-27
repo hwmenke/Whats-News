@@ -65,7 +65,18 @@ function _renderBreadth(d) {
                                        '<span class="dash-regime-chip dash-regime-bear">Broad Downtrend</span>'}
             ${d.new_highs > d.new_lows * 3 ? '<span class="dash-regime-chip dash-regime-bull">Expanding Leadership</span>' :
               d.new_lows  > d.new_highs * 3 ? '<span class="dash-regime-chip dash-regime-bear">Narrowing Leadership</span>' : ''}
-        </div>`;
+        </div>
+        ${d.ew_cw ? `
+        <div class="dash-ew-row">
+            <span class="dash-ew-label">EW vs CW (RSP/SPY)</span>
+            <span class="dash-ew-chg ${d.ew_cw.chg_20d >= 0 ? 'dash-ew-pos' : 'dash-ew-neg'}">
+                ${d.ew_cw.chg_20d >= 0 ? '+' : ''}${d.ew_cw.chg_20d}% (20d)
+            </span>
+            <span class="dash-regime-chip ${
+                d.ew_cw.signal === 'broadening' ? 'dash-regime-bull' :
+                d.ew_cw.signal === 'narrowing'  ? 'dash-regime-bear' : 'dash-regime-mix'
+            }">${d.ew_cw.signal.charAt(0).toUpperCase() + d.ew_cw.signal.slice(1)}</span>
+        </div>` : ''}`;
 }
 
 // ── C) Watchlist Strength Table ───────────────────────────────────────────────

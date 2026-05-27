@@ -1,7 +1,8 @@
 /**
- * analytics.js — Portfolio / Trade Analytics
- * Fetches /api/analytics (computed from closed positions) and renders KPI
- * cards, an equity curve (Chart.js), and a closed-trade table.
+ * analytics.js — Portfolio Analytics + R-Distribution Business Scorecard
+ *
+ * Section A: Dollar P&L analytics from positions table (equity curve, Sharpe, etc.)
+ * Section B: R-multiple distribution from journal entries (business scorecard)
  */
 
 let _analyticsChart = null;
@@ -24,8 +25,10 @@ function _anFmtNum(v, d = 2) {
     return (v === null || v === undefined) ? '—' : Number(v).toFixed(d);
 }
 
-async function initAnalytics() {
-    const kpis = document.getElementById('analytics-kpis');
+// ── Section A: Dollar P&L ─────────────────────────────────────────────────────
+
+async function _loadDollarAnalytics() {
+    const kpis  = document.getElementById('analytics-kpis');
     const tbody = document.getElementById('analytics-trades');
     if (!kpis) return;
     kpis.innerHTML = '<div class="an-muted"><span class="spinner"></span> Computing…</div>';
@@ -34,22 +37,21 @@ async function initAnalytics() {
     try {
         const d = await apiFetch(`${API}/analytics`);
         if (!d.trade_count) {
-            kpis.innerHTML = '<div class="an-muted">No closed trades yet. Add and close positions to see analytics.</div>';
+            kpis.innerHTML = '<div class="an-muted">No closed positions yet.</div>';
             if (_analyticsChart) { _analyticsChart.destroy(); _analyticsChart = null; }
             return;
         }
         const wr = d.win_rate;
         kpis.innerHTML = [
-            _anKpi('Trades', d.trade_count),
-            _anKpi('Win Rate', _anFmtPct(wr), wr !== null && wr >= 0.5 ? 'an-pos' : 'an-neg'),
-            _anKpi('Profit Factor', _anFmtNum(d.profit_factor)),
-            _anKpi('Avg Win', _anFmtNum(d.avg_win), 'an-pos'),
-            _anKpi('Avg Loss', _anFmtNum(d.avg_loss), 'an-neg'),
-            _anKpi('Sharpe', _anFmtNum(d.sharpe)),
-            _anKpi('Max Drawdown', _anFmtPct(d.max_drawdown), 'an-neg'),
+            _anKpi('Trades',       d.trade_count),
+            _anKpi('Win Rate',     _anFmtPct(wr),              wr !== null && wr >= 0.5 ? 'an-pos' : 'an-neg'),
+            _anKpi('Profit Factor',_anFmtNum(d.profit_factor)),
+            _anKpi('Avg Win $',    _anFmtNum(d.avg_win),       'an-pos'),
+            _anKpi('Avg Loss $',   _anFmtNum(d.avg_loss),      'an-neg'),
+            _anKpi('Sharpe',       _anFmtNum(d.sharpe)),
+            _anKpi('Max DD',       _anFmtPct(d.max_drawdown),  'an-neg'),
         ].join('');
 
-        // Equity curve
         const ctx = document.getElementById('analytics-equity');
         if (ctx && window.Chart) {
             if (_analyticsChart) _analyticsChart.destroy();
@@ -83,6 +85,92 @@ async function initAnalytics() {
                 </tr>`).join('');
         }
     } catch (e) {
-        kpis.innerHTML = `<div class="an-muted">Failed to load: ${_anEsc(e.message || e)}</div>`;
+        kpis.innerHTML = `<div class="an-muted">Failed: ${_anEsc(e.message || e)}</div>`;
     }
+}
+
+// ── Section B: R-Distribution Business Scorecard ──────────────────────────────
+
+async function _loadRAnalytics() {
+    const panel = document.getElementById('r-analytics-panel');
+    if (!panel) return;
+    panel.innerHTML = '<div class="an-muted"><span class="spinner"></span> Computing R-distribution…</div>';
+
+    try {
+        const d = await apiFetch(`${API}/r-analytics`);
+
+        if (!d.count) {
+            panel.innerHTML = '<div class="an-muted">No journal entries with stop_loss yet.<br>Add trades to the journal with a stop price to see R analytics.</div>';
+            return;
+        }
+
+        const exp     = d.expectancy;
+        const expCls  = exp > 0 ? 'an-pos' : 'an-neg';
+        const wrCls   = d.win_rate >= 0.5 ? 'an-pos' : d.win_rate >= 0.3 ? 'an-warn' : 'an-neg';
+        const slipMsg = d.avg_loss_slippage !== null
+            ? (d.avg_loss_slippage < -0.05
+                ? `<span class="an-neg">avg loss ${(d.avg_loss_slippage).toFixed(2)}R worse than −1R</span>`
+                : `<span class="an-pos">losses near planned −1R (${d.avg_loss_slippage > 0 ? '+' : ''}${d.avg_loss_slippage.toFixed(2)}R avg)</span>`)
+            : '';
+
+        // Histogram bars
+        const maxCount = Math.max(...d.histogram.map(b => b.count), 1);
+        const histHtml = d.histogram.map(b => {
+            const isLeft  = b.min < 0;
+            const barW    = Math.round((b.count / maxCount) * 100);
+            const barCls  = b.min >= 1 ? 'rh-bar-win' : b.max <= 0 ? 'rh-bar-loss' : 'rh-bar-scratch';
+            return `<div class="rh-row">
+                <span class="rh-label">${b.label}</span>
+                <div class="rh-track">
+                    <div class="rh-bar ${barCls}" style="width:${barW}%"></div>
+                </div>
+                <span class="rh-count">${b.count}</span>
+                <span class="rh-pct">${b.pct}%</span>
+            </div>`;
+        }).join('');
+
+        // Grade breakdown table
+        const gradeRows = Object.entries(d.grade_stats || {}).map(([g, s]) => {
+            const expCls = s.expectancy > 0 ? 'an-pos' : 'an-neg';
+            return `<tr>
+                <td>${g ? `<span class="sw-grade sw-grade-${g.toLowerCase()} sw-grade-sm">${g}</span>` : '—'}</td>
+                <td>${s.count}</td>
+                <td>${(s.win_rate * 100).toFixed(0)}%</td>
+                <td>${s.avg_r > 0 ? '+' : ''}${s.avg_r.toFixed(2)}R</td>
+                <td class="${expCls}">${s.expectancy > 0 ? '+' : ''}${s.expectancy.toFixed(3)}R</td>
+            </tr>`;
+        }).join('');
+
+        panel.innerHTML = `
+            <div class="an-section-header">R-Distribution Business Scorecard</div>
+
+            <div class="an-kpis rh-kpis">
+                ${_anKpi('Trades (R)',    d.count)}
+                ${_anKpi('Win Rate',      (d.win_rate * 100).toFixed(1) + '%',  wrCls)}
+                ${_anKpi('Avg Win',       '+' + d.avg_win_r.toFixed(2) + 'R',  'an-pos')}
+                ${_anKpi('Avg Loss',      d.avg_loss_r.toFixed(2) + 'R',       'an-neg')}
+                ${_anKpi('Payoff Ratio',  d.payoff_ratio ? d.payoff_ratio.toFixed(2) + '×' : '—')}
+                ${_anKpi('Expectancy',    (exp > 0 ? '+' : '') + exp.toFixed(3) + 'R / trade', expCls)}
+            </div>
+
+            ${slipMsg ? `<div class="rh-slip-note">${slipMsg}</div>` : ''}
+
+            <div class="rh-histogram">${histHtml}</div>
+
+            ${gradeRows ? `
+            <div class="an-section-header" style="margin-top:14px;">Performance by Setup Grade</div>
+            <table class="rh-grade-table">
+                <thead><tr><th>Grade</th><th>Trades</th><th>Win%</th><th>Avg R</th><th>Expectancy</th></tr></thead>
+                <tbody>${gradeRows}</tbody>
+            </table>` : ''}
+        `;
+    } catch (e) {
+        panel.innerHTML = `<div class="an-muted">Failed: ${_anEsc(e.message || e)}</div>`;
+    }
+}
+
+// ── Entry point ───────────────────────────────────────────────────────────────
+
+async function initAnalytics() {
+    await Promise.all([_loadDollarAnalytics(), _loadRAnalytics()]);
 }
