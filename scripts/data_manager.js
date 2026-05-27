@@ -32,6 +32,8 @@ async function initDataManager() {
         document.getElementById("dm-categories").innerHTML =
             `<div class="dm-error">Failed to load ticker library: ${err.message}</div>`;
     }
+
+    dmLoadCoverage();
 }
 
 // ── Render categories ───────────────────────────────────────────────────────
@@ -331,4 +333,123 @@ function _dmLogLine(text, cls = "info") {
     line.textContent = text;
     log.appendChild(line);
     log.scrollTop = log.scrollHeight;
+}
+
+// ── Coverage table ────────────────────────────────────────────────────────────
+
+async function dmLoadCoverage() {
+    const el = document.getElementById("dm-coverage-table");
+    if (!el) return;
+    el.innerHTML = '<div class="dm-log-hint"><span class="spinner"></span> Loading coverage…</div>';
+    try {
+        const res = await fetch("/api/data-coverage");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        _dmRenderCoverage(data);
+    } catch (err) {
+        el.innerHTML = `<div class="dm-error">Failed: ${err.message}</div>`;
+    }
+}
+
+function _dmRenderCoverage(data) {
+    const el = document.getElementById("dm-coverage-table");
+    if (!el) return;
+    if (!data.length) {
+        el.innerHTML = '<div class="dm-log-hint">No symbols in database yet.</div>';
+        return;
+    }
+
+    // Sort: no-data first, then stale, then OK; within each group alphabetically
+    data.sort((a, b) => {
+        const rank = r => r.no_data ? 0 : r.has_gap ? 1 : 2;
+        return rank(a) - rank(b) || a.symbol.localeCompare(b.symbol);
+    });
+
+    const nCurrent = data.filter(r => !r.no_data && !r.has_gap).length;
+    const nStale   = data.filter(r => !r.no_data && r.has_gap).length;
+    const nEmpty   = data.filter(r => r.no_data).length;
+
+    const rows = data.map(r => {
+        const statusIcon = r.no_data ? '✗' : r.has_gap ? '⚠' : '✓';
+        const statusCls  = r.no_data ? 'cov-icon-err' : r.has_gap ? 'cov-icon-warn' : 'cov-icon-ok';
+        const rowCls     = r.no_data ? 'cov-row-empty' : r.has_gap ? 'cov-row-stale' : '';
+        return `<tr class="${rowCls}">
+            <td><strong>${r.symbol}</strong></td>
+            <td class="cov-name">${r.name || '—'}</td>
+            <td>${r.first_daily || '—'}</td>
+            <td>${r.last_daily  || '—'}</td>
+            <td class="cov-num">${r.daily_count  ? r.daily_count.toLocaleString()  : '—'}</td>
+            <td class="cov-num">${r.weekly_count ? r.weekly_count.toLocaleString() : '—'}</td>
+            <td class="${statusCls}">${statusIcon}</td>
+            <td>
+                ${r.no_data || r.has_gap
+                    ? `<button class="btn btn-ghost btn-xs" onclick="dmFetchOne('${r.symbol}')">Fetch</button>`
+                    : ''}
+            </td>
+        </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+        <div class="cov-toolbar">
+            <div class="cov-summary">
+                <span class="cov-stat cov-ok">${nCurrent} current</span>
+                <span class="cov-stat cov-warn">${nStale} stale</span>
+                <span class="cov-stat cov-err">${nEmpty} empty</span>
+                <span class="cov-stat cov-total">${data.length} total</span>
+            </div>
+            <div class="cov-actions">
+                <button class="btn btn-ghost btn-sm" onclick="dmFillAll()">⬇ Fill All Gaps</button>
+                <button class="btn btn-ghost btn-sm" onclick="dmLoadCoverage()">↻ Refresh</button>
+            </div>
+        </div>
+        <div class="cov-scroll">
+            <table class="cov-table">
+                <thead><tr>
+                    <th>Symbol</th><th>Name</th><th>First Date</th><th>Last Date</th>
+                    <th>Daily</th><th>Weekly</th><th>Status</th><th></th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`;
+}
+
+async function dmFetchOne(symbol) {
+    _dmLogLine(`Fetching ${symbol}…`, 'info');
+    try {
+        const res = await fetch(`/api/fetch-range/${encodeURIComponent(symbol)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start_date: '2000-01-01' }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        _dmLogLine(`✓ ${symbol} fetched.`, 'ok');
+        dmLoadCoverage();
+    } catch (err) {
+        _dmLogLine(`✗ ${symbol}: ${err.message}`, 'err');
+    }
+}
+
+async function dmFillAll() {
+    const el = document.getElementById("dm-coverage-table");
+    let data = [];
+    try {
+        const res = await fetch("/api/data-coverage");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        data = await res.json();
+    } catch (err) {
+        _dmLogLine(`Failed to load coverage: ${err.message}`, 'err');
+        return;
+    }
+    const toFetch = data.filter(r => r.no_data || r.has_gap).map(r => r.symbol);
+    if (!toFetch.length) {
+        _dmLogLine('All symbols are up to date.', 'ok');
+        return;
+    }
+    _dmLogLine(`Filling gaps for ${toFetch.length} symbols…`, 'info');
+    for (const sym of toFetch) {
+        await dmFetchOne(sym);
+        await new Promise(r => setTimeout(r, 1500));
+    }
+    _dmLogLine('Gap fill complete.', 'ok');
 }

@@ -37,6 +37,52 @@ async function loadSwingWidget(symbol) {
     }
 }
 
+// ── RSI helpers ────────────────────────────────────────────────────────────────
+
+function _rsiColor(v) {
+    if (v == null) return 'var(--text-muted)';
+    if (v >= 70) return 'var(--green)';
+    if (v >= 50) return 'var(--yellow)';
+    if (v >= 30) return 'var(--orange, #f97316)';
+    return 'var(--red)';
+}
+
+function _rsiGauge(label, val) {
+    if (val == null) return '';
+    const pct   = Math.min(100, Math.max(0, val));
+    const color = _rsiColor(val);
+    return `<div class="sw-rsi-row">
+        <span class="sw-rsi-label">${label}</span>
+        <div class="sw-rsi-track">
+            <div class="sw-rsi-zone sw-rsi-zone-ob"></div>
+            <div class="sw-rsi-zone sw-rsi-zone-mid"></div>
+            <div class="sw-rsi-zone sw-rsi-zone-os"></div>
+            <div class="sw-rsi-needle" style="left:${pct}%;"></div>
+        </div>
+        <span class="sw-rsi-val" style="color:${color}">${val.toFixed(0)}</span>
+    </div>`;
+}
+
+// ── KAMA helpers ───────────────────────────────────────────────────────────────
+
+function _kamaRow(label, stat) {
+    if (!stat) return '';
+    const aboveCls  = stat.above ? 'sw-kama-above' : 'sw-kama-below';
+    const aboveTxt  = stat.above ? 'ABOVE' : 'BELOW';
+    const slopeIcon = stat.slope === 'up' ? '↑' : stat.slope === 'down' ? '↓' : '→';
+    const slopeCls  = stat.slope === 'up' ? 'sw-kama-slope-up' : stat.slope === 'down' ? 'sw-kama-slope-dn' : '';
+    const distColor = Math.abs(stat.dist_atr) < 1 ? 'var(--green)' :
+                      Math.abs(stat.dist_atr) < 3 ? 'var(--yellow)' : 'var(--red)';
+    return `<div class="sw-kama-row">
+        <span class="sw-kama-label">${label}</span>
+        <span class="sw-kama-chip ${aboveCls}">${aboveTxt}</span>
+        <span class="sw-kama-slope ${slopeCls}">${slopeIcon}</span>
+        <span class="sw-kama-dist" style="color:${distColor}">${stat.dist_atr > 0 ? '+' : ''}${stat.dist_atr.toFixed(1)}×</span>
+    </div>`;
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────────
+
 function _renderSwingWidget(d) {
     const panel = document.getElementById('swing-widget-panel');
     if (!panel) return;
@@ -47,9 +93,8 @@ function _renderSwingWidget(d) {
     const lodColor  = d.lod_dist_atr > 0.6 ? 'var(--red)' : d.lod_dist_atr > 0.3 ? 'var(--yellow)' : 'var(--green)';
     const vcpColor  = d.vcp_score > 1.5 ? 'var(--green)' : d.vcp_score > 0.5 ? 'var(--yellow)' : 'var(--text-muted)';
 
-    // Extension gauge: 0→6x, red zone at 4x
-    const extPct     = Math.min(100, (d.atr_mult_50ma / 6) * 100);
-    const extGaugePct= Math.max(0, extPct);
+    // Extension gauge
+    const extPct = Math.min(100, Math.max(0, (d.atr_mult_50ma / 6) * 100));
 
     // Pre-entry quick checks
     const checks = [
@@ -59,8 +104,8 @@ function _renderSwingWidget(d) {
         { label: 'VCP / contraction',    pass: d.vcp_score > 0.5 },
         { label: 'Near 52W high',        pass: d.range_pos_52w >= 0.60 },
     ];
-    const allPass    = checks.every(c => c.pass);
-    const checkHtml  = checks.map(c =>
+    const allPass   = checks.every(c => c.pass);
+    const checkHtml = checks.map(c =>
         `<div class="sw-check-row ${c.pass ? 'sw-chk-pass' : 'sw-chk-fail'}">
             <span class="sw-chk-icon">${c.pass ? '✓' : '✗'}</span>
             <span>${c.label}</span>
@@ -71,6 +116,11 @@ function _renderSwingWidget(d) {
     const factorHtml = (d.factors || []).map(f =>
         `<span class="sw-factor ${f.bull ? 'sw-factor-bull' : 'sw-factor-bear'}">${f.label}</span>`
     ).join('');
+
+    // KAMA alignment score color
+    const kamaScore = d.kama_alignment ?? 0;
+    const kamaCls   = kamaScore === 3 ? 'sw-kama-score-bull' :
+                      kamaScore >= 2  ? 'sw-kama-score-mix'  : 'sw-kama-score-bear';
 
     panel.innerHTML = `
         <div class="sw-header">
@@ -102,10 +152,32 @@ function _renderSwingWidget(d) {
         <div class="sw-ext-gauge-wrap">
             <div class="sw-ext-label">ATR Extension from 50-MA</div>
             <div class="sw-ext-track">
-                <div class="sw-ext-fill" style="width:${extGaugePct.toFixed(1)}%; background:${extColor};"></div>
+                <div class="sw-ext-fill" style="width:${extPct.toFixed(1)}%; background:${extColor};"></div>
                 <div class="sw-ext-limit"></div>
             </div>
             <div class="sw-ext-ticks"><span>0×</span><span>2×</span><span>4×⚠</span><span>6×</span></div>
+        </div>
+
+        <div class="sw-section-header">RSI Momentum</div>
+        <div class="sw-rsi-gauges">
+            ${_rsiGauge('RSI-7',  d.rsi_7)}
+            ${_rsiGauge('RSI-14', d.rsi_14)}
+            ${_rsiGauge('RSI-21', d.rsi_21)}
+        </div>
+        <div class="sw-rsi-legend">
+            <span class="sw-rsi-leg-os">OS &lt;30</span>
+            <span class="sw-rsi-leg-mid">Neutral 30–70</span>
+            <span class="sw-rsi-leg-ob">OB &gt;70</span>
+        </div>
+
+        <div class="sw-section-header">
+            KAMA Alignment
+            <span class="sw-kama-score ${kamaCls}">${kamaScore}/3</span>
+        </div>
+        <div class="sw-kama-rows">
+            ${_kamaRow('K-10', d.kama10)}
+            ${_kamaRow('K-20', d.kama20)}
+            ${_kamaRow('K-50', d.kama50)}
         </div>
 
         <div class="sw-factors">${factorHtml}</div>

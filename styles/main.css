@@ -3791,3 +3791,79 @@ body.focus-mode .symbol-header { display: none; }
   border-bottom: 1px solid var(--border); font-size: 12px; }
 .dash-chk-label   { flex: 1; }
 .dash-chk-actions { display: flex; gap: 6px; padding-top: 10px; justify-content: flex-end; }
+
+/* ── Swing Widget — RSI Gauges ──────────────────────────────────────────────── */
+.sw-section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  color: var(--text-muted); letter-spacing: 0.05em;
+  border-top: 1px solid var(--border); margin: 10px 0 6px; padding-top: 8px;
+}
+.sw-rsi-gauges    { display: flex; flex-direction: column; gap: 5px; margin-bottom: 4px; }
+.sw-rsi-row       { display: flex; align-items: center; gap: 6px; }
+.sw-rsi-label     { font-size: 10px; color: var(--text-muted); width: 40px; flex-shrink: 0; }
+.sw-rsi-val       { font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+                    width: 28px; text-align: right; flex-shrink: 0; }
+.sw-rsi-track     { flex: 1; height: 10px; position: relative; border-radius: 5px; overflow: hidden;
+                    display: flex; }
+.sw-rsi-zone      { height: 100%; }
+.sw-rsi-zone-os   { width: 30%; background: rgba(239,68,68,0.20); }
+.sw-rsi-zone-mid  { width: 40%; background: rgba(234,179,8,0.12); }
+.sw-rsi-zone-ob   { width: 30%; background: rgba(34,197,94,0.20); }
+.sw-rsi-needle    { position: absolute; top: 0; height: 100%; width: 3px; border-radius: 1px;
+                    background: var(--text-primary); transform: translateX(-50%);
+                    box-shadow: 0 0 4px rgba(255,255,255,0.6); }
+.sw-rsi-legend    { display: flex; justify-content: space-between; font-size: 9px;
+                    color: var(--text-muted); margin-bottom: 4px; padding: 0 2px; }
+.sw-rsi-leg-os    { color: var(--red); }
+.sw-rsi-leg-ob    { color: var(--green); }
+
+/* ── Swing Widget — KAMA Alignment ─────────────────────────────────────────── */
+.sw-kama-score       { font-size: 11px; font-family: var(--font-mono);
+                       font-weight: 700; border-radius: 10px; padding: 1px 7px; }
+.sw-kama-score-bull  { background: rgba(34,197,94,0.18);  color: var(--green); }
+.sw-kama-score-mix   { background: rgba(234,179,8,0.18);  color: var(--yellow); }
+.sw-kama-score-bear  { background: rgba(239,68,68,0.18);  color: var(--red); }
+.sw-kama-rows        { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
+.sw-kama-row         { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.sw-kama-label       { font-size: 10px; color: var(--text-muted); width: 32px; flex-shrink: 0; }
+.sw-kama-chip        { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 8px;
+                       letter-spacing: 0.04em; }
+.sw-kama-above       { background: rgba(34,197,94,0.18);  color: var(--green); }
+.sw-kama-below       { background: rgba(239,68,68,0.18);  color: var(--red); }
+.sw-kama-slope       { font-size: 13px; width: 16px; text-align: center; }
+.sw-kama-slope-up    { color: var(--green); }
+.sw-kama-slope-dn    { color: var(--red); }
+.sw-kama-dist        { font-family: var(--font-mono); font-size: 10px; margin-left: auto; }
+
+/* ── Data Manager — Coverage Table ─────────────────────────────────────────── */
+.dm-coverage         { margin-bottom: 16px; }
+.dm-panel-header-sub { margin-top: 16px; }
+.cov-toolbar         { display: flex; align-items: center; justify-content: space-between;
+                       flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.cov-summary         { display: flex; gap: 12px; flex-wrap: wrap; }
+.cov-stat            { font-size: 11px; font-weight: 700; font-family: var(--font-mono); }
+.cov-ok              { color: var(--green); }
+.cov-warn            { color: var(--yellow); }
+.cov-err             { color: var(--red); }
+.cov-total           { color: var(--text-muted); }
+.cov-actions         { display: flex; gap: 6px; }
+.btn-xs              { font-size: 10px; padding: 2px 7px !important; }
+.cov-scroll          { max-height: 300px; overflow-y: auto; border: 1px solid var(--border);
+                       border-radius: var(--radius-sm); }
+.cov-table           { width: 100%; border-collapse: collapse; font-size: 11px; }
+.cov-table th        { position: sticky; top: 0; background: var(--bg-elevated);
+                       padding: 6px 8px; text-align: left; font-size: 10px;
+                       text-transform: uppercase; color: var(--text-muted);
+                       border-bottom: 1px solid var(--border); white-space: nowrap; }
+.cov-table td        { padding: 5px 8px; border-bottom: 1px solid rgba(48,54,61,0.5);
+                       vertical-align: middle; white-space: nowrap; }
+.cov-table tr:hover td { background: var(--bg-hover); }
+.cov-name            { color: var(--text-muted); max-width: 120px;
+                       overflow: hidden; text-overflow: ellipsis; }
+.cov-num             { font-family: var(--font-mono); text-align: right; }
+.cov-icon-ok         { color: var(--green); font-weight: 700; text-align: center; }
+.cov-icon-warn       { color: var(--yellow); font-weight: 700; text-align: center; }
+.cov-icon-err        { color: var(--red); font-weight: 700; text-align: center; }
+.cov-row-stale td    { background: rgba(234,179,8,0.04); }
+.cov-row-empty td    { background: rgba(239,68,68,0.04); }

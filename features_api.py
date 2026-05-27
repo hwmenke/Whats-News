@@ -49,6 +49,25 @@ def _atr(high, low, close, window=14):
     return tr.ewm(alpha=1/window, adjust=False).mean()
 
 
+def _kama(close: pd.Series, period: int = 10, fast: int = 2, slow: int = 30) -> pd.Series:
+    """Kaufman Adaptive Moving Average."""
+    vals = close.values.astype(float)
+    n = len(vals)
+    out = np.full(n, np.nan)
+    if n <= period:
+        return pd.Series(out, index=close.index)
+    fast_sc = 2.0 / (fast + 1)
+    slow_sc = 2.0 / (slow + 1)
+    out[period - 1] = vals[period - 1]
+    for i in range(period, n):
+        change = abs(vals[i] - vals[i - period])
+        vol = float(np.sum(np.abs(np.diff(vals[i - period:i + 1]))))
+        er = change / vol if vol > 0 else 0.0
+        sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
+        out[i] = out[i - 1] + sc * (vals[i] - out[i - 1])
+    return pd.Series(out, index=close.index)
+
+
 # --- routes ---
 
 # -- Symbols --------------------------------------------------------------------
@@ -1145,21 +1164,52 @@ def _swing_data_for(symbol: str) -> dict:
     # 20-day return
     ret_20d = round((last_close / float(close.iloc[-21]) - 1) * 100, 2) if len(close) >= 21 else None
 
+    # RSI at 7, 14, 21 periods
+    rsi_7  = round(float(_rsi(close, 7).iloc[-1]),  1) if len(close) >= 8  else None
+    rsi_14 = round(float(_rsi(close, 14).iloc[-1]), 1) if len(close) >= 15 else None
+    rsi_21 = round(float(_rsi(close, 21).iloc[-1]), 1) if len(close) >= 22 else None
+
+    # KAMA alignment (10 / 20 / 50 period)
+    def _kama_stat(k_series):
+        v = float(k_series.iloc[-1])
+        if np.isnan(v):
+            return None
+        valid = k_series.dropna()
+        v5 = float(valid.iloc[-5]) if len(valid) >= 5 else v
+        return {
+            "value":    round(v, 2),
+            "above":    last_close > v,
+            "dist_atr": round((last_close - v) / atr14, 2) if atr14 > 0 else 0.0,
+            "slope":    "up" if v > v5 else "down" if v < v5 else "flat",
+        }
+
+    kama10_stat = _kama_stat(_kama(close, 10))
+    kama20_stat = _kama_stat(_kama(close, 20))
+    kama50_stat = _kama_stat(_kama(close, 50))
+    kama_alignment = sum(1 for s in [kama10_stat, kama20_stat, kama50_stat] if s and s["above"])
+
     return {
-        "symbol":       sym,
-        "last_close":   round(last_close, 2),
-        "adr_pct":      round(adr_pct, 2),
-        "atr_14":       round(atr14, 4),
-        "rvol":         rvol,
-        "atr_mult_50ma":round(atr_mult_50ma, 2),
-        "ma50":         round(ma50, 2),
-        "lod_dist_atr": lod_dist_atr,
-        "vcp_score":    round(vcp_score, 2),
-        "range_pos_52w":range_pos,
-        "ret_20d":      ret_20d,
-        "too_extended": atr_mult_50ma > 4.0,
-        "lod_too_far":  lod_dist_atr > 0.6,
-        "low_rvol":     rvol < 0.7,
+        "symbol":        sym,
+        "last_close":    round(last_close, 2),
+        "adr_pct":       round(adr_pct, 2),
+        "atr_14":        round(atr14, 4),
+        "rvol":          rvol,
+        "atr_mult_50ma": round(atr_mult_50ma, 2),
+        "ma50":          round(ma50, 2),
+        "lod_dist_atr":  lod_dist_atr,
+        "vcp_score":     round(vcp_score, 2),
+        "range_pos_52w": range_pos,
+        "ret_20d":       ret_20d,
+        "too_extended":  atr_mult_50ma > 4.0,
+        "lod_too_far":   lod_dist_atr > 0.6,
+        "low_rvol":      rvol < 0.7,
+        "rsi_7":         rsi_7,
+        "rsi_14":        rsi_14,
+        "rsi_21":        rsi_21,
+        "kama10":        kama10_stat,
+        "kama20":        kama20_stat,
+        "kama50":        kama50_stat,
+        "kama_alignment":kama_alignment,
     }
 
 
@@ -1389,3 +1439,62 @@ def get_focus_pipeline():
             enriched.append(entry)
         result[tier] = enriched
     return jsonify(result)
+
+
+# ── Data Coverage ─────────────────────────────────────────────────────────────
+
+@features_bp.route("/api/data-coverage", methods=["GET"])
+def get_data_coverage():
+    """Per-symbol coverage stats: date range, bar counts, staleness."""
+    from datetime import date as _date
+    conn = db.get_connection()
+    rows = conn.execute("""
+        SELECT s.symbol, s.name, s.sector, s.last_fetch,
+               COUNT(CASE WHEN o.freq='daily'  THEN 1 END) AS daily_count,
+               COUNT(CASE WHEN o.freq='weekly' THEN 1 END) AS weekly_count,
+               MIN(CASE WHEN o.freq='daily'    THEN o.date END) AS first_daily,
+               MAX(CASE WHEN o.freq='daily'    THEN o.date END) AS last_daily
+        FROM symbols s
+        LEFT JOIN ohlcv o ON o.symbol = s.symbol
+        GROUP BY s.symbol
+        ORDER BY s.symbol
+    """).fetchall()
+    conn.close()
+
+    today = _date.today()
+    result = []
+    for r in rows:
+        r = dict(r)
+        no_data = not r["first_daily"]
+        has_gap = False
+        if r["last_daily"]:
+            last = _date.fromisoformat(r["last_daily"])
+            has_gap = (today - last).days > 7
+        result.append({
+            "symbol":       r["symbol"],
+            "name":         r["name"] or "",
+            "sector":       r["sector"] or "",
+            "last_fetch":   r["last_fetch"] or "",
+            "daily_count":  r["daily_count"] or 0,
+            "weekly_count": r["weekly_count"] or 0,
+            "first_daily":  r["first_daily"] or "",
+            "last_daily":   r["last_daily"] or "",
+            "no_data":      no_data,
+            "has_gap":      has_gap,
+        })
+    return jsonify(result)
+
+
+@features_bp.route("/api/fetch-range/<string:symbol>", methods=["POST"])
+def fetch_range(symbol):
+    """Fetch history for a symbol between start_date and end_date."""
+    body       = request.get_json(silent=True) or {}
+    start_date = body.get("start_date", "2000-01-01")
+    end_date   = body.get("end_date", "")
+    try:
+        import data_fetcher as df_mod
+        df_mod.fetch_full_history(symbol.upper(), start=start_date)
+        return jsonify({"ok": True, "symbol": symbol.upper(), "start": start_date})
+    except Exception as e:
+        logging.exception("fetch-range error")
+        return jsonify({"error": str(e)}), 500
