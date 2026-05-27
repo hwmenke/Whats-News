@@ -1089,3 +1089,303 @@ def get_earnings_dates(symbol):
     if entry and entry.get("next_earnings"):
         dates.append({"date": entry["next_earnings"], "type": "scheduled"})
     return jsonify({"symbol": sym, "dates": dates})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TRADING PROCESS TOOLS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _swing_data_for(symbol: str) -> dict:
+    """Compute swing-data metrics for a symbol. Returns dict or raises."""
+    sym = symbol.upper()
+    df  = db.get_ohlcv_df(sym, freq="daily", limit=260)
+    if df.empty or len(df) < 20:
+        raise ValueError(f"Insufficient data for {sym}")
+
+    close  = df["close"]
+    high   = df["high"]
+    low    = df["low"]
+    volume = df["volume"]
+
+    last_close = float(close.iloc[-1])
+    last_high  = float(high.iloc[-1])
+    last_low   = float(low.iloc[-1])
+
+    # ADR% — average daily range as % of close, 20-day
+    adr_pct = float(((high - low) / close).tail(20).mean() * 100)
+
+    # ATR-14
+    atr14 = float(_atr(high, low, close, 14).iloc[-1])
+
+    # RVOL — today's volume vs 50-day average (excluding today)
+    avg_vol_50 = float(volume.iloc[-51:-1].mean()) if len(volume) >= 51 else float(volume.iloc[:-1].mean())
+    today_vol  = float(volume.iloc[-1])
+    rvol = round(today_vol / avg_vol_50, 2) if avg_vol_50 > 0 else 0.0
+
+    # ATR multiple from 50-MA
+    ma50 = float(close.tail(51).mean())
+    atr_mult_50ma = float((last_close - ma50) / atr14) if atr14 > 0 else 0.0
+
+    # LoD distance as fraction of ATR (article rule: >0.6 = don't enter)
+    lod_dist      = last_close - last_low
+    lod_dist_atr  = round(lod_dist / atr14, 3) if atr14 > 0 else 0.0
+
+    # VCP score — how much current 5-bar range has contracted vs 20-bar range
+    ranges_20 = (high - low).tail(20)
+    ranges_5  = (high - low).tail(5)
+    r20_std   = float(ranges_20.std())
+    vcp_score = float((ranges_20.mean() - ranges_5.mean()) / r20_std) if r20_std > 0 else 0.0
+
+    # 52-week range position
+    high_52w  = float(high.tail(252).max())
+    low_52w   = float(low.tail(252).min())
+    rng       = high_52w - low_52w
+    range_pos = round((last_close - low_52w) / rng, 3) if rng > 0 else 0.5
+
+    # 20-day return
+    ret_20d = round((last_close / float(close.iloc[-21]) - 1) * 100, 2) if len(close) >= 21 else None
+
+    return {
+        "symbol":       sym,
+        "last_close":   round(last_close, 2),
+        "adr_pct":      round(adr_pct, 2),
+        "atr_14":       round(atr14, 4),
+        "rvol":         rvol,
+        "atr_mult_50ma":round(atr_mult_50ma, 2),
+        "ma50":         round(ma50, 2),
+        "lod_dist_atr": lod_dist_atr,
+        "vcp_score":    round(vcp_score, 2),
+        "range_pos_52w":range_pos,
+        "ret_20d":      ret_20d,
+        "too_extended": atr_mult_50ma > 4.0,
+        "lod_too_far":  lod_dist_atr > 0.6,
+        "low_rvol":     rvol < 0.7,
+    }
+
+
+def _grade_from_swing(sd: dict) -> dict:
+    """Compute A/B/C setup grade from swing data dict. Returns {grade, score, factors}."""
+    score   = 0
+    factors = []
+
+    # ATR extension from 50-MA (article: >4x = hard block)
+    ext = sd["atr_mult_50ma"]
+    if ext < 0:
+        factors.append({"label": "Below 50-MA", "bull": False, "pts": 0})
+    elif ext < 2:
+        score += 2
+        factors.append({"label": f"Not extended ({ext:.1f}×)", "bull": True, "pts": 2})
+    elif ext < 4:
+        score += 1
+        factors.append({"label": f"Mildly extended ({ext:.1f}×)", "bull": True, "pts": 1})
+    else:
+        score -= 2
+        factors.append({"label": f"Too extended ({ext:.1f}× > 4×)", "bull": False, "pts": -2})
+
+    # RVOL
+    rv = sd["rvol"]
+    if rv >= 1.5:
+        score += 2
+        factors.append({"label": f"Strong RVOL {rv:.1f}×", "bull": True, "pts": 2})
+    elif rv >= 1.0:
+        score += 1
+        factors.append({"label": f"RVOL {rv:.1f}×", "bull": True, "pts": 1})
+    else:
+        score -= 1
+        factors.append({"label": f"Low RVOL {rv:.1f}×", "bull": False, "pts": -1})
+
+    # LoD distance (article: >0.6 ATR = don't enter)
+    ld = sd["lod_dist_atr"]
+    if ld < 0.3:
+        score += 2
+        factors.append({"label": "Tight LoD", "bull": True, "pts": 2})
+    elif ld < 0.6:
+        score += 1
+        factors.append({"label": f"Acceptable LoD ({ld:.2f}×)", "bull": True, "pts": 1})
+    else:
+        score -= 1
+        factors.append({"label": f"LoD too far ({ld:.2f}×)", "bull": False, "pts": -1})
+
+    # VCP — volatility contraction
+    vcp = sd["vcp_score"]
+    if vcp > 1.5:
+        score += 2
+        factors.append({"label": "VCP detected", "bull": True, "pts": 2})
+    elif vcp > 0.5:
+        score += 1
+        factors.append({"label": "Mild contraction", "bull": True, "pts": 1})
+    else:
+        factors.append({"label": "No contraction", "bull": False, "pts": 0})
+
+    # 52-week range position (leadership indicator)
+    rp = sd["range_pos_52w"]
+    if rp >= 0.80:
+        score += 2
+        factors.append({"label": f"Near 52W high ({rp*100:.0f}%ile)", "bull": True, "pts": 2})
+    elif rp >= 0.60:
+        score += 1
+        factors.append({"label": f"Upper range ({rp*100:.0f}%ile)", "bull": True, "pts": 1})
+    else:
+        factors.append({"label": f"Lower range ({rp*100:.0f}%ile)", "bull": False, "pts": 0})
+
+    grade = "A" if score >= 7 else "B" if score >= 3 else "C"
+    return {"grade": grade, "score": score, "factors": factors}
+
+
+# ── Swing Data ────────────────────────────────────────────────────────────────
+
+@features_bp.route("/api/swing-data/<string:symbol>", methods=["GET"])
+def get_swing_data(symbol):
+    try:
+        return jsonify(_swing_data_for(symbol))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        logging.exception("swing-data error")
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Setup Grade ───────────────────────────────────────────────────────────────
+
+@features_bp.route("/api/setup-grade/<string:symbol>", methods=["GET"])
+def get_setup_grade(symbol):
+    try:
+        sd     = _swing_data_for(symbol)
+        result = _grade_from_swing(sd)
+        result.update(sd)
+        # Persist grade to DB
+        try:
+            db.set_setup_grade(symbol, result["grade"])
+        except Exception:
+            pass
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        logging.exception("setup-grade error")
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Market Breadth ────────────────────────────────────────────────────────────
+
+@features_bp.route("/api/breadth", methods=["GET"])
+def get_market_breadth():
+    symbols = db.list_symbols()
+    if not symbols:
+        return jsonify({"error": "No symbols in watchlist"}), 404
+
+    above_20 = above_50 = above_200 = advances = declines = new_highs = new_lows = total = 0
+
+    for row in symbols:
+        sym = row["symbol"]
+        try:
+            df = db.get_ohlcv_df(sym, freq="daily", limit=260)
+            if df.empty or len(df) < 20:
+                continue
+            close      = df["close"]
+            last       = float(close.iloc[-1])
+            prev       = float(close.iloc[-2]) if len(close) >= 2 else last
+            total     += 1
+            if last > float(close.tail(21).mean()):  above_20  += 1
+            if last > float(close.tail(51).mean()):  above_50  += 1
+            if len(close) >= 200 and last > float(close.tail(201).mean()): above_200 += 1
+            if last >= prev: advances += 1
+            else:            declines += 1
+            high_52w = float(df["high"].tail(252).max())
+            low_52w  = float(df["low"].tail(252).min())
+            if high_52w > 0 and abs(last - high_52w) / high_52w < 0.01: new_highs += 1
+            if low_52w  > 0 and abs(last - low_52w)  / low_52w  < 0.01: new_lows  += 1
+        except Exception:
+            pass
+
+    pct = lambda n: round(n / total * 100, 1) if total else 0
+    return jsonify({
+        "total":          total,
+        "pct_above_20ma": pct(above_20),
+        "pct_above_50ma": pct(above_50),
+        "pct_above_200ma":pct(above_200),
+        "advances":       advances,
+        "declines":       declines,
+        "ad_ratio":       round(advances / declines, 2) if declines else advances,
+        "new_highs":      new_highs,
+        "new_lows":       new_lows,
+    })
+
+
+# ── Position Sizer ────────────────────────────────────────────────────────────
+
+@features_bp.route("/api/position-size", methods=["POST"])
+def calc_position_size():
+    body        = request.get_json(silent=True) or {}
+    account     = float(body.get("account",   100000))
+    risk_pct    = float(body.get("risk_pct",  0.5)) / 100.0
+    entry       = float(body.get("entry",     0))
+    stop        = float(body.get("stop",      0))
+    if entry <= 0 or stop <= 0 or stop >= entry:
+        return jsonify({"error": "entry must be > stop > 0"}), 400
+
+    dollar_risk  = account * risk_pct
+    risk_per_sh  = entry - stop
+    shares       = int(dollar_risk / risk_per_sh)
+    gross_exp    = shares * entry
+    stop_pct     = (entry - stop) / entry * 100
+
+    return jsonify({
+        "account":      account,
+        "risk_pct":     risk_pct * 100,
+        "entry":        entry,
+        "stop":         stop,
+        "dollar_risk":  round(dollar_risk, 2),
+        "risk_per_sh":  round(risk_per_sh, 4),
+        "shares":       shares,
+        "gross_exp":    round(gross_exp, 2),
+        "stop_pct":     round(stop_pct, 2),
+        "pct_portfolio":round(gross_exp / account * 100, 2),
+        "tp1_1r":       round(entry + risk_per_sh * 1,  2),
+        "tp2_3r":       round(entry + risk_per_sh * 3,  2),
+        "tp3_5r":       round(entry + risk_per_sh * 5,  2),
+        "tp4_10r":      round(entry + risk_per_sh * 10, 2),
+        "tranche1_stop":round(entry - risk_per_sh * 0.33, 2),
+        "tranche2_stop":round(entry - risk_per_sh * 0.67, 2),
+        "tranche3_stop":stop,
+    })
+
+
+# ── Focus Pipeline Tier ───────────────────────────────────────────────────────
+
+@features_bp.route("/api/symbols/<string:symbol>/tier", methods=["PUT"])
+def set_symbol_tier_route(symbol):
+    body = request.get_json(silent=True) or {}
+    tier = body.get("tier", "watchlist")
+    if not db.set_symbol_tier(symbol, tier):
+        return jsonify({"error": f"Invalid tier: {tier}. Use watchlist/stalk/focus/active"}), 400
+    return jsonify({"symbol": symbol.upper(), "tier": tier})
+
+
+@features_bp.route("/api/focus-pipeline", methods=["GET"])
+def get_focus_pipeline():
+    """Return all symbols grouped by watchlist tier, with swing data and grade."""
+    tiers   = db.list_symbols_by_tier()
+    result  = {}
+    for tier, syms in tiers.items():
+        enriched = []
+        for s in syms:
+            entry = {
+                "symbol":      s["symbol"],
+                "name":        s.get("name") or "",
+                "sector":      s.get("sector") or "",
+                "setup_grade": s.get("setup_grade") or "",
+                "tier":        tier,
+            }
+            try:
+                sd = _swing_data_for(s["symbol"])
+                entry.update({
+                    "adr_pct":       sd["adr_pct"],
+                    "rvol":          sd["rvol"],
+                    "atr_mult_50ma": sd["atr_mult_50ma"],
+                })
+            except Exception:
+                pass
+            enriched.append(entry)
+        result[tier] = enriched
+    return jsonify(result)

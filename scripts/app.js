@@ -667,6 +667,9 @@ const _AREA_DISPLAY = {
     'analytics-area':    'flex',
     'compare-area':      'flex',
     'mtf-area':          'flex',
+    'process-area':      'flex',
+    'risk-calc-area':    'flex',
+    'dashboard-area':    'flex',
 };
 
 function _showOnly(activeId) {
@@ -703,7 +706,10 @@ async function switchTab(tabId) {
         if (state.activeSymbol) loadStatsData(state.activeSymbol);
     } else if (tabId === 'trend') {
         showTrendArea();
-        if (state.activeSymbol) loadAdaptiveTrendData(state.activeSymbol);
+        if (state.activeSymbol) {
+            loadAdaptiveTrendData(state.activeSymbol);
+            if (typeof initSwingWidget === 'function') initSwingWidget();
+        }
     } else if (tabId === 'scanner') {
         showScannerArea();
         loadScannerData();
@@ -767,6 +773,15 @@ async function switchTab(tabId) {
     } else if (tabId === 'mtf') {
         _showOnly('mtf-area');
         if (typeof initMtf === 'function') initMtf();
+    } else if (tabId === 'process') {
+        _showOnly('process-area');
+        if (typeof initProcess === 'function') initProcess();
+    } else if (tabId === 'risk-calc') {
+        _showOnly('risk-calc-area');
+        if (typeof initRiskCalc === 'function') initRiskCalc();
+    } else if (tabId === 'dashboard') {
+        _showOnly('dashboard-area');
+        if (typeof initMarketDashboard === 'function') initMarketDashboard();
     }
 }
 

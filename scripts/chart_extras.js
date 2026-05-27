@@ -19,6 +19,7 @@ function _extrasOnSymbolLoad(symbol) {
     _crosshairBound = false;
     setTimeout(() => { if (!_crosshairBound) _attachCrosshair(); }, 400);
     loadEarningsMarkers(symbol);
+    if (typeof _swingWidgetOnSymbolLoad === 'function') _swingWidgetOnSymbolLoad(symbol);
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────

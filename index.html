@@ -197,6 +197,15 @@
       <button id="tab-mtf" class="tab-btn" onclick="switchTab('mtf')">
         <span class="tab-icon">🔢</span> Multi-TF
       </button>
+      <button id="tab-process" class="tab-btn" onclick="switchTab('process')">
+        <span class="tab-icon">🎯</span> Process
+      </button>
+      <button id="tab-risk-calc" class="tab-btn" onclick="switchTab('risk-calc')">
+        <span class="tab-icon">🧮</span> Risk Calc
+      </button>
+      <button id="tab-dashboard" class="tab-btn" onclick="switchTab('dashboard')">
+        <span class="tab-icon">📊</span> Dashboard
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -622,6 +631,11 @@
 
       <!-- Floating tooltip (shared, moved by JS) -->
       <div class="trend-sig-tooltip" id="trend-sig-tooltip"></div>
+
+      <!-- ── Adaptive Trend Swing Widget ── -->
+      <div id="swing-widget-panel" class="sw-panel">
+        <div class="sw-loading"><span class="spinner"></span></div>
+      </div>
 
     </div><!-- #trend-area -->
 
@@ -1620,6 +1634,109 @@
       <div id="mtf-grid"></div>
     </div><!-- #mtf-area -->
 
+    <!-- ── Process Tab ── -->
+    <div id="process-area" class="feat-container" style="display:none;">
+      <div class="feat-header">
+        <h2 class="feat-title">Trading Process</h2>
+        <button class="btn btn-ghost" onclick="_loadPipeline()">↻ Refresh Pipeline</button>
+      </div>
+
+      <!-- Focus Pipeline -->
+      <div class="process-section">
+        <div class="process-section-title">Focus Pipeline</div>
+        <div class="process-section-note">Move symbols through stages as they mature: Watchlist → Stalk → Focus → Active</div>
+        <div id="process-pipeline"></div>
+      </div>
+
+      <!-- Pre-Entry + No-Trade side by side -->
+      <div class="process-checklists-row">
+        <div class="process-section process-section-half">
+          <div class="process-section-title">Pre-Entry Checklist</div>
+          <div id="process-entry-checklist"></div>
+        </div>
+        <div class="process-section process-section-half">
+          <div class="process-section-title">No-Trade Disqualifier</div>
+          <div id="process-notrade-checklist"></div>
+        </div>
+      </div>
+    </div><!-- #process-area -->
+
+    <!-- ── Risk Calc Tab ── -->
+    <div id="risk-calc-area" class="feat-container" style="display:none;">
+      <div class="feat-header">
+        <h2 class="feat-title">Risk Calculator</h2>
+        <span id="rc-sym-label" class="feat-sym-label"></span>
+      </div>
+
+      <!-- Position Sizer inputs -->
+      <div class="rc-inputs-row">
+        <div class="rc-input-group">
+          <label>Account Equity ($)</label>
+          <input id="rc-account"  type="number" class="feat-input" value="100000" oninput="_calcPositionSize()" />
+        </div>
+        <div class="rc-input-group">
+          <label>Risk Per Trade (%)</label>
+          <input id="rc-risk-pct" type="number" class="feat-input" value="0.5" step="0.1" min="0.1" max="5" oninput="_calcPositionSize()" />
+        </div>
+        <div class="rc-input-group">
+          <label>Entry Price ($)</label>
+          <input id="rc-entry"    type="number" class="feat-input" placeholder="e.g. 100.00" step="0.01" oninput="_calcPositionSize()" />
+        </div>
+        <div class="rc-input-group">
+          <label>Stop Price ($)</label>
+          <input id="rc-stop"     type="number" class="feat-input" placeholder="e.g. 97.50"  step="0.01" oninput="_calcPositionSize()" />
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div id="rc-results" class="rc-results"></div>
+
+      <!-- 3-Stop Strategy -->
+      <div class="process-section" style="margin-top:24px;">
+        <div class="process-section-title">3-Stop Strategy</div>
+        <div class="process-section-note">Split position into thirds to target avg loss of ~−0.67R instead of −1R</div>
+        <div id="rc-3stop-results"></div>
+      </div>
+    </div><!-- #risk-calc-area -->
+
+    <!-- ── Market Dashboard Tab ── -->
+    <div id="dashboard-area" class="feat-container" style="display:none;">
+      <div class="feat-header">
+        <h2 class="feat-title">Market Dashboard</h2>
+        <button class="btn btn-ghost" onclick="initMarketDashboard()">↻ Refresh</button>
+      </div>
+
+      <div class="dash-grid">
+        <!-- Breadth -->
+        <div class="dash-panel">
+          <div class="dash-panel-title">Watchlist Breadth</div>
+          <div id="dash-breadth-panel"></div>
+        </div>
+
+        <!-- Strength Table -->
+        <div class="dash-panel dash-panel-wide">
+          <div class="dash-panel-title">Symbol Strength Ranking</div>
+          <div id="dash-strength-table"></div>
+        </div>
+      </div>
+
+      <!-- Daily Process Checklists -->
+      <div class="process-checklists-row" style="margin-top:20px;">
+        <div class="dash-panel process-section-half">
+          <div class="dash-panel-title">Post-Market Checklist
+            <button class="btn btn-ghost btn-icon" style="float:right;font-size:11px;" onclick="_clearDash('post',10)">Clear</button>
+          </div>
+          <div id="dash-post-mkt-checklist"></div>
+        </div>
+        <div class="dash-panel process-section-half">
+          <div class="dash-panel-title">Pre-Market Checklist
+            <button class="btn btn-ghost btn-icon" style="float:right;font-size:11px;" onclick="_clearDash('pre',10)">Clear</button>
+          </div>
+          <div id="dash-pre-mkt-checklist"></div>
+        </div>
+      </div>
+    </div><!-- #dashboard-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -1692,6 +1809,10 @@
 <script src="scripts/compare.js"></script>
 <script src="scripts/mtf.js"></script>
 <script src="scripts/chart_extras.js"></script>
+<script src="scripts/swing_widget.js"></script>
+<script src="scripts/process_tools.js"></script>
+<script src="scripts/risk_calc.js"></script>
+<script src="scripts/market_dashboard.js"></script>
 <script src="scripts/command_palette.js"></script>
 <script src="scripts/app.js"></script>
 

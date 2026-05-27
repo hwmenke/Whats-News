@@ -53,9 +53,24 @@ def init_db():
         ('sort_order',    'INTEGER DEFAULT 0'),
         ('notes',         "TEXT    DEFAULT ''"),
         ('next_earnings', 'TEXT'),
+        ('watchlist_tier','TEXT    DEFAULT "watchlist"'),
+        ('setup_grade',   "TEXT    DEFAULT ''"),
     ]:
         try:
             cur.execute(f"ALTER TABLE symbols ADD COLUMN {col} {defn}")
+        except Exception:
+            pass  # column already exists
+
+    # Enhanced journal columns for trade process tracking
+    for col, defn in [
+        ('setup_grade',   "TEXT    DEFAULT ''"),
+        ('market_regime', "TEXT    DEFAULT ''"),
+        ('entry_rvol',    'REAL'),
+        ('lod_dist_atr',  'REAL'),
+        ('mistake_tags',  "TEXT    DEFAULT ''"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE journal ADD COLUMN {col} {defn}")
         except Exception:
             pass  # column already exists
 
@@ -587,3 +602,45 @@ def delete_strategy(strategy_id: int):
     conn.execute("DELETE FROM strategies WHERE id=?", (strategy_id,))
     conn.commit()
     conn.close()
+
+
+# ── Watchlist Tier (focus pipeline) ───────────────────────────────────────────
+
+VALID_TIERS = {"watchlist", "stalk", "focus", "active"}
+
+def get_symbol_tier(symbol: str) -> str:
+    conn = get_connection()
+    row  = conn.execute("SELECT watchlist_tier FROM symbols WHERE symbol=?", (symbol.upper(),)).fetchone()
+    conn.close()
+    return (row["watchlist_tier"] or "watchlist") if row else "watchlist"
+
+
+def set_symbol_tier(symbol: str, tier: str) -> bool:
+    if tier not in VALID_TIERS:
+        return False
+    conn = get_connection()
+    conn.execute("UPDATE symbols SET watchlist_tier=? WHERE symbol=?", (tier, symbol.upper()))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def set_setup_grade(symbol: str, grade: str):
+    conn = get_connection()
+    conn.execute("UPDATE symbols SET setup_grade=? WHERE symbol=?", (grade, symbol.upper()))
+    conn.commit()
+    conn.close()
+
+
+def list_symbols_by_tier() -> dict:
+    """Return {tier: [symbol_rows]} for the focus pipeline."""
+    conn  = get_connection()
+    rows  = conn.execute("SELECT * FROM symbols ORDER BY symbol").fetchall()
+    conn.close()
+    result = {t: [] for t in ("watchlist", "stalk", "focus", "active")}
+    for r in rows:
+        tier = r["watchlist_tier"] or "watchlist"
+        if tier not in result:
+            tier = "watchlist"
+        result[tier].append(dict(r))
+    return result
