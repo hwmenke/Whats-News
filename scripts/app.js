@@ -706,7 +706,7 @@ async function switchTab(tabId) {
         }
     } else if (tabId === 'scanner') {
         showScannerArea();
-        loadScannerData();
+        if (typeof initScanner === 'function') initScanner(); else loadScannerData();
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();

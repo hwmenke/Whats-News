@@ -18,6 +18,20 @@ function initRiskCalc() {
         if (riskEl && saved.risk_pct) riskEl.value = saved.risk_pct;
     } catch (_) {}
 
+    // Consume a staged prefill from the Jeff scanner "Size it" action
+    const pf = window._jeffSizePrefill;
+    if (pf && pf.symbol === sym) {
+        const entryEl = document.getElementById('rc-entry');
+        const stopEl  = document.getElementById('rc-stop');
+        if (entryEl && pf.entry != null) entryEl.value = pf.entry;
+        if (stopEl  && pf.stop  != null) stopEl.value  = pf.stop;
+        window._jeffSizePrefill = null;
+        if (lbl && sym) lbl.textContent = sym;
+        _calcPositionSize();
+        _render3Stop();
+        return;
+    }
+
     if (sym) _riskPrefill(sym);
     _render3Stop();
 }
@@ -54,8 +68,8 @@ async function _calcPositionSize() {
     const stop     = parseFloat(g('rc-stop')     || '0');
 
     if (!entry || !stop || stop >= entry) {
-        document.getElementById('rc-results')?.innerHTML =
-            '<div class="rc-hint">Enter entry and stop prices above.</div>';
+        const resEl = document.getElementById('rc-results');
+        if (resEl) resEl.innerHTML = '<div class="rc-hint">Enter entry and stop prices above.</div>';
         return;
     }
 

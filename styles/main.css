@@ -3910,3 +3910,214 @@ body.focus-mode .symbol-header { display: none; }
 .dash-ew-chg   { font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
 .dash-ew-pos   { color: var(--green); }
 .dash-ew-neg   { color: var(--red); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   JEFF SETUP SCANNER
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Mode switch (segmented control) ──────────────────────────────────────── */
+.scan-mode-switch {
+  display: inline-flex; background: var(--bg-elevated);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 2px; gap: 2px;
+}
+.scan-mode-btn {
+  font-size: 12px; font-weight: 600; padding: 5px 12px;
+  border: none; background: transparent; color: var(--text-muted);
+  border-radius: 4px; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.scan-mode-btn:hover  { color: var(--text-primary); }
+.scan-mode-on {
+  background: var(--accent); color: #fff;
+  box-shadow: 0 1px 4px rgba(59,130,246,0.4);
+}
+
+/* ── Market context banner ────────────────────────────────────────────────── */
+.jf-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 10px 16px; margin: 12px 0; flex-wrap: wrap;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-left-width: 4px; border-radius: var(--radius-md);
+}
+.jf-regime-bull { border-left-color: var(--green); }
+.jf-regime-mix  { border-left-color: var(--accent); }
+.jf-regime-warn { border-left-color: var(--yellow); }
+.jf-regime-bear { border-left-color: var(--red); background: rgba(239,68,68,0.04); }
+
+.jf-banner-main { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.jf-regime-pill { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.jf-stat        { font-size: 12px; color: var(--text-muted); }
+.jf-stat b      { font-family: var(--font-mono); font-size: 14px; color: var(--text-primary); margin-right: 2px; }
+.jf-stat.jf-pos b { color: var(--green); }
+.jf-stat.jf-neg b { color: var(--red); }
+.jf-banner-warn { font-size: 12px; font-weight: 600; color: var(--yellow);
+                  padding: 2px 10px; background: rgba(234,179,8,0.12); border-radius: 10px; }
+
+.jf-banner-edge { display: flex; align-items: baseline; gap: 8px;
+                  padding-left: 16px; border-left: 1px solid var(--border); }
+.jf-edge-label  { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.jf-edge-val    { font-family: var(--font-mono); font-size: 18px; font-weight: 700; }
+.jf-edge-val.jf-pos { color: var(--green); }
+.jf-edge-val.jf-neg { color: var(--red); }
+.jf-edge-sub    { font-size: 11px; color: var(--text-dim); }
+
+/* ── Filter chips ─────────────────────────────────────────────────────────── */
+.jf-filters {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 4px 2px 12px;
+}
+.jf-fgrp        { display: flex; align-items: center; gap: 5px; }
+.jf-fgrp-toggles{ margin-left: auto; }
+.jf-flabel      { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+                  color: var(--text-dim); margin-right: 3px; }
+.jf-chip {
+  font-size: 11px; font-weight: 600; padding: 3px 10px;
+  border: 1px solid var(--border); background: var(--bg-elevated);
+  color: var(--text-muted); border-radius: 20px; cursor: pointer; transition: all 0.15s;
+}
+.jf-chip:hover  { color: var(--text-primary); border-color: var(--border-accent); }
+.jf-chip-on     { background: var(--accent); color: #fff; border-color: var(--accent); }
+.jf-chip-toggle.jf-chip-on { background: var(--green); border-color: var(--green); }
+
+/* ── Table shell ──────────────────────────────────────────────────────────── */
+.jf-table-wrap { overflow: auto; }
+.jf-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+.jf-th {
+  position: sticky; top: 0; z-index: 2; background: var(--bg-elevated);
+  padding: 9px 10px; text-align: left; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted);
+  border-bottom: 1px solid var(--border); white-space: nowrap; user-select: none;
+}
+.jf-th-sort   { cursor: pointer; }
+.jf-th-sort:hover { color: var(--text-primary); }
+.jf-th-active { color: var(--accent-bright); }
+
+.jf-row { cursor: pointer; transition: background 0.12s; }
+.jf-row td {
+  padding: 9px 10px; border-bottom: 1px solid rgba(48,54,61,0.45);
+  vertical-align: middle; white-space: nowrap;
+}
+.jf-row:hover td { background: var(--bg-hover); }
+/* Grade accent on the leftmost cell */
+.jf-row td:first-child { border-left: 3px solid transparent; }
+.jf-row-a td:first-child { border-left-color: var(--green); }
+.jf-row-b td:first-child { border-left-color: var(--accent); }
+.jf-row-c td:first-child { border-left-color: var(--text-dim); }
+
+.jf-row-err td   { background: rgba(239,68,68,0.03); }
+.jf-err-msg      { color: var(--text-dim); font-style: italic; }
+.jf-act-fetch    { font-style: normal; margin-left: 8px; }
+
+/* ── Grade badge ──────────────────────────────────────────────────────────── */
+.jf-grade {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 6px;
+  font-family: var(--font-mono); font-size: 13px; font-weight: 800;
+}
+.jf-grade-a { background: rgba(34,197,94,0.18);  color: var(--green); }
+.jf-grade-b { background: rgba(59,130,246,0.18); color: var(--accent-bright); }
+.jf-grade-c { background: rgba(139,148,158,0.15);color: var(--text-muted); }
+
+/* ── Symbol cell ──────────────────────────────────────────────────────────── */
+.jf-sym-cell  { font-size: 13px; }
+.jf-sym-cell strong { color: var(--text-primary); }
+.jf-tier      { margin-right: 5px; font-size: 12px; }
+
+/* ── Price cell ───────────────────────────────────────────────────────────── */
+.jf-price-main { font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); }
+.jf-price-sub  { font-family: var(--font-mono); font-size: 10.5px; margin-top: 1px; }
+.jf-price-sub.jf-pos { color: var(--green); }
+.jf-price-sub.jf-neg { color: var(--red); }
+.jf-dim        { color: var(--text-dim); }
+
+/* ── Readiness dots ───────────────────────────────────────────────────────── */
+.jf-ready      { text-align: center; }
+.jf-ready-num  { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.jf-ready-denom{ font-size: 10px; color: var(--text-dim); font-weight: 400; }
+.jf-dots       { display: flex; gap: 3px; justify-content: center; margin-top: 3px; }
+.jf-dot        { width: 6px; height: 6px; border-radius: 50%; }
+.jf-dot-on     { background: var(--green); box-shadow: 0 0 4px rgba(34,197,94,0.5); }
+.jf-dot-off    { background: var(--border); }
+
+/* ── Pattern chip ─────────────────────────────────────────────────────────── */
+.jf-pat {
+  font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 5px;
+  display: inline-block;
+}
+.jf-pat-vcp           { background: rgba(168,85,247,0.16); color: var(--purple); }
+.jf-pat-flat-base     { background: rgba(6,182,212,0.16);  color: var(--cyan); }
+.jf-pat-consolidation { background: rgba(139,148,158,0.14);color: var(--text-muted); }
+.jf-pat-building      { background: transparent; color: var(--text-dim); border: 1px dashed var(--border); }
+
+/* ── Trigger cell ─────────────────────────────────────────────────────────── */
+.jf-trig-price  { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); }
+.jf-trig-status { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px;
+                  display: inline-block; margin-top: 2px; letter-spacing: 0.03em; }
+.jf-trig-at    { background: var(--green); color: #0d1117; }
+.jf-trig-near  { background: rgba(59,130,246,0.20); color: var(--accent-bright); }
+.jf-trig-watch { background: rgba(234,179,8,0.18);  color: var(--yellow); }
+.jf-trig-early { background: rgba(139,148,158,0.12);color: var(--text-dim); }
+
+/* ── Numeric cells (RVOL / extension) ─────────────────────────────────────── */
+.jf-num      { font-family: var(--font-mono); font-size: 12.5px; text-align: right; }
+.jf-rvol-hi  { color: var(--green); font-weight: 700; }
+.jf-rvol-ok  { color: var(--text-primary); }
+.jf-rvol-lo  { color: var(--red); }
+.jf-ext-ok   { color: var(--green); }
+.jf-ext-warn { color: var(--yellow); }
+.jf-ext-bad  { color: var(--red); font-weight: 700; }
+
+/* ── KAMA badge ───────────────────────────────────────────────────────────── */
+.jf-kama {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  padding: 2px 7px; border-radius: 10px; display: inline-block;
+}
+.jf-kama-3 { background: rgba(34,197,94,0.18);  color: var(--green); }
+.jf-kama-2 { background: rgba(59,130,246,0.16); color: var(--accent-bright); }
+.jf-kama-1 { background: rgba(234,179,8,0.16);  color: var(--yellow); }
+.jf-kama-0 { background: rgba(239,68,68,0.14);  color: var(--red); }
+
+/* ── RS rank bar ──────────────────────────────────────────────────────────── */
+.jf-rs       { min-width: 64px; }
+.jf-rs-bar   { display: inline-block; width: 42px; height: 6px; vertical-align: middle;
+               background: var(--bg-base); border-radius: 3px; overflow: hidden; }
+.jf-rs-fill  { height: 100%; border-radius: 3px; }
+.jf-rs-hi    { background: var(--green); }
+.jf-rs-mid   { background: var(--accent); }
+.jf-rs-lo    { background: var(--red); }
+.jf-rs-num   { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-left: 6px; }
+
+/* ── Criteria pills (7 single-letter) ─────────────────────────────────────── */
+.jf-crit  { white-space: nowrap; }
+.jf-cdot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; margin-right: 2px; border-radius: 3px;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700; cursor: help;
+}
+.jf-c-on  { background: rgba(34,197,94,0.18); color: var(--green); }
+.jf-c-off { background: rgba(239,68,68,0.10); color: var(--text-dim); }
+
+/* ── Action buttons ───────────────────────────────────────────────────────── */
+.jf-actions { white-space: nowrap; text-align: right; }
+.jf-act {
+  width: 24px; height: 24px; margin-left: 3px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--bg-elevated);
+  color: var(--text-muted); font-size: 12px; cursor: pointer; transition: all 0.15s;
+}
+.jf-act:hover { color: var(--text-primary); border-color: var(--accent); background: var(--bg-hover); }
+.jf-act:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Jeff scanner — motion accents ────────────────────────────────────────── */
+@keyframes jf-at-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.0); }
+  50%      { box-shadow: 0 0 0 3px rgba(34,197,94,0.25); }
+}
+.jf-trig-at { animation: jf-at-pulse 2.2s ease-in-out infinite; }
+
+/* Grade-A rows get a faint tint so the best setups read first */
+.jf-row-a td { background: rgba(34,197,94,0.035); }
+.jf-row-a:hover td { background: var(--bg-hover); }
+
+@media (prefers-reduced-motion: reduce) {
+  .jf-trig-at { animation: none; }
+}

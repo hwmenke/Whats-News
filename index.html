@@ -633,10 +633,14 @@
       <!-- Controls bar -->
       <div class="scanner-controls">
         <div class="scanner-controls-left">
-          <button id="btn-scan" class="btn btn-primary" onclick="loadScannerData()">⟳ Scan All</button>
+          <div class="scan-mode-switch">
+            <button class="scan-mode-btn scan-mode-on" data-mode="technical" onclick="setScanMode('technical')">⚙ Multi-TF</button>
+            <button class="scan-mode-btn" data-mode="jeff" onclick="setScanMode('jeff')">🎯 Jeff Setups</button>
+          </div>
+          <button id="btn-scan" class="btn btn-primary" onclick="runScan()">⟳ Scan All</button>
           <span id="scanner-ts" class="scanner-ts"></span>
         </div>
-        <div class="scanner-controls-right">
+        <div class="scanner-controls-right" id="scan-tech-groups">
           <span class="overlay-section-label">Groups</span>
           <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="rsi"  onclick="toggleScanGroup('rsi')">RSI</button>
           <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="kama" onclick="toggleScanGroup('kama')">KAMA Ratios</button>
@@ -644,6 +648,12 @@
           <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="vol"  onclick="toggleScanGroup('vol')">Volatility</button>
         </div>
       </div>
+
+      <!-- Jeff: market context banner -->
+      <div id="jeff-banner" class="jf-banner" style="display:none;"></div>
+
+      <!-- Jeff: filter chips -->
+      <div id="scan-jeff-filters" class="jf-filters" style="display:none;"></div>
 
       <!-- Scrollable table -->
       <div class="scanner-table-wrap">
