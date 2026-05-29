@@ -9,13 +9,26 @@
  */
 
 const socialState = {
-    data:    null,
-    days:    30,
-    sources: { google: true, tiktok: true, twitter: true, instagram: true },
+    data:        null,
+    days:        30,
+    sources:     { google: true, tiktok: true, twitter: true, instagram: true },
+    sortKey:     'score',     // score | catch_up | purity | ret_20d | trend_momentum
+    sortDir:     -1,          // -1 = descending
+    catchUpOnly: false,       // show only ideas the stock hasn't caught up to
+    themeFilter: null,        // when set, only show ideas for this theme
 };
 
 const SOURCE_LABELS = {
     google: 'Google', tiktok: 'TikTok', twitter: 'Twitter/X', instagram: 'Instagram',
+};
+
+// Catch-up status → badge metadata
+const STATUS_META = {
+    catch_up: { icon: '🚀', label: 'Trend hot · stock cold', cls: 'st-catchup' },
+    moved:    { icon: '✅', label: 'Stock already moved',     cls: 'st-moved'   },
+    fading:   { icon: '❄️', label: 'Trend fading',            cls: 'st-fading'  },
+    neutral:  { icon: '•',  label: 'In line',                 cls: 'st-neutral' },
+    no_data:  { icon: '–',  label: 'No price data — add to fetch', cls: 'st-nodata' },
 };
 
 // ── Controls ──────────────────────────────────────────────────────────
@@ -36,7 +49,8 @@ function toggleSocialSource(id) {
 }
 
 // ── Data loading ──────────────────────────────────────────────────────
-async function loadSocialTrends() {
+// force=true bypasses the server-side trend cache (re-runs the providers).
+async function loadSocialTrends(force = false) {
     const loadEl = document.getElementById('social-loading');
     const btn    = document.getElementById('btn-social-scan');
     if (loadEl) loadEl.style.display = 'flex';
@@ -45,6 +59,7 @@ async function loadSocialTrends() {
     const active = Object.keys(socialState.sources).filter(k => socialState.sources[k]);
     const params = new URLSearchParams({ days: socialState.days });
     if (active.length && active.length < 4) params.set('sources', active.join(','));
+    if (force) params.set('force', 'true');
 
     try {
         const data = await apiFetch(`${API}/social-trends?${params.toString()}`);
@@ -95,6 +110,19 @@ function renderTrendGrid(trends) {
 function buildTrendCard(t) {
     const card = document.createElement('div');
     card.className = 'social-trend-card';
+    if (socialState.themeFilter && t.category === socialState.themeFilter) {
+        card.classList.add('social-trend-card-active');
+    }
+    // Click a card to filter the ideas table to this theme (toggle off on re-click).
+    if (t.category && t.category !== '—') {
+        card.style.cursor = 'pointer';
+        card.title = `Filter ideas → ${t.category}`;
+        card.onclick = (e) => {
+            if (e.target.closest('.social-play-chip')) return;  // let ticker chips win
+            socialState.themeFilter = socialState.themeFilter === t.category ? null : t.category;
+            renderSocialTrends(socialState.data);
+        };
+    }
 
     const dirCls   = t.direction === 'rising' ? 'dir-up'
                    : t.direction === 'falling' ? 'dir-down' : 'dir-flat';
@@ -133,15 +161,30 @@ function buildTrendCard(t) {
     return card;
 }
 
+// Sort + filter the ideas, then render. Header toggles update socialState.
 function renderIdeaTable(ideas) {
     const tbody = document.getElementById('social-ideas-tbody');
     const empty = document.getElementById('social-ideas-empty');
     if (!tbody) return;
-    tbody.innerHTML = '';
-    if (!ideas.length) { if (empty) empty.style.display = 'flex'; return; }
-    if (empty) empty.style.display = 'none';
 
-    ideas.forEach((it, i) => tbody.appendChild(buildIdeaRow(it, i + 1)));
+    updateIdeaHeaderSortUI();
+    renderThemeFilterChip();
+
+    let rows = ideas.slice();
+    if (socialState.themeFilter) rows = rows.filter(i => i.theme === socialState.themeFilter);
+    if (socialState.catchUpOnly) rows = rows.filter(i => i.status === 'catch_up');
+
+    const k = socialState.sortKey, dir = socialState.sortDir;
+    rows.sort((a, b) => {
+        const va = a[k] == null ? -Infinity : a[k];
+        const vb = b[k] == null ? -Infinity : b[k];
+        return va === vb ? 0 : (va < vb ? -1 : 1) * dir;
+    });
+
+    tbody.innerHTML = '';
+    if (!rows.length) { if (empty) empty.style.display = 'flex'; return; }
+    if (empty) empty.style.display = 'none';
+    rows.forEach((it, i) => tbody.appendChild(buildIdeaRow(it, i + 1)));
 }
 
 function buildIdeaRow(it, rank) {
@@ -156,6 +199,22 @@ function buildIdeaRow(it, rank) {
         .map(dv => `<span class="social-driver" title="${dv.change_pct >= 0 ? '+' : ''}${Math.round(dv.change_pct)}% · momentum ${dv.momentum}">${dv.term}</span>`)
         .join('');
 
+    const sm = STATUS_META[it.status] || STATUS_META.neutral;
+    const statusBadge = `<span class="social-status-pill ${sm.cls}" title="${sm.label}">${sm.icon} ${sm.label}</span>`;
+
+    // 20-day stock move
+    const ret = it.ret_20d;
+    const retHtml = ret == null
+        ? `<span class="si-ret-na">—</span>`
+        : `<span class="si-ret ${ret >= 0 ? 'ret-up' : 'ret-down'}">${ret >= 0 ? '+' : ''}${ret.toFixed(0)}%</span>`;
+
+    // Catch-up: number + bar (only meaningful when we have price data)
+    const cu = it.catch_up;
+    const cuHtml = cu == null
+        ? `<span class="si-ret-na" title="Add to watchlist to fetch price data">—</span>`
+        : `<div class="si-cu-bar"><div class="si-cu-fill st-${it.status}" style="width:${cu}%"></div></div>
+           <span class="si-cu-val">${cu}</span>`;
+
     const action = it.in_watchlist
         ? `<button class="social-add-btn in-list" onclick="socialViewTicker('${it.ticker}')" title="Already tracked — open chart">✓ View</button>`
         : `<button class="social-add-btn" onclick="socialAddTicker('${it.ticker}')" title="Add to watchlist & fetch data">+ Add</button>`;
@@ -165,18 +224,60 @@ function buildIdeaRow(it, rank) {
         <td class="si-ticker">
           <span class="si-sym" onclick="socialViewTicker('${it.ticker}')">${it.ticker}</span>
           <span class="si-name">${it.name}</span>
+          <div class="si-status">${statusBadge}</div>
           <div class="si-drivers">${drivers}</div>
         </td>
         <td class="si-theme">${it.theme}<div class="si-note">${it.note || ''}</div></td>
         <td class="si-purity"><span class="social-pur ${purCls}">${it.purity_label}</span></td>
-        <td class="si-mom">${it.trend_momentum}</td>
         <td class="si-score">
           <div class="si-score-bar"><div class="si-score-fill" style="width:${Math.min(100, it.score)}%"></div></div>
           <span class="si-score-val">${it.score.toFixed(0)}</span>
         </td>
-        <td class="si-action">${action}</td>
+        <td class="si-catchup">${cuHtml}</td>
+        <td class="si-ret-cell">${retHtml}</td>
+        <td class="si-action">
+          ${action}
+          <button class="social-grp-btn" onclick="socialAddTheme('${it.theme.replace(/'/g, "\\'")}')" title="Add all '${it.theme}' pure plays as a watchlist group">+ Theme</button>
+        </td>
     `;
     return tr;
+}
+
+// ── Ideas table: sort + filter controls ──────────────────────────────
+function sortSocialIdeas(key) {
+    if (socialState.sortKey === key) socialState.sortDir *= -1;
+    else { socialState.sortKey = key; socialState.sortDir = -1; }
+    if (socialState.data) renderIdeaTable(socialState.data.ideas || []);
+}
+
+function toggleCatchUpOnly() {
+    socialState.catchUpOnly = !socialState.catchUpOnly;
+    const btn = document.getElementById('btn-catchup-only');
+    if (btn) btn.classList.toggle('social-toggle-on', socialState.catchUpOnly);
+    if (socialState.data) renderIdeaTable(socialState.data.ideas || []);
+}
+
+function updateIdeaHeaderSortUI() {
+    document.querySelectorAll('#social-ideas-table th[data-sort]').forEach(th => {
+        const active = th.dataset.sort === socialState.sortKey;
+        th.classList.toggle('si-sort-active', active);
+        const ind = th.querySelector('.si-sort-ind');
+        if (ind) ind.textContent = active ? (socialState.sortDir < 0 ? ' ▼' : ' ▲') : '';
+    });
+}
+
+function renderThemeFilterChip() {
+    const el = document.getElementById('social-theme-filter');
+    if (!el) return;
+    if (!socialState.themeFilter) { el.innerHTML = ''; el.style.display = 'none'; return; }
+    el.style.display = 'inline-flex';
+    el.innerHTML = `Theme: <strong>${socialState.themeFilter}</strong>
+        <span class="social-filter-x" onclick="clearThemeFilter()" title="Clear filter">×</span>`;
+}
+
+function clearThemeFilter() {
+    socialState.themeFilter = null;
+    renderSocialTrends(socialState.data);
 }
 
 // ── Inline SVG sparkline ──────────────────────────────────────────────
@@ -230,5 +331,53 @@ async function socialAddTicker(ticker) {
         }
     } catch (e) {
         toast('Error: ' + e.message, 'error');
+    }
+}
+
+// Add every pure-play for a theme as a tagged watchlist group.
+async function socialAddTheme(theme) {
+    const ideas = (socialState.data && socialState.data.ideas) || [];
+    const tickers = [...new Set(ideas.filter(i => i.theme === theme).map(i => i.ticker))];
+    if (!tickers.length) { toast('No tickers for that theme', 'warning'); return; }
+    try {
+        await apiFetch(`${API}/symbols/bulk`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbols: tickers, group_tag: theme }),
+        });
+        toast(`Added ${tickers.length} '${theme}' plays as a group`, 'success');
+        ideas.forEach(i => { if (i.theme === theme) i.in_watchlist = true; });
+        renderIdeaTable(ideas);
+        if (typeof loadSymbols === 'function') await loadSymbols();
+    } catch (e) {
+        toast('Error: ' + e.message, 'error');
+    }
+}
+
+// ── Top-movers banner (always-visible topbar strip) ───────────────────
+async function loadTopMovers() {
+    const strip = document.getElementById('topmovers');
+    if (!strip) return;
+    try {
+        const d = await apiFetch(`${API}/social-trends/top?limit=6`);
+        const movers = d.movers || [];
+        if (!movers.length) { strip.style.display = 'none'; return; }
+        strip.style.display = 'flex';
+        strip.innerHTML =
+            `<span class="tm-label" onclick="switchTab('social')" title="Open Social Trends">🔥 Trending</span>` +
+            movers.map(m => {
+                const dirCls = m.direction === 'rising' ? 'dir-up'
+                             : m.direction === 'falling' ? 'dir-down' : 'dir-flat';
+                const arrow  = m.direction === 'rising' ? '▲' : m.direction === 'falling' ? '▼' : '◆';
+                const chg    = (m.change_pct >= 0 ? '+' : '') + Math.round(m.change_pct) + '%';
+                const tk     = (m.tickers || [])[0];
+                const tkHtml = tk ? `<span class="tm-tk" onclick="socialViewTicker('${tk}')" title="Open ${tk}">${tk}</span>` : '';
+                return `<span class="tm-item" onclick="switchTab('social')">
+                          <span class="tm-term">${m.term}</span>
+                          <span class="tm-chg ${dirCls}">${arrow}${chg}</span>${tkHtml}
+                        </span>`;
+            }).join('');
+    } catch (e) {
+        strip.style.display = 'none';   // stay quiet if the feed isn't available
     }
 }

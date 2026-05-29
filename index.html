@@ -19,6 +19,9 @@
   <header class="topbar">
     <button id="btn-sidebar-toggle" class="btn-sidebar-toggle" onclick="toggleSidebar()" title="Toggle watchlist">☰</button>
 
+    <!-- Always-visible social top-movers strip (populated by social_trends.js) -->
+    <div id="topmovers" class="topmovers" style="display:none;"></div>
+
     <div class="topbar-spacer"></div>
 
     <div class="status-dot" title="Connected"></div>
@@ -639,7 +642,7 @@
       <!-- Controls bar -->
       <div class="social-controls">
         <div class="social-controls-left">
-          <button id="btn-social-scan" class="btn btn-primary" onclick="loadSocialTrends()">⟳ Scan Trends</button>
+          <button id="btn-social-scan" class="btn btn-primary" onclick="loadSocialTrends(true)" title="Re-run trend providers (bypasses cache)">⟳ Scan Trends</button>
           <span class="overlay-section-label">Window</span>
           <button class="ind-pill social-days-btn" data-days="7"  onclick="setSocialDays(7)">7d</button>
           <button class="ind-pill social-days-btn" data-days="14" onclick="setSocialDays(14)">14d</button>
@@ -673,13 +676,29 @@
 
         <!-- ── Pure-play ideas ── -->
         <div class="social-panel social-panel-ideas">
-          <div class="panel-header">Pure-Play Stock Ideas · ranked</div>
+          <div class="panel-header social-ideas-header">
+            <span>Pure-Play Stock Ideas · ranked</span>
+            <div class="social-ideas-tools">
+              <span id="social-theme-filter" class="social-theme-filter" style="display:none;"></span>
+              <button id="btn-catchup-only" class="ind-pill social-catchup-btn"
+                      onclick="toggleCatchUpOnly()"
+                      title="Show only ideas where the trend is hot but the stock hasn't moved yet">
+                🚀 Catch-up only
+              </button>
+            </div>
+          </div>
           <div class="social-ideas-wrap">
             <table id="social-ideas-table" class="social-ideas-table">
               <thead>
                 <tr>
-                  <th>#</th><th>Ticker</th><th>Theme</th>
-                  <th>Purity</th><th>Mom.</th><th>Score</th><th></th>
+                  <th>#</th>
+                  <th>Ticker</th>
+                  <th>Theme</th>
+                  <th class="si-th-sort" data-sort="purity"         onclick="sortSocialIdeas('purity')">Purity<span class="si-sort-ind"></span></th>
+                  <th class="si-th-sort" data-sort="score"          onclick="sortSocialIdeas('score')">Score<span class="si-sort-ind"></span></th>
+                  <th class="si-th-sort" data-sort="catch_up"       onclick="sortSocialIdeas('catch_up')" title="Trend hot − stock already moved. High = room to run.">Catch-up<span class="si-sort-ind"></span></th>
+                  <th class="si-th-sort" data-sort="ret_20d"        onclick="sortSocialIdeas('ret_20d')" title="Stock's 20-day price move (from stored data)">20d<span class="si-sort-ind"></span></th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody id="social-ideas-tbody"></tbody>
@@ -687,7 +706,7 @@
           </div>
           <div id="social-ideas-empty" class="scanner-empty" style="display:none;">
             <div class="empty-icon">📈</div>
-            <p>No stock ideas matched the current trends.</p>
+            <p>No stock ideas matched the current filters.</p>
           </div>
         </div>
 

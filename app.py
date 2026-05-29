@@ -388,10 +388,56 @@ def get_social_trends_route():
     valid = {s["id"] for s in social_trends.SOURCES}
     sources = [s.strip().lower() for s in src_param.split(",") if s.strip().lower() in valid] or None
 
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+
     try:
-        return jsonify(social_trends.get_social_trends(days, geo, sources))
+        return jsonify(social_trends.get_social_trends(days, geo, sources, force=force))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/social-trends/top", methods=["GET"])
+def get_social_trends_top():
+    """Lightweight top-movers feed for the always-visible topbar banner."""
+    try:
+        limit = int(request.args.get("limit", 6))
+    except (TypeError, ValueError):
+        limit = 6
+    try:
+        data = social_trends.get_social_trends(30, "US", None)
+        movers = [{
+            "term":       t["term"],
+            "momentum":   t["momentum"],
+            "change_pct": t["change_pct"],
+            "direction":  t["direction"],
+            "tickers":    t.get("tickers", []),
+        } for t in data["trends"][:max(1, min(limit, 12))]]
+        return jsonify({"generated_at": data["generated_at"], "movers": movers})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/symbols/bulk", methods=["POST"])
+def add_symbols_bulk():
+    """Add several symbols at once, optionally tagging them with a group.
+
+    Used by the Social Trends 'add whole theme as a group' action. Stores the
+    symbols and applies the group tag; price data is fetched lazily on view.
+    """
+    data    = request.get_json(force=True) or {}
+    symbols = [str(s).strip().upper() for s in data.get("symbols", []) if str(s).strip()]
+    group   = str(data.get("group_tag", "")).strip()
+    if not symbols:
+        return jsonify({"error": "symbols list is empty"}), 400
+
+    added = []
+    for sym in symbols:
+        db.add_symbol(sym)               # idempotent — skips if already present
+        if group:
+            db.set_symbol_group(sym, group)
+        added.append(sym)
+    return jsonify({"message": f"{len(added)} symbols added", "symbols": added,
+                    "group_tag": group}), 201
 
 
 # -- Data Manager ---------------------------------------------------------------

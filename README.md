@@ -35,6 +35,13 @@ Open your web browser and go to:
 - **Persistent Storage**: All data is saved locally in an SQLite database.
 - **Social Trends Radar**: Surfaces the words moving most across Google Trends, TikTok, Twitter/X and Instagram over the last 30 days, then maps each trend to the listed stocks that are the cleanest *pure plays* on that theme (ranked by purity × momentum).
 
+### 🔥 Social Trends — what's in the tab
+- **Trending Words** — biggest movers with sparklines, momentum bars, source chips, and direction. Click a card to filter the ideas list to that theme.
+- **Pure-Play Ideas** — ranked stock table with sortable columns and a **catch-up read**: each idea cross-references the trend's heat against the stock's own 20-day price move (from stored data), badging it 🚀 *Trend hot · stock cold*, ✅ *Already moved*, or ❄️ *Fading*. Toggle **🚀 Catch-up only** to surface trends the stock hasn't run on yet.
+- **One-click add** — add a single ticker, or **+ Theme** to add every pure play for a theme as a tagged watchlist group.
+- **Always-visible banner** — a top-movers strip in the header (from any tab) jumps you straight into a trend or ticker.
+- **Fast** — the trend sweep is cached server-side (10 min); stock moves & watchlist state always recompute fresh. The **⟳ Scan Trends** button forces a live re-fetch. Tabs are bookmarkable (`#social`) and the app reopens on your last tab.
+
 ### 🔥 Social Trends — live data sources
 The Social Trends tab works out of the box on **curated sample data** so the UI
 is always populated. To pull live feeds, run locally (full network) and provide

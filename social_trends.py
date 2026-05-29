@@ -500,8 +500,62 @@ def _purity_label(p: float) -> str:
             "Tangential")
 
 
+def _stock_move(ticker: str):
+    """N-day % return for a ticker from locally-stored OHLCV (None if no data).
+
+    Reads only what's already in SQLite — never triggers a network fetch — so
+    untracked tickers simply return Nones and are flagged 'no price data'.
+    """
+    try:
+        df = db.get_ohlcv_df(ticker, "daily", limit=40)
+    except Exception:
+        return {"ret_5d": None, "ret_20d": None, "price": None}
+    if df is None or df.empty or "close" not in df.columns:
+        return {"ret_5d": None, "ret_20d": None, "price": None}
+    closes = [float(c) for c in df["close"].tolist() if c and c > 0]
+    if len(closes) < 6:
+        return {"ret_5d": None, "ret_20d": None, "price": None}
+
+    def _ret(lookback):
+        if len(closes) <= lookback:
+            return None
+        prev = closes[-1 - lookback]
+        return round((closes[-1] / prev - 1.0) * 100.0, 1) if prev > 0 else None
+
+    return {"ret_5d": _ret(5), "ret_20d": _ret(20), "price": round(closes[-1], 2)}
+
+
+def _catch_up(trend_mom: int, theme_dir: str, move: dict):
+    """Combine trend heat with the stock's actual move into a 'catch-up' read.
+
+    The edge we want: trend is hot but the stock hasn't run yet. Returns a
+    catch_up score (0–100, higher = more room) plus a status flag for badging.
+    """
+    ret20 = move.get("ret_20d")
+    if ret20 is None:
+        return {"catch_up": None, "status": "no_data", "stock_heat": None}
+
+    # Map the 20d stock move onto a 0–100 "heat" scale: +30% ≈ fully run.
+    stock_heat = int(round(max(0.0, min(100.0, ret20 / 30.0 * 100.0))))
+    catch_up   = int(round(max(0.0, min(100.0, trend_mom - stock_heat))))
+
+    if theme_dir == "falling" or trend_mom < 35:
+        status = "fading"            # ❄️ trend cooling — chasing is late
+    elif stock_heat >= 60:
+        status = "moved"             # ✅ stock already ran with the trend
+    elif trend_mom >= 50 and stock_heat < 40:
+        status = "catch_up"          # 🚀 trend hot, stock still cold
+    else:
+        status = "neutral"
+    return {"catch_up": catch_up, "status": status, "stock_heat": stock_heat}
+
+
 def _match_stocks(trends):
-    """Map ranked trends onto pure-play tickers; dedupe by best score."""
+    """Map ranked trends onto pure-play tickers; dedupe by best score.
+
+    Always runs fresh against the DB (watchlist membership + stored price
+    moves) — only the upstream trend computation is cached.
+    """
     watchlist = {s["symbol"] for s in db.list_symbols()}
     ideas = {}
     for th in THEME_MAP:
@@ -511,6 +565,7 @@ def _match_stocks(trends):
             continue
         matched.sort(key=lambda t: -t["momentum"])
         theme_mom = matched[0]["momentum"]
+        theme_dir = matched[0]["direction"]
         drivers = [{
             "term":       t["term"],
             "momentum":   t["momentum"],
@@ -523,6 +578,8 @@ def _match_stocks(trends):
             prev = ideas.get(st["ticker"])
             if prev and prev["score"] >= score:
                 continue
+            move = _stock_move(st["ticker"])
+            cu   = _catch_up(theme_mom, theme_dir, move)
             ideas[st["ticker"]] = {
                 "ticker":         st["ticker"],
                 "name":           st["name"],
@@ -531,19 +588,30 @@ def _match_stocks(trends):
                 "purity_label":   _purity_label(st["purity"]),
                 "note":           st["note"],
                 "trend_momentum": theme_mom,
+                "trend_dir":      theme_dir,
                 "score":          score,
                 "drivers":        drivers,
                 "in_watchlist":   st["ticker"] in watchlist,
+                "ret_5d":         move["ret_5d"],
+                "ret_20d":        move["ret_20d"],
+                "price":          move["price"],
+                "catch_up":       cu["catch_up"],
+                "stock_heat":     cu["stock_heat"],
+                "status":         cu["status"],
             }
     return sorted(ideas.values(), key=lambda i: -i["score"])[:40]
 
 
-# ── Public API ───────────────────────────────────────────────────────────────
-def get_social_trends(lookback_days: int = 30, geo: str = "US", sources=None) -> dict:
-    """Aggregate movers across all sources and map them to pure-play stocks."""
-    n = max(7, min(int(lookback_days), 90))
-    wanted = set(sources) if sources else {s["id"] for s in SOURCES}
+# ── Trend computation (cached) ───────────────────────────────────────────────
+# The provider sweep (esp. live pytrends) is the slow part and doesn't depend
+# on DB state, so we memoise it with a short TTL keyed on the request params.
+# Stock matching always runs fresh on top of the cached trends.
+_CACHE_TTL_SEC = 600          # 10 minutes
+_trend_cache   = {}           # key -> {"at": epoch, "trends": [...], "sources": [...]}
 
+
+def _compute_trends(n: int, geo: str, wanted: set):
+    """Run the source providers and build the ranked trend list (no DB access)."""
     source_meta = []
     merged = {}
     for src in SOURCES:
@@ -580,7 +648,32 @@ def get_social_trends(lookback_days: int = 30, geo: str = "US", sources=None) ->
             **analysis,
         })
     trends.sort(key=lambda t: (-t["momentum"], -abs(t["change_pct"])))
+    return trends, source_meta
 
+
+def _cached_trends(n: int, geo: str, wanted: set, force: bool = False):
+    import time
+    key = (n, geo, tuple(sorted(wanted)))
+    hit = _trend_cache.get(key)
+    if hit and not force and (time.time() - hit["at"] < _CACHE_TTL_SEC):
+        return hit["trends"], hit["sources"], True
+    trends, source_meta = _compute_trends(n, geo, wanted)
+    _trend_cache[key] = {"at": time.time(), "trends": trends, "sources": source_meta}
+    return trends, source_meta, False
+
+
+# ── Public API ───────────────────────────────────────────────────────────────
+def get_social_trends(lookback_days: int = 30, geo: str = "US",
+                      sources=None, force: bool = False) -> dict:
+    """Aggregate movers across all sources and map them to pure-play stocks.
+
+    The trend sweep is cached for ``_CACHE_TTL_SEC`` (pass ``force=True`` to
+    bypass); stock matching is always recomputed against current DB state.
+    """
+    n = max(7, min(int(lookback_days), 90))
+    wanted = set(sources) if sources else {s["id"] for s in SOURCES}
+
+    trends, source_meta, cached = _cached_trends(n, geo, wanted, force=force)
     ideas = _match_stocks(trends)
 
     return {
@@ -589,6 +682,7 @@ def get_social_trends(lookback_days: int = 30, geo: str = "US", sources=None) ->
         "geo":           geo,
         "sources":       source_meta,
         "any_live":      any(s["live"] for s in source_meta),
+        "cached":        cached,
         "trends":        trends,
         "ideas":         ideas,
     }

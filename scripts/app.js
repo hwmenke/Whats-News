@@ -640,6 +640,12 @@ function showLoadingOverlay(show) {
 async function switchTab(tabId) {
     state.activeTab = tabId;
 
+    // Persist for next visit + reflect in the URL so tabs are bookmarkable.
+    try {
+        localStorage.setItem('findash.activeTab', tabId);
+        if (`#${tabId}` !== location.hash) history.replaceState(null, '', `#${tabId}`);
+    } catch (e) { /* storage/history unavailable — non-fatal */ }
+
     // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.id === `tab-${tabId}`);
@@ -1308,7 +1314,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadSymbols();
 
-    if (state.symbols.length && state.symbols[0].last_fetch) {
+    // Always-visible social top-movers banner (fire-and-forget, warms cache).
+    if (typeof loadTopMovers === 'function') loadTopMovers();
+
+    // Restore the last tab from the URL hash or localStorage.
+    const VALID_TABS = ['charts','stats','knn','backtest','trend','scanner','social','data-manager'];
+    let initialTab = (location.hash || '').replace('#','');
+    if (!VALID_TABS.includes(initialTab)) {
+        try { initialTab = localStorage.getItem('findash.activeTab') || ''; } catch (e) { initialTab = ''; }
+    }
+
+    if (initialTab && VALID_TABS.includes(initialTab) && initialTab !== 'charts') {
+        switchTab(initialTab);
+        // Tabs that don't depend on a selected symbol still want one loaded behind them.
+        if (state.symbols.length && state.symbols[0].last_fetch) {
+            state.activeSymbol = state.symbols[0].symbol;
+            renderSymbolList();
+        }
+    } else if (state.symbols.length && state.symbols[0].last_fetch) {
         selectSymbol(state.symbols[0].symbol);
     } else {
         showEmptyState();
