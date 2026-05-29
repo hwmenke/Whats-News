@@ -17,13 +17,39 @@
  */
 
 // ── State ─────────────────────────────────────────────────────────────
+function _loadScanVisible() {
+    const def = { rsi: true, kama: true, mom: true, vol: true, trend: true };
+    try {
+        const raw = localStorage.getItem('scannerVisible');
+        if (raw) {
+            const saved = JSON.parse(raw);
+            if (saved && typeof saved === 'object') return { ...def, ...saved };
+        }
+    } catch (_) {}
+    return def;
+}
+
 const scannerState = {
     data:    null,
     sortKey: null,
     sortDir: 1,
-    visible: { rsi: true, kama: true, mom: true, vol: true, trend: true },
+    visible: _loadScanVisible(),
     groupBy: 'none',   // 'none' | 'sector' | 'group_tag'
 };
+
+function _saveScanVisible() {
+    try { localStorage.setItem('scannerVisible', JSON.stringify(scannerState.visible)); } catch (_) {}
+}
+
+// Sync the show/hide toggle buttons to the persisted state on load
+function _syncScanGroupButtons() {
+    document.querySelectorAll('.scan-grp-btn[data-grp]').forEach(btn => {
+        const id = btn.dataset.grp;
+        if (id in scannerState.visible) {
+            btn.classList.toggle('scanner-toggle-on', scannerState.visible[id]);
+        }
+    });
+}
 
 // ── Column definitions ─────────────────────────────────────────────────
 // groups → metrics → timeframes → cells
@@ -485,6 +511,7 @@ function setScanGroupBy(val) {
 // ── Column-group visibility toggle ─────────────────────────────────────
 function toggleScanGroup(id) {
     scannerState.visible[id] = !scannerState.visible[id];
+    _saveScanVisible();
     const btn = document.querySelector(`.scan-grp-btn[data-grp="${id}"]`);
     if (btn) btn.classList.toggle('scanner-toggle-on', scannerState.visible[id]);
     if (scannerState.data) renderScannerTable(scannerState.data);
@@ -498,6 +525,7 @@ async function loadScannerData() {
 
     if (loadEl)   loadEl.style.display = 'flex';
     if (btnScan)  { btnScan.disabled = true; btnScan.innerHTML = '<span class="spinner"></span> Scanning…'; }
+    _syncScanGroupButtons();
 
     try {
         const data = await apiFetch(`${API}/scanner`);

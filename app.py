@@ -154,6 +154,27 @@ def add_symbol():
     added = db.add_symbol(symbol)
     if not added:
         return jsonify({"message": f"{symbol} already in watchlist"}), 200
+    # Auto-fetch earnings date in background when symbol is first added
+    def _bg_earnings(sym):
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker(sym)
+            cal = ticker.calendar
+            if cal is None:
+                return
+            for col in (getattr(cal, "columns", []) or []):
+                if "earnings" in col.lower():
+                    for v in cal[col].values:
+                        try:
+                            d = str(v)[:10]
+                            if len(d) == 10 and d > "2000-01-01":
+                                db.set_next_earnings(sym, d)
+                                return
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+    threading.Thread(target=_bg_earnings, args=(symbol,), daemon=True).start()
     return jsonify({"message": f"{symbol} added"}), 201
 
 
@@ -953,14 +974,14 @@ def list_positions():
     include_closed = request.args.get("include_closed", "true").lower() != "false"
     positions = db.list_positions(include_closed=include_closed)
 
-    # Enrich with current price and unrealised P&L
+    # Enrich with current price, unrealised P&L, and max adverse excursion
     for pos in positions:
         if pos.get("closed_at"):
             if pos.get("exit_price") and pos.get("entry_price"):
                 pos["realised_pnl"] = round(
                     (pos["exit_price"] - pos["entry_price"]) * pos["qty"], 2)
             continue
-        ohlcv = db.get_ohlcv(pos["symbol"], "daily", limit=1)
+        ohlcv = db.get_ohlcv(pos["symbol"], "daily", limit=500)
         if ohlcv:
             cur_price = ohlcv[-1]["close"]
             pos["current_price"]  = round(cur_price, 2)
@@ -969,6 +990,16 @@ def list_positions():
                 (cur_price - pos["entry_price"]) * pos["qty"], 2)
             pos["pnl_pct"] = round(
                 (cur_price / pos["entry_price"] - 1) * 100, 2)
+            # Max adverse excursion: worst close since entry date
+            opened = pos.get("opened_at", "")[:10]
+            if opened:
+                since = [b for b in ohlcv if b.get("date", "") >= opened]
+            else:
+                since = ohlcv
+            if since:
+                min_close = min(b["close"] for b in since)
+                pos["max_adverse_excursion"] = round(
+                    (min_close / pos["entry_price"] - 1) * 100, 2)
 
     return jsonify(positions)
 
@@ -1855,6 +1886,25 @@ def get_rrg():
             continue
 
     return jsonify({"benchmark": benchmark, "symbols": results})
+
+
+# -- KNN Clusters ---------------------------------------------------------------
+
+@app.route("/api/knn/clusters", methods=["GET"])
+def knn_clusters():
+    try:
+        n = int(request.args.get("n", 4))
+        n = max(2, min(n, 6))
+    except (TypeError, ValueError):
+        n = 4
+    try:
+        symbols = [s["symbol"] for s in db.list_symbols()]
+        if len(symbols) < 2:
+            return jsonify({"error": "Need at least 2 symbols", "clusters": []})
+        result = knn_model.cluster_watchlist(symbols, n_clusters=n)
+        return jsonify(result)
+    except Exception as e:
+        return _err(str(e), 500)
 
 
 # -- KNN Feature Importance ----------------------------------------------------

@@ -201,6 +201,9 @@ async function loadCompare() {
 
         _compareChart.timeScale().fitContent();
 
+        // Performance statistics table
+        renderCompareStats(syms.slice(0, 8), datasets, freq);
+
         new ResizeObserver(entries => {
             for (const e of entries) {
                 const { width, height } = e.contentRect;
@@ -212,6 +215,66 @@ async function loadCompare() {
         toast('Compare failed: ' + e.message, 'error');
         if (legend) legend.innerHTML = '';
     }
+}
+
+// Compute & render Sharpe / CAGR / drawdown / win-rate per symbol
+function renderCompareStats(syms, datasets, freq) {
+    const card  = document.getElementById('compare-stats-card');
+    const tbody = document.getElementById('compare-stats-tbody');
+    if (!card || !tbody) return;
+
+    const periodsPerYear = freq === 'weekly' ? 52 : 252;
+    const fmtPct = v => (v != null && isFinite(v)) ? (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%' : '—';
+    const col    = v => (v != null && isFinite(v) && v >= 0) ? 'color:#22c55e' : 'color:#ef4444';
+
+    const rows = [];
+    syms.forEach((sym, idx) => {
+        const data = datasets[idx];
+        if (!data || data.length < 3) return;
+
+        const closes = data.map(r => r.close).filter(c => c > 0);
+        if (closes.length < 3) return;
+
+        // Daily/weekly simple returns
+        const rets = [];
+        for (let i = 1; i < closes.length; i++) rets.push(closes[i] / closes[i - 1] - 1);
+
+        const totalRet = closes[closes.length - 1] / closes[0] - 1;
+        const years    = closes.length / periodsPerYear;
+        const cagr     = years > 0 ? Math.pow(1 + totalRet, 1 / years) - 1 : null;
+
+        const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
+        const variance = rets.reduce((a, b) => a + (b - mean) ** 2, 0) / rets.length;
+        const std  = Math.sqrt(variance);
+        const annVol = std * Math.sqrt(periodsPerYear);
+        const sharpe = std > 0 ? (mean / std) * Math.sqrt(periodsPerYear) : null;
+
+        // Max drawdown
+        let peak = closes[0], maxDD = 0;
+        for (const c of closes) {
+            if (c > peak) peak = c;
+            const dd = c / peak - 1;
+            if (dd < maxDD) maxDD = dd;
+        }
+
+        const winRate = rets.filter(r => r > 0).length / rets.length;
+
+        rows.push({ sym, totalRet, cagr, annVol, sharpe, maxDD, winRate });
+    });
+
+    if (!rows.length) { card.style.display = 'none'; return; }
+
+    tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td><strong style="cursor:pointer" onclick="selectSymbol('${r.sym}')">${r.sym}</strong></td>
+          <td style="${col(r.totalRet)}">${fmtPct(r.totalRet)}</td>
+          <td style="${col(r.cagr)}">${fmtPct(r.cagr)}</td>
+          <td>${r.annVol != null ? (r.annVol * 100).toFixed(1) + '%' : '—'}</td>
+          <td style="${col(r.sharpe)}">${r.sharpe != null ? r.sharpe.toFixed(2) : '—'}</td>
+          <td style="color:#ef4444">${fmtPct(r.maxDD)}</td>
+          <td>${(r.winRate * 100).toFixed(0)}%</td>
+        </tr>`).join('');
+    card.style.display = 'block';
 }
 
 // ── Signals Dashboard ─────────────────────────────────────────────────────────

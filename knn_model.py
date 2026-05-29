@@ -429,3 +429,125 @@ def feature_importance(symbol: str, k: int = 15, n_perms: int = 20) -> dict:
         "base_dist":   round(base_mean, 4),
         "features":    importances,
     }
+
+
+def cluster_watchlist(symbols: list, n_clusters: int = 4) -> dict:
+    """
+    Cluster watchlist symbols by current market state using K-means on
+    the same 8 features as compute_knn_lookalike.
+
+    Returns clusters with member symbols and centroid feature values.
+    """
+    from sklearn.cluster import KMeans
+
+    FEATURE_COLS = [
+        "rsi14", "vol20_ann", "macd_hist", "cci_norm",
+        "vol_ratio", "kama_dist_10", "kama_dist_20", "kama_dist_50",
+    ]
+
+    feature_rows = {}
+    for sym in symbols:
+        try:
+            df = db.get_ohlcv_df(sym, "daily", limit=5000)
+            if df.empty or len(df) < 60:
+                continue
+
+            close = df["close"]
+            high  = df["high"]
+            low   = df["low"]
+            vol   = df["volume"]
+
+            df2 = df.copy()
+            df2["rsi14"]     = ta.momentum.RSIIndicator(close, window=14).rsi()
+            df2["vol20_ann"] = close.pct_change().rolling(20).std() * np.sqrt(252)
+            macd_i           = ta.trend.MACD(close, window_slow=26, window_fast=12, window_sign=9)
+            df2["macd_hist"] = macd_i.macd_diff()
+            cci_i            = ta.trend.CCIIndicator(high, low, close, window=20)
+            df2["cci_norm"]  = cci_i.cci() / 200.0
+            vol_ma20         = vol.rolling(20).mean()
+            df2["vol_ratio"] = vol / vol_ma20.replace(0, np.nan)
+            for p in KAMA_PERIODS:
+                kama_s = _kama(close, window=p)
+                df2[f"kama_dist_{p}"] = (close / kama_s.replace(0, np.nan)) - 1.0
+
+            last = df2[FEATURE_COLS].dropna(subset=FEATURE_COLS)
+            if last.empty:
+                continue
+            row = last.iloc[-1]
+            feature_rows[sym] = {col: float(row[col]) for col in FEATURE_COLS}
+        except Exception:
+            continue
+
+    if len(feature_rows) < 2:
+        return {"error": "Not enough symbols with data for clustering"}
+
+    syms = list(feature_rows.keys())
+    X = np.array([[feature_rows[s][f] for f in FEATURE_COLS] for s in syms])
+
+    # Impute NaN with column mean
+    for j in range(X.shape[1]):
+        col = X[:, j]
+        finite = col[np.isfinite(col)]
+        col[~np.isfinite(col)] = float(np.mean(finite)) if len(finite) else 0.0
+
+    k = min(n_clusters, len(syms))
+    scaler = StandardScaler()
+    Xs = scaler.fit_transform(X)
+
+    km = KMeans(n_clusters=k, random_state=42, n_init=10)
+    labels = km.fit_predict(Xs)
+
+    # Group symbols by cluster
+    cluster_map: dict[int, list] = {}
+    for i, sym in enumerate(syms):
+        c = int(labels[i])
+        cluster_map.setdefault(c, []).append(sym)
+
+    # Build result with centroid features + cluster characterisation
+    LABEL_MAP = {
+        "rsi14":        "RSI(14)",
+        "vol20_ann":    "Vol Ann.",
+        "macd_hist":    "MACD Hist",
+        "cci_norm":     "CCI/200",
+        "vol_ratio":    "Vol Ratio",
+        "kama_dist_10": "vs KAMA-10",
+        "kama_dist_20": "vs KAMA-20",
+        "kama_dist_50": "vs KAMA-50",
+    }
+    CLUSTER_LABELS = ["A", "B", "C", "D"]
+
+    result = []
+    for c_id, members in sorted(cluster_map.items()):
+        centroid = {}
+        for feat in FEATURE_COLS:
+            vals = [feature_rows[s][feat] for s in members if np.isfinite(feature_rows[s][feat])]
+            centroid[feat] = {
+                "label": LABEL_MAP.get(feat, feat),
+                "value": round(float(np.mean(vals)), 3) if vals else None,
+            }
+        # Describe the cluster by notable features
+        rsi  = centroid["rsi14"]["value"]
+        kama = centroid["kama_dist_20"]["value"]
+        mom  = centroid["macd_hist"]["value"]
+        if rsi is not None and kama is not None:
+            if rsi < 45 and kama < 0:       desc = "Oversold / Below Trend"
+            elif rsi > 60 and kama > 0:     desc = "Overbought / Momentum"
+            elif mom is not None and mom > 0: desc = "Improving / Bullish Bias"
+            else:                            desc = "Mixed / Neutral"
+        else:
+            desc = "Unknown"
+
+        result.append({
+            "cluster_id":    c_id,
+            "label":         CLUSTER_LABELS[c_id % len(CLUSTER_LABELS)],
+            "description":   desc,
+            "members":       members,
+            "member_count":  len(members),
+            "centroid":      centroid,
+        })
+
+    return {
+        "n_clusters": k,
+        "total_symbols": len(syms),
+        "clusters": result,
+    }

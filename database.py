@@ -221,6 +221,17 @@ def update_symbol_info(symbol: str, name: str, sector: str,
     conn.close()
 
 
+def set_next_earnings(symbol: str, next_earnings: str):
+    """Update only the next_earnings date without touching name/sector."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE symbols SET next_earnings=? WHERE symbol=?",
+        (next_earnings, symbol.upper())
+    )
+    conn.commit()
+    conn.close()
+
+
 # ── OHLCV CRUD ─────────────────────────────────────────────────────────────────
 
 def upsert_ohlcv(symbol: str, freq: str, df: pd.DataFrame):

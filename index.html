@@ -468,6 +468,7 @@
         <button class="knn-stab" id="knn-stab-scan" onclick="switchKNNTab('scan')">📡 Scan Watchlist</button>
         <button class="knn-stab" id="knn-stab-wf" onclick="switchKNNTab('wf')">📈 Walk-Forward</button>
         <button class="knn-stab" id="knn-stab-imp" onclick="switchKNNTab('imp')">🔬 Feature Importance</button>
+        <button class="knn-stab" id="knn-stab-clusters" onclick="switchKNNTab('clusters')">🗂️ Clusters</button>
       </div>
 
       <!-- ── Lookalike panel ── -->
@@ -526,6 +527,7 @@
       <div id="knn-panel-scan" style="display:none;">
         <div class="knn-scan-controls">
           <button class="btn btn-primary" onclick="loadKNNScan()">⟳ Scan All Symbols</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportKNNScanCSV()" title="Download KNN scan as CSV">⬇ CSV</button>
           <span id="knn-scan-status" class="scanner-ts"></span>
         </div>
         <div id="knn-scan-loading" style="display:none; align-items:center; gap:10px; padding:30px; color:var(--text-muted);">
@@ -615,6 +617,27 @@
           </div>
         </div>
       </div><!-- #knn-panel-imp -->
+
+      <!-- ── Clusters panel ── -->
+      <div id="knn-panel-clusters" style="display:none;">
+        <div class="knn-scan-controls">
+          <button class="btn btn-primary" onclick="loadKNNClusters()">🗂️ Cluster Watchlist</button>
+          <label class="knn-wf-label">Clusters
+            <select id="knn-cluster-n" class="wl-sf-select" style="width:70px;">
+              <option value="3">3</option>
+              <option value="4" selected>4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+            </select>
+          </label>
+          <span style="color:var(--text-muted); font-size:12px;">Groups symbols by current market state (K-means on the 8 KNN features)</span>
+          <span id="knn-cluster-status" class="scanner-ts"></span>
+        </div>
+        <div id="knn-cluster-loading" style="display:none; align-items:center; gap:10px; padding:30px; color:var(--text-muted);">
+          <span class="spinner"></span> Clustering watchlist…
+        </div>
+        <div id="knn-cluster-grid" class="regime-grid"></div>
+      </div><!-- #knn-panel-clusters -->
 
     </div><!-- #knn-area -->
 
@@ -916,6 +939,7 @@
       <div class="scanner-controls">
         <div class="scanner-controls-left">
           <button id="btn-scan" class="btn btn-primary" onclick="loadScannerData()">⟳ Scan All</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportScannerCSV()" title="Download scanner results as CSV">⬇ CSV</button>
           <span id="scanner-ts" class="scanner-ts"></span>
         </div>
         <div class="scanner-controls-right">
@@ -1112,7 +1136,7 @@
         <div style="overflow-x:auto;">
           <table class="backtest-table" id="portfolio-open-table">
             <thead>
-              <tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Price</th><th>P&amp;L</th><th>P&amp;L %</th><th>Opened</th><th>Actions</th></tr>
+              <tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Price</th><th>P&amp;L</th><th>P&amp;L %</th><th title="Max adverse excursion — worst close since entry">Max DD</th><th>Opened</th><th>Actions</th></tr>
             </thead>
             <tbody id="portfolio-open-tbody"></tbody>
           </table>
@@ -1201,6 +1225,19 @@
         <div id="compare-chart" style="width:100%; height:100%;"></div>
       </div>
       <div id="compare-legend" class="compare-legend"></div>
+
+      <!-- Performance stats table -->
+      <div id="compare-stats-card" class="stats-card" style="margin-top:16px; display:none;">
+        <div class="stats-card-header">Performance Statistics <span style="font-weight:400; color:var(--text-muted); font-size:11px;">(over loaded window)</span></div>
+        <div style="overflow-x:auto;">
+          <table class="backtest-table" id="compare-stats-table">
+            <thead>
+              <tr><th>Symbol</th><th>Total Ret</th><th>CAGR</th><th>Ann. Vol</th><th>Sharpe</th><th>Max DD</th><th>Win Rate</th></tr>
+            </thead>
+            <tbody id="compare-stats-tbody"></tbody>
+          </table>
+        </div>
+      </div>
     </div><!-- #compare-area -->
 
     <!-- ── Signals Area ── -->
@@ -1411,6 +1448,15 @@
   </main>
 
 </div><!-- .app -->
+
+<!-- ══ Mobile bottom nav (shown < 768px) ══════════════════════════ -->
+<nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+  <button class="mbn-btn active" data-tab="charts" onclick="switchTab('charts')"><span class="mbn-icon">📈</span><span class="mbn-label">Chart</span></button>
+  <button class="mbn-btn" data-tab="scanner" onclick="switchTab('scanner')"><span class="mbn-icon">📡</span><span class="mbn-label">Scan</span></button>
+  <button class="mbn-btn" data-tab="trend" onclick="switchTab('trend')"><span class="mbn-icon">🎯</span><span class="mbn-label">Trend</span></button>
+  <button class="mbn-btn" data-tab="portfolio" onclick="switchTab('portfolio')"><span class="mbn-icon">💼</span><span class="mbn-label">Folio</span></button>
+  <button class="mbn-btn" data-tab="signals" onclick="switchTab('signals')"><span class="mbn-icon">📶</span><span class="mbn-label">Signals</span></button>
+</nav>
 
 <!-- Toast container -->
 <div id="toast-container" class="toast-container"></div>

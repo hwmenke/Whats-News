@@ -832,6 +832,11 @@ async function switchTab(tabId) {
         btn.classList.toggle('active', btn.id === `tab-${tabId}`);
     });
 
+    // Sync mobile bottom-nav active state
+    document.querySelectorAll('.mbn-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabId);
+    });
+
     // Hide all content areas first
     ALL_AREAS.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     document.querySelector('.tab-bar').style.display = 'none';
@@ -1326,12 +1331,54 @@ function renderKNN(data) {
 
 // ── KNN Sub-tab switching ─────────────────────────────────────
 function switchKNNTab(tab) {
-    ['lookalike', 'scan', 'wf', 'imp'].forEach(t => {
+    ['lookalike', 'scan', 'wf', 'imp', 'clusters'].forEach(t => {
         const panel = document.getElementById(`knn-panel-${t}`);
         const btn   = document.getElementById(`knn-stab-${t}`);
         if (panel) panel.style.display = t === tab ? '' : 'none';
         if (btn)   btn.classList.toggle('knn-stab-active', t === tab);
     });
+}
+
+// ── KNN Clusters ──────────────────────────────────────────────
+async function loadKNNClusters() {
+    const loading  = document.getElementById('knn-cluster-loading');
+    const statusEl = document.getElementById('knn-cluster-status');
+    const n        = document.getElementById('knn-cluster-n')?.value || 4;
+    if (loading)  loading.style.display = 'flex';
+    if (statusEl) statusEl.textContent  = '';
+    try {
+        const data = await apiFetch(`${API}/knn/clusters?n=${n}`);
+        if (data.error) { toast(data.error, 'warning'); return; }
+        renderKNNClusters(data);
+        if (statusEl) statusEl.textContent = `${data.total_symbols} symbols → ${data.n_clusters} clusters`;
+    } catch (e) {
+        toast('Clustering failed: ' + e.message, 'error');
+    } finally {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+function renderKNNClusters(data) {
+    const grid = document.getElementById('knn-cluster-grid');
+    if (!grid) return;
+    const clusters = data.clusters || [];
+    grid.innerHTML = clusters.map(c => {
+        const members = (c.members || []).map(s =>
+            `<span class="cluster-chip" onclick="selectSymbol('${s}')">${s}</span>`
+        ).join('');
+        const cent = c.centroid || {};
+        const rows = Object.values(cent).map(f =>
+            `<div class="regime-meta-row"><span>${f.label}</span><span>${f.value != null ? f.value : '—'}</span></div>`
+        ).join('');
+        return `<div class="regime-cell">
+            <div class="regime-badge" style="background:rgba(59,130,246,0.15); color:var(--accent-bright);">
+                Cluster ${c.label} · ${c.member_count}
+            </div>
+            <div class="cluster-desc">${c.description}</div>
+            <div class="cluster-members">${members}</div>
+            <div class="regime-meta">${rows}</div>
+        </div>`;
+    }).join('');
 }
 
 // ── KNN Watchlist Scan ────────────────────────────────────────
@@ -1556,6 +1603,72 @@ function _renderCustomIndList() {
         _customIndicators.map((ind, i) =>
             `<span class="cib-chip">${ind.name} <button onclick="removeCustomIndicator(${i})">✕</button></span>`
         ).join('');
+}
+
+// ── CSV Export ────────────────────────────────────────────────
+function _downloadCSV(filename, rows) {
+    // rows: array of arrays. Quote cells containing commas/quotes/newlines.
+    const esc = v => {
+        if (v == null) return '';
+        const s = String(v);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const csv  = rows.map(r => r.map(esc).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function exportScannerCSV() {
+    const data = (typeof scannerState !== 'undefined') ? scannerState.data : null;
+    if (!data || !data.length) { toast('Run the scanner first', 'warning'); return; }
+
+    // Header: fixed cols + visible group metrics (per timeframe) + custom
+    const header = ['Symbol', 'Sector', 'Group', 'Score', 'Price', '1D%', '1M%'];
+    const metricCols = [];
+    if (typeof SCAN_GROUPS !== 'undefined') {
+        for (const grp of SCAN_GROUPS) {
+            if (!scannerState.visible[grp.id]) continue;
+            for (const m of grp.metrics) {
+                for (const tf of m.tfs) {
+                    header.push(`${m.label} (${tf.toUpperCase()})`);
+                    metricCols.push([tf, m.key]);
+                }
+            }
+        }
+    }
+    const customs = (typeof _customIndicators !== 'undefined') ? _customIndicators : [];
+    customs.forEach(ci => header.push(ci.name));
+
+    const rows = [header];
+    for (const r of data) {
+        const score = (typeof _score === 'function') ? _score(r) : null;
+        const row = [r.symbol, r.sector || '', r.group_tag || '',
+                     score, r.price, r.chg, r.ret_1m];
+        for (const [tf, key] of metricCols) row.push(r[tf]?.[key] ?? '');
+        customs.forEach(ci => row.push(ci.values?.[r.symbol] ?? ''));
+        rows.push(row);
+    }
+    _downloadCSV(`scanner_${new Date().toISOString().slice(0,10)}.csv`, rows);
+    toast('Scanner CSV downloaded', 'success', 2000);
+}
+
+function exportKNNScanCSV() {
+    const tbody = document.getElementById('knn-scan-tbody');
+    if (!tbody || !tbody.children.length) { toast('Run the KNN scan first', 'warning'); return; }
+    const rows = [['Symbol', '1D Win%', '1D Mean%', '5D Win%', '5D Mean%', '20D Win%', '20D Mean%', 'As Of']];
+    for (const tr of tbody.querySelectorAll('tr')) {
+        const cells = [...tr.querySelectorAll('td')].map(td => td.textContent.trim());
+        if (cells.length) rows.push(cells);
+    }
+    _downloadCSV(`knn_scan_${new Date().toISOString().slice(0,10)}.csv`, rows);
+    toast('KNN scan CSV downloaded', 'success', 2000);
 }
 
 // ── Backtest Functions ────────────────────────────────────────
@@ -2007,6 +2120,7 @@ function openAlertsModal() {
     if (!modal) return;
     modal.style.display = 'flex';
     if (symInput && state.activeSymbol) symInput.value = state.activeSymbol;
+    requestNotificationPermission();
     loadAlerts();
 }
 
@@ -2081,10 +2195,33 @@ async function deleteAlert(id) {
     }
 }
 
+// Track alert IDs already surfaced as browser notifications this session
+const _notifiedAlertIds = new Set();
+
+function _notifyAlert(a) {
+    const dir = a.condition === 'above' ? '↑' : '↓';
+    const cur = (a.current_value != null) ? a.current_value : '';
+    const title = `🔔 ${a.symbol} ${a.field} ${dir} ${a.threshold}`;
+    const body  = cur !== '' ? `Current: ${cur}` : '';
+    if ('Notification' in window && Notification.permission === 'granted') {
+        try { new Notification(title, { body, tag: `alert-${a.id}` }); } catch (_) {}
+    }
+    // Always show an in-app toast as fallback
+    toast(`${a.symbol}: ${a.field} ${a.condition} ${a.threshold}`, 'warning', 6000);
+}
+
 async function checkAlerts() {
     try {
         const res = await apiFetch(`${API}/alerts/check`, { method: 'POST' });
-        const triggered = (res.triggered || []).length;
+        // Endpoint may return an array (newly triggered) or {triggered:[...]}
+        const fired = Array.isArray(res) ? res : (res.triggered || []);
+        for (const a of fired) {
+            if (a && a.id != null && !_notifiedAlertIds.has(a.id)) {
+                _notifiedAlertIds.add(a.id);
+                _notifyAlert(a);
+            }
+        }
+        const triggered = fired.length;
         const badge     = document.getElementById('alerts-badge');
         if (!badge) return;
         if (triggered > 0) {
@@ -2094,6 +2231,15 @@ async function checkAlerts() {
             badge.style.display = 'none';
         }
     } catch (_) {}
+}
+
+// Ask for browser notification permission (called on first alert creation)
+function requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(p => {
+            if (p === 'granted') toast('Browser notifications enabled for alerts', 'success', 3000);
+        });
+    }
 }
 
 // ── Portfolio ─────────────────────────────────────────────────
@@ -2140,6 +2286,13 @@ function renderPortfolio(positions) {
     if (openTbody) {
         openTbody.innerHTML = openLive.length ? openLive.map(p => {
             const color = p.pnl == null ? '' : p.pnl >= 0 ? 'color:#22c55e' : 'color:#ef4444';
+            const mae = p.max_adverse_excursion;
+            // Highlight deep drawdowns (worse than −8%)
+            const ddColor = mae == null ? 'color:var(--text-muted)'
+                          : mae <= -8 ? 'color:#ef4444; font-weight:700'
+                          : 'color:#ef4444';
+            const ddText  = mae != null ? mae.toFixed(2) + '%' : '--';
+            const ddWarn  = (mae != null && mae <= -8) ? ' ⚠️' : '';
             return `
           <tr>
             <td><strong style="cursor:pointer;" onclick="selectSymbol('${p.symbol}')">${p.symbol}</strong></td>
@@ -2148,6 +2301,7 @@ function renderPortfolio(positions) {
             <td>${fmtPx(p.price)}</td>
             <td style="${color}">${p.pnl != null ? (p.pnl >= 0 ? '+' : '') + '$' + p.pnl.toFixed(2) : '--'}</td>
             <td style="${color}">${p.pct != null ? (p.pct >= 0 ? '+' : '') + (p.pct * 100).toFixed(2) + '%' : '--'}</td>
+            <td style="${ddColor}">${ddText}${ddWarn}</td>
             <td>${p.opened_at || '--'}</td>
             <td style="white-space:nowrap;">
               <button class="btn btn-ghost btn-sm" onclick="openClosePositionModal(${p.id})">Close</button>
@@ -2155,7 +2309,7 @@ function renderPortfolio(positions) {
             </td>
           </tr>`;
         }).join('')
-          : '<tr><td colspan="8" style="color:var(--text-muted); text-align:center; padding:16px;">No open positions</td></tr>';
+          : '<tr><td colspan="9" style="color:var(--text-muted); text-align:center; padding:16px;">No open positions</td></tr>';
     }
 
     _renderPortfolioHeatmap(openLive);
