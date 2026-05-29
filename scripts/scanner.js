@@ -665,8 +665,8 @@ function _sortedJeff(rows) {
         if (a.error) return 1;
         if (b.error) return -1;
         let va, vb;
-        if (key === 'symbol')     { va = a.symbol; vb = b.symbol; return va.localeCompare(vb) * dir; }
-        else if (key === 'grade') { va = gradeRank[a.grade] ?? 3; vb = gradeRank[b.grade] ?? 3; }
+        if (key === 'symbol')       { va = a.symbol; vb = b.symbol; return va.localeCompare(vb) * dir; }
+        else if (key === 'grade')   { va = gradeRank[a.grade] ?? 3; vb = gradeRank[b.grade] ?? 3; }
         else if (key === 'trigger') { va = a.trigger_dist_pct ?? 999; vb = b.trigger_dist_pct ?? 999; }
         else { va = a[key]; vb = b[key]; }
         if (va == null) return 1;
@@ -701,9 +701,16 @@ function _jfCritPills(checks) {
 
 const _JF_TIER_ICON = { focus: '🔥', stalk: '🎯', active: '⚡', watchlist: '' };
 
+function _jfOppBadge(score) {
+    if (score == null) return '<td></td>';
+    const cls = score >= 65 ? 'jf-opp-hot' : score >= 40 ? 'jf-opp-warm' : 'jf-opp-cold';
+    return `<td class="jf-opp-cell"><span class="jf-opp ${cls}" title="Opportunity score: grade + readiness + RS + trigger proximity (0–100)">${score}</span></td>`;
+}
+
 function _jfRow(r) {
     if (r.error) {
         return `<tr class="jf-row jf-row-err">
+            <td></td>
             <td></td>
             <td class="jf-sym-cell"><strong>${r.symbol}</strong></td>
             <td colspan="9" class="jf-err-msg">${r.error}
@@ -737,6 +744,7 @@ function _jfRow(r) {
 
     return `<tr class="jf-row jf-row-${g}" onclick="selectSymbol('${r.symbol}'); switchTab('charts')">
         <td><span class="jf-grade jf-grade-${g}">${r.grade}</span></td>
+        ${_jfOppBadge(r.opp_score)}
 
         <td class="jf-sym-cell">
             ${tierIco ? `<span class="jf-tier" title="${r.tier}">${tierIco}</span>` : ''}
@@ -802,8 +810,9 @@ function _renderJeffScan() {
     const rows = _sortedJeff(_filteredJeff());
 
     thead.innerHTML = `<tr>
-        ${_jfTh('grade',     'Grade')}
-        ${_jfTh('symbol',    'Symbol')}
+        ${_jfTh('grade',      'Grade')}
+        ${_jfTh('opp_score',  'Score', 'Opportunity score (0–100): grade quality + timing readiness + relative strength + trigger proximity')}
+        ${_jfTh('symbol',     'Symbol')}
         ${_jfTh(null,        'Price')}
         ${_jfTh('readiness', 'Ready', 'Timing readiness: how many of the 5 entry criteria pass right now')}
         ${_jfTh(null,        'Pattern')}

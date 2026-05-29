@@ -194,6 +194,19 @@ def _compute_jeff_inner(symbols: list) -> list:
     for i, r in enumerate(ranked):
         r["rs_rank"] = round((i + 1) / m * 100) if m else None
 
+    # Composite opportunity score (0–100): grade quality + timing + RS + trigger proximity
+    _grade_pts   = {"A": 40, "B": 25, "C": 10}
+    _trigger_pts = {"AT": 10, "NEAR": 6, "WATCH": 2, "EARLY": 0}
+    for r in rows:
+        if r.get("error"):
+            r["opp_score"] = 0
+            continue
+        pts  = _grade_pts.get(r.get("grade", "C"), 10)
+        pts += (r.get("readiness") or 0) * 6
+        pts += round((r.get("rs_rank") or 0) * 0.20)
+        pts += _trigger_pts.get(r.get("trigger_status"), 0)
+        r["opp_score"] = pts
+
     # Persist fresh grades so the dashboard strength table stays in sync
     for r in rows:
         if not r.get("error") and r.get("grade"):
