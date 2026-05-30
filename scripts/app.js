@@ -357,6 +357,30 @@ function renderSymbolList() {
             item.appendChild(tagBadge);
         }
 
+        // Earnings countdown badge (within 14 days)
+        const ne = sym.next_earnings;
+        if (ne) {
+            const daysToEarnings = Math.ceil((new Date(ne) - Date.now()) / 86400000);
+            if (daysToEarnings >= 0 && daysToEarnings <= 14) {
+                const earnBadge = document.createElement('span');
+                earnBadge.className   = 'sym-earnings-soon';
+                earnBadge.title       = `Earnings: ${ne}`;
+                earnBadge.textContent = daysToEarnings === 0 ? 'E' : `E${daysToEarnings}d`;
+                item.appendChild(earnBadge);
+            }
+        }
+
+        // Data freshness: amber dot if last_fetch > 24h ago or never fetched
+        const lastFetch = sym.last_fetch;
+        if (!lastFetch || (Date.now() - new Date(lastFetch).getTime()) > 86400000) {
+            const staleDot = document.createElement('span');
+            staleDot.className = 'sym-stale-dot';
+            staleDot.title = lastFetch
+                ? `Data from ${lastFetch.slice(0, 10)} — may be stale`
+                : 'No data fetched yet';
+            item.appendChild(staleDot);
+        }
+
         const removeBtn = document.createElement('span');
         removeBtn.className   = 'sym-remove';
         removeBtn.textContent = '×';
@@ -741,7 +765,8 @@ async function loadChartData(symbol) {
         const prev = dailyOhlcv[dailyOhlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
 
-        if (typeof loadEarningsMarkers === 'function') loadEarningsMarkers(symbol);
+        if (typeof loadEarningsMarkers  === 'function') loadEarningsMarkers(symbol);
+        if (typeof loadJournalMarkers   === 'function') loadJournalMarkers(symbol);
     } catch (e) {
         toast('Chart load failed: ' + e.message, 'error');
         showEmptyState();
@@ -2198,6 +2223,23 @@ async function deleteAlert(id) {
 // Track alert IDs already surfaced as browser notifications this session
 const _notifiedAlertIds = new Set();
 
+// Persistent alert history (last 50 triggers) stored in localStorage
+let _alertHistory = [];
+try { _alertHistory = JSON.parse(localStorage.getItem('alertHistory') || '[]'); } catch (_) {}
+
+function _logAlertHistory(a) {
+    _alertHistory.unshift({
+        symbol:        a.symbol,
+        field:         a.field,
+        condition:     a.condition,
+        threshold:     a.threshold,
+        current_value: a.current_value,
+        fired_at:      new Date().toISOString(),
+    });
+    if (_alertHistory.length > 50) _alertHistory.length = 50;
+    try { localStorage.setItem('alertHistory', JSON.stringify(_alertHistory)); } catch (_) {}
+}
+
 function _notifyAlert(a) {
     const dir = a.condition === 'above' ? '↑' : '↓';
     const cur = (a.current_value != null) ? a.current_value : '';
@@ -2208,6 +2250,34 @@ function _notifyAlert(a) {
     }
     // Always show an in-app toast as fallback
     toast(`${a.symbol}: ${a.field} ${a.condition} ${a.threshold}`, 'warning', 6000);
+    _logAlertHistory(a);
+}
+
+function renderAlertHistory() {
+    const el = document.getElementById('alert-history-list');
+    if (!el) return;
+    if (!_alertHistory.length) {
+        el.innerHTML = '<div style="color:var(--text-muted); padding:6px 0; font-size:12px;">No triggers yet this session.</div>';
+        return;
+    }
+    el.innerHTML = _alertHistory.slice(0, 20).map(a => {
+        const dir = a.condition === 'above' ? '↑' : '↓';
+        const cur = a.current_value != null ? ` → ${Number(a.current_value).toFixed(3)}` : '';
+        const when = a.fired_at ? a.fired_at.slice(0, 16).replace('T', ' ') : '';
+        return `<div class="alert-history-row">
+            <span class="alert-row-sym">${a.symbol}</span>
+            <span class="alert-row-desc">${a.field} ${dir} ${a.threshold}${cur}</span>
+            <span style="font-size:10px; color:var(--text-dim);">${when}</span>
+        </div>`;
+    }).join('');
+}
+
+function toggleAlertHistory() {
+    const el = document.getElementById('alert-history-panel');
+    if (!el) return;
+    const open = el.style.display === 'none' || !el.style.display;
+    el.style.display = open ? '' : 'none';
+    if (open) renderAlertHistory();
 }
 
 async function checkAlerts() {
@@ -2240,6 +2310,28 @@ function requestNotificationPermission() {
             if (p === 'granted') toast('Browser notifications enabled for alerts', 'success', 3000);
         });
     }
+}
+
+// ── Portfolio CSV export ──────────────────────────────────────
+function exportPortfolioCSV() {
+    const openTbody   = document.getElementById('portfolio-open-tbody');
+    const closedTbody = document.getElementById('portfolio-closed-tbody');
+    const rows = [['Type', 'Symbol', 'Qty', 'Entry', 'Price/Exit', 'P&L', 'P&L %', 'Max DD', 'Opened', 'Closed/Notes']];
+    if (openTbody) {
+        for (const tr of openTbody.querySelectorAll('tr')) {
+            const tds = [...tr.querySelectorAll('td')].map(td => td.textContent.trim());
+            if (tds.length >= 6) rows.push(['Open', ...tds.slice(0, 9)]);
+        }
+    }
+    if (closedTbody) {
+        for (const tr of closedTbody.querySelectorAll('tr')) {
+            const tds = [...tr.querySelectorAll('td')].map(td => td.textContent.trim());
+            if (tds.length >= 6) rows.push(['Closed', ...tds.slice(0, 8)]);
+        }
+    }
+    if (rows.length <= 1) { toast('No positions to export', 'warning'); return; }
+    _downloadCSV(`portfolio_${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    toast('Portfolio CSV downloaded', 'success', 2000);
 }
 
 // ── Portfolio ─────────────────────────────────────────────────
@@ -2313,6 +2405,7 @@ function renderPortfolio(positions) {
     }
 
     _renderPortfolioHeatmap(openLive);
+    _renderSectorAllocation(openLive);
 
     // Closed positions table
     const closedTbody = document.getElementById('portfolio-closed-tbody');
@@ -2336,17 +2429,23 @@ function renderPortfolio(positions) {
 
     // KPI summary (open positions, live)
     document.getElementById('port-open-count').textContent = String(open.length);
-    const pnlEl    = document.getElementById('port-pnl');
-    const pnlPctEl = document.getElementById('port-pnl-pct');
+    const pnlEl      = document.getElementById('port-pnl');
+    const pnlPctEl   = document.getElementById('port-pnl-pct');
+    const investedEl = document.getElementById('port-invested');
+    const valueEl    = document.getElementById('port-value');
     if (totalValue > 0) {
         const totalPnl = totalValue - totalCost;
         const totalPct = totalCost > 0 ? totalPnl / totalCost : 0;
         const col      = totalPnl >= 0 ? '#22c55e' : '#ef4444';
-        if (pnlEl)    { pnlEl.textContent    = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2); pnlEl.style.color = col; }
-        if (pnlPctEl) { pnlPctEl.textContent = (totalPct >= 0 ? '+' : '') + (totalPct * 100).toFixed(2) + '%'; pnlPctEl.style.color = col; }
+        if (pnlEl)      { pnlEl.textContent      = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2); pnlEl.style.color = col; }
+        if (pnlPctEl)   { pnlPctEl.textContent   = (totalPct >= 0 ? '+' : '') + (totalPct * 100).toFixed(2) + '%'; pnlPctEl.style.color = col; }
+        if (investedEl) { investedEl.textContent  = '$' + totalCost.toFixed(2); investedEl.style.color = ''; }
+        if (valueEl)    { valueEl.textContent     = '$' + totalValue.toFixed(2); valueEl.style.color = col; }
     } else {
-        if (pnlEl)    { pnlEl.textContent = '--'; pnlEl.style.color = ''; }
-        if (pnlPctEl) { pnlPctEl.textContent = '--'; pnlPctEl.style.color = ''; }
+        if (pnlEl)      { pnlEl.textContent = '--'; pnlEl.style.color = ''; }
+        if (pnlPctEl)   { pnlPctEl.textContent = '--'; pnlPctEl.style.color = ''; }
+        if (investedEl) { investedEl.textContent = '--'; investedEl.style.color = ''; }
+        if (valueEl)    { valueEl.textContent = '--'; valueEl.style.color = ''; }
     }
 }
 
@@ -2382,6 +2481,56 @@ function _renderPortfolioHeatmap(openLive) {
                 <span class="port-heat-pct">${p.pct != null ? (p.pct >= 0 ? '+' : '') + (p.pct*100).toFixed(1) + '%' : '--'}</span>
             </div>`;
         }).join('');
+}
+
+let _sectorAllocChart = null;
+
+function _renderSectorAllocation(openLive) {
+    const card   = document.getElementById('port-sector-card');
+    const canvas = document.getElementById('port-sector-canvas');
+    if (!card || !canvas) return;
+
+    const withValue = openLive.filter(p => p.value != null && p.value > 0);
+    if (!withValue.length) { card.style.display = 'none'; return; }
+    card.style.display = '';
+
+    // Map symbol → sector using state.symbols
+    const sectorMap = {};
+    (state.symbols || []).forEach(s => { sectorMap[s.symbol] = s.sector || 'Other'; });
+
+    // Aggregate by sector
+    const byName = {};
+    for (const p of withValue) {
+        const sec = sectorMap[p.symbol] || 'Other';
+        byName[sec] = (byName[sec] || 0) + p.value;
+    }
+    const labels = Object.keys(byName);
+    const data   = labels.map(l => Math.round(byName[l] * 100) / 100);
+    const palette = ['#3b82f6','#22c55e','#f97316','#a855f7','#ec4899',
+                     '#14b8a6','#eab308','#ef4444','#06b6d4','#84cc16'];
+    const colors = labels.map((_, i) => palette[i % palette.length]);
+
+    if (_sectorAllocChart) { _sectorAllocChart.destroy(); _sectorAllocChart = null; }
+    _sectorAllocChart = new Chart(canvas, {
+        type: 'doughnut',
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: 'var(--bg-primary)' }] },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right', labels: { color: '#8b949e', font: { size: 11 }, boxWidth: 12 } },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => {
+                            const total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                            const pct   = total > 0 ? ((ctx.parsed / total) * 100).toFixed(1) : 0;
+                            return ` ${ctx.label}: $${ctx.parsed.toLocaleString()} (${pct}%)`;
+                        }
+                    }
+                }
+            }
+        },
+    });
 }
 
 function openAddPositionModal() {

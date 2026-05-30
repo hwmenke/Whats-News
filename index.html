@@ -1108,7 +1108,10 @@
 
       <div class="portfolio-header">
         <span class="portfolio-title">Portfolio Positions</span>
-        <button class="btn btn-primary btn-sm" onclick="openAddPositionModal()">+ Add Position</button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button class="btn btn-ghost btn-sm" onclick="exportPortfolioCSV()" title="Export positions as CSV">⬇ CSV</button>
+          <button class="btn btn-primary btn-sm" onclick="openAddPositionModal()">+ Add Position</button>
+        </div>
       </div>
 
       <div class="kpi-row" style="margin-bottom:20px;">
@@ -1121,8 +1124,23 @@
           <div id="port-pnl-pct" class="kpi-value">--</div>
         </div>
         <div class="kpi-card">
+          <div class="kpi-label">Invested</div>
+          <div id="port-invested" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Portfolio Value</div>
+          <div id="port-value" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
           <div class="kpi-label">Open Positions</div>
           <div id="port-open-count" class="kpi-value">--</div>
+        </div>
+      </div>
+
+      <div class="stats-card" id="port-sector-card" style="display:none; margin-bottom:12px;">
+        <div class="stats-card-header">Allocation by Sector</div>
+        <div style="height:200px; position:relative;">
+          <canvas id="port-sector-canvas"></canvas>
         </div>
       </div>
 
@@ -1528,8 +1546,11 @@
         <div class="alert-form-row">
           <input id="alert-symbol-input" type="text" placeholder="Symbol" class="alert-input" maxlength="10" />
           <select id="alert-field-select" class="alert-select">
-            <option value="close">Close</option>
-            <option value="rsi14">RSI 14</option>
+            <option value="price">Price</option>
+            <option value="rsi_14">RSI 14</option>
+            <option value="kama10_pct">KAMA10 %</option>
+            <option value="kama20_pct">KAMA20 %</option>
+            <option value="kama50_pct">KAMA50 %</option>
           </select>
           <select id="alert-cond-select" class="alert-select">
             <option value="above">above</option>
@@ -1537,6 +1558,12 @@
           </select>
           <input id="alert-threshold-input" type="number" step="any" placeholder="Value" class="alert-input alert-input-num" />
           <button class="btn btn-primary btn-sm" onclick="addAlert()">Add</button>
+        </div>
+      </div>
+      <div style="margin-top:10px; border-top:1px solid var(--border); padding-top:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="toggleAlertHistory()" style="font-size:11px;">📋 History</button>
+        <div id="alert-history-panel" style="display:none; margin-top:6px; max-height:160px; overflow-y:auto;">
+          <div id="alert-history-list"></div>
         </div>
       </div>
     </div>

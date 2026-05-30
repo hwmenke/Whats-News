@@ -1008,13 +1008,58 @@ function _applyEarningsMarkers(symbol, dates) {
         text:     'E',
     }));
 
-    // Merge with any existing markers already set on the candle series
     window._earningsMarkers = window._earningsMarkers || {};
     window._earningsMarkers[symbol] = eMarkers;
 
-    const prior = (window._priorCandleMarkers && window._priorCandleMarkers[symbol]) || [];
-    const merged = [...prior, ...eMarkers].sort((a, b) => String(a.time).localeCompare(String(b.time)));
+    _refreshAllChartMarkers(symbol);
+}
+
+function _refreshAllChartMarkers(symbol) {
+    const candle = typeof series !== 'undefined' ? series.daily?.candle : null;
+    if (!candle) return;
+    const prior    = (window._priorCandleMarkers  && window._priorCandleMarkers[symbol])  || [];
+    const earnings = (window._earningsMarkers     && window._earningsMarkers[symbol])     || [];
+    const journal  = (window._journalMarkers      && window._journalMarkers[symbol])      || [];
+    const merged   = [...prior, ...earnings, ...journal]
+        .sort((a, b) => String(a.time).localeCompare(String(b.time)));
     try { candle.setMarkers(merged); } catch (_) {}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// JOURNAL MARKERS ON CHART
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function loadJournalMarkers(symbol) {
+    if (!symbol) return;
+    try {
+        const entries = await apiFetch(`${API}/journal?symbol=${encodeURIComponent(symbol)}`);
+        const markers = [];
+        for (const e of (entries || [])) {
+            if (e.entry_date) {
+                markers.push({
+                    time:     e.entry_date,
+                    position: 'belowBar',
+                    color:    '#22c55e',
+                    shape:    'arrowUp',
+                    size:     1,
+                    text:     e.direction === 'short' ? 'S▾' : 'B',
+                });
+            }
+            if (e.exit_date) {
+                markers.push({
+                    time:     e.exit_date,
+                    position: 'aboveBar',
+                    color:    '#ef4444',
+                    shape:    'arrowDown',
+                    size:     1,
+                    text:     'X',
+                });
+            }
+        }
+        window._journalMarkers = window._journalMarkers || {};
+        window._journalMarkers[symbol] = markers;
+        _refreshAllChartMarkers(symbol);
+    } catch (_) {}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -3445,3 +3445,47 @@ kbd {
   /* The full tab strip is replaced by the bottom nav on phones */
   .main-nav-tabs { display: none; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   Watchlist: earnings countdown + data freshness badges
+   ══════════════════════════════════════════════════════════ */
+.sym-earnings-soon {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: #f97316;
+  background: rgba(249, 115, 22, 0.12);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-right: 2px;
+  vertical-align: middle;
+  line-height: 14px;
+  flex-shrink: 0;
+}
+
+.sym-stale-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #eab308;
+  opacity: 0.7;
+  margin-right: 3px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════════════════════
+   Alert history in alerts modal
+   ══════════════════════════════════════════════════════════ */
+.alert-history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.alert-history-row:last-child { border-bottom: none; }

@@ -41,6 +41,22 @@ function _saveScanVisible() {
     try { localStorage.setItem('scannerVisible', JSON.stringify(scannerState.visible)); } catch (_) {}
 }
 
+function _saveScanSort() {
+    try { localStorage.setItem('scannerSort', JSON.stringify({ k: scannerState.sortKey, d: scannerState.sortDir })); } catch (_) {}
+}
+
+function _loadScanSort() {
+    try {
+        const raw = localStorage.getItem('scannerSort');
+        if (raw) {
+            const { k, d } = JSON.parse(raw);
+            scannerState.sortKey = k || null;
+            scannerState.sortDir = d || 1;
+        }
+    } catch (_) {}
+}
+_loadScanSort();
+
 // Sync the show/hide toggle buttons to the persisted state on load
 function _syncScanGroupButtons() {
     document.querySelectorAll('.scan-grp-btn[data-grp]').forEach(btn => {
@@ -417,6 +433,7 @@ function _td(cls) {
 function sortScanner(key) {
     scannerState.sortDir = scannerState.sortKey === key ? scannerState.sortDir * -1 : 1;
     scannerState.sortKey = key;
+    _saveScanSort();
     if (scannerState.data) renderScannerTable(scannerState.data);
 }
 
