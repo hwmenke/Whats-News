@@ -653,6 +653,9 @@ async function switchTab(tabId) {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('journal-area').style.display      = 'none';
+    document.getElementById('momentum-area').style.display     = 'none';
+    document.getElementById('regime-area').style.display       = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
     if (tabId === 'charts') {
@@ -679,6 +682,15 @@ async function switchTab(tabId) {
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
+    } else if (tabId === 'journal') {
+        document.getElementById('journal-area').style.display = 'block';
+        if (typeof initJournal === 'function') initJournal();
+    } else if (tabId === 'momentum') {
+        document.getElementById('momentum-area').style.display = 'block';
+        if (typeof loadMomentumScan === 'function') loadMomentumScan();
+    } else if (tabId === 'regime') {
+        document.getElementById('regime-area').style.display = 'block';
+        if (typeof loadRegime === 'function') loadRegime();
     }
 }
 

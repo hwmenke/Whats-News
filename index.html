@@ -116,6 +116,15 @@
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
         <span class="tab-icon">🗄️</span> Data Manager
       </button>
+      <button id="tab-journal" class="tab-btn" onclick="switchTab('journal')">
+        <span class="tab-icon">📒</span> Journal
+      </button>
+      <button id="tab-momentum" class="tab-btn" onclick="switchTab('momentum')">
+        <span class="tab-icon">🚀</span> Momentum
+      </button>
+      <button id="tab-regime" class="tab-btn" onclick="switchTab('regime')">
+        <span class="tab-icon">🌐</span> Regime
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -711,6 +720,88 @@
 
     </div><!-- #data-manager-area -->
 
+    <!-- ═══════════════════ JOURNAL ═══════════════════ -->
+    <div id="journal-area" class="dm-container" style="display:none;">
+      <div class="jr-header">
+        <h2>📒 Trade Journal</h2>
+        <div class="jr-settings">
+          <label>Equity $ <input id="jr-equity" type="number" class="kama-input" style="width:120px;" /></label>
+          <label>Risk % <input id="jr-risk" type="number" step="0.05" class="kama-input" style="width:80px;" /></label>
+          <button class="btn btn-ghost" onclick="saveJournalSettings()">Save</button>
+        </div>
+      </div>
+
+      <!-- Cumulative stats -->
+      <div id="jr-stats" class="jr-stats-grid"></div>
+
+      <!-- New trade form -->
+      <details class="jr-form-wrap" open>
+        <summary>➕ New Trade</summary>
+        <div class="jr-form">
+          <input id="f-symbol"  class="kama-input" placeholder="Symbol" />
+          <select id="f-direction" class="kama-input">
+            <option value="long">Long</option><option value="short">Short</option>
+          </select>
+          <input id="f-setup"   class="kama-input" placeholder="Setup (breakout/EP/burst)" />
+          <input id="f-entry"   class="kama-input" type="number" step="any" placeholder="Entry" oninput="recomputeSizing()" />
+          <input id="f-stop"    class="kama-input" type="number" step="any" placeholder="Stop"  oninput="recomputeSizing()" />
+          <input id="f-shares"  class="kama-input" type="number" step="any" placeholder="Shares" />
+          <input id="f-entry-date" class="kama-input" type="date" />
+          <input id="f-entry-time" class="kama-input" placeholder="Time (e.g. 9:34 AM)" />
+          <input id="f-chart"   class="kama-input" placeholder="Chart-at-entry URL" style="flex:1; min-width:160px;" />
+          <button class="btn btn-ghost"   onclick="captureEntryChart()" title="Snapshot the current daily chart">📷 Capture</button>
+          <input id="f-notes"   class="kama-input" placeholder="Notes" style="flex:1; min-width:160px;" />
+          <button class="btn btn-primary" onclick="submitTrade()">Add Trade</button>
+        </div>
+        <div id="jr-sizing" class="jr-sizing"></div>
+        <img id="f-chart-thumb" class="jr-thumb" style="display:none;" />
+      </details>
+
+      <!-- Sub-tabs -->
+      <div class="trend-subtabs">
+        <button class="trend-stab trend-stab-active" id="jr-stab-open"   onclick="switchJournalView('open')">Open Positions</button>
+        <button class="trend-stab"                    id="jr-stab-closed" onclick="switchJournalView('closed')">Closed Positions</button>
+      </div>
+      <div class="scanner-table-wrap">
+        <table id="jr-table" class="scanner-table" style="width:100%;"></table>
+      </div>
+    </div><!-- #journal-area -->
+
+    <!-- ═══════════════════ MOMENTUM SCAN ═══════════════════ -->
+    <div id="momentum-area" class="scanner-container" style="display:none;">
+      <div class="jr-header">
+        <h2>🚀 Momentum Scan</h2>
+        <div class="mom-filters">
+          <select id="mom-setup" class="kama-input" onchange="renderMomentum()">
+            <option value="">All setups</option>
+            <option value="continuation">Continuation breakout</option>
+            <option value="momentum_burst">Momentum burst</option>
+            <option value="episodic_pivot">Episodic pivot</option>
+            <option value="parabolic">Parabolic</option>
+          </select>
+          <select id="mom-grade" class="kama-input" onchange="renderMomentum()">
+            <option value="">All grades</option>
+            <option value="A+">A+ only</option>
+            <option value="A">A and up</option>
+            <option value="B">B and up</option>
+          </select>
+          <button class="btn btn-primary" onclick="loadMomentumScan()">↻ Rescan</button>
+        </div>
+      </div>
+      <div class="scanner-table-wrap">
+        <table id="mom-table" class="scanner-table" style="width:100%;"></table>
+      </div>
+    </div><!-- #momentum-area -->
+
+    <!-- ═══════════════════ REGIME ═══════════════════ -->
+    <div id="regime-area" class="dm-container" style="display:none;">
+      <div class="jr-header">
+        <h2>🌐 Market Regime &amp; Breadth</h2>
+        <button class="btn btn-primary" onclick="loadRegime()">↻ Refresh</button>
+      </div>
+      <div id="regime-body"></div>
+    </div><!-- #regime-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -760,6 +851,9 @@
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
+<script src="scripts/journal.js"></script>
+<script src="scripts/momentum.js"></script>
+<script src="scripts/regime.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

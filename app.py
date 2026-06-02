@@ -19,6 +19,11 @@ import backtester
 import scanner
 import adaptive_trend as adaptive
 import ticker_lists as tl
+import journal
+import scorecards
+import regime as regime_mod
+import risk as risk_mod
+import settings_store
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -456,6 +461,112 @@ def fetch_batch():
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# -- Trade Journal --------------------------------------------------------------
+
+@app.route("/api/journal/trades", methods=["GET"])
+def journal_list():
+    status = request.args.get("status")
+    if status and status not in ("open", "closed"):
+        return jsonify({"error": "status must be 'open' or 'closed'"}), 400
+    return jsonify(journal.list_trades(status))
+
+
+@app.route("/api/journal/trades", methods=["POST"])
+def journal_add():
+    payload = request.get_json(force=True) or {}
+    result = journal.add_trade(payload)
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result), 201
+
+
+@app.route("/api/journal/trades/<int:trade_id>", methods=["PUT"])
+def journal_update(trade_id):
+    payload = request.get_json(force=True) or {}
+    result = journal.update_trade(trade_id, payload)
+    if "error" in result:
+        return jsonify(result), 404
+    return jsonify(result)
+
+
+@app.route("/api/journal/trades/<int:trade_id>/close", methods=["POST"])
+def journal_close(trade_id):
+    payload = request.get_json(force=True) or {}
+    result = journal.close_trade(
+        trade_id,
+        payload.get("exit_price"),
+        exit_date=payload.get("exit_date"),
+        chart_exit_url=payload.get("chart_exit_url"),
+        notes=payload.get("notes"),
+    )
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+@app.route("/api/journal/trades/<int:trade_id>", methods=["DELETE"])
+def journal_delete(trade_id):
+    return jsonify(journal.delete_trade(trade_id))
+
+
+@app.route("/api/journal/stats", methods=["GET"])
+def journal_stats():
+    return jsonify(journal.cumulative_stats())
+
+
+# -- Position sizing / risk -----------------------------------------------------
+
+@app.route("/api/risk/size", methods=["POST"])
+def risk_size():
+    p = request.get_json(force=True) or {}
+    if p.get("entry") is None or p.get("stop") is None:
+        return jsonify({"error": "entry and stop are required"}), 400
+    result = risk_mod.position_size(
+        p.get("equity"), p.get("risk_pct"), p.get("entry"), p.get("stop"),
+        direction=p.get("direction", "long"),
+    )
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+# -- Settings -------------------------------------------------------------------
+
+@app.route("/api/settings", methods=["GET"])
+def get_settings():
+    return jsonify(settings_store.get_settings())
+
+
+@app.route("/api/settings", methods=["PUT"])
+def put_settings():
+    p = request.get_json(force=True) or {}
+    try:
+        result = settings_store.set_settings(p.get("equity"), p.get("risk_pct"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(result)
+
+
+# -- Momentum scan --------------------------------------------------------------
+
+@app.route("/api/momentum-scan", methods=["GET"])
+def momentum_scan():
+    try:
+        return jsonify(scorecards.run_momentum_scan())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -- Market regime --------------------------------------------------------------
+
+@app.route("/api/regime", methods=["GET"])
+def get_regime():
+    try:
+        return jsonify(regime_mod.compute_regime())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # -- Entry point ----------------------------------------------------------------

@@ -67,6 +67,57 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_ohlcv ON ohlcv(symbol, freq, date)
     """)
 
+    # ── Trade journal ──────────────────────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS trades (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol          TEXT    NOT NULL,
+            direction       TEXT    NOT NULL DEFAULT 'long',   -- 'long' | 'short'
+            status          TEXT    NOT NULL DEFAULT 'open',    -- 'open' | 'closed'
+            setup_type      TEXT    DEFAULT '',
+            entry_date      TEXT,
+            exit_date       TEXT,
+            entry_time      TEXT    DEFAULT '',
+            entry_price     REAL    NOT NULL,
+            stop_price      REAL    NOT NULL,
+            exit_price      REAL,
+            shares          REAL,
+            risk_pct        REAL,
+            equity_at_entry REAL,
+            chart_entry_url TEXT    DEFAULT '',
+            chart_exit_url  TEXT    DEFAULT '',
+            notes           TEXT    DEFAULT '',
+            created_at      TEXT    NOT NULL,
+            updated_at      TEXT
+        )
+    """)
+
+    # Idempotent migrations for the trades table (same pattern as symbols above)
+    for col, defn in [
+        ('chart_entry_url', "TEXT    DEFAULT ''"),
+        ('chart_exit_url',  "TEXT    DEFAULT ''"),
+        ('equity_at_entry', 'REAL'),
+        ('entry_time',      "TEXT    DEFAULT ''"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE trades ADD COLUMN {col} {defn}")
+        except Exception:
+            pass  # column already exists
+
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)
+    """)
+
+    # ── App settings (single-row) ──────────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS app_settings (
+            id          INTEGER PRIMARY KEY CHECK (id = 1),
+            equity      REAL    NOT NULL DEFAULT 100000,
+            risk_pct    REAL    NOT NULL DEFAULT 1.0,
+            updated_at  TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
 
