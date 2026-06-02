@@ -62,12 +62,16 @@ function recomputeSizing() {
     const pctEq      = posVal / equity * 100;
 
     document.getElementById('f-shares').value = shares;
+    const capWarn = pctEq > 30
+        ? `<span class="neg">⚠ ${jrFmt(pctEq, 0)}% of equity — over 30% overnight cap</span>`
+        : (pctEq > 20 ? `<span class="neg">⚠ ${jrFmt(pctEq, 0)}% of equity — above normal 20% size</span>` : '');
     box.innerHTML =
         `<span>1R risk <b>$${jrFmt(rps)}</b>/sh</span>` +
         `<span>Risk budget <b>$${jrFmt(dollarRisk, 0)}</b></span>` +
         `<span>Suggested <b>${shares}</b> sh</span>` +
         `<span>Position <b>$${jrFmt(posVal, 0)}</b></span>` +
-        `<span>${jrFmt(pctEq, 1)}% of equity</span>`;
+        `<span>${jrFmt(pctEq, 1)}% of equity</span>` +
+        capWarn;
 }
 
 function captureEntryChart() {

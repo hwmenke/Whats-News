@@ -12,6 +12,11 @@ direction works.
 
 import math
 
+# Position / exposure caps from the process doc
+NORMAL_POSITION_PCT = 20.0    # normal single position is 10-20% of equity
+MAX_OVERNIGHT_PCT   = 30.0    # avoid > ~30% of equity overnight in one name
+MAX_PORTFOLIO_HEAT  = 5.0     # max total open risk if every stop is hit (%)
+
 
 def position_size(equity, risk_pct, entry, stop, direction="long",
                   whole_shares=True):
@@ -56,6 +61,24 @@ def position_size(equity, risk_pct, entry, stop, direction="long",
     position_value = shares * entry
     pct_of_equity  = (position_value / equity * 100.0) if equity else 0.0
 
+    # Cap the suggested size so a tight stop can't imply an oversized position.
+    max_value      = equity * (MAX_OVERNIGHT_PCT / 100.0)
+    capped_shares  = shares
+    if position_value > max_value and entry > 0:
+        capped_shares = math.floor(max_value / entry) if whole_shares else round(max_value / entry, 4)
+
+    warnings = []
+    if warning:
+        warnings.append(warning)
+    if pct_of_equity > MAX_OVERNIGHT_PCT:
+        warnings.append(
+            f"position is {pct_of_equity:.0f}% of equity — exceeds the "
+            f"{MAX_OVERNIGHT_PCT:.0f}% overnight cap (capped to {capped_shares} sh)")
+    elif pct_of_equity > NORMAL_POSITION_PCT:
+        warnings.append(
+            f"position is {pct_of_equity:.0f}% of equity — above the normal "
+            f"{NORMAL_POSITION_PCT:.0f}% size")
+
     return {
         "direction":      direction,
         "equity":         round(equity, 2),
@@ -63,9 +86,13 @@ def position_size(equity, risk_pct, entry, stop, direction="long",
         "dollar_risk":    round(dollar_risk, 2),
         "risk_per_share": round(risk_per_share, 4),
         "shares":         shares,
+        "capped_shares":  capped_shares,
         "position_value": round(position_value, 2),
         "pct_of_equity":  round(pct_of_equity, 2),
-        "warning":        warning,
+        "exceeds_position_cap": pct_of_equity > MAX_OVERNIGHT_PCT,
+        # Back-compat: single string for older callers; full list for new UI.
+        "warning":        warnings[0] if warnings else None,
+        "warnings":       warnings,
     }
 
 
@@ -95,4 +122,5 @@ def portfolio_heat(open_trades, equity):
     return {
         "open_risk_dollars": round(total_risk, 2),
         "heat_pct":          round(heat_pct, 2) if heat_pct is not None else None,
+        "heat_warning":      (heat_pct is not None and heat_pct > MAX_PORTFOLIO_HEAT),
     }

@@ -55,7 +55,7 @@ function renderMomentum() {
 
     const head = `<thead><tr>
         <th>Symbol</th><th>Best</th><th>Setups</th><th>Price</th><th>ADR%</th>
-        <th>1M%</th><th>3M%</th><th>Vol×</th><th>Gap%</th><th>RSI</th><th>From Hi%</th>
+        <th>1M%</th><th>3M%</th><th>Vol×</th><th>Gap%</th><th>RSI</th><th>Up d</th><th>From Hi%</th>
       </tr></thead>`;
     const cls = v => v == null ? '' : (v > 0 ? 'pos' : (v < 0 ? 'neg' : ''));
     const body = rows.map(r => {
@@ -74,6 +74,7 @@ function renderMomentum() {
             <td>${momFmt(m.vol_ratio, 1)}</td>
             <td class="${cls(m.gap_pct)}">${momFmt(m.gap_pct, 1)}</td>
             <td>${momFmt(m.rsi14, 0)}</td>
+            <td>${m.up_days == null ? '—' : m.up_days}</td>
             <td class="${cls(m.dist_from_high)}">${momFmt(m.dist_from_high, 1)}</td>
         </tr>`;
     }).join('');

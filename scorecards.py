@@ -22,13 +22,47 @@ import database as db
 from scanner import _rsi, _safe
 
 # ── tunable thresholds (centralised so logic stays readable) ────────────────────
+# Liquidity / universe gates
 MIN_BARS        = 120
-MIN_PRICE       = 3.0
-MIN_DOLLAR_VOL  = 5_000_000
+MIN_PRICE       = 5.0          # Qullamaggie prefers > $10; $5 hard floor
+MIN_DOLLAR_VOL  = 10_000_000   # $10M/day liquid-leader floor
 
+# Grade boundaries (per setup score 0-100)
 GRADE_APLUS = 85
 GRADE_A     = 70
 GRADE_B     = 55
+
+# Continuation breakout
+CONT_LEADERSHIP_3M   = 20.0    # min prior 3-month move (%) to count as a leader
+CONT_CONTRACTION     = 0.70    # pre-breakout range contraction ratio (< = tight)
+CONT_EXPANSION       = 1.50    # breakout-day range / ADR
+CONT_VOL_RATIO       = 1.40
+CONT_CLOSE_NEAR_HIGH = 0.60
+CONT_MAX_UP_DAYS     = 3        # reject if already 4+ up days into the move
+CONT_MIN_FROM_HIGH   = -25.0   # within 25% of the 52w high
+
+# Stockbee momentum burst
+BURST_MOVE_MIN       = 4.0     # 4%+ range-expansion day
+BURST_MOVE_STRONG    = 8.0     # full marks at 8%+
+BURST_VOL_RATIO      = 1.50
+BURST_CLOSE_NEAR_HIGH= 0.60
+BURST_MAX_UP_DAYS    = 4       # don't chase after several up days in a row
+BURST_PRIOR_TIGHT    = 0.70    # prior-day contraction earns bonus
+
+# Episodic pivot (news gap)
+EP_GAP_MIN           = 8.0     # toward Qullamaggie's 10%+ gap; full marks at 12%
+EP_GAP_FULL          = 12.0
+EP_VOL_RATIO         = 2.50    # "massive" relative volume
+EP_VOL_FULL          = 4.0
+EP_CLOSE_NEAR_HIGH   = 0.50
+EP_MAX_PRIOR_MOVE_3M = 50.0    # prefer names not already extended over 3-6 months
+
+# Parabolic (exhaustion / watch-or-short)
+PARA_PERF_1M         = 50.0    # +50%+ in a month
+PARA_DIST_20         = 25.0    # far above the 20-day MA
+PARA_RSI             = 75.0
+PARA_UP_DAYS         = 3        # consecutive up days
+PARA_EXPANSION       = 1.50
 
 
 def _grade(score):
@@ -80,6 +114,28 @@ def _local_metrics(df):
     avg_rng_20 = float(rng.tail(20).mean())
     range_contraction = (avg_rng_5 / avg_rng_20) if avg_rng_20 else None
 
+    # Contraction of the run-up *into* today (exclude the breakout day itself),
+    # so a tight base ahead of a range-expansion day scores well.
+    prior_rng   = rng.iloc[:-1]
+    pr5  = float(prior_rng.tail(5).mean())  if len(prior_rng) >= 5  else None
+    pr20 = float(prior_rng.tail(20).mean()) if len(prior_rng) >= 20 else None
+    prior_contraction = (pr5 / pr20) if (pr5 and pr20) else None
+
+    # Consecutive up-days ending today (used to avoid chasing extended moves).
+    up_days = 0
+    chg = close.diff()
+    for v in reversed(chg.tolist()):
+        if v is not None and v > 0:
+            up_days += 1
+        else:
+            break
+
+    # Higher-lows: most-recent swing low above the prior swing low.
+    if n >= 20:
+        higher_lows = float(low.tail(5).min()) > float(low.iloc[-15:-5].min())
+    else:
+        higher_lows = None
+
     rsi_s  = _rsi(close, 14).dropna()
     rsi14  = float(rsi_s.iloc[-1]) if len(rsi_s) else None
 
@@ -104,6 +160,9 @@ def _local_metrics(df):
         "close_near_high":   round(close_near_high, 2),
         "range_expansion":   round(range_expansion, 2) if range_expansion else None,
         "range_contraction": round(range_contraction, 2) if range_contraction else None,
+        "prior_contraction": round(prior_contraction, 2) if prior_contraction else None,
+        "up_days":           up_days,
+        "higher_lows":       higher_lows,
         "rsi14":             round(rsi14, 1) if rsi14 is not None else None,
         "dist_from_high":    round(dist_from_high, 2) if dist_from_high is not None else None,
     }
@@ -117,72 +176,89 @@ def _g(m, key, default=0.0):
 # ── detectors ────────────────────────────────────────────────────────────────
 
 def _detect_continuation(m):
-    trend_ok = (_g(m, "price") > _g(m, "sma50") > 0 and
-                _g(m, "sma10") > _g(m, "sma20") > _g(m, "sma50"))
-    contraction = _g(m, "range_contraction", 1.0) < 0.6
-    expansion   = _g(m, "range_expansion", 0.0) >= 1.5
-    near_hi     = _g(m, "close_near_high") >= 0.7
-    volume      = _g(m, "vol_ratio") >= 1.5
-    near_high   = _g(m, "dist_from_high", -99) >= -15
-    if not (trend_ok and expansion and near_hi):
+    """Leader makes a big prior move, bases tight, then breaks out on volume."""
+    leader      = _g(m, "perf_3m", 0) >= CONT_LEADERSHIP_3M
+    trend_ok    = (_g(m, "price") > _g(m, "sma50") > 0 and
+                   _g(m, "sma10") > _g(m, "sma20") > _g(m, "sma50"))
+    contraction = _g(m, "prior_contraction", 1.0) < CONT_CONTRACTION
+    expansion   = _g(m, "range_expansion", 0.0) >= CONT_EXPANSION
+    near_hi     = _g(m, "close_near_high") >= CONT_CLOSE_NEAR_HIGH
+    volume      = _g(m, "vol_ratio") >= CONT_VOL_RATIO
+    near_high   = _g(m, "dist_from_high", -99) >= CONT_MIN_FROM_HIGH
+    not_ext     = _g(m, "up_days", 0) <= CONT_MAX_UP_DAYS
+    higher_lows = bool(m.get("higher_lows"))
+
+    # Hard requirements: a real leader, an actual breakout, near its highs,
+    # and not already several days extended.
+    if not (trend_ok and leader and expansion and near_hi and near_high and not_ext):
         return None
 
     score = 0.0
-    score += 25 if trend_ok else 0
-    score += 25 if (contraction and expansion) else (12 if expansion else 0)
-    score += min(20, _g(m, "vol_ratio") / 2.0 * 20) if volume else 0
-    score += 15 * _g(m, "close_near_high")
-    score += 15 if near_high else 0
+    score += min(20, _g(m, "perf_3m", 0) / 60.0 * 20)        # leadership / prior move
+    score += 20 if trend_ok else 0                            # 10>20>50 alignment
+    score += 20 if (contraction and expansion) else 10        # tight base -> expansion
+    score += min(15, _g(m, "vol_ratio") / 2.0 * 15) if volume else 0
+    score += 10 * _g(m, "close_near_high")                    # close strength
+    score += 10 if higher_lows else 0                         # constructive base
+    score += 5 if _g(m, "up_days", 99) <= 1 else 0            # early in the move
     return ("continuation", round(score), _grade(round(score)))
 
 
 def _detect_momentum_burst(m):
-    move   = _g(m, "ret_1d")
-    if move < 4.0:
+    """Stockbee burst: range-expansion day out of a quiet base, bought early."""
+    move = _g(m, "ret_1d")
+    if move < BURST_MOVE_MIN:
         return None
-    volume = _g(m, "vol_ratio") >= 1.5
-    near_hi = _g(m, "close_near_high") >= 0.6
-    if not (volume and near_hi):
+    volume   = _g(m, "vol_ratio") >= BURST_VOL_RATIO
+    near_hi  = _g(m, "close_near_high") >= BURST_CLOSE_NEAR_HIGH
+    not_ext  = _g(m, "up_days", 0) <= BURST_MAX_UP_DAYS   # don't chase
+    if not (volume and near_hi and not_ext):
         return None
 
+    prior_tight = _g(m, "prior_contraction", 1.0) < BURST_PRIOR_TIGHT
     score = 0.0
-    score += min(35, move / 8.0 * 35)               # move magnitude
-    score += min(30, _g(m, "vol_ratio") / 2.0 * 30)  # volume
-    score += 20 * _g(m, "close_near_high")           # close strength
-    score += min(15, max(0, _g(m, "ret_3d")) / 10.0 * 15)  # 3-day momentum
+    score += min(30, move / BURST_MOVE_STRONG * 30)          # move magnitude
+    score += min(25, _g(m, "vol_ratio") / 2.0 * 25)          # volume
+    score += 15 * _g(m, "close_near_high")                   # close strength
+    score += 15 if prior_tight else 0                        # quiet before the burst
+    score += max(0, 15 - _g(m, "up_days", 0) * 4)            # earlier = better
     return ("momentum_burst", round(score), _grade(round(score)))
 
 
 def _detect_episodic_pivot(m):
+    """News gap: large gap on massive volume, ideally on a neglected name."""
     gap = _g(m, "gap_pct")
-    if gap < 4.0:
+    if gap < EP_GAP_MIN:
         return None
-    surge   = _g(m, "vol_ratio") >= 2.0
-    near_hi = _g(m, "close_near_high") >= 0.5
-    not_ext = _g(m, "perf_1m", 0) < 40
+    surge   = _g(m, "vol_ratio") >= EP_VOL_RATIO
+    near_hi = _g(m, "close_near_high") >= EP_CLOSE_NEAR_HIGH
     if not (surge and near_hi):
         return None
 
+    not_ext = _g(m, "perf_3m", 0) < EP_MAX_PRIOR_MOVE_3M
     score = 0.0
-    score += min(35, gap / 10.0 * 35)                # gap size
-    score += min(35, _g(m, "vol_ratio") / 3.0 * 35)  # volume surge
-    score += 15 * _g(m, "close_near_high")           # close strength
-    score += 15 if not_ext else 0                    # not already extended
+    score += min(35, gap / EP_GAP_FULL * 35)                 # gap size
+    score += min(30, _g(m, "vol_ratio") / EP_VOL_FULL * 30)  # volume surge
+    score += 15 * _g(m, "close_near_high")                   # close strength
+    score += 20 if not_ext else 0                            # neglected / not extended
     return ("episodic_pivot", round(score), _grade(round(score)))
 
 
 def _detect_parabolic(m):
-    far   = _g(m, "perf_1m", 0) >= 50 or _g(m, "dist_10", 0) >= 25
-    hot   = _g(m, "rsi14", 0) >= 80
-    blow  = _g(m, "range_expansion", 0) >= 2
-    if not (far and hot):
+    """Climactic exhaustion — a watch/trim/short flag, not a long buy."""
+    far  = _g(m, "perf_1m", 0) >= PARA_PERF_1M or _g(m, "dist_20", 0) >= PARA_DIST_20
+    days = _g(m, "up_days", 0) >= PARA_UP_DAYS
+    hot  = _g(m, "rsi14", 0) >= PARA_RSI
+    blow = _g(m, "range_expansion", 0) >= PARA_EXPANSION
+    if not (far and hot and days):
         return None
 
     score = 0.0
-    score += min(35, _g(m, "dist_10", 0) / 25.0 * 35)   # extension above 10MA
-    score += min(25, (_g(m, "rsi14", 0) - 70) / 30.0 * 25)
-    score += min(25, _g(m, "perf_1m", 0) / 50.0 * 25)
-    score += 15 if blow else 0
+    score += min(30, _g(m, "dist_20", 0) / PARA_DIST_20 * 30)       # extension vs 20MA
+    score += min(20, _g(m, "up_days", 0) / 5.0 * 20)                # consecutive up days
+    score += min(20, (_g(m, "rsi14", 0) - 70) / 30.0 * 20)         # overbought
+    score += min(20, _g(m, "perf_1m", 0) / PARA_PERF_1M * 20)      # 1-month blow-off
+    score += 10 if blow else 0                                      # climactic range
     return ("parabolic", round(score), _grade(round(score)))
 
 

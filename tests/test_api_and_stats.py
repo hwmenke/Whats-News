@@ -104,6 +104,13 @@ class RiskMathTests(unittest.TestCase):
         r = risk.position_size(100000, 1.0, 50, 52)
         self.assertIsNotNone(r["warning"])
 
+    def test_tight_stop_flags_position_cap(self):
+        # A very tight stop implies a position far over the 30% overnight cap.
+        r = risk.position_size(100000, 1.0, 50, 49.9)
+        self.assertTrue(r["exceeds_position_cap"])
+        self.assertLess(r["capped_shares"], r["shares"])
+        self.assertTrue(any("cap" in w for w in r["warnings"]))
+
 
 class JournalMetricsTests(unittest.TestCase):
     def _r(self, direction, entry, stop, exit_price):
@@ -205,23 +212,50 @@ def _trend_df(n=260, start=50, step=0.4, vol_last=None):
     return df
 
 
+def _burst_df():
+    """A quiet rising base, a down day, then a 6%+ range-expansion pop on volume."""
+    n = 180
+    close = np.concatenate([np.linspace(60.0, 108.0, n - 15), np.full(15, 108.0)])
+    base_noise = np.array([0.3, -0.2, 0.1, -0.3, 0.2, -0.1, 0.2,
+                           -0.2, 0.1, -0.3, 0.2, -0.1, 0.0, -0.5, 0.0])
+    close[-15:] = 108.0 + base_noise
+    high = close + 0.4
+    low = close - 0.4
+    openp = close.copy()
+    vol = np.full(n, 1_000_000.0)
+    prev = close[-2]                    # down day relative to close[-3]
+    last = prev * 1.06                  # +6% pop closing at the high
+    close[-1] = high[-1] = last
+    low[-1] = openp[-1] = prev
+    vol[-1] = 3_000_000.0
+    return pd.DataFrame(
+        {"open": openp, "high": high, "low": low, "close": close, "volume": vol},
+        index=pd.date_range("2023-01-01", periods=n, freq="D"),
+    )
+
+
 class ScorecardTests(unittest.TestCase):
     @patch("scorecards.db.get_ohlcv_df")
     def test_momentum_burst_detected(self, mock_df):
-        df = _trend_df(200, vol_last=3_000_000.0)
-        # Force a 4%+ up day closing at the high.
-        prev = df["close"].iloc[-2]
-        last = prev * 1.06
-        df.iloc[-1, df.columns.get_loc("close")] = last
-        df.iloc[-1, df.columns.get_loc("high")] = last
-        df.iloc[-1, df.columns.get_loc("low")] = prev
-        df.iloc[-1, df.columns.get_loc("open")] = prev
-        mock_df.return_value = df
-
+        mock_df.return_value = _burst_df()
         res = scorecards.scan_symbol("TEST")
         self.assertIsNotNone(res)
         types = {s["type"] for s in res["setups"]}
         self.assertIn("momentum_burst", types)
+
+    @patch("scorecards.db.get_ohlcv_df")
+    def test_extended_uptrend_not_a_burst(self, mock_df):
+        # A smooth, always-up series is "extended" — the burst detector must
+        # NOT fire even on a final pop, because price is up many days running.
+        df = _trend_df(200, vol_last=3_000_000.0)
+        prev = df["close"].iloc[-2]
+        last = prev * 1.06
+        df.iloc[-1, df.columns.get_loc("close")] = last
+        df.iloc[-1, df.columns.get_loc("high")] = last
+        mock_df.return_value = df
+        res = scorecards.scan_symbol("TEST")
+        types = set() if not res else {s["type"] for s in res.get("setups", [])}
+        self.assertNotIn("momentum_burst", types)
 
     @patch("scorecards.db.get_ohlcv_df")
     def test_insufficient_data_skipped(self, mock_df):

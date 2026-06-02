@@ -12,13 +12,25 @@ import database as db
 
 INDEX_SYMBOLS = ["SPY", "QQQ"]
 
+# Suggested gating per regime — mirrors the process doc's exposure tables
+# (gross exposure %, max risk per trade %, max open positions, max portfolio heat %).
 SUGGESTED = {
-    "Offensive":    {"exposure_pct": 100, "max_risk_pct": 1.25, "max_positions": 8},
-    "Constructive": {"exposure_pct": 60,  "max_risk_pct": 1.0,  "max_positions": 5},
-    "Choppy":       {"exposure_pct": 30,  "max_risk_pct": 0.5,  "max_positions": 3},
-    "Defensive":    {"exposure_pct": 15,  "max_risk_pct": 0.25, "max_positions": 1},
-    "Unknown":      {"exposure_pct": 0,   "max_risk_pct": 0.25, "max_positions": 0},
+    "Offensive":    {"exposure_pct": 100, "max_risk_pct": 1.0,  "max_positions": 8, "max_heat_pct": 5.0},
+    "Constructive": {"exposure_pct": 60,  "max_risk_pct": 0.75, "max_positions": 5, "max_heat_pct": 3.0},
+    "Choppy":       {"exposure_pct": 30,  "max_risk_pct": 0.35, "max_positions": 3, "max_heat_pct": 2.0},
+    "Defensive":    {"exposure_pct": 15,  "max_risk_pct": 0.25, "max_positions": 1, "max_heat_pct": 1.0},
+    "Unknown":      {"exposure_pct": 0,   "max_risk_pct": 0.25, "max_positions": 0, "max_heat_pct": 0.5},
 }
+
+# Classification thresholds (breadth = % of watchlist above the moving average)
+OFFENSIVE_INDEX_SCORE   = 3
+OFFENSIVE_PCT_ABOVE_50  = 60
+OFFENSIVE_PCT_ABOVE_200 = 50
+CONSTRUCTIVE_INDEX_SCORE = 1
+CONSTRUCTIVE_PCT_ABOVE_50 = 45
+DEFENSIVE_INDEX_SCORE   = -2
+DEFENSIVE_PCT_ABOVE_50  = 30
+DEFENSIVE_PCT_ABOVE_200 = 25
 
 
 def _index_score(symbol):
@@ -127,14 +139,19 @@ def compute_regime():
 
     b = breadth()
     pct50  = b.get("pct_above_50", 0)
+    pct200 = b.get("pct_above_200", 0)
     up4    = b.get("up4_count", 0)
     down4  = b.get("down4_count", 0)
 
-    if index_score >= 3 and pct50 >= 60 and up4 > down4:
+    if (index_score >= OFFENSIVE_INDEX_SCORE and
+            pct50 >= OFFENSIVE_PCT_ABOVE_50 and
+            pct200 >= OFFENSIVE_PCT_ABOVE_200 and up4 > down4):
         regime = "Offensive"
-    elif index_score >= 1 and pct50 >= 45:
+    elif index_score >= CONSTRUCTIVE_INDEX_SCORE and pct50 >= CONSTRUCTIVE_PCT_ABOVE_50:
         regime = "Constructive"
-    elif index_score <= -2 or pct50 < 30 or down4 > 2 * up4:
+    elif (index_score <= DEFENSIVE_INDEX_SCORE or
+          pct50 < DEFENSIVE_PCT_ABOVE_50 or
+          pct200 < DEFENSIVE_PCT_ABOVE_200 or down4 > 2 * up4):
         regime = "Defensive"
     else:
         regime = "Choppy"
