@@ -43,6 +43,29 @@ MODULES: List[Module] = [
     Module("journal",      "Trade Journal",   "📒", "Process"),
     Module("momentum",     "Momentum Scan",   "🚀", "Process"),
     Module("regime",       "Regime & Breadth","🌐", "Process"),
+    # ── Jeff Sun swing framework ──────────────────────────────────────────────
+    Module("swing",        "Swing Suite",     "🏄", "Swing",
+           blueprint="mod_blueprints:swing_bp",
+           notes="Opportunity Score, setup grade, watchlist scan, breadth, sizing"),
+    # ── Analytics (ported from jeff, pure-Python) ─────────────────────────────
+    Module("strategy",     "Strategy Tester", "🧪", "Analytics",
+           blueprint="mod_blueprints:strategy_bp"),
+    Module("knn-forecast", "KNN Forecast",    "🔮", "Analytics",
+           blueprint="mod_blueprints:knnf_bp"),
+    Module("momentum-rank","Momentum Ranker", "🏅", "Analytics",
+           blueprint="mod_blueprints:momranker_bp"),
+    Module("market-dash",  "Market Dashboard","🗺️", "Analytics",
+           blueprint="mod_blueprints:market_bp"),
+    Module("seasonality",  "Seasonality",     "📅", "Analytics",
+           blueprint="mod_blueprints:seasonality_bp"),
+    Module("factor-model", "Factor Model",    "🧮", "Analytics",
+           blueprint="mod_blueprints:factor_bp"),
+    Module("regression",   "Macro Regression","📐", "Analytics",
+           blueprint="mod_blueprints:regression_bp"),
+    Module("swirligram",   "Swirligram",      "🌀", "Analytics",
+           blueprint="mod_blueprints:swirligram_bp"),
+    Module("news",         "News",            "📰", "Analytics",
+           blueprint="mod_blueprints:news_bp"),
 ]
 
 
