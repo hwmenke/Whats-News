@@ -5,6 +5,16 @@
  * Portfolio chart: top-tercile momentum strategy vs equal-weight.
  */
 
+// Shim: jeff's app.js defines toastFromError(); this app does not. Provide it
+// if absent so error handling here degrades to a plain toast.
+if (typeof window.toastFromError !== 'function') {
+    window.toastFromError = function (err, prefix = '') {
+        const base = prefix ? `${prefix}: ${err.message}` : err.message;
+        const msg  = err && err.hint ? `${base} — ${err.hint}` : base;
+        toast(msg, 'error');
+    };
+}
+
 const momState = {
     result: null,
     sortCol: 'rank',
