@@ -125,6 +125,9 @@
       <button id="tab-regime" class="tab-btn" onclick="switchTab('regime')">
         <span class="tab-icon">🌐</span> Regime
       </button>
+      <button id="tab-modules" class="tab-btn" onclick="switchTab('modules')">
+        <span class="tab-icon">⚙</span> Modules
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -802,6 +805,15 @@
       <div id="regime-body"></div>
     </div><!-- #regime-area -->
 
+    <!-- ═══════════════════ MODULES ═══════════════════ -->
+    <div id="modules-area" class="dm-container" style="display:none;">
+      <div class="jr-header">
+        <h2>⚙ Modules</h2>
+        <span style="color:var(--text-muted); font-size:13px;">Toggle features on/off, then Save to apply.</span>
+      </div>
+      <div id="modules-body"></div>
+    </div><!-- #modules-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -854,6 +866,7 @@
 <script src="scripts/journal.js"></script>
 <script src="scripts/momentum.js"></script>
 <script src="scripts/regime.js"></script>
+<script src="scripts/modules.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

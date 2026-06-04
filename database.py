@@ -118,6 +118,14 @@ def init_db():
         )
     """)
 
+    # ── Module enable/disable state (for the modular dashboard) ─────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS module_state (
+            id      TEXT    PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+
     conn.commit()
     conn.close()
 

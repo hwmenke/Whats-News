@@ -656,6 +656,7 @@ async function switchTab(tabId) {
     document.getElementById('journal-area').style.display      = 'none';
     document.getElementById('momentum-area').style.display     = 'none';
     document.getElementById('regime-area').style.display       = 'none';
+    document.getElementById('modules-area').style.display       = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
     if (tabId === 'charts') {
@@ -691,6 +692,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'regime') {
         document.getElementById('regime-area').style.display = 'block';
         if (typeof loadRegime === 'function') loadRegime();
+    } else if (tabId === 'modules') {
+        document.getElementById('modules-area').style.display = 'block';
+        if (typeof loadModules === 'function') loadModules();
     }
 }
 
@@ -1259,6 +1263,9 @@ async function runScanner() {
 // ── Boot ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     startClock();
+
+    // Apply module enable/disable state to the nav (hide disabled tabs)
+    if (typeof applyModuleNav === 'function') await applyModuleNav();
 
     // Seed default KAMA periods
     DEFAULT_KAMA_PERIODS.forEach(p => addKamaPeriod(p));

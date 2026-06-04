@@ -24,12 +24,29 @@ import scorecards
 import regime as regime_mod
 import risk as risk_mod
 import settings_store
+import module_registry
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 
 # Initialise the database on startup
 db.init_db()
+
+
+def _register_enabled_modules():
+    """Register the Flask Blueprint of every enabled module that declares one."""
+    import importlib
+    for m in module_registry.enabled_blueprints():
+        try:
+            mod_name, attr = m.blueprint.split(":")
+            bp = getattr(importlib.import_module(mod_name), attr)
+            app.register_blueprint(bp)
+            print(f">> module '{m.id}' blueprint registered")
+        except Exception as exc:  # a broken optional module must not crash the app
+            print(f"!! module '{m.id}' blueprint failed to load: {exc}")
+
+
+_register_enabled_modules()
 
 
 # -- Static files ---------------------------------------------------------------
@@ -567,6 +584,20 @@ def get_regime():
         return jsonify(regime_mod.compute_regime())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# -- Modules (enable/disable) ---------------------------------------------------
+
+@app.route("/api/modules", methods=["GET"])
+def get_modules():
+    return jsonify(module_registry.manifest())
+
+
+@app.route("/api/modules", methods=["PUT"])
+def put_modules():
+    body = request.get_json(force=True) or {}
+    module_registry.set_enabled(body.get("modules", {}))
+    return jsonify(module_registry.manifest())
 
 
 # -- Entry point ----------------------------------------------------------------
