@@ -657,6 +657,10 @@ async function switchTab(tabId) {
     document.getElementById('momentum-area').style.display     = 'none';
     document.getElementById('regime-area').style.display       = 'none';
     document.getElementById('modules-area').style.display       = 'none';
+    document.getElementById('momentum-rank-area').style.display = 'none';
+    document.getElementById('seasonality-area').style.display   = 'none';
+    document.getElementById('swirligram-area').style.display    = 'none';
+    document.getElementById('news-area').style.display          = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
     if (tabId === 'charts') {
@@ -695,6 +699,18 @@ async function switchTab(tabId) {
     } else if (tabId === 'modules') {
         document.getElementById('modules-area').style.display = 'block';
         if (typeof loadModules === 'function') loadModules();
+    } else if (tabId === 'momentum-rank') {
+        document.getElementById('momentum-rank-area').style.display = 'block';
+        if (typeof initMomentumRanker === 'function') initMomentumRanker();
+    } else if (tabId === 'seasonality') {
+        document.getElementById('seasonality-area').style.display = 'block';
+        if (typeof initSeasonality === 'function') initSeasonality();
+    } else if (tabId === 'swirligram') {
+        document.getElementById('swirligram-area').style.display = 'block';
+        if (typeof initSwirligram === 'function') initSwirligram();
+    } else if (tabId === 'news') {
+        document.getElementById('news-area').style.display = 'block';
+        if (typeof initNews === 'function') initNews();
     }
 }
 

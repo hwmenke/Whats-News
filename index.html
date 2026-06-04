@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FinDash – Financial Dashboard</title>
   <meta name="description" content="Professional financial dashboard with Yahoo Finance data, SQLite storage, and technical analysis charts." />
+  <link rel="stylesheet" href="styles/jeff.css" />
   <link rel="stylesheet" href="styles/main.css" />
   <!-- TradingView Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
@@ -127,6 +128,18 @@
       </button>
       <button id="tab-modules" class="tab-btn" onclick="switchTab('modules')">
         <span class="tab-icon">⚙</span> Modules
+      </button>
+      <button id="tab-momentum-rank" class="tab-btn" onclick="switchTab('momentum-rank')">
+        <span class="tab-icon">📊</span> Momentum Rank
+      </button>
+      <button id="tab-seasonality" class="tab-btn" onclick="switchTab('seasonality')">
+        <span class="tab-icon">📅</span> Seasonality
+      </button>
+      <button id="tab-swirligram" class="tab-btn" onclick="switchTab('swirligram')">
+        <span class="tab-icon">🌀</span> Swirligram
+      </button>
+      <button id="tab-news" class="tab-btn" onclick="switchTab('news')">
+        <span class="tab-icon">📰</span> News
       </button>
     </nav>
     <div class="tab-bar">
@@ -814,6 +827,196 @@
       <div id="modules-body"></div>
     </div><!-- #modules-area -->
 
+    <!-- ====== Ported analytics tabs (from jeff) ====== -->
+    <div id="momentum-rank-area" class="mom-container" style="display:none;">
+      <div id="mom-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Ranking symbols…</div>
+      <div class="mom-controls">
+        <button id="btn-mom-load" class="btn btn-primary btn-sm" onclick="loadMomentumRanks()">↻ Refresh</button>
+        <span style="font-size:10px;color:var(--text-dim);margin-left:8px">Rankings use 3M / 6M / 12M-1M composite score · Jegadeesh-Titman construction</span>
+      </div>
+      <div id="mom-empty" class="empty-state">
+        <div class="empty-icon">🏆</div>
+        <p>Cross-sectional momentum ranking across your watchlist.</p>
+      </div>
+      <div id="mom-results" style="display:none;" class="mom-results">
+        <div id="mom-summary" class="mom-summary"></div>
+        <div class="mom-body">
+          <div class="mom-table-wrap">
+            <table class="mom-tbl">
+              <thead><tr>
+                <th class="mom-th">#</th>
+                <th class="mom-th">Symbol</th>
+                <th class="mom-th">Tier</th>
+                <th class="mom-th" style="min-width:140px">Composite Score</th>
+                <th class="mom-th">1M</th>
+                <th class="mom-th">3M</th>
+                <th class="mom-th">6M</th>
+                <th class="mom-th">12M-1M</th>
+                <th class="mom-th">Price</th>
+                <th class="mom-th">1D Chg</th>
+              </tr></thead>
+              <tbody id="mom-table-body"></tbody>
+            </table>
+          </div>
+          <div class="mom-chart-wrap">
+            <div class="mom-chart-label">Momentum Portfolio vs Equal-Weight</div>
+            <canvas id="mom-portfolio-chart" style="width:100%;height:220px;"></canvas>
+          </div>
+        </div>
+      </div>
+    </div><!-- #momentum-area -->
+
+    <div id="seasonality-area" class="seas-container" style="display:none;">
+      <div id="seas-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Computing seasonality…</div>
+      <div class="seas-controls">
+        <span class="seas-ctrl-label">Symbol</span>
+        <input id="seas-symbol-input" type="text" class="seas-sym-input" placeholder="AAPL" maxlength="10" />
+        <button class="btn btn-primary btn-sm" onclick="loadSeasonality(document.getElementById('seas-symbol-input').value||undefined)">▶ Analyse</button>
+        <span id="seas-symbol-label" style="font-size:10px;color:var(--text-dim);margin-left:10px"></span>
+      </div>
+      <div id="seas-highlights" class="seas-highlights"></div>
+      <div id="seas-empty" class="empty-state">
+        <div class="empty-icon">📅</div>
+        <p>Select a symbol and click <b>Analyse</b> to see historical seasonality patterns.</p>
+      </div>
+      <div id="seas-results" style="display:none;" class="seas-results">
+        <div class="seas-charts-row">
+          <div class="seas-chart-card">
+            <div class="seas-chart-title">Average Monthly Return</div>
+            <canvas id="seas-month-chart" style="width:100%;height:180px;"></canvas>
+          </div>
+          <div class="seas-chart-card">
+            <div class="seas-chart-title">Day-of-Week Effect</div>
+            <canvas id="seas-dow-chart" style="width:100%;height:180px;"></canvas>
+          </div>
+          <div class="seas-chart-card">
+            <div class="seas-chart-title">Quarterly Returns + Hit Rate</div>
+            <canvas id="seas-quarter-chart" style="width:100%;height:180px;"></canvas>
+          </div>
+        </div>
+        <div id="seas-heatmap" class="seas-heatmap-wrap"></div>
+      </div>
+    </div><!-- #seasonality-area -->
+
+    <div id="swirligram-area" class="sw-container" style="display:none;">
+
+      <!-- Top bar: combined signal + stats + controls -->
+      <div class="sw-topbar">
+        <div id="sw-combined-badge" class="sw-combined-badge sw-badge-gray">
+          <span id="sw-combined-label">Select a symbol</span>
+          <span id="sw-combined-score" class="sw-combined-score"></span>
+        </div>
+
+        <div class="sw-header-stats">
+          <div class="sw-hstat">
+            <span class="sw-hstat-lbl">Daily RSI</span>
+            <span id="sw-daily-rsi-val" class="sw-hstat-val">—</span>
+            <span id="sw-daily-drsi-val" class="sw-hstat-dir">—</span>
+          </div>
+          <div class="sw-hstat">
+            <span class="sw-hstat-lbl">Weekly RSI</span>
+            <span id="sw-weekly-rsi-val" class="sw-hstat-val">—</span>
+            <span id="sw-weekly-drsi-val" class="sw-hstat-dir">—</span>
+          </div>
+          <div class="sw-hstat">
+            <span class="sw-hstat-lbl">KAMA Fast Pct</span>
+            <span id="sw-kama-fast-val" class="sw-hstat-val">—</span>
+            <span id="sw-kama-fast-dir" class="sw-hstat-dir">—</span>
+          </div>
+          <div class="sw-hstat">
+            <span class="sw-hstat-lbl">KAMA Trend Pct</span>
+            <span id="sw-kama-trend-val" class="sw-hstat-val">—</span>
+            <span id="sw-kama-trend-dir" class="sw-hstat-dir">—</span>
+          </div>
+        </div>
+
+        <div class="sw-controls">
+          <label>Trail
+            <input type="number" id="sw-trail" value="90" min="20" max="252" style="width:52px">
+          </label>
+          <label>RSI Period
+            <input type="number" id="sw-period" value="14" min="5" max="30" style="width:44px">
+          </label>
+          <button id="btn-sw-run" class="sw-run-btn" onclick="swLoad()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div id="sw-loading" class="sw-loading" style="display:none;">⏳ Computing…</div>
+
+      <!-- Charts grid: daily | weekly -->
+      <div class="sw-grid">
+
+        <!-- Daily panel -->
+        <div class="sw-panel">
+          <div class="sw-panel-title">Daily RSI Phase Space
+            <span class="sw-panel-hint">X = RSI · Y = Δ RSI per bar · trail = last N bars · ● = today</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-daily-phase"></canvas>
+          </div>
+          <div id="sw-daily-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">Daily RSI Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-daily-timeline"></canvas>
+          </div>
+        </div>
+
+        <!-- Weekly panel -->
+        <div class="sw-panel">
+          <div class="sw-panel-title">Weekly RSI Phase Space
+            <span class="sw-panel-hint">Ideal anchor: RSI 50–62 · ● = this week</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-weekly-phase"></canvas>
+          </div>
+          <div id="sw-weekly-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">Weekly RSI Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-weekly-timeline"></canvas>
+          </div>
+        </div>
+
+        <!-- KAMA Fast Pct panel -->
+        <div class="sw-panel">
+          <div class="sw-panel-title">Close/KAMA₁₀ Pct Rank Phase
+            <span class="sw-panel-hint">X = %ile rank of close/KAMA(10) · Y = Δ rank/bar · 252-bar rolling window</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-kama-fast-phase"></canvas>
+          </div>
+          <div id="sw-kama-fast-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">Close/KAMA₁₀ Pct Rank Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-kama-fast-tl"></canvas>
+          </div>
+        </div>
+
+        <!-- KAMA Trend Pct panel -->
+        <div class="sw-panel">
+          <div class="sw-panel-title">KAMA₁₀/KAMA₂₀ Pct Rank Phase
+            <span class="sw-panel-hint">X = %ile rank of KAMA(10)/KAMA(20) · trend momentum · 252-bar window</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-kama-trend-phase"></canvas>
+          </div>
+          <div id="sw-kama-trend-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">KAMA Trend Pct Rank Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-kama-trend-tl"></canvas>
+          </div>
+        </div>
+
+      </div><!-- .sw-grid -->
+
+    </div><!-- #swirl-area -->
+
+    <div id="news-area" class="feat-container" style="display:none;">
+      <div class="feat-header"><h2>📰 News <span id="news-symbol" class="feat-accent"></span></h2>
+        <span class="feat-sub">Recent headlines with naive sentiment tagging.</span></div>
+      <div id="news-list" class="news-list"></div>
+    </div><!-- #news-area -->
+
   </main>
 
 </div><!-- .app -->
@@ -867,6 +1070,10 @@
 <script src="scripts/momentum.js"></script>
 <script src="scripts/regime.js"></script>
 <script src="scripts/modules.js"></script>
+<script src="scripts/momentum_ranker.js"></script>
+<script src="scripts/seasonality.js"></script>
+<script src="scripts/swirligram.js"></script>
+<script src="scripts/news.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>
