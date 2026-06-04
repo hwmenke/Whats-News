@@ -33,7 +33,7 @@ import os
 import re
 import math
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import database as db
 
@@ -57,231 +57,77 @@ SOURCE_ENV = {
 # ── Curated theme → ticker knowledge base ───────────────────────────────────
 # purity: how concentrated the company's business is on the theme (0–1).
 #   >= 0.85 Pure · >= 0.65 High · >= 0.45 Moderate · else Tangential
-THEME_MAP = [
-    {
-        "theme": "GLP-1 / Weight Loss",
-        "keywords": ["ozempic", "wegovy", "mounjaro", "zepbound", "semaglutide",
-                     "tirzepatide", "glp-1", "glp1", "weight loss", "skinny jab",
-                     "ozempic face"],
-        "stocks": [
-            {"ticker": "NVO",  "name": "Novo Nordisk",          "purity": 0.95, "note": "Maker of Ozempic & Wegovy — the defining GLP-1 name (US-listed ADR)."},
-            {"ticker": "LLY",  "name": "Eli Lilly",             "purity": 0.90, "note": "Maker of Mounjaro & Zepbound; GLP-1 is the core growth engine."},
-            {"ticker": "VKTX", "name": "Viking Therapeutics",   "purity": 0.85, "note": "Clinical-stage obesity-drug developer; high-beta GLP-1 pure play."},
-            {"ticker": "HIMS", "name": "Hims & Hers Health",    "purity": 0.55, "note": "Telehealth platform selling compounded GLP-1 weight-loss programs."},
-        ],
-    },
-    {
-        "theme": "Artificial Intelligence",
-        "keywords": ["ai", "artificial intelligence", "chatgpt", "openai", "sora",
-                     "llm", "generative ai", "deepseek", "gemini", "copilot",
-                     "ai girlfriend", "chatbot", "nvidia", "palantir", "soundhound"],
-        "stocks": [
-            {"ticker": "NVDA", "name": "NVIDIA",                "purity": 0.85, "note": "GPUs are the core hardware behind the entire AI build-out."},
-            {"ticker": "AI",   "name": "C3.ai",                 "purity": 0.90, "note": "Enterprise AI software — near-pure thematic exposure."},
-            {"ticker": "SOUN", "name": "SoundHound AI",         "purity": 0.85, "note": "Voice / conversational-AI pure play."},
-            {"ticker": "BBAI", "name": "BigBear.ai",            "purity": 0.80, "note": "Small-cap AI analytics pure play."},
-            {"ticker": "SMCI", "name": "Super Micro Computer",  "purity": 0.75, "note": "AI server / rack maker levered directly to GPU demand."},
-            {"ticker": "PLTR", "name": "Palantir",              "purity": 0.70, "note": "AI-driven analytics (AIP) platform; a retail AI favorite."},
-        ],
-    },
-    {
-        "theme": "Electric Vehicles",
-        "keywords": ["tesla", "cybertruck", "ev", "electric vehicle", "model 3",
-                     "model y", "robotaxi"],
-        "stocks": [
-            {"ticker": "RIVN", "name": "Rivian Automotive",     "purity": 0.92, "note": "Pure-play EV maker."},
-            {"ticker": "LCID", "name": "Lucid Group",           "purity": 0.92, "note": "Pure-play luxury EV maker."},
-            {"ticker": "NIO",  "name": "NIO Inc.",              "purity": 0.88, "note": "China EV pure play."},
-            {"ticker": "TSLA", "name": "Tesla",                 "purity": 0.75, "note": "Cybertruck / robotaxi headlines; the EV bellwether (also AI/robotics)."},
-        ],
-    },
-    {
-        "theme": "Meme Stocks",
-        "keywords": ["roaring kitty", "gamestop", "gme", "amc", "meme stock",
-                     "short squeeze", "deep value"],
-        "stocks": [
-            {"ticker": "GME", "name": "GameStop",               "purity": 1.00, "note": "The original meme stock; moves on Roaring Kitty / social buzz."},
-            {"ticker": "AMC", "name": "AMC Entertainment",      "purity": 0.95, "note": "Core meme-stock complex."},
-        ],
-    },
-    {
-        "theme": "Crypto",
-        "keywords": ["bitcoin", "btc", "crypto", "ethereum", "bitcoin etf",
-                     "dogecoin", "doge", "altcoin", "crypto rally"],
-        "stocks": [
-            {"ticker": "MARA", "name": "MARA Holdings",         "purity": 0.95, "note": "Bitcoin-mining pure play."},
-            {"ticker": "RIOT", "name": "Riot Platforms",        "purity": 0.95, "note": "Bitcoin-mining pure play."},
-            {"ticker": "COIN", "name": "Coinbase",              "purity": 0.85, "note": "Largest US crypto exchange; direct crypto-volume proxy."},
-            {"ticker": "MSTR", "name": "MicroStrategy",         "purity": 0.85, "note": "Leveraged Bitcoin holder / proxy."},
-            {"ticker": "HOOD", "name": "Robinhood",             "purity": 0.55, "note": "Retail brokerage levered to crypto / meme trading."},
-        ],
-    },
-    {
-        "theme": "Live Events / Concerts",
-        "keywords": ["eras tour", "taylor swift", "concert", "tour", "ticketmaster",
-                     "live nation", "beyonce"],
-        "stocks": [
-            {"ticker": "LYV",  "name": "Live Nation",           "purity": 0.85, "note": "Owns Ticketmaster — direct beneficiary of tour demand."},
-            {"ticker": "MSGE", "name": "MSG Entertainment",     "purity": 0.55, "note": "Live-venue exposure (The Sphere, Garden)."},
-        ],
-    },
-    {
-        "theme": "Energy Drinks",
-        "keywords": ["celsius", "energy drink", "prime energy", "prime hydration",
-                     "monster energy"],
-        "stocks": [
-            {"ticker": "CELH", "name": "Celsius Holdings",      "purity": 0.95, "note": "Viral energy-drink pure play."},
-            {"ticker": "MNST", "name": "Monster Beverage",      "purity": 0.85, "note": "Energy-drink pure play."},
-            {"ticker": "KDP",  "name": "Keurig Dr Pepper",      "purity": 0.40, "note": "Distributes Celsius; partial exposure."},
-        ],
-    },
-    {
-        "theme": "Viral Drinkware",
-        "keywords": ["stanley cup", "stanley tumbler", "tumbler", "water bottle",
-                     "hydration"],
-        "stocks": [
-            {"ticker": "YETI", "name": "YETI Holdings",         "purity": 0.65, "note": "Premium drinkware / cooler brand; closest listed proxy."},
-            {"ticker": "SWK",  "name": "Stanley Black & Decker","purity": 0.25, "note": "Owns the Stanley brand, but it's a tiny share of revenue."},
-        ],
-    },
-    {
-        "theme": "Beauty / Skincare",
-        "keywords": ["e.l.f.", "elf cosmetics", "skincare", "sephora",
-                     "drunk elephant", "rare beauty", "makeup", "glow"],
-        "stocks": [
-            {"ticker": "ELF",  "name": "e.l.f. Beauty",         "purity": 0.90, "note": "TikTok-viral cosmetics pure play."},
-            {"ticker": "ULTA", "name": "Ulta Beauty",           "purity": 0.65, "note": "Beauty specialty retailer."},
-            {"ticker": "EL",   "name": "Estée Lauder",          "purity": 0.55, "note": "Prestige-beauty exposure."},
-        ],
-    },
-    {
-        "theme": "Discount E-Commerce",
-        "keywords": ["temu", "shein", "haul", "dupe", "dupes", "fast fashion"],
-        "stocks": [
-            {"ticker": "PDD", "name": "PDD Holdings",           "purity": 0.70, "note": "Parent of Temu; direct beneficiary of haul culture."},
-        ],
-    },
-    {
-        "theme": "Quantum Computing",
-        "keywords": ["quantum", "quantum computing", "qubit"],
-        "stocks": [
-            {"ticker": "IONQ", "name": "IonQ",                  "purity": 0.90, "note": "Quantum-computing pure play."},
-            {"ticker": "RGTI", "name": "Rigetti Computing",     "purity": 0.90, "note": "Quantum-computing pure play."},
-            {"ticker": "QBTS", "name": "D-Wave Quantum",        "purity": 0.90, "note": "Quantum-computing pure play."},
-        ],
-    },
-    {
-        "theme": "Nuclear / SMR / Uranium",
-        "keywords": ["nuclear", "uranium", "smr", "small modular reactor",
-                     "nuscale", "reactor"],
-        "stocks": [
-            {"ticker": "SMR",  "name": "NuScale Power",         "purity": 0.90, "note": "Small-modular-reactor pure play."},
-            {"ticker": "OKLO", "name": "Oklo",                  "purity": 0.90, "note": "Advanced-nuclear pure play."},
-            {"ticker": "LEU",  "name": "Centrus Energy",        "purity": 0.85, "note": "Enriched-uranium pure play."},
-            {"ticker": "CCJ",  "name": "Cameco",                "purity": 0.80, "note": "Uranium-mining pure play."},
-        ],
-    },
-    {
-        "theme": "Space",
-        "keywords": ["space", "spacex", "rocket", "satellite", "moon landing",
-                     "starship"],
-        "stocks": [
-            {"ticker": "RKLB", "name": "Rocket Lab",            "purity": 0.90, "note": "Launch / space-systems pure play."},
-            {"ticker": "ASTS", "name": "AST SpaceMobile",       "purity": 0.90, "note": "Satellite-to-phone pure play."},
-            {"ticker": "LUNR", "name": "Intuitive Machines",    "purity": 0.85, "note": "Lunar-lander pure play."},
-        ],
-    },
-    {
-        "theme": "Sports Betting",
-        "keywords": ["draftkings", "sports betting", "parlay", "fanduel", "betting"],
-        "stocks": [
-            {"ticker": "DKNG", "name": "DraftKings",            "purity": 0.95, "note": "Online sports-betting pure play."},
-            {"ticker": "PENN", "name": "PENN Entertainment",    "purity": 0.55, "note": "ESPN Bet exposure plus casinos."},
-            {"ticker": "MGM",  "name": "MGM Resorts",           "purity": 0.40, "note": "BetMGM stake plus casinos."},
-        ],
-    },
-    {
-        "theme": "Gaming / Metaverse",
-        "keywords": ["roblox", "fortnite", "gaming", "video game", "metaverse"],
-        "stocks": [
-            {"ticker": "RBLX", "name": "Roblox",                "purity": 0.95, "note": "UGC-gaming platform pure play."},
-            {"ticker": "TTWO", "name": "Take-Two Interactive",  "purity": 0.70, "note": "GTA publisher."},
-            {"ticker": "EA",   "name": "Electronic Arts",       "purity": 0.65, "note": "Major game publisher."},
-        ],
-    },
-    {
-        "theme": "Athleisure / Sneakers",
-        "keywords": ["hoka", "lululemon", "leggings", "on running", "sneakers",
-                     "running shoes", "athleisure"],
-        "stocks": [
-            {"ticker": "ONON", "name": "On Holding",            "purity": 0.90, "note": "On Running shoe pure play."},
-            {"ticker": "DECK", "name": "Deckers Outdoor",       "purity": 0.85, "note": "Owns HOKA & UGG; viral footwear pure play."},
-            {"ticker": "LULU", "name": "Lululemon",             "purity": 0.80, "note": "Athleisure pure play."},
-            {"ticker": "NKE",  "name": "Nike",                  "purity": 0.60, "note": "Athletic-apparel bellwether."},
-        ],
-    },
-    {
-        "theme": "Cannabis",
-        "keywords": ["cannabis", "marijuana", "weed", "rescheduling", "420"],
-        "stocks": [
-            {"ticker": "TLRY", "name": "Tilray Brands",         "purity": 0.90, "note": "Cannabis pure play."},
-            {"ticker": "CGC",  "name": "Canopy Growth",         "purity": 0.90, "note": "Cannabis pure play."},
-            {"ticker": "CRON", "name": "Cronos Group",          "purity": 0.85, "note": "Cannabis pure play."},
-        ],
-    },
-    {
-        "theme": "Solar / Clean Energy",
-        "keywords": ["solar", "solar panel", "clean energy", "rooftop solar"],
-        "stocks": [
-            {"ticker": "ENPH", "name": "Enphase Energy",        "purity": 0.90, "note": "Solar-microinverter pure play."},
-            {"ticker": "FSLR", "name": "First Solar",           "purity": 0.85, "note": "Utility-scale solar pure play."},
-            {"ticker": "RUN",  "name": "Sunrun",                "purity": 0.85, "note": "Residential-solar pure play."},
-        ],
-    },
-    {
-        "theme": "Dating Apps",
-        "keywords": ["tinder", "hinge", "dating app", "bumble", "online dating"],
-        "stocks": [
-            {"ticker": "BMBL", "name": "Bumble",                "purity": 0.95, "note": "Dating-app pure play."},
-            {"ticker": "MTCH", "name": "Match Group",           "purity": 0.90, "note": "Tinder / Hinge owner; dating pure play."},
-        ],
-    },
-    {
-        "theme": "Social Media",
-        "keywords": ["tiktok ban", "tiktok", "snapchat", "reddit", "pinterest",
-                     "threads", "x app"],
-        "stocks": [
-            {"ticker": "RDDT", "name": "Reddit",                "purity": 0.90, "note": "Social-platform pure play."},
-            {"ticker": "SNAP", "name": "Snap Inc.",             "purity": 0.85, "note": "Social-media pure play."},
-            {"ticker": "PINS", "name": "Pinterest",             "purity": 0.85, "note": "Visual-discovery social pure play."},
-            {"ticker": "META", "name": "Meta Platforms",        "purity": 0.55, "note": "Instagram / Threads owner; a TikTok-ban beneficiary."},
-        ],
-    },
-    {
-        "theme": "Robotics",
-        "keywords": ["humanoid robot", "optimus", "robot", "robotics", "automation"],
-        "stocks": [
-            {"ticker": "SERV", "name": "Serve Robotics",        "purity": 0.80, "note": "Sidewalk delivery-robot pure play."},
-            {"ticker": "TSLA", "name": "Tesla",                 "purity": 0.40, "note": "Optimus humanoid-robot program."},
-        ],
-    },
-    {
-        "theme": "Mixed Reality",
-        "keywords": ["vision pro", "apple vision", "vr", "ar", "mixed reality",
-                     "headset"],
-        "stocks": [
-            {"ticker": "META", "name": "Meta Platforms",        "purity": 0.45, "note": "Quest / Reality Labs exposure."},
-            {"ticker": "AAPL", "name": "Apple",                 "purity": 0.30, "note": "Vision Pro maker; tiny share of revenue."},
-        ],
-    },
-    {
-        "theme": "Telehealth",
-        "keywords": ["telehealth", "hims", "online prescription"],
-        "stocks": [
-            {"ticker": "HIMS", "name": "Hims & Hers Health",    "purity": 0.85, "note": "Direct-to-consumer telehealth pure play."},
-        ],
-    },
-]
+THEMES_PATH = os.path.join(os.path.dirname(__file__), "themes.json")
+_themes_cache = {"mtime": 0.0, "data": []}
+
+
+def _validate_themes(raw):
+    """Schema-check a parsed themes.json blob; raise ValueError on bad data."""
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("themes.json must be a non-empty list")
+    seen_themes = set()
+    for i, th in enumerate(raw):
+        if not isinstance(th, dict):
+            raise ValueError(f"theme #{i}: not an object")
+        for key in ("theme", "keywords", "stocks"):
+            if key not in th:
+                raise ValueError(f"theme #{i}: missing '{key}'")
+        if th["theme"] in seen_themes:
+            raise ValueError(f"duplicate theme: {th['theme']}")
+        seen_themes.add(th["theme"])
+        if not isinstance(th["keywords"], list) or not th["keywords"]:
+            raise ValueError(f"theme '{th['theme']}': keywords must be non-empty list")
+        if not isinstance(th["stocks"], list) or not th["stocks"]:
+            raise ValueError(f"theme '{th['theme']}': stocks must be non-empty list")
+        for st in th["stocks"]:
+            for sk in ("ticker", "name", "purity"):
+                if sk not in st:
+                    raise ValueError(f"theme '{th['theme']}': stock missing '{sk}'")
+            try:
+                p = float(st["purity"])
+            except (TypeError, ValueError):
+                raise ValueError(f"theme '{th['theme']}' ticker '{st['ticker']}': purity not numeric")
+            if not (0.0 <= p <= 1.0):
+                raise ValueError(f"theme '{th['theme']}' ticker '{st['ticker']}': purity out of [0,1]")
+            st.setdefault("note", "")
+    return raw
+
+
+def load_themes(force: bool = False):
+    """Hot-reload themes.json when its mtime changes; cache otherwise."""
+    import json
+    try:
+        mtime = os.path.getmtime(THEMES_PATH)
+    except OSError:
+        if _themes_cache["data"]:
+            return _themes_cache["data"]
+        raise
+    if force or mtime != _themes_cache["mtime"]:
+        with open(THEMES_PATH, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        try:
+            data = _validate_themes(raw)
+        except ValueError as exc:
+            # Bad file — keep last good copy, log loudly.
+            print(f"!! themes.json invalid ({exc}); keeping previous in-memory copy")
+            if _themes_cache["data"]:
+                return _themes_cache["data"]
+            raise
+        _themes_cache["mtime"] = mtime
+        _themes_cache["data"]  = data
+        print(f"++ social_trends: loaded {len(data)} themes from themes.json")
+    return _themes_cache["data"]
+
+
+def THEME_MAP_get():
+    """Late-bound accessor — always returns the freshest themes."""
+    return load_themes()
+
+
+# Keep ``THEME_MAP`` available for any code that imports it directly. It's a
+# module-level attribute pointing at the loaded list, refreshed on every
+# request via ``_themes_matching`` / ``_match_stocks`` calling load_themes().
+THEME_MAP = load_themes()
 
 
 # ── Seed dataset (used when a live provider is unavailable) ──────────────────
@@ -344,7 +190,7 @@ def _kw_in_term(term_l: str, kw_l: str) -> bool:
 
 def _themes_matching(term: str):
     term_l = term.lower()
-    return [th for th in THEME_MAP
+    return [th for th in load_themes()
             if any(_kw_in_term(term_l, kw) for kw in th["keywords"])]
 
 
@@ -406,26 +252,60 @@ def _combine_series(series_list):
 
 
 def _analyze_series(series):
-    """Derive momentum (0–100), 30d change %, and direction from a series."""
+    """Derive momentum (0–100), 30d change %, direction, and phase from a series.
+
+    Scoring v2:
+      • Log-compressed change so 300%+ moves don't all flat-line at the ceiling.
+      • Recency-weighted: last 7d count more than first half of the window.
+      • Phase classification — building (rising into peak), peaking (at peak,
+        flat slope), fading (off peak, declining), flat (no real move).
+    """
     n = len(series)
     if n < 4:
-        return {"momentum": 0, "change_pct": 0.0, "direction": "flat", "level": 0, "peak": 0}
-    head = series[: max(2, n // 4)]
-    tail = series[-max(2, n // 7):]
-    base   = sum(head) / len(head)
-    recent = sum(tail) / len(tail)
-    denom  = max(base, 5.0)
+        return {"momentum": 0, "change_pct": 0.0, "direction": "flat",
+                "level": 0, "peak": 0, "phase": "flat"}
+
+    head      = series[: max(2, n // 4)]
+    tail      = series[-min(7, max(2, n // 4)):]
+    prior_wk  = series[-min(14, max(4, n // 2)): -min(7, max(2, n // 4))] if n >= 8 else head
+    base      = sum(head)     / len(head)
+    recent    = sum(tail)     / len(tail)
+    prior     = sum(prior_wk) / len(prior_wk) if prior_wk else base
+
+    denom = max(base, 5.0)
     change_pct = (recent - base) / denom * 100.0
-    abs_move   = min(abs(change_pct), 300.0)
-    momentum   = recent * 0.25 + (abs_move / 300.0) * 100.0 * 0.75
-    momentum   = int(round(max(0.0, min(100.0, momentum))))
-    direction  = "rising" if change_pct > 12 else "falling" if change_pct < -12 else "flat"
+
+    # log-compressed magnitude → much better spread above ~100% change
+    abs_move = abs(change_pct)
+    log_norm = math.log1p(abs_move) / math.log1p(300.0)  # ≈ 0 at 0%, 1.0 at 300%+
+    momentum = recent * 0.30 + min(log_norm, 1.0) * 100.0 * 0.70
+    momentum = int(round(max(0.0, min(100.0, momentum))))
+
+    direction = "rising" if change_pct > 12 else "falling" if change_pct < -12 else "flat"
+
+    # Phase: where is the peak, and is recent ≷ prior week?
+    peak_val = max(series)
+    peak_idx = series.index(peak_val)
+    near_peak    = peak_idx >= n - max(3, n // 6)
+    slope_recent = recent - prior          # >0 still rising into peak
+    if peak_val < 25 and abs(change_pct) < 15:
+        phase = "flat"
+    elif near_peak and slope_recent > 1.0:
+        phase = "building"
+    elif near_peak:
+        phase = "peaking"
+    elif recent < peak_val * 0.7:
+        phase = "fading"
+    else:
+        phase = "peaking"
+
     return {
         "momentum":   momentum,
         "change_pct": round(change_pct, 1),
         "direction":  direction,
         "level":      int(round(recent)),
-        "peak":       int(round(max(series))),
+        "peak":       int(round(peak_val)),
+        "phase":      phase,
     }
 
 
@@ -467,28 +347,92 @@ def _fetch_google(n: int, geo: str):
     return _seed_for("google", n), False
 
 
-def _fetch_keyed(source_id: str, n: int):
-    """TikTok / Twitter / Instagram: live when a key + integration is wired,
-    otherwise seed. The live branch is a documented hook — these platforms have
-    no free official trends API, so the actual call is left for the operator to
-    implement against their chosen provider."""
+def _fetch_twitter_live(token: str, n: int, geo: str):
+    """Twitter / X v2: pull current trends and synthesize a series per term.
+
+    The trends endpoint (``/2/trends/by/woeid``) returns a list of trending
+    terms with current 24h tweet counts but no time series — the v2 endpoint
+    that *would* give a series (``/2/tweets/counts/all``) is gated behind paid
+    academic access. We approximate with a synthetic ramp based on volume so
+    the rest of the pipeline (momentum, anomaly, matching) works unchanged.
+    """
+    import json, urllib.request, urllib.error
+    woeid = {"US": 23424977, "GB": 23424975, "GLOBAL": 1}.get(geo.upper(), 23424977)
+    url = f"https://api.twitter.com/2/trends/by/woeid/{woeid}"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read())
+    out = []
+    for it in (data.get("data") or [])[:15]:
+        term  = (it.get("trend_name") or it.get("name") or "").strip()
+        if not term:
+            continue
+        # Use tweet_count as a "magnitude" hint to choose a shape.
+        vol = it.get("tweet_count") or 0
+        shape = "breakout" if vol > 50000 else "spike" if vol > 10000 else "steady"
+        out.append({"term": term, "series": _synth_series(f"twitter:live:{term}", shape, n)})
+    return out
+
+
+def _fetch_tiktok_apify(token: str, n: int):
+    """TikTok via Apify Creative Center trending-hashtags actor.
+
+    Hits an Apify dataset endpoint with a personal token; expects items shaped
+    like ``{"hashtag": str, "trend_score": int}``. Series synthesised from the
+    score so the pipeline downstream stays uniform.
+    """
+    import json, urllib.request
+    actor_id = os.environ.get("APIFY_TIKTOK_ACTOR", "apify~tiktok-creative-center-trending-hashtags")
+    url = f"https://api.apify.com/v2/acts/{actor_id}/run-sync-get-dataset-items?token={token}&memory=512"
+    req = urllib.request.Request(url, method="POST",
+                                 data=b'{"region":"US","timeframe":"WEEKLY"}',
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        items = json.loads(resp.read())
+    out = []
+    for it in (items or [])[:15]:
+        term  = (it.get("hashtag") or it.get("term") or "").strip().lstrip("#")
+        if not term:
+            continue
+        score = int(it.get("trend_score") or it.get("popularity") or 0)
+        shape = "breakout" if score > 70 else "spike" if score > 40 else "steady"
+        out.append({"term": term, "series": _synth_series(f"tiktok:live:{term}", shape, n)})
+    return out
+
+
+def _fetch_keyed(source_id: str, n: int, geo: str = "US"):
+    """TikTok / Twitter / Instagram: real call when a key is set, seed otherwise.
+
+    Twitter/X uses ``TWITTER_BEARER_TOKEN`` (v2 trends/by/woeid).
+    TikTok uses ``APIFY_TOKEN`` (Apify Creative Center actor).
+    Instagram has no viable trends API — seed only.
+    """
     token = os.environ.get(SOURCE_ENV.get(source_id, ""))
     if token:
         try:
-            raise NotImplementedError(
-                f"No live integration wired for {source_id}; add one in "
-                f"social_trends._fetch_keyed() using your provider."
-            )
+            if source_id == "twitter":
+                items = _fetch_twitter_live(token, n, geo)
+                if items:
+                    return items, True
+            elif source_id == "tiktok":
+                items = _fetch_tiktok_apify(token, n)
+                if items:
+                    return items, True
+            else:
+                raise NotImplementedError(
+                    f"No live integration wired for {source_id}; add one in "
+                    f"social_trends._fetch_keyed()."
+                )
         except Exception as exc:
-            print(f"!! social_trends: {source_id} live fetch unavailable ({exc}); using seed data")
+            print(f"!! social_trends: {source_id} live fetch failed ({exc}); using seed data")
     return _seed_for(source_id, n), False
 
 
 _PROVIDERS = {
     "google":    lambda n, geo: _fetch_google(n, geo),
-    "tiktok":    lambda n, geo: _fetch_keyed("tiktok", n),
-    "twitter":   lambda n, geo: _fetch_keyed("twitter", n),
-    "instagram": lambda n, geo: _fetch_keyed("instagram", n),
+    "tiktok":    lambda n, geo: _fetch_keyed("tiktok",    n, geo),
+    "twitter":   lambda n, geo: _fetch_keyed("twitter",   n, geo),
+    "instagram": lambda n, geo: _fetch_keyed("instagram", n, geo),
 }
 
 
@@ -611,7 +555,12 @@ _trend_cache   = {}           # key -> {"at": epoch, "trends": [...], "sources":
 
 
 def _compute_trends(n: int, geo: str, wanted: set):
-    """Run the source providers and build the ranked trend list (no DB access)."""
+    """Run the source providers and build the ranked trend list (no DB access).
+
+    Per-source series are retained so each trend can report which source is
+    driving it (``driven_by``). Anomaly tagging (new / accelerating / fading
+    fast) happens after this step using DB snapshots.
+    """
     source_meta = []
     merged = {}
     for src in SOURCES:
@@ -627,8 +576,10 @@ def _compute_trends(n: int, geo: str, wanted: set):
         for it in items:
             key = it["term"].strip().lower()
             entry = merged.setdefault(key, {"term": it["term"].strip(),
-                                            "series_list": [], "sources": []})
+                                            "series_list": [], "sources": [],
+                                            "per_source": {}})
             entry["series_list"].append(it["series"])
+            entry["per_source"][sid] = it["series"]
             if sid not in entry["sources"]:
                 entry["sources"].append(sid)
 
@@ -639,15 +590,59 @@ def _compute_trends(n: int, geo: str, wanted: set):
             continue
         analysis = _analyze_series(series)
         category, tickers = _theme_for_term(entry["term"])
+
+        # Driven-by: which source's own series has the highest momentum
+        per_src_mom = {}
+        for sid, s in entry["per_source"].items():
+            if s:
+                per_src_mom[sid] = _analyze_series(s)["momentum"]
+        driven_by = max(per_src_mom, key=per_src_mom.get) if per_src_mom else None
+
         trends.append({
             "term":       entry["term"],
             "sources":    entry["sources"],
+            "source_mom": per_src_mom,
+            "driven_by":  driven_by,
             "spark":      series,
             "category":   category,
             "tickers":    tickers,
             **analysis,
         })
     trends.sort(key=lambda t: (-t["momentum"], -abs(t["change_pct"])))
+
+    # ── Snapshot + anomaly tagging (DB-backed) ──────────────────────────────
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    yest_iso  = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    wk_ago_iso = (datetime.now(timezone.utc).date() - timedelta(days=7)).isoformat()
+
+    try:
+        yest_terms = db.get_snapshot_terms(yest_iso)
+    except Exception:
+        yest_terms = set()
+
+    for t in trends[:50]:                       # only snapshot the top movers
+        try:
+            db.upsert_snapshot(today_iso, t["term"], t["momentum"],
+                               t["change_pct"], t["direction"], t["level"],
+                               t["phase"], t["sources"])
+        except Exception as exc:
+            print(f"!! social_trends: snapshot upsert failed for {t['term']} ({exc})")
+
+        t["new_today"]    = bool(yest_terms) and t["term"] not in yest_terms
+        t["accelerating"] = False
+        t["fading_fast"]  = False
+        try:
+            prior = db.get_snapshot(wk_ago_iso, t["term"])
+            if prior and prior.get("momentum") is not None:
+                prior_mom = int(prior["momentum"])
+                delta = t["momentum"] - prior_mom
+                if delta >= 20:
+                    t["accelerating"] = True
+                elif delta <= -20:
+                    t["fading_fast"] = True
+        except Exception:
+            pass
+
     return trends, source_meta
 
 
@@ -686,3 +681,112 @@ def get_social_trends(lookback_days: int = 30, geo: str = "US",
         "trends":        trends,
         "ideas":         ideas,
     }
+
+
+def get_term_history(term: str, days: int = 90):
+    """Backing query for the term drill-down sparkline."""
+    return db.get_term_history(term, days=days)
+
+
+def get_themes_for_ticker(ticker: str):
+    """Reverse view — which themes carry this ticker, and at what purity."""
+    tk = (ticker or "").strip().upper()
+    if not tk:
+        return []
+    out = []
+    for th in load_themes():
+        for st in th["stocks"]:
+            if st["ticker"].upper() == tk:
+                out.append({
+                    "theme":  th["theme"],
+                    "purity": st["purity"],
+                    "purity_label": _purity_label(st["purity"]),
+                    "note":   st.get("note", ""),
+                    "keywords": list(th["keywords"]),
+                })
+                break
+    return out
+
+
+def get_theme_cohort_stats(theme_name: str):
+    """Aggregate 5d/20d returns across a theme's pure plays — for drill-down.
+
+    Uses only locally-stored OHLCV; missing tickers are reported as 'no_data'.
+    """
+    for th in load_themes():
+        if th["theme"] == theme_name:
+            members = []
+            r5s, r20s = [], []
+            for st in th["stocks"]:
+                m = _stock_move(st["ticker"])
+                members.append({
+                    "ticker": st["ticker"],
+                    "name":   st["name"],
+                    "purity": st["purity"],
+                    "purity_label": _purity_label(st["purity"]),
+                    "note":   st.get("note", ""),
+                    "ret_5d":  m["ret_5d"],
+                    "ret_20d": m["ret_20d"],
+                    "price":   m["price"],
+                })
+                if m["ret_5d"]  is not None: r5s.append(m["ret_5d"])
+                if m["ret_20d"] is not None: r20s.append(m["ret_20d"])
+            return {
+                "theme":   th["theme"],
+                "members": members,
+                "avg_ret_5d":  round(sum(r5s)/len(r5s),  2) if r5s  else None,
+                "avg_ret_20d": round(sum(r20s)/len(r20s), 2) if r20s else None,
+                "coverage":    f"{len(r20s)}/{len(th['stocks'])}",
+            }
+    return None
+
+
+# ── Price-priming background sweep (so catch-up is populated by default) ─────
+_prime_status = {"running": False, "queued": 0, "done": 0, "failed": 0, "current": None}
+
+
+def prime_status():
+    return dict(_prime_status)
+
+
+def start_prime_sweep(tickers, fetcher_fn, delay: float = 1.0):
+    """Fire-and-forget background sweep — fetches OHLCV for each ticker with
+    a polite delay so the source provider isn't hammered.
+
+    ``fetcher_fn`` is injected (typically ``data_fetcher.fetch_and_store``)
+    so this module doesn't take a hard dependency on the fetcher chain.
+    """
+    import threading, time
+    if _prime_status["running"]:
+        return {"started": False, "reason": "already running"}
+    seen = set()
+    queue = []
+    for t in tickers:
+        t = (t or "").strip().upper()
+        if t and t not in seen:
+            seen.add(t)
+            queue.append(t)
+    if not queue:
+        return {"started": False, "reason": "no tickers"}
+
+    _prime_status.update(running=True, queued=len(queue), done=0, failed=0, current=None)
+
+    def _worker():
+        try:
+            for tk in queue:
+                _prime_status["current"] = tk
+                try:
+                    res = fetcher_fn(tk)
+                    if isinstance(res, dict) and res.get("error"):
+                        _prime_status["failed"] += 1
+                    else:
+                        _prime_status["done"] += 1
+                except Exception:
+                    _prime_status["failed"] += 1
+                time.sleep(delay)
+        finally:
+            _prime_status["current"] = None
+            _prime_status["running"] = False
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return {"started": True, "queued": len(queue)}

@@ -13,7 +13,11 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "finance.db")
+# DB lives next to the source by default, but can be redirected via the
+# FINDASH_DB_DIR env var (used by the Docker image to point at a volume).
+_DB_DIR = os.environ.get("FINDASH_DB_DIR") or os.path.dirname(__file__)
+os.makedirs(_DB_DIR, exist_ok=True)
+DB_PATH = os.path.join(_DB_DIR, "finance.db")
 
 
 def get_connection():
@@ -67,8 +71,88 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_ohlcv ON ohlcv(symbol, freq, date)
     """)
 
+    # Social-trend snapshots: one row per (date, term) — powers anomaly
+    # detection ("new today", "accelerating", "fading fast") and the history
+    # endpoint that backs trend drill-down sparklines beyond the 30d window.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS social_snapshots (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            date        TEXT    NOT NULL,
+            term        TEXT    NOT NULL,
+            momentum    INTEGER,
+            change_pct  REAL,
+            direction   TEXT,
+            level       INTEGER,
+            phase       TEXT,
+            sources     TEXT,
+            UNIQUE(date, term)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_term ON social_snapshots(term, date)")
+
     conn.commit()
     conn.close()
+
+
+# ── Social snapshots ───────────────────────────────────────────────────────────
+
+def upsert_snapshot(date_str, term, momentum, change_pct, direction, level, phase, sources):
+    """Insert/update one trend snapshot for a given (date, term)."""
+    conn = get_connection()
+    conn.execute(
+        """
+        INSERT INTO social_snapshots
+            (date, term, momentum, change_pct, direction, level, phase, sources)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date, term) DO UPDATE SET
+            momentum  = excluded.momentum,
+            change_pct= excluded.change_pct,
+            direction = excluded.direction,
+            level     = excluded.level,
+            phase     = excluded.phase,
+            sources   = excluded.sources
+        """,
+        (date_str, term, momentum, change_pct, direction, level, phase, ",".join(sources or []))
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_snapshot_terms(date_str):
+    """Return the set of terms that had a snapshot on a given UTC date."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT DISTINCT term FROM social_snapshots WHERE date = ?", (date_str,)
+    ).fetchall()
+    conn.close()
+    return {r["term"] for r in rows}
+
+
+def get_snapshot(date_str, term):
+    """Look up a single (date, term) snapshot row, or None."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM social_snapshots WHERE date = ? AND term = ?",
+        (date_str, term)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_term_history(term, days=90):
+    """All snapshots for a term over the last N days, ascending by date."""
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT date, momentum, change_pct, direction, level, phase, sources
+        FROM social_snapshots
+        WHERE term = ? AND date >= date('now', ?)
+        ORDER BY date ASC
+        """,
+        (term, f"-{int(days)} days")
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # ── Symbol CRUD ────────────────────────────────────────────────────────────────

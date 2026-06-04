@@ -28,6 +28,37 @@ CORS(app)
 db.init_db()
 
 
+# -- Optional HTTP basic auth (set DASHBOARD_PASSWORD to enable) ---------------
+# Off by default for local use; turn it on before exposing the dashboard
+# beyond localhost (e.g. behind a Cloudflare Tunnel).
+_DASH_USER = os.environ.get("DASHBOARD_USER", "admin")
+_DASH_PASS = os.environ.get("DASHBOARD_PASSWORD", "")
+
+if _DASH_PASS:
+    import base64
+    from functools import wraps
+
+    def _check_auth(header):
+        if not header or not header.startswith("Basic "):
+            return False
+        try:
+            decoded = base64.b64decode(header.split(None, 1)[1]).decode("utf-8")
+            u, _, p = decoded.partition(":")
+        except Exception:
+            return False
+        return u == _DASH_USER and p == _DASH_PASS
+
+    @app.before_request
+    def _require_auth():
+        if request.method == "OPTIONS":          # let CORS preflights through
+            return None
+        if not _check_auth(request.headers.get("Authorization", "")):
+            return Response("Auth required", 401,
+                            {"WWW-Authenticate": 'Basic realm="FinDash"'})
+
+    print("++ app: HTTP basic auth enabled")
+
+
 # -- Static files ---------------------------------------------------------------
 
 @app.route("/")
@@ -438,6 +469,74 @@ def add_symbols_bulk():
         added.append(sym)
     return jsonify({"message": f"{len(added)} symbols added", "symbols": added,
                     "group_tag": group}), 201
+
+
+@app.route("/api/social-trends/history", methods=["GET"])
+def get_social_trend_history():
+    """Past snapshots for one term — feeds the trend drill-down sparkline."""
+    term = request.args.get("term", "").strip()
+    if not term:
+        return jsonify({"error": "term is required"}), 400
+    try:
+        days = max(1, min(int(request.args.get("days", 90)), 365))
+    except (TypeError, ValueError):
+        days = 90
+    return jsonify({"term": term, "days": days,
+                    "history": social_trends.get_term_history(term, days=days)})
+
+
+@app.route("/api/social-trends/for-ticker/<string:ticker>", methods=["GET"])
+def get_themes_for_ticker_route(ticker):
+    """Reverse view — which trend themes contain this ticker."""
+    return jsonify({"ticker": ticker.upper(),
+                    "themes": social_trends.get_themes_for_ticker(ticker)})
+
+
+@app.route("/api/social-trends/theme/<path:theme>", methods=["GET"])
+def get_theme_cohort_route(theme):
+    """All stocks in a theme + 5d/20d cohort stats — feeds drill-down modal."""
+    stats = social_trends.get_theme_cohort_stats(theme)
+    if not stats:
+        return jsonify({"error": "theme not found"}), 404
+    return jsonify(stats)
+
+
+@app.route("/api/social-trends/prime", methods=["POST"])
+def prime_idea_prices():
+    """Background OHLCV sweep for the current top pure-play tickers.
+
+    Bounded by the caller's ``limit`` (max 30). Idempotent: a sweep already
+    running is reported via ``/api/social-trends/prime/status``.
+    """
+    body  = request.get_json(force=True, silent=True) or {}
+    try:
+        limit = max(1, min(int(body.get("limit", 20)), 30))
+    except (TypeError, ValueError):
+        limit = 20
+
+    data    = social_trends.get_social_trends(30)
+    tickers = [i["ticker"] for i in (data.get("ideas") or [])
+               if not i.get("in_watchlist") and i.get("ret_20d") is None][:limit]
+    if not tickers:
+        return jsonify({"started": False, "queued": 0, "reason": "all top ideas already have price data"})
+
+    res = social_trends.start_prime_sweep(tickers, fetcher.fetch_and_store, delay=1.2)
+    return jsonify({**res, "tickers": tickers})
+
+
+@app.route("/api/social-trends/prime/status", methods=["GET"])
+def prime_status_route():
+    return jsonify(social_trends.prime_status())
+
+
+@app.route("/api/social-trends/reload-themes", methods=["POST"])
+def reload_themes_route():
+    """Force-reload themes.json (for editing the file while the app is running)."""
+    try:
+        themes = social_trends.load_themes(force=True)
+        return jsonify({"loaded": len(themes)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 # -- Data Manager ---------------------------------------------------------------

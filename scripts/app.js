@@ -636,6 +636,21 @@ function showLoadingOverlay(show) {
     document.getElementById('chart-loading').style.display = show ? 'flex' : 'none';
 }
 
+// ── Reverse view: themes this symbol shows up in ─────────────
+async function loadSymbolThemes(symbol) {
+    const slot = document.getElementById('sym-themes');
+    if (!slot) return;
+    if (!symbol) { slot.textContent = ''; return; }
+    try {
+        const d = await apiFetch(`${API}/social-trends/for-ticker/${encodeURIComponent(symbol)}`);
+        const themes = d.themes || [];
+        if (!themes.length) { slot.textContent = ''; return; }
+        slot.innerHTML = themes.slice(0, 4).map(t =>
+            `<span class="sym-theme-chip" onclick="switchTab('social')" title="${t.purity_label} · ${t.note}">${t.theme}</span>`
+        ).join('');
+    } catch (e) { slot.textContent = ''; }
+}
+
 // ── Tab Switching ─────────────────────────────────────────────
 async function switchTab(tabId) {
     state.activeTab = tabId;
@@ -993,6 +1008,10 @@ function updateSymbolHeader(symbol, last, prev) {
     const symInfo = state.symbols.find(s => s.symbol === symbol);
     document.getElementById('sym-subtitle').textContent = symInfo?.name || '';
 
+    // Reverse view: surface any Social Trends themes this ticker shows up in,
+    // so the user sees "this stock is a play on X" right in the chart header.
+    loadSymbolThemes(symbol);
+
     if (!last) {
         document.getElementById('sym-price').textContent   = '--';
         document.getElementById('sym-change-badge').textContent = '';
@@ -1314,8 +1333,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadSymbols();
 
-    // Always-visible social top-movers banner (fire-and-forget, warms cache).
+    // Always-visible social top-movers banner (fire-and-forget, warms cache),
+    // then refresh every 5 min so the strip stays current.
     if (typeof loadTopMovers === 'function') loadTopMovers();
+    if (typeof startBannerAutoRefresh === 'function') startBannerAutoRefresh();
 
     // Restore the last tab from the URL hash or localStorage.
     const VALID_TABS = ['charts','stats','knn','backtest','trend','scanner','social','data-manager'];
