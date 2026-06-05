@@ -95,10 +95,61 @@ def compute_trade_metrics(row, current_price=None):
     return metrics
 
 
+def _management_cues(row, metrics):
+    """
+    Process-rule cues for an OPEN position (pure, from stored OHLCV):
+    time-stop, moving-average trail, partial reminder, stop breach.
+    """
+    cues = []
+    if row.get("status") != "open":
+        return cues
+    r = metrics.get("r_multiple")
+
+    # Days held
+    days_held = None
+    try:
+        ed = row.get("entry_date")
+        if ed:
+            d0 = datetime.fromisoformat(str(ed)[:10]).date()
+            days_held = (datetime.now(timezone.utc).date() - d0).days
+    except Exception:
+        pass
+
+    # Price vs 10/20-day moving averages
+    below_10ma = below_20ma = None
+    try:
+        dfr = db.get_ohlcv_df(row.get("symbol", "").upper(), "daily", limit=60)
+        if dfr is not None and not dfr.empty and len(dfr) >= 20:
+            close = dfr["close"]
+            px = float(close.iloc[-1])
+            below_10ma = px < float(close.rolling(10).mean().iloc[-1])
+            below_20ma = px < float(close.rolling(20).mean().iloc[-1])
+    except Exception:
+        pass
+
+    if r is not None and r <= -1.0:
+        cues.append({"level": "danger", "text": "At/through stop — exit"})
+    if r is not None and r >= 2.0:
+        cues.append({"level": "good", "text": "+2R — consider taking a partial"})
+    if days_held is not None and days_held >= 5 and r is not None and r < 0.5:
+        cues.append({"level": "warn", "text": f"Time stop: no progress in {days_held}d"})
+    if below_10ma:
+        cues.append({"level": "warn", "text": "Below 10-day MA — trail/exit (fast)"})
+    elif below_20ma:
+        cues.append({"level": "warn", "text": "Below 20-day MA — trail/exit"})
+
+    return cues, days_held
+
+
 def _enrich(row):
-    """Row dict + computed metrics merged together."""
+    """Row dict + computed metrics (+ management cues for open trades)."""
     d = dict(row)
-    d.update(compute_trade_metrics(d))
+    m = compute_trade_metrics(d)
+    d.update(m)
+    if d.get("status") == "open":
+        cues, days_held = _management_cues(d, m)
+        d["cues"] = cues
+        d["days_held"] = days_held
     return d
 
 

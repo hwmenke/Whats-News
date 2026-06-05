@@ -285,5 +285,48 @@ class RegimeTests(unittest.TestCase):
         self.assertEqual(out["regime"], "Unknown")
 
 
+class CockpitAnalyticsTests(unittest.TestCase):
+    def test_performance_breakdown(self):
+        import cockpit_analytics as ca
+        closed = [
+            {"r_multiple": 3.0, "pnl": 1500, "setup_type": "EP",
+             "direction": "long", "exit_date": "2024-02-10", "id": 1},
+            {"r_multiple": -1.0, "pnl": -500, "setup_type": "breakout",
+             "direction": "long", "exit_date": "2024-02-08", "id": 2},
+            {"r_multiple": 2.0, "pnl": 800, "setup_type": "EP",
+             "direction": "long", "exit_date": "2024-03-01", "id": 3},
+        ]
+        with patch("cockpit_analytics.journal.list_trades",
+                   side_effect=lambda s=None: closed if s == "closed" else []):
+            out = ca.compute_performance()
+        self.assertEqual(out["overall"]["count"], 3)
+        self.assertEqual(out["overall"]["total_r"], 4.0)
+        self.assertEqual(len(out["equity_curve"]), 3)
+        # EP grouped: two trades totalling 5R
+        ep = next(s for s in out["by_setup"] if s["setup"] == "EP")
+        self.assertEqual(ep["count"], 2)
+        self.assertEqual(ep["total_r"], 5.0)
+        # drawdown: curve sorted by date -> -1R then +3 then +2; peak after first win
+        self.assertGreaterEqual(out["overall"]["max_drawdown_r"], 1.0)
+
+
+class ManagementCueTests(unittest.TestCase):
+    @patch("journal.db.get_ohlcv_df")
+    def test_partial_cue_at_2r(self, mock_df):
+        mock_df.return_value = pd.DataFrame({"close": list(range(40, 100))})
+        row = {"status": "open", "symbol": "AAPL", "direction": "long",
+               "entry_price": 50, "stop_price": 45, "entry_date": "2024-01-10"}
+        cues, _ = journal._management_cues(row, {"r_multiple": 2.5})
+        self.assertTrue(any("partial" in c["text"].lower() for c in cues))
+
+    @patch("journal.db.get_ohlcv_df")
+    def test_stop_breach_cue(self, mock_df):
+        mock_df.return_value = pd.DataFrame({"close": list(range(40, 100))})
+        row = {"status": "open", "symbol": "AAPL", "direction": "long",
+               "entry_price": 50, "stop_price": 45, "entry_date": "2024-01-10"}
+        cues, _ = journal._management_cues(row, {"r_multiple": -1.2})
+        self.assertTrue(any(c["level"] == "danger" for c in cues))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -661,6 +661,8 @@ async function switchTab(tabId) {
     document.getElementById('seasonality-area').style.display   = 'none';
     document.getElementById('swirligram-area').style.display    = 'none';
     document.getElementById('news-area').style.display          = 'none';
+    document.getElementById('performance-area').style.display   = 'none';
+    document.getElementById('modelbook-area').style.display     = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
     if (tabId === 'charts') {
@@ -711,6 +713,12 @@ async function switchTab(tabId) {
     } else if (tabId === 'news') {
         document.getElementById('news-area').style.display = 'block';
         if (typeof initNews === 'function') initNews();
+    } else if (tabId === 'performance') {
+        document.getElementById('performance-area').style.display = 'block';
+        if (typeof loadPerformance === 'function') loadPerformance();
+    } else if (tabId === 'modelbook') {
+        document.getElementById('modelbook-area').style.display = 'block';
+        if (typeof loadModelBook === 'function') loadModelBook();
     }
 }
 

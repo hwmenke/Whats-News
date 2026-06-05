@@ -64,7 +64,7 @@ function renderMomentum() {
             `${gradeBadge(s.grade)} ${SETUP_LABELS[s.type] || s.type} <span class="mom-score">${s.score}</span>`
         ).join('<br>');
         return `<tr>
-            <td><b>${r.symbol}</b></td>
+            <td><b>${r.symbol}</b><br><button class="btn btn-ghost btn-sm" onclick="addToJournalFromScan('${r.symbol}','${SETUP_LABELS[r._best.type] || r._best.type}',${m.price})">＋ Journal</button></td>
             <td>${gradeBadge(r._best.grade)}</td>
             <td style="text-align:left;">${setups}</td>
             <td>${momFmt(m.price)}</td>

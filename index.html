@@ -141,6 +141,12 @@
       <button id="tab-news" class="tab-btn" onclick="switchTab('news')">
         <span class="tab-icon">📰</span> News
       </button>
+      <button id="tab-performance" class="tab-btn" onclick="switchTab('performance')">
+        <span class="tab-icon">📈</span> Performance
+      </button>
+      <button id="tab-modelbook" class="tab-btn" onclick="switchTab('modelbook')">
+        <span class="tab-icon">📚</span> Model Book
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -827,6 +833,38 @@
       <div id="modules-body"></div>
     </div><!-- #modules-area -->
 
+    <!-- ═══════════════════ PERFORMANCE ═══════════════════ -->
+    <div id="performance-area" class="dm-container" style="display:none;">
+      <div class="jr-header">
+        <h2>📈 Performance</h2>
+        <a class="btn btn-ghost" href="/api/journal/export.csv">⬇ Export CSV</a>
+      </div>
+      <div id="perf-overall" class="jr-stats-grid"></div>
+      <div class="perf-grid">
+        <div class="perf-card"><h3>Equity Curve (R)</h3><canvas id="perf-equity" height="200"></canvas></div>
+        <div class="perf-card"><h3>R-Distribution</h3><canvas id="perf-dist" height="200"></canvas></div>
+      </div>
+      <h3 style="margin-top:18px;">Expectancy by Setup</h3>
+      <div class="scanner-table-wrap"><table id="perf-setup-table" class="scanner-table" style="width:100%;"></table></div>
+    </div><!-- #performance-area -->
+
+    <!-- ═══════════════════ MODEL BOOK ═══════════════════ -->
+    <div id="modelbook-area" class="dm-container" style="display:none;">
+      <div class="jr-header">
+        <h2>📚 Model Book</h2>
+        <div class="mom-filters">
+          <select id="mb-result" class="kama-input" onchange="renderModelBook()">
+            <option value="">All results</option>
+            <option value="win">Wins</option>
+            <option value="loss">Losses</option>
+            <option value="holding">Open</option>
+          </select>
+          <input id="mb-setup" class="kama-input" placeholder="Filter setup…" oninput="renderModelBook()" />
+        </div>
+      </div>
+      <div id="modelbook-grid" class="mb-grid"></div>
+    </div><!-- #modelbook-area -->
+
     <!-- ====== Ported analytics tabs (from jeff) ====== -->
     <div id="momentum-rank-area" class="mom-container" style="display:none;">
       <div id="mom-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Ranking symbols…</div>
@@ -1074,6 +1112,8 @@
 <script src="scripts/seasonality.js"></script>
 <script src="scripts/swirligram.js"></script>
 <script src="scripts/news.js"></script>
+<script src="scripts/performance.js"></script>
+<script src="scripts/modelbook.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

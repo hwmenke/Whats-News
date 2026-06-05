@@ -118,6 +118,19 @@ async function submitTrade() {
     } catch (e) { toast(e.message, 'error'); }
 }
 
+// Prefill the new-trade form from a scanner candidate, then jump to the journal.
+async function addToJournalFromScan(symbol, setup, entry) {
+    switchTab('journal');
+    await initJournal();
+    document.getElementById('f-symbol').value = symbol || '';
+    document.getElementById('f-setup').value  = setup || '';
+    if (entry) document.getElementById('f-entry').value = entry;
+    // Suggest a stop ~1 ADR below entry if we can read it from the scan row
+    recomputeSizing();
+    document.getElementById('f-entry').focus();
+    toast(`Prefilled ${symbol} — set your stop`, 'info');
+}
+
 function switchJournalView(view) {
     jrView = view;
     document.getElementById('jr-stab-open').classList.toggle('trend-stab-active', view === 'open');
@@ -179,7 +192,9 @@ async function loadTrades(status) {
             <td class="${rcls(r.pct_move)}">${jrFmt(r.pct_move, 1)}%</td>
             <td class="${rcls(r.r_multiple)}"><b>${jrFmt(r.r_multiple)}</b></td>
             <td class="${rcls(r.pnl)}">${r.pnl == null ? '—' : '$' + jrFmt(r.pnl, 0)}</td>
-            <td>${jrEsc(r.result || '')}</td>
+            <td>${isOpen && r.cues && r.cues.length
+                    ? r.cues.map(c => `<span class="jr-cue ${c.level}">${jrEsc(c.text)}</span>`).join(' ')
+                    : jrEsc(r.result || '')}</td>
             <td>${charts}</td>
             <td>${action}</td>
         </tr>`;

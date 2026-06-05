@@ -43,6 +43,11 @@ MODULES: List[Module] = [
     Module("journal",      "Trade Journal",   "📒", "Process"),
     Module("momentum",     "Momentum Scan",   "🚀", "Process"),
     Module("regime",       "Regime & Breadth","🌐", "Process"),
+    Module("performance",  "Performance",     "📈", "Process",
+           blueprint="mod_cockpit:performance_bp",
+           notes="Equity curve, expectancy by setup, R-distribution, drawdown"),
+    Module("modelbook",    "Model Book",      "📚", "Process",
+           notes="Screenshot gallery of past trades, filterable by setup/result"),
     # ── Jeff Sun swing framework ──────────────────────────────────────────────
     Module("swing",        "Swing Suite",     "🏄", "Swing",
            blueprint="mod_blueprints:swing_bp",
