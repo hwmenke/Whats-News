@@ -223,6 +223,7 @@ function buildTrendCard(t) {
     card.innerHTML = `
         <div class="social-trend-top">
           <div class="social-trend-term" title="${t.term} — click to drill into history">${t.term}</div>
+          <button class="social-explain-btn" onclick="event.stopPropagation(); explainTrend('${(t.term||'').replace(/'/g,"\\'")}')" title="Why is this trending?">?</button>
           <div class="social-trend-chg ${dirCls}">${arrow} ${chg}</div>
         </div>
         <div class="social-trend-badges">${phaseChip}${anomalies.join('')}</div>
@@ -331,6 +332,7 @@ function buildIdeaRow(it, rank) {
         <td class="si-action">
           ${action}
           <button class="social-grp-btn" onclick="socialAddTheme('${themeSafe}')" title="Add all '${it.theme}' pure plays as a watchlist group">+ Theme</button>
+          <button class="social-grp-btn" onclick="critiqueIdea('${it.ticker}')" title="Why might this idea be wrong?">? Critique</button>
         </td>
     `;
     return tr;

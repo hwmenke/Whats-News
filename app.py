@@ -20,6 +20,8 @@ import scanner
 import adaptive_trend as adaptive
 import ticker_lists as tl
 import social_trends
+import insights
+import llm_insights
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -537,6 +539,133 @@ def reload_themes_route():
         return jsonify({"loaded": len(themes)})
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+
+# -- v5: LLM-augmented insight (ι) ---------------------------------------------
+
+def _payload_for_llm():
+    return social_trends.get_social_trends(30)
+
+
+@app.route("/api/llm/narrative", methods=["GET"])
+def llm_narrative_route():
+    """Daily 'three things to watch' generated from today's payload."""
+    return jsonify(llm_insights.daily_narrative(_payload_for_llm()))
+
+
+@app.route("/api/llm/explain", methods=["GET"])
+def llm_explain_route():
+    term = request.args.get("term", "").strip()
+    if not term:
+        return jsonify({"error": "term required"}), 400
+    return jsonify(llm_insights.explain_trend(term, _payload_for_llm()))
+
+
+@app.route("/api/llm/critique", methods=["GET"])
+def llm_critique_route():
+    ticker = request.args.get("ticker", "").strip().upper()
+    if not ticker:
+        return jsonify({"error": "ticker required"}), 400
+    payload = _payload_for_llm()
+    idea = next((i for i in payload.get("ideas") or [] if i["ticker"] == ticker), None)
+    if not idea:
+        return jsonify({"error": f"no idea found for {ticker}"}), 404
+    return jsonify(llm_insights.critique_idea(idea, payload))
+
+
+# -- v5: derived analytics (π · ν · μ · κ.4 · λ · ο · ρ) -----------------------
+
+@app.route("/api/insights/portfolio", methods=["GET"])
+def insights_portfolio_route():
+    """Phase μ — theme exposure of the watchlist (or an explicit ?tickers= list)."""
+    raw = request.args.get("tickers")
+    if raw:
+        tickers = [t.strip().upper() for t in raw.split(",") if t.strip()]
+    else:
+        tickers = [s["symbol"] for s in db.list_symbols()]
+    return jsonify(insights.portfolio_exposure(tickers))
+
+
+@app.route("/api/insights/streaks", methods=["GET"])
+def insights_streaks_route():
+    """Phase π — top terms by consecutive-day momentum streak."""
+    try:
+        days = max(2, min(int(request.args.get("days", 14)), 90))
+    except (TypeError, ValueError):
+        days = 14
+    return jsonify({"days": days, "streaks": insights.streak_summary(days=days)})
+
+
+@app.route("/api/insights/anomalies", methods=["GET"])
+def insights_anomalies_route():
+    """Phase π — momentum exceptional *for its theme*, not absolute."""
+    return jsonify({"anomalies": insights.anomaly_baselines(_payload_for_llm())})
+
+
+@app.route("/api/insights/arbitrage", methods=["GET"])
+def insights_arbitrage_route():
+    """Phase κ.4 — Google leading social (or vice versa) per term."""
+    return jsonify({"arbitrage": insights.search_arbitrage(_payload_for_llm())})
+
+
+@app.route("/api/insights/lifecycle/<path:term>", methods=["GET"])
+def insights_lifecycle_route(term):
+    payload = _payload_for_llm()
+    t = next((x for x in payload.get("trends") or [] if x["term"].lower() == term.lower()), None)
+    if not t:
+        return jsonify({"error": "term not found"}), 404
+    return jsonify({"term": t["term"], **insights.lifecycle_classify(t.get("spark") or [])})
+
+
+@app.route("/api/insights/seasonality/<path:theme>", methods=["GET"])
+def insights_seasonality_route(theme):
+    hint = insights.seasonality_hint(theme)
+    if not hint:
+        return jsonify({"theme": theme, "season": None, "note": None})
+    return jsonify(hint)
+
+
+@app.route("/api/insights/position-size", methods=["GET"])
+def insights_position_size_route():
+    ticker = request.args.get("ticker", "").strip().upper()
+    try:
+        capital = float(request.args.get("capital", 10000))
+    except (TypeError, ValueError):
+        capital = 10000.0
+    if not ticker:
+        return jsonify({"error": "ticker required"}), 400
+    payload = _payload_for_llm()
+    idea = next((i for i in payload.get("ideas") or [] if i["ticker"] == ticker), None)
+    if not idea:
+        return jsonify({"error": f"no idea for {ticker}"}), 404
+    return jsonify({"ticker": ticker, **insights.position_size(idea, capital)})
+
+
+@app.route("/api/insights/risk/<string:ticker>", methods=["GET"])
+def insights_risk_route(ticker):
+    """Phase π — earnings within N days, FOMC, etc. (yfinance best-effort)."""
+    return jsonify({"ticker": ticker.upper(), **insights.risk_overlay(ticker)})
+
+
+@app.route("/api/insights/sec/<string:ticker>", methods=["GET"])
+def insights_sec_route(ticker):
+    """Phase λ — Form 4 / 13F counts as 'smart money confirms' read."""
+    return jsonify({"ticker": ticker.upper(), **insights.institutional_signal(ticker)})
+
+
+@app.route("/api/insights/trade-links/<string:ticker>", methods=["GET"])
+def insights_trade_links_route(ticker):
+    return jsonify({"ticker": ticker.upper(), "links": insights.trade_deeplinks(ticker)})
+
+
+@app.route("/api/insights/notebook/<string:ticker>", methods=["GET"])
+def insights_notebook_route(ticker):
+    payload = _payload_for_llm()
+    idea = next((i for i in payload.get("ideas") or [] if i["ticker"] == ticker.upper()), None)
+    if not idea:
+        return jsonify({"error": f"no idea for {ticker}"}), 404
+    snippet = insights.export_idea_notebook(idea)
+    return Response(snippet, mimetype="text/x-python")
 
 
 # -- Data Manager ---------------------------------------------------------------

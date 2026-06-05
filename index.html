@@ -669,8 +669,34 @@
         </div>
       </div>
 
+      <!-- v5 · Daily narrative + ambient bar (LLM + streaks/anomalies) -->
+      <div class="insight-strip">
+        <div class="insight-card">
+          <div class="insight-card-header">
+            <span class="insight-card-title">🧭 Today's read</span>
+            <button class="insight-refresh" onclick="refreshInsightNarrative()" title="Regenerate">↻</button>
+          </div>
+          <div id="insight-narrative" class="insight-body"></div>
+        </div>
+        <div class="insight-card insight-card-side">
+          <div class="insight-card-header">
+            <span class="insight-card-title">🎯 Your portfolio · themes</span>
+          </div>
+          <div id="insight-portfolio" class="insight-body"></div>
+        </div>
+      </div>
+
+      <!-- v5 · Ambient: streaks + anomaly-of-anomaly chips -->
+      <div id="insight-ambient" class="insight-ambient"></div>
+
       <!-- Status strip: live/seed badges + timestamp + prime-sweep status -->
       <div id="social-status" class="social-status"></div>
+
+      <!-- v5 · Heatmap (terms × momentum bands) collapsible above trends -->
+      <details class="insight-heatmap-wrap">
+        <summary>🔥 Heatmap — terms × momentum</summary>
+        <div id="insight-heatmap" class="insight-heatmap"></div>
+      </details>
 
       <!-- Cross-panel toolbar: search · trend-movers-only · watchlist-only · prime badge -->
       <div class="social-toolbar">
@@ -708,6 +734,7 @@
                       title="Show only ideas where the trend is hot but the stock hasn't moved yet">
                 🚀 Catch-up only
               </button>
+              <button class="ind-pill" onclick="exportIdeasCSV()" title="Download visible ideas as CSV">⬇ CSV</button>
             </div>
           </div>
           <div class="social-ideas-wrap">
@@ -873,6 +900,7 @@
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
 <script src="scripts/social_trends.js"></script>
+<script src="scripts/social_insights.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/app.js"></script>
 
