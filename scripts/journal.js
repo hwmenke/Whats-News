@@ -101,6 +101,20 @@ async function deleteJournalEntry(id) {
 }
 
 function initJournal() {
+    // Consume prefill from Jeff scanner "Log Trade" action
+    const pf = window._jeffJournalPrefill;
+    if (pf) {
+        window._jeffJournalPrefill = null;
+        const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+        set('jnl-symbol',      pf.symbol);
+        set('jnl-entry-price', pf.entry_price);
+        set('jnl-stop-loss',   pf.stop_loss);
+        const dirEl = document.getElementById('jnl-direction');
+        if (dirEl && pf.direction) dirEl.value = pf.direction;
+        loadJournal();
+        return;
+    }
+
     const sym = document.getElementById('jnl-symbol');
     if (sym && !sym.value && state.activeSymbol) sym.value = state.activeSymbol;
 
@@ -109,7 +123,6 @@ function initJournal() {
     if (stopEl && !stopEl.value && typeof _swGradeData !== 'undefined' && _swGradeData) {
         const d = _swGradeData;
         if (d.last_close && d.atr_14) {
-            // default stop suggestion: 1 ATR below last close
             stopEl.value = (d.last_close - d.atr_14).toFixed(2);
             stopEl.title = `Auto-suggested: 1× ATR below close (${d.atr_14.toFixed(2)} ATR)`;
         }

@@ -11,7 +11,10 @@ visits are instant and only invalidate when underlying OHLCV changes.
 """
 
 import logging
+import numpy as np
+import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timezone
 
 import database as db
 import indicator_cache as cache
@@ -37,6 +40,71 @@ def _get_spy_rets():
         if df.empty or len(df) < 30:
             return None
         return _rets(df["close"])
+    except Exception:
+        return None
+
+
+# ── enrichment helpers ────────────────────────────────────────────────────────────
+
+def _days_to_earnings(s):
+    """Days until next earnings (0–30); None if past or >30 days away."""
+    if not s:
+        return None
+    try:
+        raw = str(s)[:10]
+        d = date.fromisoformat(raw)
+        delta = (d - date.today()).days
+        return delta if 0 <= delta <= 30 else None
+    except Exception:
+        return None
+
+
+def _days_stale(s):
+    """Days since last_fetch; 999 if never fetched."""
+    if not s:
+        return 999
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max(0, (datetime.now(timezone.utc) - dt).days)
+    except Exception:
+        return 999
+
+
+def _atr_pct(df, window=14):
+    """Percentile rank of current ATR-14 vs its own 252-bar history (0–100)."""
+    h, l, c = df["high"], df["low"], df["close"]
+    pc = c.shift(1)
+    tr = np.stack([
+        (h - l).values,
+        (h - pc).abs().values,
+        (l - pc).abs().values,
+    ], axis=1).max(axis=1)
+    atr_s = pd.Series(tr, index=df.index).ewm(alpha=1 / window, adjust=False).mean().dropna()
+    if len(atr_s) < 30:
+        return None
+    cur = float(atr_s.iloc[-1])
+    hist = atr_s.tail(252)
+    return round(float((hist < cur).mean() * 100))
+
+
+def _weekly_kama_alignment(sym):
+    """KAMA alignment on the weekly chart (0–3), same scoring logic as daily."""
+    try:
+        wdf = db.get_ohlcv_df(sym, "weekly", limit=120)
+        if wdf.empty or len(wdf) < 50:
+            return None
+        cl = wdf["close"]
+        last = float(cl.iloc[-1])
+        cnt = 0
+        for p in (10, 20, 50):
+            k = swing_core.kama(cl, p)
+            if k is not None and len(k) > 0:
+                kv = float(k.iloc[-1])
+                if not np.isnan(kv) and last > kv:
+                    cnt += 1
+        return cnt
     except Exception:
         return None
 
@@ -115,12 +183,16 @@ def _checks(sd):
 
 # ── single-symbol row ────────────────────────────────────────────────────────────
 
-def _row_for(sym, spy_rets, tier_map):
+def _row_for(sym, spy_rets, sym_info_map):
+    info = sym_info_map.get(sym, {})
     try:
         df = db.get_ohlcv_df(sym, "daily", limit=260)
         if df.empty or len(df) < 20:
             return {"symbol": sym, "error": "No data — fetch first",
-                    "tier": tier_map.get(sym, "watchlist")}
+                    "tier": info.get("watchlist_tier") or "watchlist",
+                    "sector": info.get("sector") or "",
+                    "days_stale": _days_stale(info.get("last_fetch")),
+                    "days_to_earnings": _days_to_earnings(info.get("next_earnings"))}
 
         sd    = swing_core.swing_data_for(sym, df=df)
         grade = swing_core.grade_from_swing(sd)
@@ -133,32 +205,40 @@ def _row_for(sym, spy_rets, tier_map):
             rs_vs_spy = round(sr["r20"] - spy_rets["r20"], 2)
 
         return {
-            "symbol":        sym,
-            "tier":          tier_map.get(sym, "watchlist"),
-            "grade":         grade["grade"],
-            "score":         grade["score"],
-            "readiness":     readiness,
-            "checks":        checks,
-            "last_close":    sd["last_close"],
-            "rvol":          sd["rvol"],
-            "atr_14":        sd["atr_14"],
-            "atr_mult_50ma": sd["atr_mult_50ma"],
-            "above_50ma":    sd["above_50ma"],
-            "lod_dist_atr":  sd["lod_dist_atr"],
-            "vcp_score":     sd["vcp_score"],
-            "range_pos_52w": sd["range_pos_52w"],
-            "rsi_14":        sd["rsi_14"],
-            "kama_alignment":sd["kama_alignment"],
-            "ret_20d":       sd["ret_20d"],
-            "ret_60d":       sr["r60"],
-            "rs_vs_spy":     rs_vs_spy,
-            "rs_rank":       None,            # filled in after the full pass
+            "symbol":           sym,
+            "tier":             info.get("watchlist_tier") or "watchlist",
+            "sector":           info.get("sector") or "",
+            "days_stale":       _days_stale(info.get("last_fetch")),
+            "days_to_earnings": _days_to_earnings(info.get("next_earnings")),
+            "grade":            grade["grade"],
+            "score":            grade["score"],
+            "readiness":        readiness,
+            "checks":           checks,
+            "last_close":       sd["last_close"],
+            "rvol":             sd["rvol"],
+            "atr_14":           sd["atr_14"],
+            "atr_pct":          _atr_pct(df),
+            "atr_mult_50ma":    sd["atr_mult_50ma"],
+            "above_50ma":       sd["above_50ma"],
+            "lod_dist_atr":     sd["lod_dist_atr"],
+            "vcp_score":        sd["vcp_score"],
+            "range_pos_52w":    sd["range_pos_52w"],
+            "rsi_14":           sd["rsi_14"],
+            "kama_alignment":   sd["kama_alignment"],
+            "w_kama_alignment": _weekly_kama_alignment(sym),
+            "ret_20d":          sd["ret_20d"],
+            "ret_60d":          sr["r60"],
+            "rs_vs_spy":        rs_vs_spy,
+            "rs_rank":          None,            # filled in after the full pass
             **base,
         }
     except Exception as e:
         logger.debug("jeff-scan row failed for %s: %s", sym, e)
         return {"symbol": sym, "error": str(e),
-                "tier": tier_map.get(sym, "watchlist")}
+                "tier": info.get("watchlist_tier") or "watchlist",
+                "sector": info.get("sector") or "",
+                "days_stale": _days_stale(info.get("last_fetch")),
+                "days_to_earnings": _days_to_earnings(info.get("next_earnings"))}
 
 
 # ── public entry ─────────────────────────────────────────────────────────────────
@@ -175,17 +255,17 @@ def compute_jeff_scan(symbols: list) -> list:
 def _compute_jeff_inner(symbols: list) -> list:
     spy_rets = _get_spy_rets()
 
-    # symbol → tier map (one query)
-    tier_map = {}
+    # Full symbol metadata (tier, sector, earnings, staleness) — one DB query
+    sym_info_map: dict = {}
     try:
         for row in db.list_symbols():
-            tier_map[row["symbol"]] = row.get("watchlist_tier") or "watchlist"
+            sym_info_map[row["symbol"]] = row
     except Exception:
         pass
 
     # Parallel compute (SQLite WAL allows concurrent reads)
     with ThreadPoolExecutor(max_workers=4) as ex:
-        rows = list(ex.map(lambda s: _row_for(s, spy_rets, tier_map), symbols))
+        rows = list(ex.map(lambda s: _row_for(s, spy_rets, sym_info_map), symbols))
 
     # Intra-list RS rank by 60-day return (percentile, 1=weakest … 100=strongest)
     ranked = [r for r in rows if not r.get("error") and r.get("ret_60d") is not None]

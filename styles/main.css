@@ -4137,3 +4137,94 @@ body.focus-mode .symbol-header { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .jf-trig-at { animation: none; }
 }
+
+/* ── Earnings warning badge ─────────────────────────────────────────────────── */
+.jf-earn {
+  display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 5px;
+  border-radius: 4px; white-space: nowrap; vertical-align: middle;
+}
+.jf-earn-hot  { background: rgba(239,68,68,0.20); color: #f87171; border: 1px solid rgba(239,68,68,0.35); }
+.jf-earn-warn { background: rgba(250,190,0,0.15); color: #f5c400;  border: 1px solid rgba(250,190,0,0.30); }
+.jf-row-earn td { border-left: 2px solid rgba(239,68,68,0.35); }
+
+/* ── Staleness badge ────────────────────────────────────────────────────────── */
+.jf-stale {
+  display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 4px;
+  border-radius: 4px; white-space: nowrap; vertical-align: middle; margin-left: 3px;
+}
+.jf-stale-warn { background: rgba(250,190,0,0.12); color: #fbbf24; }
+.jf-stale-old  { background: rgba(239,68,68,0.12); color: #f87171; }
+
+/* ── Symbol sub-badges row ──────────────────────────────────────────────────── */
+.jf-sym-badges { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 2px; }
+
+/* ── Sector chip ────────────────────────────────────────────────────────────── */
+.jf-sector {
+  display: block; font-size: 9px; color: var(--text-muted); letter-spacing: 0.03em;
+  text-transform: uppercase; margin-top: 1px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 100px;
+}
+
+/* ── ATR percentile sub-label ────────────────────────────────────────────────── */
+.jf-atr-pct {
+  font-size: 9px; color: var(--text-muted); margin-top: 2px; white-space: nowrap;
+}
+
+/* ── Weekly KAMA sub-label ───────────────────────────────────────────────────── */
+.jf-wkama {
+  font-size: 9px; color: var(--text-muted); margin-top: 2px; white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+/* ── Pipeline Board ─────────────────────────────────────────────────────────── */
+.jf-pipeline-wrap { overflow-x: auto; }
+.jf-pipeline-board {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 12px;
+  min-width: 800px;
+}
+
+.jf-pipeline-col {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px; min-height: 200px;
+}
+
+.jf-pipeline-col-header {
+  font-size: 12px; font-weight: 700; color: var(--text-secondary);
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.jf-pipeline-count {
+  font-size: 11px; background: var(--bg-base); color: var(--text-muted);
+  border-radius: 10px; padding: 1px 7px; font-weight: 600;
+}
+
+.jf-pcard {
+  background: var(--bg-base); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.jf-pcard:hover { border-color: var(--accent); background: var(--bg-hover); }
+.jf-pcard-a { border-left: 3px solid var(--green); }
+.jf-pcard-b { border-left: 3px solid #6b6bf5; }
+.jf-pcard-c { border-left: 3px solid var(--border); }
+.jf-pcard-err { opacity: 0.6; }
+.jf-pcard-empty { color: var(--text-muted); font-size: 12px; text-align: center; padding: 20px 0; }
+
+.jf-pcard-top {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.jf-pcard-sym { font-size: 13px; font-weight: 700; flex: 1; }
+.jf-pcard-mid { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.jf-pcard-dist { font-size: 10px; color: var(--text-muted); }
+.jf-pcard-bot {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.jf-pcard-price { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); }
+.jf-pcard-acts  { display: flex; gap: 4px; margin-top: 2px; }
+.jf-act-mv { font-size: 9px; padding: 0 4px; }
+.jf-pcard-err-msg { font-size: 10px; color: var(--red); }
