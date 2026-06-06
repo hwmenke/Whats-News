@@ -277,6 +277,140 @@ function setSignalExample(idx) {
     if (inp) { inp.value = SIGNAL_EXAMPLES[idx % SIGNAL_EXAMPLES.length]; runSignalDSL(); }
 }
 
+// ── ζ.1 · Co-movement + ζ.4 · Rolled-over panels ──────────────────────
+async function loadCoMovement() {
+    const el = document.getElementById('insight-comov');
+    if (!el) return;
+    try {
+        const d = await apiFetch(`${API}/insights/co-movement`);
+        const pairs = (d.pairs || []).slice(0, 5);
+        const anti  = (d.anti_pairs || []).slice(0, 3);
+        if (!pairs.length && !anti.length) {
+            el.innerHTML = `<div class="ins-muted">No strong pairwise correlations.</div>`;
+            return;
+        }
+        el.innerHTML =
+            (pairs.length ? `<div class="ins-block-label">Move together</div>` +
+                pairs.map(p => `<div class="ins-rot-row rot-up"><span class="rot-arrow">⇆</span>
+                  <span class="rot-theme">${escapeHtml(p.a)} ↔ ${escapeHtml(p.b)}</span>
+                  <span class="rot-delta">${p.r.toFixed(2)}</span></div>`).join('') : '') +
+            (anti.length  ? `<div class="ins-block-label" style="margin-top:6px;">Move apart</div>` +
+                anti.map(p => `<div class="ins-rot-row rot-down"><span class="rot-arrow">⇋</span>
+                  <span class="rot-theme">${escapeHtml(p.a)} ⇋ ${escapeHtml(p.b)}</span>
+                  <span class="rot-delta">${p.r.toFixed(2)}</span></div>`).join('') : '');
+    } catch (e) { el.innerHTML = ''; }
+}
+
+async function loadRolledOver() {
+    const el = document.getElementById('insight-rollover');
+    if (!el) return;
+    try {
+        const d = await apiFetch(`${API}/insights/rolled-over`);
+        const rows = (d.rolled_over || []).slice(0, 6);
+        if (!rows.length) {
+            el.innerHTML = `<div class="ins-muted">Nothing rolling over right now.</div>`;
+            return;
+        }
+        el.innerHTML = rows.map(r =>
+            `<div class="ins-rot-row ${r.just_flipped ? 'rot-down' : 'rot-flat'}">
+               <span class="rot-arrow">${r.just_flipped ? '↘' : '✓'}</span>
+               <span class="rot-theme">${escapeHtml(r.term)}</span>
+               <span class="rot-delta">mom ${r.momentum}</span>
+             </div>`).join('');
+    } catch (e) { el.innerHTML = ''; }
+}
+
+// ── η · Compare two themes modal ──────────────────────────────────────
+async function compareThemes() {
+    const a = prompt("Theme A name (e.g. 'Crypto')");
+    if (!a) return;
+    const b = prompt("Theme B name (e.g. 'Artificial Intelligence')");
+    if (!b) return;
+    const m = ensureSocialModal();
+    m.overlay.style.display = 'flex';
+    m.title.textContent = `Compare · ${a}  vs  ${b}`;
+    m.body.innerHTML = `<div class="social-modal-loading">Loading cohorts…</div>`;
+    try {
+        const d = await apiFetch(`${API}/insights/theme-compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
+        if (d.error) { m.body.innerHTML = `<div class="dd-err">${escapeHtml(d.error)}</div>`; return; }
+        const side = (c) => `<div class="ins-block">
+          <div class="ins-block-label">${escapeHtml(c.theme)}</div>
+          <div>Coverage <b>${c.coverage}</b> · avg 5d <b>${c.avg_ret_5d ?? '—'}%</b> · avg 20d <b>${c.avg_ret_20d ?? '—'}%</b></div>
+          <ul class="cmp-list">${(c.members || []).slice(0,8).map(s =>
+              `<li><span class="dd-sym" onclick="socialViewTicker('${s.ticker}')">${s.ticker}</span> · ${s.purity_label}
+                 · 20d ${s.ret_20d == null ? '—' : (s.ret_20d>=0?'+':'')+s.ret_20d+'%'}</li>`).join('')}</ul>
+        </div>`;
+        m.body.innerHTML = `<div class="cmp-grid">${side(d.a)}${side(d.b)}</div>`;
+    } catch (e) {
+        m.body.innerHTML = `<div class="dd-err">${escapeHtml(e.message)}</div>`;
+    }
+}
+
+// ── η · Keyboard shortcuts ────────────────────────────────────────────
+function _installSocialShortcuts() {
+    if (window._socialShortcuts) return;
+    window._socialShortcuts = true;
+    let pending = null, timer = null;
+    document.addEventListener('keydown', e => {
+        // skip while typing in any input
+        const tag = (e.target && e.target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        // 'g s' chord → social tab
+        if (pending === 'g' && e.key === 's') {
+            switchTab('social'); pending = null; return;
+        }
+        if (e.key === 'g') {
+            pending = 'g';
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => pending = null, 800);
+            return;
+        }
+        if (e.key === '/') {
+            const inp = document.getElementById('social-search');
+            if (inp) { inp.focus(); e.preventDefault(); }
+            return;
+        }
+        if (e.key === 'r' && (state.activeTab === 'social')) {
+            loadSocialTrends(true);
+            return;
+        }
+        if (e.key === '?') {
+            alert("Keyboard shortcuts:\n  g s   → Social Trends tab\n  /     → focus search\n  r     → re-scan trends (force)\n  Esc   → close modal");
+        }
+    });
+}
+
+// ── η · Settings modal (lightweight) ──────────────────────────────────
+function openSettings() {
+    const m = ensureSocialModal();
+    m.overlay.style.display = 'flex';
+    m.title.textContent = 'Settings';
+    const cur = JSON.parse(localStorage.getItem('findash.social') || '{}');
+    m.body.innerHTML = `
+      <div class="ins-block">
+        <div class="ins-block-label">Default lookback</div>
+        <select id="set-days" class="sc-input" style="width:90px;">
+          ${[7,14,30,90].map(d => `<option value="${d}" ${d===socialState.days?'selected':''}>${d}d</option>`).join('')}
+        </select>
+      </div>
+      <div class="ins-block">
+        <div class="ins-block-label">Default sort</div>
+        <select id="set-sort" class="sc-input" style="width:140px;">
+          ${['score','catch_up','purity','ret_20d','trend_momentum']
+              .map(k => `<option value="${k}" ${k===socialState.sortKey?'selected':''}>${k}</option>`).join('')}
+        </select>
+      </div>
+      <div class="ins-block">
+        <div class="ins-block-label">Persisted state</div>
+        <pre class="ins-pre">${escapeHtml(JSON.stringify(cur, null, 2))}</pre>
+        <button class="ind-pill" onclick="localStorage.removeItem('findash.social'); alert('Cleared. Reload to take effect.');">Clear persisted state</button>
+      </div>
+      <div class="ins-block">
+        <button class="ind-pill" onclick="document.getElementById('set-days') && setSocialDays(+document.getElementById('set-days').value); document.getElementById('set-sort') && sortSocialIdeas(document.getElementById('set-sort').value); closeSocialModal();">Apply</button>
+      </div>`;
+}
+
 // ── ρ · CSV export of the visible idea rows ───────────────────────────
 function exportIdeasCSV() {
     if (!socialState.data) return;
@@ -314,5 +448,8 @@ renderSocialTrends = function (d) {
         loadAmbientBar();
         loadHeatmap();
         loadRotationMap();
+        loadCoMovement();
+        loadRolledOver();
     }
+    _installSocialShortcuts();
 };

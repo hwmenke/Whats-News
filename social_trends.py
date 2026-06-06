@@ -717,6 +717,40 @@ def _compute_trends(n: int, geo: str, wanted: set):
     except Exception:
         yest_terms = set()
 
+    # Phase α.1 · day-1 backfill — if the snapshot table is empty, synthesise
+    # ~7 plausible historical days from each term's current spark so anomaly
+    # badges and rotation work immediately. Tagged with phase='backfill'.
+    backfilled = False
+    try:
+        all_count = db.get_connection()
+        any_row = all_count.execute("SELECT 1 FROM social_snapshots LIMIT 1").fetchone()
+        all_count.close()
+        if not any_row:
+            backfilled = True
+            today_dt = datetime.now(timezone.utc).date()
+            for t in trends[:50]:
+                spark = t.get("spark") or []
+                if len(spark) < 8:
+                    continue
+                step = max(1, len(spark) // 8)
+                for d_back in range(1, 8):           # d-1 .. d-7
+                    idx = max(0, len(spark) - 1 - d_back * step)
+                    mom_then = int(round(spark[idx] * 0.9))   # softer than today
+                    dt_iso = (today_dt - timedelta(days=d_back)).isoformat()
+                    try:
+                        db.upsert_snapshot(dt_iso, t["term"], mom_then,
+                                           0.0, "flat", mom_then, "backfill",
+                                           t["sources"])
+                    except Exception:
+                        pass
+            # Refresh yest_terms after backfill so today's new_today flag is accurate.
+            try:
+                yest_terms = db.get_snapshot_terms(yest_iso)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     for t in trends[:50]:                       # only snapshot the top movers
         try:
             db.upsert_snapshot(today_iso, t["term"], t["momentum"],
@@ -740,7 +774,7 @@ def _compute_trends(n: int, geo: str, wanted: set):
         except Exception:
             pass
 
-    return trends, source_meta
+    return trends, source_meta, backfilled
 
 
 def _cached_trends(n: int, geo: str, wanted: set, force: bool = False):
@@ -748,10 +782,11 @@ def _cached_trends(n: int, geo: str, wanted: set, force: bool = False):
     key = (n, geo, tuple(sorted(wanted)))
     hit = _trend_cache.get(key)
     if hit and not force and (time.time() - hit["at"] < _CACHE_TTL_SEC):
-        return hit["trends"], hit["sources"], True
-    trends, source_meta = _compute_trends(n, geo, wanted)
-    _trend_cache[key] = {"at": time.time(), "trends": trends, "sources": source_meta}
-    return trends, source_meta, False
+        return hit["trends"], hit["sources"], True, hit.get("backfilled", False)
+    trends, source_meta, backfilled = _compute_trends(n, geo, wanted)
+    _trend_cache[key] = {"at": time.time(), "trends": trends, "sources": source_meta,
+                          "backfilled": backfilled}
+    return trends, source_meta, False, backfilled
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
@@ -765,7 +800,7 @@ def get_social_trends(lookback_days: int = 30, geo: str = "US",
     n = max(7, min(int(lookback_days), 90))
     wanted = set(sources) if sources else {s["id"] for s in SOURCES}
 
-    trends, source_meta, cached = _cached_trends(n, geo, wanted, force=force)
+    trends, source_meta, cached, backfilled = _cached_trends(n, geo, wanted, force=force)
     ideas = _match_stocks(trends)
 
     return {
@@ -775,6 +810,7 @@ def get_social_trends(lookback_days: int = 30, geo: str = "US",
         "sources":       source_meta,
         "any_live":      any(s["live"] for s in source_meta),
         "cached":        cached,
+        "backfilled":    backfilled,
         "trends":        trends,
         "ideas":         ideas,
     }

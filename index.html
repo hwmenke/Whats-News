@@ -717,6 +717,22 @@
         </div>
       </div>
 
+      <!-- v5.2 · Co-movement + Rolled-over panels -->
+      <div class="insight-strip">
+        <div class="insight-card">
+          <div class="insight-card-header">
+            <span class="insight-card-title">⇆ Co-movement · top correlated terms</span>
+          </div>
+          <div id="insight-comov" class="insight-body"></div>
+        </div>
+        <div class="insight-card insight-card-side">
+          <div class="insight-card-header">
+            <span class="insight-card-title">↘ Rolled over · just peaked &amp; fading</span>
+          </div>
+          <div id="insight-rollover" class="insight-body"></div>
+        </div>
+      </div>
+
       <!-- Status strip: live/seed badges + timestamp + prime-sweep status -->
       <div id="social-status" class="social-status"></div>
 
@@ -735,6 +751,8 @@
                 title="Trends panel: show only new today / accelerating terms">🆕 Movers only</button>
         <button id="btn-watchlist-only" class="ind-pill social-wl-btn" onclick="toggleWatchlistOnly()"
                 title="Ideas table: show only tickers in your watchlist">★ Watchlist only</button>
+        <button class="ind-pill" onclick="compareThemes()" title="Compare two themes side-by-side">⇔ Compare</button>
+        <button class="ind-pill" onclick="openSettings()" title="Settings &amp; persisted state">⚙</button>
         <span id="social-prime-badge" class="social-prime-badge" style="display:none;"></span>
       </div>
 

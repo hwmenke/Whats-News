@@ -8,7 +8,28 @@
  *                       ranked by purity × trend momentum.
  */
 
-const socialState = {
+// Persist a small subset of view state across reloads (Phase α.2).
+const SOCIAL_STATE_KEYS = ['days','sources','sortKey','sortDir',
+                            'catchUpOnly','watchlistOnly','moversOnly'];
+function _loadSocialState() {
+    try {
+        const raw = localStorage.getItem('findash.social');
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        const out = {};
+        for (const k of SOCIAL_STATE_KEYS) if (k in parsed) out[k] = parsed[k];
+        return out;
+    } catch { return {}; }
+}
+function _saveSocialState() {
+    try {
+        const out = {};
+        for (const k of SOCIAL_STATE_KEYS) out[k] = socialState[k];
+        localStorage.setItem('findash.social', JSON.stringify(out));
+    } catch { /* private mode etc. */ }
+}
+
+const socialState = Object.assign({
     data:           null,
     days:           30,
     sources:        { google: true, tiktok: true, twitter: true, reddit: true, instagram: true },
@@ -22,7 +43,7 @@ const socialState = {
     primed:         false,           // have we already kicked the price sweep?
     primeTimer:     null,            // setInterval id for prime-status polling
     bannerTimer:    null,            // setInterval id for banner auto-refresh
-};
+}, (typeof localStorage !== 'undefined' ? _loadSocialState() : {}));
 
 const SOURCE_LABELS = {
     google: 'Google', tiktok: 'TikTok', twitter: 'Twitter/X',
@@ -51,6 +72,7 @@ function setSocialDays(days) {
     socialState.days = days;
     document.querySelectorAll('.social-days-btn').forEach(b =>
         b.classList.toggle('social-toggle-on', Number(b.dataset.days) === days));
+    _saveSocialState();
     loadSocialTrends();
 }
 
@@ -60,6 +82,7 @@ function toggleSocialSource(id) {
     if (!Object.values(socialState.sources).some(Boolean)) socialState.sources[id] = true;
     document.querySelectorAll('.social-src-btn').forEach(b =>
         b.classList.toggle('social-toggle-on', socialState.sources[b.dataset.src]));
+    _saveSocialState();
     loadSocialTrends();
 }
 
@@ -141,6 +164,21 @@ function renderSocialTrends(d) {
     renderSocialStatus(d);
     renderTrendGrid(d.trends || []);
     renderIdeaTable(d.ideas || []);
+    // α.2 — reflect any persisted filter/sort state onto the pills on first paint.
+    _hydrateSocialPills();
+}
+
+function _hydrateSocialPills() {
+    document.querySelectorAll('.social-days-btn').forEach(b =>
+        b.classList.toggle('social-toggle-on', Number(b.dataset.days) === socialState.days));
+    document.querySelectorAll('.social-src-btn').forEach(b =>
+        b.classList.toggle('social-toggle-on', socialState.sources[b.dataset.src]));
+    const cu = document.getElementById('btn-catchup-only');
+    if (cu) cu.classList.toggle('social-toggle-on', socialState.catchUpOnly);
+    const wl = document.getElementById('btn-watchlist-only');
+    if (wl) wl.classList.toggle('social-toggle-on', socialState.watchlistOnly);
+    const mo = document.getElementById('btn-movers-only');
+    if (mo) mo.classList.toggle('social-toggle-on', socialState.moversOnly);
 }
 
 function renderSocialStatus(d) {
@@ -154,9 +192,12 @@ function renderSocialStatus(d) {
     const when = d.generated_at ? new Date(d.generated_at).toLocaleTimeString() : '';
     const note = d.any_live ? '' :
         `<span class="social-seed-note">Showing curated sample data — add API keys / run locally for live feeds.</span>`;
+    const backfill = d.backfilled
+        ? `<span class="social-seed-note" title="No prior snapshots — synthesised ~7 days of history so anomaly badges work from day 1.">backfilled history</span>`
+        : '';
     el.innerHTML =
         `<div class="social-badges">${badges}</div>` +
-        `<div class="social-status-right">${note}<span class="scanner-ts">${d.lookback_days}d · updated ${when}</span></div>`;
+        `<div class="social-status-right">${note}${backfill}<span class="scanner-ts">${d.lookback_days}d · updated ${when}</span></div>`;
 }
 
 function renderTrendGrid(trends) {
@@ -344,6 +385,7 @@ function buildIdeaRow(it, rank) {
 function sortSocialIdeas(key) {
     if (socialState.sortKey === key) socialState.sortDir *= -1;
     else { socialState.sortKey = key; socialState.sortDir = -1; }
+    _saveSocialState();
     if (socialState.data) renderIdeaTable(socialState.data.ideas || []);
 }
 
@@ -351,6 +393,7 @@ function toggleCatchUpOnly() {
     socialState.catchUpOnly = !socialState.catchUpOnly;
     const btn = document.getElementById('btn-catchup-only');
     if (btn) btn.classList.toggle('social-toggle-on', socialState.catchUpOnly);
+    _saveSocialState();
     if (socialState.data) renderIdeaTable(socialState.data.ideas || []);
 }
 
@@ -530,6 +573,7 @@ function toggleMoversOnly() {
     socialState.moversOnly = !socialState.moversOnly;
     const btn = document.getElementById('btn-movers-only');
     if (btn) btn.classList.toggle('social-toggle-on', socialState.moversOnly);
+    _saveSocialState();
     if (socialState.data) renderTrendGrid(socialState.data.trends || []);
 }
 
@@ -537,6 +581,7 @@ function toggleWatchlistOnly() {
     socialState.watchlistOnly = !socialState.watchlistOnly;
     const btn = document.getElementById('btn-watchlist-only');
     if (btn) btn.classList.toggle('social-toggle-on', socialState.watchlistOnly);
+    _saveSocialState();
     if (socialState.data) renderIdeaTable(socialState.data.ideas || []);
 }
 

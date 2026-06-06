@@ -700,6 +700,65 @@ def insights_sentiment_route():
     return jsonify(social_trends.sentiment_score(text))
 
 
+@app.route("/api/insights/co-movement", methods=["GET"])
+def insights_comovement_route():
+    """Phase ζ.1 — top-correlated + top-anti-correlated trend pairs."""
+    return jsonify(insights.co_movement(_payload_for_llm()))
+
+
+@app.route("/api/insights/rolled-over", methods=["GET"])
+def insights_rolled_over_route():
+    """Phase ζ.4 — terms whose phase flipped to fading (contrarian short)."""
+    return jsonify({"rolled_over": insights.rolled_over(_payload_for_llm())})
+
+
+@app.route("/api/insights/relative-strength/<string:ticker>", methods=["GET"])
+def insights_rs_route(ticker):
+    bm = request.args.get("vs", "SPY").upper()
+    return jsonify({"ticker": ticker.upper(), **insights.relative_strength(ticker, bm)})
+
+
+@app.route("/api/insights/liquidity/<string:ticker>", methods=["GET"])
+def insights_liquidity_route(ticker):
+    try:
+        thr = float(request.args.get("threshold", 10_000_000))
+    except (TypeError, ValueError):
+        thr = 10_000_000
+    return jsonify({"ticker": ticker.upper(), **insights.liquidity_guard(ticker, thr)})
+
+
+@app.route("/api/insights/edge-grade/<string:ticker>", methods=["GET"])
+def insights_edge_grade_route(ticker):
+    payload = _payload_for_llm()
+    idea = next((i for i in payload.get("ideas") or [] if i["ticker"] == ticker.upper()), None)
+    if not idea:
+        return jsonify({"error": f"no idea for {ticker}"}), 404
+    rs  = insights.relative_strength(ticker, request.args.get("vs", "SPY").upper())
+    liq = insights.liquidity_guard(ticker)
+    return jsonify({"ticker": ticker.upper(),
+                    **insights.edge_grade(idea, rs=rs, liq=liq),
+                    "rs": rs, "liquidity": liq})
+
+
+@app.route("/api/insights/digest", methods=["GET"])
+def insights_digest_route():
+    """Phase ε.1 — JSON + HTML morning digest."""
+    fmt = request.args.get("format", "json").lower()
+    d = insights.daily_digest()
+    if fmt == "html":
+        return Response(d["html"], mimetype="text/html")
+    return jsonify(d["json"])
+
+
+@app.route("/api/insights/theme-compare", methods=["GET"])
+def insights_theme_compare_route():
+    a = request.args.get("a", "").strip()
+    b = request.args.get("b", "").strip()
+    if not a or not b:
+        return jsonify({"error": "both a and b required"}), 400
+    return jsonify(insights.theme_compare(a, b))
+
+
 @app.route("/api/insights/notebook/<string:ticker>", methods=["GET"])
 def insights_notebook_route(ticker):
     payload = _payload_for_llm()

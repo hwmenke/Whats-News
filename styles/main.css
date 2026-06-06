@@ -2759,3 +2759,28 @@ html, body {
   align-items: center; gap: 6px;
   padding: 3px 0; font-size: 11px;
 }
+
+/* ═══════════════════ SOCIAL v5.2 ═══════════════════ */
+.cmp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 720px) {
+  .cmp-grid { grid-template-columns: 1fr; }
+}
+.cmp-list { padding-left: 18px; margin-top: 6px; font-size: 11px; }
+.cmp-list li { padding: 2px 0; color: var(--text-muted); }
+
+.ins-pre {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  max-height: 160px;
+  overflow: auto;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+}

@@ -380,6 +380,196 @@ def evaluate_signal(expr: str, payload: dict) -> dict:
     return {"expression": expr, "matches": matches[:50], "count": len(matches)}
 
 
+def co_movement(payload: dict, top_n: int = 12, min_pairs: int = 2):
+    """Phase ζ.1 — pairwise correlation of momentum series across top trends.
+
+    Returns the top-correlated and top-anti-correlated trend pairs so the user
+    can spot themes that move together (AI + quantum) or in opposition.
+    """
+    trends = [t for t in (payload.get("trends") or [])[:top_n]
+              if t.get("spark") and len(t["spark"]) >= 8]
+    if len(trends) < min_pairs:
+        return {"pairs": [], "anti_pairs": []}
+
+    def _corr(a: list[float], b: list[float]) -> float:
+        n = min(len(a), len(b))
+        if n < 4:
+            return 0.0
+        a, b = a[-n:], b[-n:]
+        ma, mb = sum(a)/n, sum(b)/n
+        num = sum((a[i]-ma)*(b[i]-mb) for i in range(n))
+        da  = math.sqrt(sum((a[i]-ma)**2 for i in range(n)))
+        dbb = math.sqrt(sum((b[i]-mb)**2 for i in range(n)))
+        if da == 0 or dbb == 0:
+            return 0.0
+        return num / (da * dbb)
+
+    pairs = []
+    for i in range(len(trends)):
+        for j in range(i+1, len(trends)):
+            r = _corr(trends[i]["spark"], trends[j]["spark"])
+            if abs(r) < 0.4:
+                continue
+            pairs.append({"a": trends[i]["term"], "b": trends[j]["term"],
+                          "r": round(r, 2),
+                          "theme_a": trends[i].get("category"),
+                          "theme_b": trends[j].get("category")})
+    pos  = sorted([p for p in pairs if p["r"] > 0], key=lambda p: -p["r"])[:8]
+    neg  = sorted([p for p in pairs if p["r"] < 0], key=lambda p:  p["r"])[:5]
+    return {"pairs": pos, "anti_pairs": neg}
+
+
+def rolled_over(payload: dict):
+    """Phase ζ.4 — terms whose phase just flipped from peaking → fading.
+
+    A contrarian / short-side signal — peaked-and-rolling vs the secular
+    'building' trends the rest of the radar surfaces.
+    """
+    today = datetime.now(timezone.utc).date()
+    yest_iso = (today - timedelta(days=1)).isoformat()
+    out = []
+    for t in payload.get("trends") or []:
+        if t.get("phase") != "fading":
+            continue
+        try:
+            prior = db.get_snapshot(yest_iso, t["term"])
+        except Exception:
+            prior = None
+        was_peaking = prior and prior.get("phase") in ("peaking", "building")
+        out.append({
+            "term":     t["term"],
+            "momentum": t["momentum"],
+            "category": t.get("category"),
+            "just_flipped": bool(was_peaking),
+            "delta_vs_yest": (t["momentum"] - prior["momentum"]) if prior and prior.get("momentum") is not None else None,
+        })
+    out.sort(key=lambda r: (not r["just_flipped"], r["momentum"]))
+    return out[:10]
+
+
+def relative_strength(ticker: str, sector_etf: str = "SPY"):
+    """Phase δ.1 — stock's 20d return minus the sector ETF's 20d return.
+
+    Positive RS = stock outperforming; negative = underperforming. Cheap and
+    sector-agnostic; the caller picks the relevant ETF if they care to.
+    """
+    s = _stock_move_pair(ticker)
+    if s["ret_20d"] is None:
+        return {"rs_20d": None, "vs": sector_etf, "note": f"no OHLCV for {ticker}"}
+    e = _stock_move_pair(sector_etf)
+    if e["ret_20d"] is None:
+        return {"rs_20d": None, "vs": sector_etf, "note": f"no OHLCV for {sector_etf}"}
+    return {"rs_20d": round(s["ret_20d"] - e["ret_20d"], 1),
+            "stock_20d": s["ret_20d"], "benchmark_20d": e["ret_20d"],
+            "vs": sector_etf}
+
+
+def _stock_move_pair(ticker: str):
+    """Shared helper — returns 20d return + most recent close, None when absent."""
+    try:
+        df = db.get_ohlcv_df(ticker, "daily", limit=30)
+    except Exception:
+        return {"ret_20d": None, "price": None}
+    if df is None or df.empty or len(df) < 21:
+        return {"ret_20d": None, "price": None}
+    closes = [float(c) for c in df["close"].tolist() if c and c > 0]
+    if len(closes) < 21:
+        return {"ret_20d": None, "price": None}
+    return {"ret_20d": round((closes[-1] / closes[-21] - 1.0) * 100.0, 1),
+            "price":   round(closes[-1], 2)}
+
+
+def liquidity_guard(ticker: str, threshold_dollar: float = 10_000_000):
+    """Phase δ.4 — flag thin names where social-driven volatility is real but
+    execution can't take size. Returns avg-daily-dollar-volume (20d) + flag.
+    """
+    try:
+        df = db.get_ohlcv_df(ticker, "daily", limit=25)
+    except Exception:
+        return {"adv_dollar": None, "thin": None, "note": "no data"}
+    if df is None or df.empty or len(df) < 5:
+        return {"adv_dollar": None, "thin": None, "note": "no data"}
+    closes = [float(c) for c in df["close"].tolist()]
+    vols   = [float(v) for v in df["volume"].tolist()]
+    n = min(len(closes), len(vols))
+    if n < 5:
+        return {"adv_dollar": None, "thin": None, "note": "no data"}
+    adv = sum(closes[-i-1] * vols[-i-1] for i in range(n)) / n
+    return {"adv_dollar": round(adv, 0),
+            "thin": adv < threshold_dollar,
+            "threshold": threshold_dollar}
+
+
+def edge_grade(idea: dict, rs: dict | None = None, liq: dict | None = None) -> dict:
+    """Phase δ.5 — composite 'edge' read combining catch-up, phase, rel-strength,
+    and liquidity. Returns a grade A/B/C/D + the reasoning bullet points."""
+    score = 0
+    reasons = []
+    if idea.get("status") == "catch_up":
+        score += 2; reasons.append("✓ trend hot, stock cold")
+    if idea.get("status") == "moved":
+        score -= 1; reasons.append("✗ stock already moved with trend")
+    if rs and rs.get("rs_20d") is not None:
+        if rs["rs_20d"] < -3:
+            score += 1; reasons.append(f"✓ underperforming SPY by {-rs['rs_20d']:.1f}pp (room)")
+        elif rs["rs_20d"] > 5:
+            score -= 1; reasons.append(f"✗ already +{rs['rs_20d']:.1f}pp vs SPY")
+    if liq and liq.get("thin"):
+        score -= 1; reasons.append("⚠ thin ADV — execution risk")
+    purity = idea.get("purity") or 0
+    if purity >= 0.85:
+        score += 1; reasons.append(f"✓ pure-play purity ({purity:.2f})")
+    elif purity < 0.5:
+        score -= 1; reasons.append(f"✗ low purity ({purity:.2f})")
+    grade = "A" if score >= 3 else "B" if score >= 1 else "C" if score >= 0 else "D"
+    return {"grade": grade, "score": score, "reasons": reasons}
+
+
+def daily_digest():
+    """Phase ε.1 — JSON + HTML morning digest for cron/email/webhook delivery."""
+    p = st.get_social_trends(30)
+    new = [t for t in (p.get("trends") or []) if t.get("new_today")][:5]
+    acc = [t for t in (p.get("trends") or []) if t.get("accelerating")][:5]
+    fad = [t for t in (p.get("trends") or []) if t.get("fading_fast")][:5]
+    cu  = [i for i in (p.get("ideas")  or []) if i.get("status") == "catch_up"][:8]
+
+    json_payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "new_today":      [{"term": t["term"], "momentum": t["momentum"]} for t in new],
+        "accelerating":   [{"term": t["term"], "momentum": t["momentum"]} for t in acc],
+        "fading_fast":    [{"term": t["term"], "momentum": t["momentum"]} for t in fad],
+        "catch_up_ideas": [{"ticker": i["ticker"], "name": i["name"],
+                            "theme":  i["theme"],  "catch_up": i["catch_up"]} for i in cu],
+    }
+
+    def _list(label, rows, fmt):
+        if not rows: return ""
+        return f"<h3>{label}</h3><ul>" + "".join(f"<li>{fmt(r)}</li>" for r in rows) + "</ul>"
+    html = (
+        "<div style='font:14px sans-serif;color:#e6edf3;background:#0d1117;padding:16px;'>"
+        "<h2>🔥 FinDash · daily digest</h2>"
+        + _list("🆕 New today",     new, lambda t: f"<b>{t['term']}</b> · momentum {t['momentum']}")
+        + _list("🔥 Accelerating",  acc, lambda t: f"<b>{t['term']}</b> · momentum {t['momentum']}")
+        + _list("💤 Fading fast",   fad, lambda t: f"<b>{t['term']}</b> · momentum {t['momentum']}")
+        + _list("🚀 Catch-up ideas", cu, lambda i: f"<b>{i['ticker']}</b> ({i['name']}) — {i['theme']} · catch-up {i['catch_up']}")
+        + "</div>"
+    )
+    return {"json": json_payload, "html": html}
+
+
+def theme_compare(theme_a: str, theme_b: str):
+    """Phase η — side-by-side cohort stats for two themes (drill-down compare)."""
+    a = get_theme_cohort_stats_or_none(theme_a)
+    b = get_theme_cohort_stats_or_none(theme_b)
+    if not a or not b:
+        return {"error": "one or both themes not found"}
+    return {"a": a, "b": b}
+
+
+def get_theme_cohort_stats_or_none(name):
+    return st.get_theme_cohort_stats(name)
+
+
 def export_idea_notebook(idea: dict) -> str:
     """Return a Jupyter-pastable Python snippet for the idea."""
     return (
