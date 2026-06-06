@@ -81,6 +81,13 @@ MODULES: List[Module] = [
            blueprint="mod_blueprints:social_bp",
            requires=["pytrends (optional)"],
            notes="Theme radar + pure-play stock mapper"),
+    Module("alerts",       "Alerts",          "🔔", "Market",
+           blueprint="mod_blueprints:alerts_bp",
+           notes="Browser notifications when a watchlist name triggers an A/A+ setup"),
+    Module("earnings",     "Earnings",        "📆", "Market",
+           blueprint="mod_blueprints:earnings_bp", default_enabled=False,
+           requires=["network (yfinance)"],
+           notes="Next earnings date lookup; off by default (network)"),
 ]
 
 

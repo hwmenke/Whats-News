@@ -172,6 +172,15 @@
       <button id="tab-regression" class="tab-btn" onclick="switchTab('regression')">
         <span class="tab-icon">📐</span> Regression
       </button>
+      <button id="tab-rrg" class="tab-btn" onclick="switchTab('rrg')">
+        <span class="tab-icon">🔄</span> RRG
+      </button>
+      <button id="tab-alerts" class="tab-btn" onclick="switchTab('alerts')">
+        <span class="tab-icon">🔔</span> Alerts
+      </button>
+      <button id="tab-earnings" class="tab-btn" onclick="switchTab('earnings')">
+        <span class="tab-icon">📆</span> Earnings
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -1082,6 +1091,27 @@
       <div id="reg-body"><p style="color:#888;padding:14px;">Select a symbol and click Run.</p></div>
     </div><!-- #regression-area -->
 
+    <!-- ═══════════════════ RRG ═══════════════════ -->
+    <div id="rrg-area" class="dm-container" style="display:none;">
+      <div class="jr-header"><h2>🔄 RRG Rotation</h2>
+        <button class="btn btn-primary" onclick="loadRrgTab()">↻ Refresh</button></div>
+      <div id="rrg-body"></div>
+    </div><!-- #rrg-area -->
+
+    <!-- ═══════════════════ ALERTS ═══════════════════ -->
+    <div id="alerts-area" class="dm-container" style="display:none;">
+      <div class="jr-header"><h2>🔔 Setup Alerts</h2>
+        <div id="alerts-controls" class="mom-filters"></div></div>
+      <div id="alerts-body"></div>
+    </div><!-- #alerts-area -->
+
+    <!-- ═══════════════════ EARNINGS ═══════════════════ -->
+    <div id="earnings-area" class="dm-container" style="display:none;">
+      <div class="jr-header"><h2>📆 Earnings</h2>
+        <button class="btn btn-primary" onclick="loadEarningsTab()">↻ Lookup active symbol</button></div>
+      <div id="earnings-body"></div>
+    </div><!-- #earnings-area -->
+
     <!-- ====== Ported analytics tabs (from jeff) ====== -->
     <div id="momentum-rank-area" class="mom-container" style="display:none;">
       <div id="mom-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Ranking symbols…</div>
@@ -1337,6 +1367,7 @@
 <script src="scripts/sector.js"></script>
 <script src="scripts/social_trends.js"></script>
 <script src="scripts/analytics_tabs.js"></script>
+<script src="scripts/market_extras.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

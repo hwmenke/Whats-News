@@ -467,3 +467,62 @@ def social_trends_route():
         return jsonify(social_trends.get_social_trends(days, geo, sources, force=force))
     except Exception as e:
         return _bad(str(e), 500)
+
+
+# ── Setup-trigger alerts (pure: reuses the momentum scanner) ────────────────────
+import scorecards
+
+alerts_bp = Blueprint("mod_alerts", __name__)
+
+
+@alerts_bp.route("/api/alerts/scan", methods=["GET"])
+def alerts_scan():
+    """Current watchlist names triggering an A/A+ setup right now."""
+    min_grade = request.args.get("grade", "A")
+    rank = {"A+": 3, "A": 2, "B": 1}
+    floor = rank.get(min_grade, 2)
+    out = []
+    for r in scorecards.run_momentum_scan():
+        if r.get("error") or not r.get("setups"):
+            continue
+        if rank.get(r["best_grade"], 0) >= floor:
+            best = r["setups"][0]
+            out.append({"symbol": r["symbol"], "setup": best["type"],
+                        "grade": best["grade"], "score": best["score"],
+                        "price": r["metrics"].get("price")})
+    return jsonify({"alerts": out, "count": len(out)})
+
+
+# ── Earnings date lookup (network, guarded) ─────────────────────────────────────
+earnings_bp = Blueprint("mod_earnings", __name__)
+
+
+@earnings_bp.route("/api/earnings/<string:symbol>", methods=["GET"])
+def earnings_route(symbol):
+    """Next earnings date via yfinance; degrades to null offline."""
+    sym = symbol.upper()
+    try:
+        import datetime as _dt
+        import yfinance as yf
+        tk = yf.Ticker(sym)
+        nxt = None
+        try:
+            cal = tk.get_earnings_dates(limit=8)
+            if cal is not None and len(cal):
+                future = [d for d in cal.index.to_pydatetime()
+                          if d.date() >= _dt.date.today()]
+                nxt = (min(future) if future else max(cal.index.to_pydatetime())).date().isoformat()
+        except Exception:
+            cal = getattr(tk, "calendar", None)
+            if cal is not None:
+                try:
+                    nxt = str(cal.loc["Earnings Date"][0])[:10]
+                except Exception:
+                    pass
+        days = None
+        if nxt:
+            days = (_dt.date.fromisoformat(nxt[:10]) - _dt.date.today()).days
+        return jsonify({"symbol": sym, "earnings_date": nxt, "days_until": days})
+    except Exception as e:
+        return jsonify({"symbol": sym, "earnings_date": None, "days_until": None,
+                        "note": f"unavailable ({str(e)[:60]})"})

@@ -671,6 +671,9 @@ async function switchTab(tabId) {
     document.getElementById('knn-forecast-area').style.display  = 'none';
     document.getElementById('factor-model-area').style.display  = 'none';
     document.getElementById('regression-area').style.display    = 'none';
+    document.getElementById('rrg-area').style.display           = 'none';
+    document.getElementById('alerts-area').style.display        = 'none';
+    document.getElementById('earnings-area').style.display      = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
     if (tabId === 'charts') {
@@ -752,6 +755,15 @@ async function switchTab(tabId) {
     } else if (tabId === 'regression') {
         document.getElementById('regression-area').style.display = 'block';
         if (state.activeSymbol && typeof loadRegressionTab === 'function') loadRegressionTab();
+    } else if (tabId === 'rrg') {
+        document.getElementById('rrg-area').style.display = 'block';
+        if (typeof loadRrgTab === 'function') loadRrgTab();
+    } else if (tabId === 'alerts') {
+        document.getElementById('alerts-area').style.display = 'block';
+        if (typeof loadAlertsTab === 'function') loadAlertsTab();
+    } else if (tabId === 'earnings') {
+        document.getElementById('earnings-area').style.display = 'block';
+        if (typeof loadEarningsTab === 'function') loadEarningsTab();
     }
 }
 
