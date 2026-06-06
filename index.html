@@ -7,6 +7,7 @@
   <meta name="description" content="Professional financial dashboard with Yahoo Finance data, SQLite storage, and technical analysis charts." />
   <link rel="stylesheet" href="styles/jeff.css" />
   <link rel="stylesheet" href="styles/main.css" />
+  <link rel="stylesheet" href="styles/social.css" />
   <!-- TradingView Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <!-- Chart.js for statistics -->
@@ -146,6 +147,18 @@
       </button>
       <button id="tab-modelbook" class="tab-btn" onclick="switchTab('modelbook')">
         <span class="tab-icon">📚</span> Model Book
+      </button>
+      <button id="tab-market-dash" class="tab-btn" onclick="switchTab('market-dash')">
+        <span class="tab-icon">📊</span> Market Dash
+      </button>
+      <button id="tab-swing" class="tab-btn" onclick="switchTab('swing')">
+        <span class="tab-icon">🎯</span> Swing
+      </button>
+      <button id="tab-sector" class="tab-btn" onclick="switchTab('sector')">
+        <span class="tab-icon">🗺️</span> Sector
+      </button>
+      <button id="tab-social" class="tab-btn" onclick="switchTab('social')">
+        <span class="tab-icon">📱</span> Social
       </button>
     </nav>
     <div class="tab-bar">
@@ -865,6 +878,170 @@
       <div id="modelbook-grid" class="mb-grid"></div>
     </div><!-- #modelbook-area -->
 
+    <!-- ====== ported tab: marketdash ====== -->
+    <div id="market-dash-area" class="feat-container" style="display:none;">
+      <div class="feat-header">
+        <h2 class="feat-title">Market Dashboard</h2>
+        <button class="btn btn-ghost" onclick="initMarketDashboard()">↻ Refresh</button>
+      </div>
+
+      <div class="dash-grid">
+        <!-- Breadth -->
+        <div class="dash-panel">
+          <div class="dash-panel-title">Watchlist Breadth</div>
+          <div id="dash-breadth-panel"></div>
+        </div>
+
+        <!-- Strength Table -->
+        <div class="dash-panel dash-panel-wide">
+          <div class="dash-panel-title">Symbol Strength Ranking</div>
+          <div id="dash-strength-table"></div>
+        </div>
+      </div>
+
+      <!-- Daily Process Checklists -->
+      <div class="process-checklists-row" style="margin-top:20px;">
+        <div class="dash-panel process-section-half">
+          <div class="dash-panel-title">Post-Market Checklist
+            <button class="btn btn-ghost btn-icon" style="float:right;font-size:11px;" onclick="_clearDash('post',10)">Clear</button>
+          </div>
+          <div id="dash-post-mkt-checklist"></div>
+        </div>
+        <div class="dash-panel process-section-half">
+          <div class="dash-panel-title">Pre-Market Checklist
+            <button class="btn btn-ghost btn-icon" style="float:right;font-size:11px;" onclick="_clearDash('pre',10)">Clear</button>
+          </div>
+          <div id="dash-pre-mkt-checklist"></div>
+        </div>
+      </div>
+    </div><!-- #market-dash-area -->
+
+    <!-- ====== ported tab: swing ====== -->
+    <div id="swing-area" class="feat-container" style="display:none;">
+      <div class="feat-header">
+        <h2 class="feat-title">Trading Process</h2>
+        <button class="btn btn-ghost" onclick="_loadPipeline()">↻ Refresh Pipeline</button>
+      </div>
+
+      <!-- Focus Pipeline -->
+      <div class="process-section">
+        <div class="process-section-title">Focus Pipeline</div>
+        <div class="process-section-note">Move symbols through stages as they mature: Watchlist → Stalk → Focus → Active</div>
+        <div id="process-pipeline"></div>
+      </div>
+
+      <!-- Pre-Entry + No-Trade side by side -->
+      <div class="process-checklists-row">
+        <div class="process-section process-section-half">
+          <div class="process-section-title">Pre-Entry Checklist</div>
+          <div id="process-entry-checklist"></div>
+        </div>
+        <div class="process-section process-section-half">
+          <div class="process-section-title">No-Trade Disqualifier</div>
+          <div id="process-notrade-checklist"></div>
+        </div>
+      </div>
+
+      <!-- Adaptive Trend Swing Widget (active symbol) -->
+      <div class="process-section">
+        <div class="process-section-title">Setup Grade · Active Symbol</div>
+        <div id="swing-widget-panel" class="sw-panel">
+          <div class="sw-loading"><span class="spinner"></span></div>
+        </div>
+      </div>
+    </div><!-- #swing-area -->
+
+    <!-- ====== ported tab: sector ====== -->
+    <div id="sector-area" class="feat-container" style="display:none;">
+      <div class="feat-header"><h2>🗺️ Sector Heatmap</h2>
+        <span class="feat-sub">Return heatmap grouped by sector. Click a sector to expand its symbols.</span></div>
+      <div class="feat-table-wrap"><table id="sector-table" class="feat-table heat-table"></table></div>
+    </div><!-- #sector-area -->
+
+    <!-- ====== ported tab: social ====== -->
+    <div id="social-area" class="social-container" style="display:none;">
+
+      <!-- Loading overlay -->
+      <div id="social-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span>
+        Scanning social trends…
+      </div>
+
+      <!-- Controls bar -->
+      <div class="social-controls">
+        <div class="social-controls-left">
+          <button id="btn-social-scan" class="btn btn-primary" onclick="loadSocialTrends(true)" title="Re-run trend providers (bypasses cache)">⟳ Scan Trends</button>
+          <span class="overlay-section-label">Window</span>
+          <button class="ind-pill social-days-btn" data-days="7"  onclick="setSocialDays(7)">7d</button>
+          <button class="ind-pill social-days-btn" data-days="14" onclick="setSocialDays(14)">14d</button>
+          <button class="ind-pill social-days-btn social-toggle-on" data-days="30" onclick="setSocialDays(30)">30d</button>
+          <button class="ind-pill social-days-btn" data-days="90" onclick="setSocialDays(90)">90d</button>
+        </div>
+        <div class="social-controls-right">
+          <span class="overlay-section-label">Sources</span>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="google"    onclick="toggleSocialSource('google')">Google</button>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="tiktok"    onclick="toggleSocialSource('tiktok')">TikTok</button>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="twitter"   onclick="toggleSocialSource('twitter')">Twitter/X</button>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="instagram" onclick="toggleSocialSource('instagram')">Instagram</button>
+        </div>
+      </div>
+
+      <!-- Status strip: live/seed badges + timestamp -->
+      <div id="social-status" class="social-status"></div>
+
+      <!-- Two-panel layout: trending words | pure-play ideas -->
+      <div class="social-panels">
+
+        <!-- ── Trending words ── -->
+        <div class="social-panel social-panel-trends">
+          <div class="panel-header">Trending Words · biggest movers</div>
+          <div id="social-trend-grid" class="social-trend-grid"></div>
+          <div id="social-trend-empty" class="scanner-empty" style="display:none;">
+            <div class="empty-icon">🔥</div>
+            <p>No trends — click <strong>⟳ Scan Trends</strong>.</p>
+          </div>
+        </div>
+
+        <!-- ── Pure-play ideas ── -->
+        <div class="social-panel social-panel-ideas">
+          <div class="panel-header social-ideas-header">
+            <span>Pure-Play Stock Ideas · ranked</span>
+            <div class="social-ideas-tools">
+              <span id="social-theme-filter" class="social-theme-filter" style="display:none;"></span>
+              <button id="btn-catchup-only" class="ind-pill social-catchup-btn"
+                      onclick="toggleCatchUpOnly()"
+                      title="Show only ideas where the trend is hot but the stock hasn't moved yet">
+                🚀 Catch-up only
+              </button>
+            </div>
+          </div>
+          <div class="social-ideas-wrap">
+            <table id="social-ideas-table" class="social-ideas-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Ticker</th>
+                  <th>Theme</th>
+                  <th class="si-th-sort" data-sort="purity"         onclick="sortSocialIdeas('purity')">Purity<span class="si-sort-ind"></span></th>
+                  <th class="si-th-sort" data-sort="score"          onclick="sortSocialIdeas('score')">Score<span class="si-sort-ind"></span></th>
+                  <th class="si-th-sort" data-sort="catch_up"       onclick="sortSocialIdeas('catch_up')" title="Trend hot − stock already moved. High = room to run.">Catch-up<span class="si-sort-ind"></span></th>
+                  <th class="si-th-sort" data-sort="ret_20d"        onclick="sortSocialIdeas('ret_20d')" title="Stock's 20-day price move (from stored data)">20d<span class="si-sort-ind"></span></th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="social-ideas-tbody"></tbody>
+            </table>
+          </div>
+          <div id="social-ideas-empty" class="scanner-empty" style="display:none;">
+            <div class="empty-icon">📈</div>
+            <p>No stock ideas matched the current filters.</p>
+          </div>
+        </div>
+
+      </div><!-- .social-panels -->
+
+    </div><!-- #social-area -->
+
     <!-- ====== Ported analytics tabs (from jeff) ====== -->
     <div id="momentum-rank-area" class="mom-container" style="display:none;">
       <div id="mom-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Ranking symbols…</div>
@@ -1114,6 +1291,11 @@
 <script src="scripts/news.js"></script>
 <script src="scripts/performance.js"></script>
 <script src="scripts/modelbook.js"></script>
+<script src="scripts/market_dashboard.js"></script>
+<script src="scripts/process_tools.js"></script>
+<script src="scripts/swing_widget.js"></script>
+<script src="scripts/sector.js"></script>
+<script src="scripts/social_trends.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

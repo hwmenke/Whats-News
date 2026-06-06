@@ -663,6 +663,10 @@ async function switchTab(tabId) {
     document.getElementById('news-area').style.display          = 'none';
     document.getElementById('performance-area').style.display   = 'none';
     document.getElementById('modelbook-area').style.display     = 'none';
+    document.getElementById('market-dash-area').style.display   = 'none';
+    document.getElementById('swing-area').style.display         = 'none';
+    document.getElementById('sector-area').style.display        = 'none';
+    document.getElementById('social-area').style.display        = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
     if (tabId === 'charts') {
@@ -719,6 +723,19 @@ async function switchTab(tabId) {
     } else if (tabId === 'modelbook') {
         document.getElementById('modelbook-area').style.display = 'block';
         if (typeof loadModelBook === 'function') loadModelBook();
+    } else if (tabId === 'market-dash') {
+        document.getElementById('market-dash-area').style.display = 'block';
+        if (typeof initMarketDashboard === 'function') initMarketDashboard();
+    } else if (tabId === 'swing') {
+        document.getElementById('swing-area').style.display = 'block';
+        if (typeof initProcess === 'function') initProcess();
+        if (typeof initSwingWidget === 'function') initSwingWidget();
+    } else if (tabId === 'sector') {
+        document.getElementById('sector-area').style.display = 'block';
+        if (typeof initSector === 'function') initSector();
+    } else if (tabId === 'social') {
+        document.getElementById('social-area').style.display = 'block';
+        if (typeof loadSocialTrends === 'function') loadSocialTrends();
     }
 }
 
