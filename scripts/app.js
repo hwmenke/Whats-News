@@ -667,6 +667,10 @@ async function switchTab(tabId) {
     document.getElementById('swing-area').style.display         = 'none';
     document.getElementById('sector-area').style.display        = 'none';
     document.getElementById('social-area').style.display        = 'none';
+    document.getElementById('strategy-area').style.display      = 'none';
+    document.getElementById('knn-forecast-area').style.display  = 'none';
+    document.getElementById('factor-model-area').style.display  = 'none';
+    document.getElementById('regression-area').style.display    = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
     if (tabId === 'charts') {
@@ -736,6 +740,18 @@ async function switchTab(tabId) {
     } else if (tabId === 'social') {
         document.getElementById('social-area').style.display = 'block';
         if (typeof loadSocialTrends === 'function') loadSocialTrends();
+    } else if (tabId === 'strategy') {
+        document.getElementById('strategy-area').style.display = 'block';
+        if (state.activeSymbol && typeof loadStrategyTab === 'function') loadStrategyTab();
+    } else if (tabId === 'knn-forecast') {
+        document.getElementById('knn-forecast-area').style.display = 'block';
+        if (state.activeSymbol && typeof loadKnnForecastTab === 'function') loadKnnForecastTab();
+    } else if (tabId === 'factor-model') {
+        document.getElementById('factor-model-area').style.display = 'block';
+        if (typeof loadFactorModelTab === 'function') loadFactorModelTab();
+    } else if (tabId === 'regression') {
+        document.getElementById('regression-area').style.display = 'block';
+        if (state.activeSymbol && typeof loadRegressionTab === 'function') loadRegressionTab();
     }
 }
 

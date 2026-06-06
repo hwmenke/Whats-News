@@ -160,6 +160,18 @@
       <button id="tab-social" class="tab-btn" onclick="switchTab('social')">
         <span class="tab-icon">📱</span> Social
       </button>
+      <button id="tab-strategy" class="tab-btn" onclick="switchTab('strategy')">
+        <span class="tab-icon">🧪</span> Strategy
+      </button>
+      <button id="tab-knn-forecast" class="tab-btn" onclick="switchTab('knn-forecast')">
+        <span class="tab-icon">🔮</span> KNN Forecast
+      </button>
+      <button id="tab-factor-model" class="tab-btn" onclick="switchTab('factor-model')">
+        <span class="tab-icon">🧮</span> Factor Model
+      </button>
+      <button id="tab-regression" class="tab-btn" onclick="switchTab('regression')">
+        <span class="tab-icon">📐</span> Regression
+      </button>
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -1042,6 +1054,34 @@
 
     </div><!-- #social-area -->
 
+    <!-- ═══════════════════ STRATEGY TESTER ═══════════════════ -->
+    <div id="strategy-area" class="dm-container" style="display:none;">
+      <div class="jr-header"><h2>🧪 Strategy Tester</h2>
+        <button class="btn btn-primary" onclick="loadStrategyTab()">▶ Run on active symbol</button></div>
+      <div id="st-body"><p style="color:#888;padding:14px;">Select a symbol and click Run.</p></div>
+    </div><!-- #strategy-area -->
+
+    <!-- ═══════════════════ KNN FORECAST ═══════════════════ -->
+    <div id="knn-forecast-area" class="dm-container" style="display:none;">
+      <div class="jr-header"><h2>🔮 KNN Forecast</h2>
+        <button class="btn btn-primary" onclick="loadKnnForecastTab()">▶ Forecast active symbol</button></div>
+      <div id="kf-body"><p style="color:#888;padding:14px;">Select a symbol and click Forecast.</p></div>
+    </div><!-- #knn-forecast-area -->
+
+    <!-- ═══════════════════ FACTOR MODEL ═══════════════════ -->
+    <div id="factor-model-area" class="dm-container" style="display:none;">
+      <div class="jr-header"><h2>🧮 Factor Model</h2>
+        <button class="btn btn-primary" onclick="loadFactorModelTab()">↻ Refresh</button></div>
+      <div id="fm-body"></div>
+    </div><!-- #factor-model-area -->
+
+    <!-- ═══════════════════ MACRO REGRESSION ═══════════════════ -->
+    <div id="regression-area" class="dm-container" style="display:none;">
+      <div class="jr-header"><h2>📐 Macro Regression</h2>
+        <button class="btn btn-primary" onclick="loadRegressionTab()">▶ Run on active symbol</button></div>
+      <div id="reg-body"><p style="color:#888;padding:14px;">Select a symbol and click Run.</p></div>
+    </div><!-- #regression-area -->
+
     <!-- ====== Ported analytics tabs (from jeff) ====== -->
     <div id="momentum-rank-area" class="mom-container" style="display:none;">
       <div id="mom-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Ranking symbols…</div>
@@ -1296,6 +1336,7 @@
 <script src="scripts/swing_widget.js"></script>
 <script src="scripts/sector.js"></script>
 <script src="scripts/social_trends.js"></script>
+<script src="scripts/analytics_tabs.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>
