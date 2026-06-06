@@ -42,6 +42,8 @@ def init_db():
     for col, defn in [
         ('group_tag',  "TEXT    DEFAULT ''"),
         ('sort_order', 'INTEGER DEFAULT 0'),
+        ('tier',       "TEXT    DEFAULT 'watch'"),   # focus | watch | radar
+        ('setup_grade',"TEXT    DEFAULT ''"),
     ]:
         try:
             cur.execute(f"ALTER TABLE symbols ADD COLUMN {col} {defn}")
@@ -150,6 +152,34 @@ def set_symbol_group(symbol: str, group_tag: str):
     )
     conn.commit()
     conn.close()
+
+
+def set_setup_grade(symbol: str, grade: str):
+    """Persist the latest setup grade for a symbol (used by swing scans)."""
+    conn = get_connection()
+    conn.execute("UPDATE symbols SET setup_grade=? WHERE symbol=?",
+                 (grade or "", symbol.upper()))
+    conn.commit()
+    conn.close()
+
+
+def set_tier(symbol: str, tier: str):
+    """Set the watchlist tier (focus | watch | radar) for a symbol."""
+    tier = (tier or "watch").lower()
+    if tier not in ("focus", "watch", "radar"):
+        tier = "watch"
+    conn = get_connection()
+    conn.execute("UPDATE symbols SET tier=? WHERE symbol=?", (tier, symbol.upper()))
+    conn.commit()
+    conn.close()
+
+
+def list_symbols_by_tier():
+    """Return {tier: [symbol dicts]} for focus / watch / radar."""
+    out = {"focus": [], "watch": [], "radar": []}
+    for s in list_symbols():
+        out.setdefault(s.get("tier") or "watch", []).append(s)
+    return out
 
 
 def add_symbol(symbol: str, name: str = "", sector: str = ""):

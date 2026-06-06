@@ -25,6 +25,7 @@ import knn_forecast as knn
 import news as news_mod
 import swing_core
 import jeff_scanner
+import social_trends
 
 log = logging.getLogger(__name__)
 
@@ -319,3 +320,150 @@ def position_size():
         "tp1_1r": round(entry + rps, 2), "tp2_3r": round(entry + rps * 3, 2),
         "tp3_5r": round(entry + rps * 5, 2), "tp4_10r": round(entry + rps * 10, 2),
     })
+
+
+@swing_bp.route("/api/focus-pipeline", methods=["GET"])
+def focus_pipeline():
+    """Watchlist grouped by tier (focus/watch/radar) with swing data + grade."""
+    tiers = db.list_symbols_by_tier()
+    result = {}
+    for tier, syms in tiers.items():
+        enriched = []
+        for s in syms:
+            entry = {"symbol": s["symbol"], "name": s.get("name") or "",
+                     "sector": s.get("sector") or "",
+                     "setup_grade": s.get("setup_grade") or "", "tier": tier}
+            try:
+                sd = swing_core.swing_data_for(s["symbol"])
+                entry.update({"adr_pct": sd.get("adr_pct"), "rvol": sd.get("rvol"),
+                              "atr_mult_50ma": sd.get("atr_mult_50ma")})
+            except Exception:
+                pass
+            enriched.append(entry)
+        result[tier] = enriched
+    return jsonify(result)
+
+
+@swing_bp.route("/api/symbols/<string:symbol>/tier", methods=["PUT"])
+def set_tier(symbol):
+    body = request.get_json(silent=True) or {}
+    db.set_tier(symbol.upper(), body.get("tier", "watch"))
+    return jsonify({"message": "ok"})
+
+
+# ── Market rotation: RRG (relative-rotation graph) ──────────────────────────────
+rrg_bp = Blueprint("mod_rrg", __name__)
+
+
+@rrg_bp.route("/api/rrg", methods=["GET"])
+def rrg():
+    import numpy as np
+    benchmark = request.args.get("benchmark", "SPY").upper()
+    period = max(2, min(int(request.args.get("period", 10)), 52))
+    trail_n = max(2, min(int(request.args.get("trail", 5)), 12))
+    bdf = db.get_ohlcv_df(benchmark, "weekly", limit=120)
+    if bdf.empty:
+        return _bad(f"No data for benchmark {benchmark}. Fetch it first.", 404)
+    symbols = [s["symbol"] for s in db.list_symbols() if s["symbol"] != benchmark]
+    if not symbols:
+        return jsonify({"benchmark": benchmark, "symbols": []})
+
+    def _quad(r, m):
+        if r >= 100 and m >= 100: return "leading"
+        if r >= 100 and m < 100:  return "weakening"
+        if r < 100 and m < 100:   return "lagging"
+        return "improving"
+
+    out = []
+    for sym in symbols:
+        try:
+            df = db.get_ohlcv_df(sym, "weekly", limit=120)
+            if df.empty:
+                continue
+            common = df.index.intersection(bdf.index)
+            if len(common) < period + 10:
+                continue
+            sc, bc = df.loc[common, "close"], bdf.loc[common, "close"]
+            rs_raw = sc / bc.replace(0, float("nan"))
+            rs_ema = rs_raw.ewm(span=period, adjust=False).mean()
+            rs_roll = rs_ema.rolling(min(52, len(rs_ema))).mean().replace(0, float("nan"))
+            rs_ratio = (rs_ema / rs_roll * 100).fillna(100)
+            rs_mom = rs_ratio.pct_change(period) * 100 + 100
+            valid = [(r, m) for r, m in zip(rs_ratio.values, rs_mom.values)
+                     if np.isfinite(r) and np.isfinite(m)]
+            trail = [{"rs_ratio": round(r, 3), "rs_mom": round(m, 3)} for r, m in valid[-trail_n:]]
+            if not trail:
+                continue
+            last = trail[-1]
+            out.append({"symbol": sym, "rs_ratio": last["rs_ratio"], "rs_mom": last["rs_mom"],
+                        "trail": trail, "quadrant": _quad(last["rs_ratio"], last["rs_mom"])})
+        except Exception:
+            continue
+    return jsonify({"benchmark": benchmark, "symbols": out})
+
+
+# ── Sector heat-map ─────────────────────────────────────────────────────────────
+sector_bp = Blueprint("mod_sector", __name__)
+
+
+@sector_bp.route("/api/sector-heatmap", methods=["GET"])
+def sector_heatmap():
+    import datetime
+    import numpy as np
+    symbols = db.list_symbols()
+    if not symbols:
+        return jsonify([])
+    ytd_start = datetime.date.today().replace(month=1, day=1).isoformat()
+    sectors = {}
+    for sym in symbols:
+        sec = (sym.get("sector") or "Unknown").strip() or "Unknown"
+        sectors.setdefault(sec, []).append(sym["symbol"])
+    result = []
+    for sector, syms in sorted(sectors.items()):
+        rows = []
+        for s in syms:
+            df = db.get_ohlcv_df(s, "daily", limit=260)
+            if df.empty or len(df) < 2:
+                continue
+            close = df["close"]
+
+            def _ret(n):
+                return float(close.iloc[-1] / close.iloc[-n] - 1) if len(close) >= n else None
+
+            ytd_df = df[df.index.astype(str) >= ytd_start]
+            ret_ytd = float(close.iloc[-1] / ytd_df["close"].iloc[0] - 1) if len(ytd_df) > 0 else None
+            rows.append({"symbol": s, "close": round(float(close.iloc[-1]), 2),
+                         "ret_1d": round(_ret(2), 4) if _ret(2) is not None else None,
+                         "ret_5d": round(_ret(6), 4) if _ret(6) is not None else None,
+                         "ret_20d": round(_ret(21), 4) if _ret(21) is not None else None,
+                         "ret_ytd": round(ret_ytd, 4) if ret_ytd is not None else None})
+        if rows:
+            def _avg(key):
+                vals = [r[key] for r in rows if r[key] is not None]
+                return round(float(np.mean(vals)), 4) if vals else None
+            result.append({"sector": sector, "count": len(rows),
+                           "avg_1d": _avg("ret_1d"), "avg_5d": _avg("ret_5d"),
+                           "avg_20d": _avg("ret_20d"), "avg_ytd": _avg("ret_ytd"),
+                           "symbols": rows})
+    return jsonify(result)
+
+
+# ── Social Trends (theme radar + pure-play mapper) ──────────────────────────────
+social_bp = Blueprint("mod_social", __name__)
+
+
+@social_bp.route("/api/social-trends", methods=["GET"])
+def social_trends_route():
+    try:
+        days = int(request.args.get("days", 30))
+    except (TypeError, ValueError):
+        return _bad("days must be an integer")
+    geo = (request.args.get("geo", "US") or "US").upper()
+    valid = {s["id"] for s in social_trends.SOURCES}
+    src = request.args.get("sources", "")
+    sources = [s.strip().lower() for s in src.split(",") if s.strip().lower() in valid] or None
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    try:
+        return jsonify(social_trends.get_social_trends(days, geo, sources, force=force))
+    except Exception as e:
+        return _bad(str(e), 500)

@@ -71,6 +71,16 @@ MODULES: List[Module] = [
            blueprint="mod_blueprints:swirligram_bp"),
     Module("news",         "News",            "📰", "Analytics",
            blueprint="mod_blueprints:news_bp"),
+    # ── Market rotation / discovery ───────────────────────────────────────────
+    Module("rrg",          "RRG Rotation",    "🔄", "Market",
+           blueprint="mod_blueprints:rrg_bp",
+           notes="Relative-rotation graph vs SPY (needs weekly data)"),
+    Module("sector",       "Sector Heatmap",  "🔥", "Market",
+           blueprint="mod_blueprints:sector_bp"),
+    Module("social",       "Social Trends",   "📡", "Market",
+           blueprint="mod_blueprints:social_bp",
+           requires=["pytrends (optional)"],
+           notes="Theme radar + pure-play stock mapper"),
 ]
 
 
