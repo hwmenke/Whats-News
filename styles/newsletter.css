@@ -1,0 +1,346 @@
+/* =============================================================
+   Daily Edge — Newsletter Tab  (styles/newsletter.css)
+   538-style dark theme, card grid layout
+   ============================================================= */
+
+/* ── Container ─────────────────────────────────────────────── */
+.newsletter-container {
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 16px 20px 40px;
+  gap: 20px;
+  background: var(--bg, #0d1117);
+  min-height: 0;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.nl-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border, #30363d);
+  flex-shrink: 0;
+}
+
+.nl-header-left { display: flex; flex-direction: column; gap: 4px; }
+
+.nl-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #185FA5;
+  letter-spacing: -0.5px;
+}
+
+.nl-edition {
+  font-size: 11px;
+  color: var(--text-muted, #8b949e);
+}
+
+.nl-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.nl-stat {
+  font-size: 11px;
+  color: var(--text-muted, #8b949e);
+  background: var(--surface, #161b22);
+  border: 1px solid var(--border, #30363d);
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+/* ── Section title ───────────────────────────────────────────── */
+.nl-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted, #8b949e);
+  margin-bottom: 10px;
+}
+
+/* ── Lead stories ────────────────────────────────────────────── */
+.nl-lead-section { flex-shrink: 0; }
+
+.nl-lead-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nl-lead-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface, #161b22);
+  border: 1px solid var(--border, #30363d);
+  border-radius: 6px;
+  padding: 10px 14px;
+  transition: border-color 0.15s;
+  cursor: default;
+}
+
+.nl-lead-card:hover { border-color: rgba(24, 95, 165, 0.5); }
+
+.nl-lead-rank {
+  font-size: 20px;
+  font-weight: 800;
+  color: #185FA5;
+  min-width: 32px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.nl-lead-body  { flex: 1; min-width: 0; }
+
+.nl-lead-section-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #8b949e);
+  margin-bottom: 2px;
+}
+
+.nl-lead-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e6edf3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nl-lead-subtitle {
+  font-size: 11px;
+  color: var(--text-muted, #8b949e);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nl-lead-kpi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+/* ── KPI display ─────────────────────────────────────────────── */
+.nl-kpi-last {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e6edf3);
+  font-variant-numeric: tabular-nums;
+}
+
+.nl-kpi-chg {
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, #8b949e);
+}
+
+.nl-kpi-chg.nl-pos { color: #1D9E75; }
+.nl-kpi-chg.nl-neg { color: #E24B4A; }
+
+.nl-kpi-date {
+  font-size: 10px;
+  color: var(--text-muted, #8b949e);
+}
+
+/* ── Score bar ───────────────────────────────────────────────── */
+.nl-lead-score-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.nl-score-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #8b949e);
+}
+
+.nl-score-bar-outer {
+  width: 80px;
+  height: 5px;
+  background: var(--border, #30363d);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.nl-score-bar-outer.sm {
+  width: 44px;
+  height: 3px;
+}
+
+.nl-score-bar-inner {
+  height: 100%;
+  background: #185FA5;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.nl-score-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: #185FA5;
+}
+
+/* ── Section headers ─────────────────────────────────────────── */
+.nl-chart-grid  { flex: 1; }
+
+.nl-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 8px;
+}
+
+.nl-section-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 3px 9px;
+  border-radius: 3px;
+  background: rgba(24, 95, 165, 0.15);
+  color: #4facfe;
+}
+
+.nl-badge-rates     { background: rgba(24, 95, 165, 0.18);  color: #4facfe;  }
+.nl-badge-equities  { background: rgba(29, 158, 117, 0.18); color: #1D9E75;  }
+.nl-badge-fx        { background: rgba(216, 90, 48, 0.18);  color: #D85A30;  }
+.nl-badge-commodity { background: rgba(239, 159, 39, 0.18); color: #EF9F27;  }
+.nl-badge-em        { background: rgba(168, 85, 247, 0.18); color: #a855f7;  }
+.nl-badge-credit    { background: rgba(226, 75, 74, 0.18);  color: #E24B4A;  }
+.nl-badge-vol       { background: rgba(255, 255, 255, 0.07); color: #8b949e; }
+.nl-badge-macro     { background: rgba(255, 255, 255, 0.07); color: #8b949e; }
+
+.nl-section-count {
+  font-size: 11px;
+  color: var(--text-muted, #8b949e);
+}
+
+/* ── Cards grid ──────────────────────────────────────────────── */
+.nl-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+/* ── Chart card ──────────────────────────────────────────────── */
+.nl-chart-card {
+  background: var(--surface, #161b22);
+  border: 1px solid var(--border, #30363d);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s;
+}
+
+.nl-chart-card:hover { border-color: rgba(24, 95, 165, 0.4); }
+
+.nl-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nl-card-type-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #8b949e);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.nl-card-score {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #185FA5;
+}
+
+.nl-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e6edf3);
+  line-height: 1.3;
+}
+
+.nl-card-subtitle {
+  font-size: 10px;
+  color: var(--text-muted, #8b949e);
+  line-height: 1.4;
+}
+
+.nl-card-kpi {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+/* ── Canvas ──────────────────────────────────────────────────── */
+.nl-canvas-wrap {
+  position: relative;
+  height: 160px;
+}
+
+.nl-canvas-wrap canvas {
+  width:  100% !important;
+  height: 100% !important;
+}
+
+/* ── Metric badges ───────────────────────────────────────────── */
+.nl-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.nl-badge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #8b949e);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border, #30363d);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ── Empty / error states ────────────────────────────────────── */
+.nl-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--text-muted, #8b949e);
+  text-align: center;
+  gap: 10px;
+}
+
+.nl-empty-state .empty-icon { font-size: 40px; }
+.nl-empty-state p { font-size: 13px; max-width: 360px; }
