@@ -183,16 +183,23 @@ def _checks(sd):
 
 # ── single-symbol row ────────────────────────────────────────────────────────────
 
-def _row_for(sym, spy_rets, sym_info_map):
+def _row_for(sym, spy_rets, sym_info_map, open_pos_syms=None, active_alert_syms=None):
     info = sym_info_map.get(sym, {})
+    in_position = sym in (open_pos_syms or set())
+    alert_thresholds = (active_alert_syms or {}).get(sym)
+    has_alert = bool(alert_thresholds)
     try:
         df = db.get_ohlcv_df(sym, "daily", limit=260)
         if df.empty or len(df) < 20:
             return {"symbol": sym, "error": "No data — fetch first",
                     "tier": info.get("watchlist_tier") or "watchlist",
                     "sector": info.get("sector") or "",
+                    "notes": (info.get("notes") or "").strip(),
                     "days_stale": _days_stale(info.get("last_fetch")),
-                    "days_to_earnings": _days_to_earnings(info.get("next_earnings"))}
+                    "days_to_earnings": _days_to_earnings(info.get("next_earnings")),
+                    "in_position": in_position,
+                    "has_alert": has_alert,
+                    "alert_thresholds": alert_thresholds or []}
 
         sd    = swing_core.swing_data_for(sym, df=df)
         grade = swing_core.grade_from_swing(sd)
@@ -205,12 +212,16 @@ def _row_for(sym, spy_rets, sym_info_map):
             rs_vs_spy = round(sr["r20"] - spy_rets["r20"], 2)
 
         return {
-            "symbol":           sym,
-            "tier":             info.get("watchlist_tier") or "watchlist",
-            "sector":           info.get("sector") or "",
-            "days_stale":       _days_stale(info.get("last_fetch")),
-            "days_to_earnings": _days_to_earnings(info.get("next_earnings")),
-            "grade":            grade["grade"],
+            "symbol":            sym,
+            "tier":              info.get("watchlist_tier") or "watchlist",
+            "sector":            info.get("sector") or "",
+            "notes":             (info.get("notes") or "").strip(),
+            "days_stale":        _days_stale(info.get("last_fetch")),
+            "days_to_earnings":  _days_to_earnings(info.get("next_earnings")),
+            "in_position":       in_position,
+            "has_alert":         has_alert,
+            "alert_thresholds":  alert_thresholds or [],
+            "grade":             grade["grade"],
             "score":            grade["score"],
             "readiness":        readiness,
             "checks":           checks,
@@ -237,8 +248,12 @@ def _row_for(sym, spy_rets, sym_info_map):
         return {"symbol": sym, "error": str(e),
                 "tier": info.get("watchlist_tier") or "watchlist",
                 "sector": info.get("sector") or "",
+                "notes": (info.get("notes") or "").strip(),
                 "days_stale": _days_stale(info.get("last_fetch")),
-                "days_to_earnings": _days_to_earnings(info.get("next_earnings"))}
+                "days_to_earnings": _days_to_earnings(info.get("next_earnings")),
+                "in_position": in_position,
+                "has_alert": has_alert,
+                "alert_thresholds": alert_thresholds or []}
 
 
 # ── public entry ─────────────────────────────────────────────────────────────────
@@ -255,7 +270,7 @@ def compute_jeff_scan(symbols: list) -> list:
 def _compute_jeff_inner(symbols: list) -> list:
     spy_rets = _get_spy_rets()
 
-    # Full symbol metadata (tier, sector, earnings, staleness) — one DB query
+    # Full symbol metadata (tier, sector, earnings, staleness, notes) — one DB query
     sym_info_map: dict = {}
     try:
         for row in db.list_symbols():
@@ -263,9 +278,29 @@ def _compute_jeff_inner(symbols: list) -> list:
     except Exception:
         pass
 
+    # Open positions — one query so _row_for doesn't need DB access for this
+    open_pos_syms: set = set()
+    try:
+        for p in db.list_positions(include_closed=False):
+            open_pos_syms.add(p["symbol"])
+    except Exception:
+        pass
+
+    # Active (untriggered) alerts per symbol
+    active_alert_syms: dict = {}   # symbol → list of thresholds
+    try:
+        for a in db.list_alerts():
+            if not a.get("triggered_at"):
+                active_alert_syms.setdefault(a["symbol"], []).append(a.get("threshold"))
+    except Exception:
+        pass
+
     # Parallel compute (SQLite WAL allows concurrent reads)
     with ThreadPoolExecutor(max_workers=4) as ex:
-        rows = list(ex.map(lambda s: _row_for(s, spy_rets, sym_info_map), symbols))
+        rows = list(ex.map(
+            lambda s: _row_for(s, spy_rets, sym_info_map, open_pos_syms, active_alert_syms),
+            symbols
+        ))
 
     # Intra-list RS rank by 60-day return (percentile, 1=weakest … 100=strongest)
     ranked = [r for r in rows if not r.get("error") and r.get("ret_60d") is not None]

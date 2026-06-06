@@ -4228,3 +4228,37 @@ body.focus-mode .symbol-header { display: none; }
 .jf-pcard-acts  { display: flex; gap: 4px; margin-top: 2px; }
 .jf-act-mv { font-size: 9px; padding: 0 4px; }
 .jf-pcard-err-msg { font-size: 10px; color: var(--red); }
+
+/* ── Open position badge ─────────────────────────────────────────────────────── */
+.jf-pos-badge {
+  display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 5px;
+  border-radius: 4px; background: rgba(34,197,94,0.18); color: var(--green);
+  border: 1px solid rgba(34,197,94,0.35); white-space: nowrap;
+}
+.jf-row-inpos td { background: rgba(34,197,94,0.018); }
+.jf-row-inpos:hover td { background: var(--bg-hover); }
+
+/* ── Sector chip performance coloring ───────────────────────────────────────── */
+.jf-sector-lead { color: var(--green) !important; }
+.jf-sector-lag  { color: var(--red)   !important; }
+
+/* ── Active alert button highlight ─────────────────────────────────────────── */
+.jf-act-alert-on {
+  border-color: rgba(250,190,0,0.50) !important;
+  color: #f5c400 !important;
+  background: rgba(250,190,0,0.10) !important;
+}
+
+/* ── Scanner stats bar ──────────────────────────────────────────────────────── */
+.jf-stats-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 5px 14px; font-size: 11px; background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+.jf-stat-count { color: var(--text-muted); }
+.jf-stat-a     { color: var(--green); font-weight: 600; }
+.jf-stat-b     { color: #6b6bf5;     font-weight: 600; }
+.jf-stat-c     { color: var(--text-muted); font-weight: 600; }
+.jf-stat-err   { color: var(--red);   }
+.jf-stat-pos   { color: var(--green); }
+.jf-stat-alt   { color: #f5c400; }

@@ -511,12 +511,14 @@ function _syncScanModeUI() {
     const isPipeline = scannerState.mode === 'pipeline';
     document.querySelectorAll('.scan-mode-btn').forEach(b =>
         b.classList.toggle('scan-mode-on', b.dataset.mode === scannerState.mode));
-    const tech = document.getElementById('scan-tech-groups');
-    const filt = document.getElementById('scan-jeff-filters');
-    const bann = document.getElementById('jeff-banner');
-    if (tech) tech.style.display = (isJeff || isPipeline) ? 'none' : '';
-    if (filt) filt.style.display = isJeff ? 'flex' : 'none';
-    if (bann) bann.style.display = (isJeff || isPipeline) ? '' : 'none';
+    const tech  = document.getElementById('scan-tech-groups');
+    const filt  = document.getElementById('scan-jeff-filters');
+    const bann  = document.getElementById('jeff-banner');
+    const stats = document.getElementById('jf-stats-bar');
+    if (tech)  tech.style.display  = (isJeff || isPipeline) ? 'none' : '';
+    if (filt)  filt.style.display  = isJeff ? 'flex' : 'none';
+    if (bann)  bann.style.display  = (isJeff || isPipeline) ? '' : 'none';
+    if (stats) stats.style.display = isJeff ? 'flex' : 'none';
 }
 
 // ── Data loading ───────────────────────────────────────────────────────────────
@@ -753,10 +755,21 @@ function _jfRow(r) {
         ? `<span class="jf-stale ${stale > 5 ? 'jf-stale-old' : 'jf-stale-warn'}" title="Data last fetched ${stale} days ago">⏱ ${stale}d</span>`
         : '';
 
-    // Sector chip
-    const sectorChip = r.sector
-        ? `<span class="jf-sector" title="Sector: ${r.sector}">${r.sector}</span>`
+    // Open position badge
+    const posBadge = r.in_position
+        ? `<span class="jf-pos-badge" title="You have an open position in ${r.symbol}">● IN</span>`
         : '';
+
+    // Sector chip with performance coloring
+    const srp = r.sector_rank_pct;
+    const sectorCls = srp == null ? '' : srp >= 60 ? 'jf-sector-lead' : srp <= 40 ? 'jf-sector-lag' : '';
+    const sectorTitle = srp != null ? `Sector: ${r.sector} (${srp}th %ile 20-day perf)` : `Sector: ${r.sector}`;
+    const sectorChip = r.sector
+        ? `<span class="jf-sector ${sectorCls}" title="${sectorTitle}">${r.sector}</span>`
+        : '';
+
+    // Notes tooltip on symbol name
+    const notesAttr = r.notes ? ` title="${r.notes.replace(/"/g, '&quot;')}"` : '';
 
     // RVOL color
     const rvolCls = r.rvol >= 1.5 ? 'jf-rvol-hi' : r.rvol >= 1.0 ? 'jf-rvol-ok' : 'jf-rvol-lo';
@@ -791,14 +804,14 @@ function _jfRow(r) {
                    onclick="event.stopPropagation(); jeffLogTrade('${r.symbol}', ${r.trigger ?? 'null'}, ${r.last_close ?? 'null'}, ${r.atr_14 ?? 'null'}, '${r.grade}')">📝</button>`
         : '';
 
-    return `<tr class="jf-row jf-row-${g}${dte != null && dte <= 7 ? ' jf-row-earn' : ''}" onclick="selectSymbol('${r.symbol}'); switchTab('charts')">
+    return `<tr class="jf-row jf-row-${g}${dte != null && dte <= 7 ? ' jf-row-earn' : ''}${r.in_position ? ' jf-row-inpos' : ''}" onclick="selectSymbol('${r.symbol}'); switchTab('charts')">
         <td><span class="jf-grade jf-grade-${g}">${r.grade}</span></td>
         ${_jfOppBadge(r.opp_score)}
 
         <td class="jf-sym-cell">
             ${tierIco ? `<span class="jf-tier" title="${r.tier}">${tierIco}</span>` : ''}
-            <strong>${r.symbol}</strong>
-            <div class="jf-sym-badges">${earnBadge}${staleBadge}</div>
+            <strong${notesAttr}>${r.symbol}</strong>
+            <div class="jf-sym-badges">${posBadge}${earnBadge}${staleBadge}</div>
             ${sectorChip}
         </td>
 
@@ -838,7 +851,8 @@ function _jfRow(r) {
         <td class="jf-actions">
             <button class="jf-act" title="Move to Focus tier"
                     onclick="event.stopPropagation(); jeffSetTier('${r.symbol}','focus',this)">▲</button>
-            <button class="jf-act" title="Set price alert at trigger"
+            <button class="jf-act ${r.has_alert ? 'jf-act-alert-on' : ''}"
+                    title="${r.has_alert ? `Alert already set at $${(r.alert_thresholds||[])[0]?.toFixed(2) ?? '?'}` : 'Set price alert at trigger'}"
                     onclick="event.stopPropagation(); jeffSetAlert('${r.symbol}', ${r.trigger ?? 'null'})">🔔</button>
             <button class="jf-act" title="Size position (Risk Calc)"
                     onclick="event.stopPropagation(); jeffSizeIt('${r.symbol}', ${r.trigger ?? 'null'}, ${r.last_close ?? 'null'}, ${r.atr_14 ?? 'null'})">⚖</button>
@@ -897,6 +911,30 @@ function _renderJeffScan() {
         return;
     }
     if (empty) empty.style.display = 'none';
+
+    // Stats summary bar
+    const all = scannerState.jeff || [];
+    const nA   = all.filter(r => r.grade === 'A').length;
+    const nB   = all.filter(r => r.grade === 'B').length;
+    const nC   = all.filter(r => r.grade === 'C').length;
+    const nErr = all.filter(r => r.error).length;
+    const nPos = all.filter(r => r.in_position).length;
+    const nAlt = all.filter(r => r.has_alert).length;
+    const shown = rows.length;
+    const total = all.filter(r => !r.error).length;
+    const statsEl = document.getElementById('jf-stats-bar');
+    if (statsEl) {
+        const filterNote = shown < total ? ` · showing ${shown}` : '';
+        statsEl.innerHTML =
+            `<span class="jf-stat-count">${total} symbols${filterNote}</span>` +
+            `<span class="jf-stat-a">&#9632; ${nA}A</span>` +
+            `<span class="jf-stat-b">&#9632; ${nB}B</span>` +
+            `<span class="jf-stat-c">&#9632; ${nC}C</span>` +
+            (nErr ? `<span class="jf-stat-err">&#9632; ${nErr} no data</span>` : '') +
+            (nPos ? `<span class="jf-stat-pos">&#9679; ${nPos} in position</span>` : '') +
+            (nAlt ? `<span class="jf-stat-alt">&#128276; ${nAlt} alerted</span>` : '');
+    }
+
     tbody.innerHTML = rows.map(_jfRow).join('');
 }
 

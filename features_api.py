@@ -1214,6 +1214,25 @@ def get_jeff_scan():
     try:
         rows = jeff_scanner.compute_jeff_scan(symbols)
         spy_available = any(r.get("rs_vs_spy") is not None for r in rows)
+
+        # Sector performance percentiles (free — uses ret_20d already in rows)
+        sector_ret20: dict = {}
+        for r in rows:
+            sec = r.get("sector") or ""
+            ret = r.get("ret_20d")
+            if sec and ret is not None:
+                sector_ret20.setdefault(sec, []).append(ret)
+        sector_avg = {s: sum(v) / len(v) for s, v in sector_ret20.items() if v}
+        if sector_avg:
+            avgs = sorted(sector_avg.values())
+            n = len(avgs)
+            for r in rows:
+                sec = r.get("sector") or ""
+                if sec and sec in sector_avg:
+                    avg = sector_avg[sec]
+                    pct = round(sum(1 for v in avgs if v <= avg) / n * 100)
+                    r["sector_rank_pct"] = pct
+
         return jsonify({"rows": rows, "spy_available": spy_available})
     except Exception as e:
         logging.exception("jeff-scan error")
