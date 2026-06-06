@@ -87,7 +87,10 @@ async function critiqueIdea(ticker) {
               <div class="ins-block-label">Smart-money confirms?</div>
               <div>${sec.confirms ? '✓ recent SEC activity detected' : '— no recent SEC activity'} <span class="ins-muted">(${sec.note || ''})</span></div>
             </div>
-            <div class="ins-block"><div class="ins-block-label">Trade ticket</div>${linksHtml}</div>`;
+            <div class="ins-block"><div class="ins-block-label">Trade ticket</div>${linksHtml}</div>
+            <div class="ins-block">
+              <button class="ind-pill" onclick="openScenarioBuilder('${ticker}')">▶ Open scenario builder</button>
+            </div>`;
     } catch (e) {
         m.body.innerHTML = `<div class="dd-err">${escapeHtml(e.message)}</div>`;
     }
@@ -160,6 +163,120 @@ async function loadHeatmap() {
     ).join('');
 }
 
+// ── ξ.3 · Theme rotation map (gained / lost attention vs N days ago) ──
+async function loadRotationMap() {
+    const el = document.getElementById('insight-rotation');
+    if (!el) return;
+    try {
+        const d = await apiFetch(`${API}/insights/rotation?days=7`);
+        const rows = (d.rotation || []).slice(0, 10);
+        if (!rows.length) {
+            el.innerHTML = `<div class="ins-muted">${escapeHtml(d.note || 'Rotation appears once you have multiple days of snapshots.')}</div>`;
+            return;
+        }
+        el.innerHTML = `<div class="ins-block-label">Theme rotation · last 7d</div>` +
+            rows.map(r => {
+                const arrow = r.direction === 'rising' ? '▲' : r.direction === 'falling' ? '▼'
+                            : r.direction === 'new' ? '🆕' : '·';
+                const cls   = r.direction === 'rising' ? 'rot-up'
+                            : r.direction === 'falling' ? 'rot-down'
+                            : r.direction === 'new' ? 'rot-new' : 'rot-flat';
+                const delta = r.delta == null ? '—' : (r.delta >= 0 ? '+' : '') + r.delta.toFixed(0);
+                return `<div class="ins-rot-row ${cls}" onclick="openThemeDrillDown('${r.theme.replace(/'/g,"\\'")}')">
+                  <span class="rot-arrow">${arrow}</span>
+                  <span class="rot-theme">${escapeHtml(r.theme)}</span>
+                  <span class="rot-delta">${delta}</span>
+                </div>`;
+            }).join('');
+    } catch (e) { el.innerHTML = ''; }
+}
+
+// ── ο.2 · Scenario builder modal ──────────────────────────────────────
+async function openScenarioBuilder(ticker) {
+    const m = ensureSocialModal();
+    m.overlay.style.display = 'flex';
+    m.title.textContent = `Scenario · ${ticker}`;
+    m.body.innerHTML = `
+      <div class="ins-block">
+        <div class="ins-block-label">Inputs</div>
+        <label class="sc-label">Target momentum
+          <input id="sc-target" class="sc-input" type="number" value="95" min="0" max="100">
+        </label>
+        <label class="sc-label">Beta (% per +10 mom)
+          <input id="sc-beta" class="sc-input" type="number" step="0.05" value="0.30">
+        </label>
+        <button class="ind-pill" onclick="runScenario('${ticker}')">Project</button>
+      </div>
+      <div id="sc-result" class="ins-block"></div>`;
+    runScenario(ticker);
+}
+
+async function runScenario(ticker) {
+    const target = document.getElementById('sc-target')?.value || 95;
+    const beta   = document.getElementById('sc-beta')?.value   || 0.30;
+    const out    = document.getElementById('sc-result');
+    if (!out) return;
+    out.innerHTML = `<div class="ins-loading"><span class="spinner-mini"></span>Projecting…</div>`;
+    try {
+        const d = await apiFetch(`${API}/insights/scenario/${encodeURIComponent(ticker)}?target_mom=${target}&beta=${beta}`);
+        if (d.error) { out.innerHTML = `<div class="dd-err">${escapeHtml(d.error)}</div>`; return; }
+        const dirCls = d.implied_move >= 0 ? 'ret-up' : 'ret-down';
+        out.innerHTML = `
+          <div class="ins-block-label">Projection</div>
+          <div class="sc-grid">
+            <div><span class="ins-muted">Price now</span><div class="sc-val">$${d.price_now}</div></div>
+            <div><span class="ins-muted">Momentum</span><div class="sc-val">${d.momentum_now} → ${d.momentum_target}</div></div>
+            <div><span class="ins-muted">Implied move</span><div class="sc-val ${dirCls}">${d.implied_move >= 0 ? '+' : ''}${d.implied_move}%</div></div>
+            <div><span class="ins-muted">Price target</span><div class="sc-val">$${d.price_target}</div></div>
+          </div>
+          <div class="ins-muted" style="margin-top:8px; font-size:11px;">${escapeHtml(d.assumption)}</div>`;
+    } catch (e) {
+        out.innerHTML = `<div class="dd-err">${escapeHtml(e.message)}</div>`;
+    }
+}
+
+// ── ρ · Custom signal DSL panel ───────────────────────────────────────
+const SIGNAL_EXAMPLES = [
+    "catch_up > 50 and purity >= 0.7",
+    "status == 'catch_up' and trend_momentum > 80",
+    "in_watchlist and ret_20d < 0",
+    "score > 70 and purity > 0.8",
+];
+
+async function runSignalDSL() {
+    const inp = document.getElementById('signal-expr');
+    const out = document.getElementById('signal-result');
+    if (!inp || !out) return;
+    const expr = inp.value.trim();
+    if (!expr) { out.innerHTML = ''; return; }
+    out.innerHTML = `<div class="ins-loading"><span class="spinner-mini"></span>Evaluating…</div>`;
+    try {
+        const d = await apiFetch(`${API}/insights/signal?expr=${encodeURIComponent(expr)}`);
+        if (d.error) {
+            out.innerHTML = `<div class="dd-err">${escapeHtml(d.error)}</div>`;
+            return;
+        }
+        if (!d.matches.length) {
+            out.innerHTML = `<div class="ins-muted">No matches.</div>`;
+            return;
+        }
+        out.innerHTML = `<div class="ins-muted" style="font-size:10px; margin-bottom:4px;">${d.count} match${d.count === 1 ? '' : 'es'}</div>` +
+            d.matches.slice(0, 10).map(m =>
+                `<div class="ins-sig-match">
+                   <span class="dd-sym" onclick="socialViewTicker('${m.ticker}')">${m.ticker}</span>
+                   <span class="ins-muted">${escapeHtml(m.theme)}</span>
+                   <span class="rot-delta">${m.score}</span>
+                 </div>`).join('');
+    } catch (e) {
+        out.innerHTML = `<div class="dd-err">${escapeHtml(e.message)}</div>`;
+    }
+}
+
+function setSignalExample(idx) {
+    const inp = document.getElementById('signal-expr');
+    if (inp) { inp.value = SIGNAL_EXAMPLES[idx % SIGNAL_EXAMPLES.length]; runSignalDSL(); }
+}
+
 // ── ρ · CSV export of the visible idea rows ───────────────────────────
 function exportIdeasCSV() {
     if (!socialState.data) return;
@@ -196,5 +313,6 @@ renderSocialTrends = function (d) {
         loadPortfolioExposure();
         loadAmbientBar();
         loadHeatmap();
+        loadRotationMap();
     }
 };

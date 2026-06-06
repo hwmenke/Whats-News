@@ -665,6 +665,7 @@
           <button class="ind-pill social-src-btn social-toggle-on" data-src="google"    onclick="toggleSocialSource('google')">Google</button>
           <button class="ind-pill social-src-btn social-toggle-on" data-src="tiktok"    onclick="toggleSocialSource('tiktok')">TikTok</button>
           <button class="ind-pill social-src-btn social-toggle-on" data-src="twitter"   onclick="toggleSocialSource('twitter')">Twitter/X</button>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="reddit"    onclick="toggleSocialSource('reddit')">Reddit</button>
           <button class="ind-pill social-src-btn social-toggle-on" data-src="instagram" onclick="toggleSocialSource('instagram')">Instagram</button>
         </div>
       </div>
@@ -688,6 +689,33 @@
 
       <!-- v5 · Ambient: streaks + anomaly-of-anomaly chips -->
       <div id="insight-ambient" class="insight-ambient"></div>
+
+      <!-- v5.1 · Theme rotation + custom signal DSL -->
+      <div class="insight-strip">
+        <div class="insight-card">
+          <div class="insight-card-header">
+            <span class="insight-card-title">🔄 Theme rotation · 7d</span>
+          </div>
+          <div id="insight-rotation" class="insight-body"></div>
+        </div>
+        <div class="insight-card insight-card-side">
+          <div class="insight-card-header">
+            <span class="insight-card-title">🧪 Custom signal</span>
+          </div>
+          <div class="insight-body">
+            <input id="signal-expr" class="social-search-input" type="text"
+                   placeholder="catch_up > 50 and purity >= 0.7"
+                   onkeydown="if(event.key==='Enter') runSignalDSL()"
+                   style="width:100%; margin-bottom:6px;">
+            <div class="ins-sig-examples">
+              <span onclick="setSignalExample(0)">catch_up &gt; 50</span>
+              <span onclick="setSignalExample(1)">hot status</span>
+              <span onclick="setSignalExample(2)">watchlist losers</span>
+            </div>
+            <div id="signal-result"></div>
+          </div>
+        </div>
+      </div>
 
       <!-- Status strip: live/seed badges + timestamp + prime-sweep status -->
       <div id="social-status" class="social-status"></div>

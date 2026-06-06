@@ -11,7 +11,7 @@
 const socialState = {
     data:           null,
     days:           30,
-    sources:        { google: true, tiktok: true, twitter: true, instagram: true },
+    sources:        { google: true, tiktok: true, twitter: true, reddit: true, instagram: true },
     sortKey:        'score',         // score | catch_up | purity | ret_20d | trend_momentum
     sortDir:        -1,              // -1 = descending
     catchUpOnly:    false,           // ideas where the stock hasn't caught up
@@ -25,7 +25,8 @@ const socialState = {
 };
 
 const SOURCE_LABELS = {
-    google: 'Google', tiktok: 'TikTok', twitter: 'Twitter/X', instagram: 'Instagram',
+    google: 'Google', tiktok: 'TikTok', twitter: 'Twitter/X',
+    reddit: 'Reddit',  instagram: 'Instagram',
 };
 
 // Catch-up status → badge metadata
@@ -72,7 +73,8 @@ async function loadSocialTrends(force = false) {
 
     const active = Object.keys(socialState.sources).filter(k => socialState.sources[k]);
     const params = new URLSearchParams({ days: socialState.days });
-    if (active.length && active.length < 4) params.set('sources', active.join(','));
+    const allCount = Object.keys(socialState.sources).length;
+    if (active.length && active.length < allCount) params.set('sources', active.join(','));
     if (force) params.set('force', 'true');
 
     try {

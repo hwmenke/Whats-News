@@ -2705,3 +2705,57 @@ html, body {
   border-radius: var(--radius-sm); text-decoration: none;
 }
 .ins-link:hover { background: rgba(59,130,246,0.10); }
+
+/* ═══════════════════ SOCIAL v5.1: rotation + scenario + signal DSL ═══════════════════ */
+
+/* Reddit source chip */
+.src-reddit { color: #f97316; }
+
+/* Theme rotation row */
+.ins-rot-row {
+  display: grid;
+  grid-template-columns: 20px 1fr 48px;
+  align-items: center; gap: 8px;
+  padding: 4px 6px; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 12px;
+}
+.ins-rot-row:hover { background: var(--bg-hover); }
+.rot-arrow { font-weight: 700; }
+.rot-theme { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rot-delta { font-family: var(--font-mono); font-weight: 700; text-align: right; font-size: 11px; }
+.rot-up   .rot-arrow, .rot-up   .rot-delta { color: var(--green); }
+.rot-down .rot-arrow, .rot-down .rot-delta { color: var(--red); }
+.rot-new  .rot-arrow                        { color: var(--accent-bright); }
+.rot-flat .rot-arrow                        { color: var(--text-muted); }
+
+/* Scenario builder grid */
+.sc-label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+.sc-input {
+  width: 80px; padding: 3px 6px; font-size: 12px; margin-left: 6px;
+  background: var(--bg-base); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+}
+.sc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px; margin-top: 8px;
+}
+.sc-val { font-family: var(--font-mono); font-weight: 700; font-size: 16px; }
+.sc-val.ret-up   { color: var(--green); }
+.sc-val.ret-down { color: var(--red); }
+
+/* Custom signal DSL */
+.ins-sig-examples {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  font-size: 10px; color: var(--text-muted); margin-bottom: 6px;
+}
+.ins-sig-examples span {
+  padding: 1px 7px; border-radius: 99px; background: var(--bg-hover);
+  cursor: pointer;
+}
+.ins-sig-examples span:hover { color: var(--accent-bright); }
+.ins-sig-match {
+  display: grid; grid-template-columns: 50px 1fr 40px;
+  align-items: center; gap: 6px;
+  padding: 3px 0; font-size: 11px;
+}

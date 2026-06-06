@@ -46,6 +46,14 @@ Open your web browser and go to:
 - **Fast & bookmarkable** — the trend sweep is cached server-side (10 min) and snapshots persist to SQLite; tabs are bookmarkable (`#social`) and the app reopens on your last tab. The **⟳ Scan Trends** button forces a live re-fetch.
 - **Installable PWA** — add to home screen on iOS/Android (`manifest.webmanifest` + a tiny offline shell SW) so the dashboard opens like a native app.
 
+### 🧠 v5.1 · Reddit · rotation · scenario builder · signal DSL
+
+- **Reddit / r/WSB** added as the 5th source. Live mode uses your `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` to hit the public `/r/wallstreetbets`, `/r/stocks`, and `/r/investing` JSON listings and counts all-caps ticker tokens — no PRAW dependency. Falls back to 17 curated WSB-tagged seed terms otherwise.
+- **🔄 Theme rotation · 7d** card — themes that gained or lost momentum vs a week ago (▲/▼/🆕). Click a row to drill into the cohort.
+- **🧪 Custom signal** DSL — write `catch_up > 50 and purity >= 0.7 and status == 'catch_up'` to filter the ideas live. Safe AST-validated eval, no builtins. Three preset examples baked in.
+- **Scenario builder** modal — accessible from any idea's critique modal. Project a price target if momentum hits *N*, parameterised by theme beta (% per +10 momentum points), scaled by purity.
+- **κ.2 Lightweight sentiment** — `POST /api/insights/sentiment` returns lexicon-based positive/negative/neutral scores for any text. No model dependency.
+
 ### 🧠 v5 · LLM-augmented insight + derived analytics
 
 The Social tab now opens with a daily synthesis on top:

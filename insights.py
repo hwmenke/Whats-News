@@ -254,6 +254,132 @@ def seasonality_hint(theme: str):
 
 
 # ── Phase ρ · Notebook / CSV exporter for an idea ───────────────────────────
+def theme_rotation(days_back: int = 7, top_n: int = 12):
+    """Phase ξ.3 — which themes gained or lost attention vs N days ago.
+
+    Aggregates daily snapshots by theme (via the term→category mapping that
+    ``social_trends._theme_for_term`` resolves), then ranks themes by the
+    delta in their average top-N momentum.
+    """
+    conn = db.get_connection()
+    today = datetime.now(timezone.utc).date()
+    then  = today - timedelta(days=days_back)
+
+    def _theme_avg(date_str: str) -> dict[str, float]:
+        rows = conn.execute(
+            "SELECT term, momentum FROM social_snapshots WHERE date = ? "
+            "ORDER BY momentum DESC LIMIT 60", (date_str,)
+        ).fetchall()
+        by_theme: dict[str, list[float]] = {}
+        for r in rows:
+            cat, _ = st._theme_for_term(r["term"])
+            if not cat or cat == "—":
+                continue
+            by_theme.setdefault(cat, []).append(float(r["momentum"]))
+        return {t: sum(v) / len(v) for t, v in by_theme.items() if v}
+
+    cur = _theme_avg(today.isoformat())
+    prev = _theme_avg(then.isoformat())
+    conn.close()
+
+    if not cur:
+        return {"days": days_back, "rotation": [], "note": "no snapshots yet"}
+
+    out = []
+    for theme, mom_now in cur.items():
+        mom_then = prev.get(theme)
+        if mom_then is None:
+            out.append({"theme": theme, "now": round(mom_now, 1),
+                        "then": None, "delta": None, "direction": "new"})
+        else:
+            delta = mom_now - mom_then
+            direction = "rising" if delta > 5 else "falling" if delta < -5 else "flat"
+            out.append({"theme": theme, "now": round(mom_now, 1),
+                        "then": round(mom_then, 1),
+                        "delta": round(delta, 1), "direction": direction})
+    out.sort(key=lambda r: -(r["delta"] if r["delta"] is not None else -999))
+    return {"days": days_back, "rotation": out[:top_n]}
+
+
+def scenario(idea: dict, target_momentum: int = 95, theme_beta: float = 0.30):
+    """Phase ο.2 — back-of-envelope price projection if momentum hits a target.
+
+    ``theme_beta`` = expected % stock move per +10 momentum points. The default
+    0.30 (3% per +10 mom) is a reasonable starting guess; users can override.
+    """
+    mom_now = idea.get("trend_momentum") or 0
+    price   = idea.get("price")
+    if price is None:
+        return {"error": "no price data — fetch the ticker first"}
+    delta_mom = max(0, target_momentum - mom_now)
+    purity = idea.get("purity") or 0.5
+    move_pct = delta_mom * (theme_beta * (0.5 + 0.5 * purity))   # scaled by purity
+    target_price = price * (1 + move_pct / 100.0)
+    return {
+        "ticker":         idea["ticker"],
+        "price_now":      round(price, 2),
+        "momentum_now":   mom_now,
+        "momentum_target": target_momentum,
+        "implied_move":   round(move_pct, 1),       # %
+        "price_target":   round(target_price, 2),
+        "assumption":     f"~{theme_beta * 100:.0f}% per +10 momentum, scaled by purity {purity:.2f}",
+    }
+
+
+def evaluate_signal(expr: str, payload: dict) -> dict:
+    """Phase ρ — tiny DSL for custom alerts over the ideas list.
+
+    Supported vars per row: ticker, theme, purity, score, catch_up, ret_5d,
+                            ret_20d, trend_momentum, status, in_watchlist
+    Supported ops: comparisons (>, <, >=, <=, ==, !=), 'and' / 'or' / 'not',
+                    parentheses, numeric and string literals.
+
+    Example: ``catch_up > 50 and purity >= 0.7 and status == 'catch_up'``
+
+    Implementation is a sandboxed ``eval`` over a name-restricted dict — no
+    builtins, no attribute access — so it stays cheap and safe.
+    """
+    import ast
+    expr = (expr or "").strip()
+    if not expr:
+        return {"error": "expression required", "matches": []}
+
+    # AST-validate first so we reject anything beyond expressions/comparisons.
+    ALLOWED = (ast.Expression, ast.BoolOp, ast.UnaryOp, ast.BinOp, ast.Compare,
+               ast.Name, ast.Constant, ast.Load, ast.And, ast.Or, ast.Not,
+               ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+               ast.Add, ast.Sub, ast.Mult, ast.Div, ast.USub)
+    try:
+        tree = ast.parse(expr, mode="eval")
+    except SyntaxError as exc:
+        return {"error": f"syntax: {exc}", "matches": []}
+    for node in ast.walk(tree):
+        if not isinstance(node, ALLOWED):
+            return {"error": f"disallowed: {type(node).__name__}", "matches": []}
+    code = compile(tree, "<signal>", "eval")
+
+    matches = []
+    for i in payload.get("ideas") or []:
+        ctx = {
+            "ticker": i["ticker"], "theme": i["theme"],
+            "purity": i["purity"], "score": i["score"],
+            "catch_up": i.get("catch_up") or 0,
+            "ret_5d":   i.get("ret_5d")   or 0,
+            "ret_20d":  i.get("ret_20d")  or 0,
+            "trend_momentum": i.get("trend_momentum") or 0,
+            "status": i.get("status") or "",
+            "in_watchlist": bool(i.get("in_watchlist")),
+        }
+        try:
+            ok = bool(eval(code, {"__builtins__": {}}, ctx))
+        except Exception:
+            ok = False
+        if ok:
+            matches.append({"ticker": i["ticker"], "theme": i["theme"],
+                            "score": i["score"], "catch_up": i.get("catch_up")})
+    return {"expression": expr, "matches": matches[:50], "count": len(matches)}
+
+
 def export_idea_notebook(idea: dict) -> str:
     """Return a Jupyter-pastable Python snippet for the idea."""
     return (

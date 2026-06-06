@@ -43,6 +43,7 @@ SOURCES = [
     {"id": "google",    "name": "Google Trends"},
     {"id": "tiktok",    "name": "TikTok"},
     {"id": "twitter",   "name": "Twitter / X"},
+    {"id": "reddit",    "name": "Reddit / WSB"},
     {"id": "instagram", "name": "Instagram"},
 ]
 
@@ -50,6 +51,7 @@ SOURCES = [
 SOURCE_ENV = {
     "tiktok":    "TIKTOK_API_KEY",
     "twitter":   "TWITTER_BEARER_TOKEN",
+    "reddit":    "REDDIT_CLIENT_ID",      # uses CLIENT_ID + CLIENT_SECRET pair
     "instagram": "INSTAGRAM_API_KEY",
 }
 
@@ -139,13 +141,13 @@ SEED_TRENDS = [
     {"term": "Zepbound",             "sources": ["google", "twitter"],                        "shape": "breakout"},
     {"term": "ChatGPT",              "sources": ["google", "twitter", "tiktok"],              "shape": "steady"},
     {"term": "Sora AI",              "sources": ["google", "twitter", "tiktok"],              "shape": "breakout"},
-    {"term": "DeepSeek",             "sources": ["google", "twitter"],                        "shape": "spike"},
+    {"term": "DeepSeek",             "sources": ["google", "twitter", "reddit"],                        "shape": "spike"},
     {"term": "AI girlfriend",        "sources": ["tiktok", "twitter"],                        "shape": "volatile"},
-    {"term": "Cybertruck",           "sources": ["google", "tiktok", "twitter", "instagram"], "shape": "volatile"},
-    {"term": "Roaring Kitty",        "sources": ["twitter", "google"],                        "shape": "spike"},
-    {"term": "GameStop GME",         "sources": ["twitter", "google"],                        "shape": "spike"},
-    {"term": "Bitcoin ETF",          "sources": ["google", "twitter"],                        "shape": "breakout"},
-    {"term": "Dogecoin",             "sources": ["twitter", "tiktok"],                        "shape": "volatile"},
+    {"term": "Cybertruck",           "sources": ["google", "tiktok", "twitter", "instagram", "reddit"], "shape": "volatile"},
+    {"term": "Roaring Kitty",        "sources": ["twitter", "google", "reddit"],                        "shape": "spike"},
+    {"term": "GameStop GME",         "sources": ["twitter", "google", "reddit"],                        "shape": "spike"},
+    {"term": "Bitcoin ETF",          "sources": ["google", "twitter", "reddit"],                        "shape": "breakout"},
+    {"term": "Dogecoin",             "sources": ["twitter", "tiktok", "reddit"],                        "shape": "volatile"},
     {"term": "Eras Tour",            "sources": ["instagram", "tiktok", "twitter", "google"], "shape": "decline"},
     {"term": "Taylor Swift",         "sources": ["instagram", "twitter", "tiktok"],           "shape": "steady"},
     {"term": "Celsius energy drink", "sources": ["tiktok", "instagram"],                      "shape": "breakout"},
@@ -153,24 +155,24 @@ SEED_TRENDS = [
     {"term": "e.l.f. cosmetics",     "sources": ["tiktok", "instagram"],                      "shape": "steady"},
     {"term": "Temu haul",            "sources": ["tiktok", "twitter"],                        "shape": "breakout"},
     {"term": "Shein haul",           "sources": ["tiktok", "instagram"],                      "shape": "steady"},
-    {"term": "quantum computing",    "sources": ["twitter", "google"],                        "shape": "breakout"},
-    {"term": "small modular reactor","sources": ["twitter", "google"],                        "shape": "breakout"},
-    {"term": "Rocket Lab",           "sources": ["twitter"],                                  "shape": "breakout"},
-    {"term": "Reddit IPO",           "sources": ["twitter", "google"],                        "shape": "spike"},
-    {"term": "DraftKings",           "sources": ["twitter", "tiktok"],                        "shape": "volatile"},
-    {"term": "Roblox",               "sources": ["tiktok", "google"],                         "shape": "steady"},
+    {"term": "quantum computing",    "sources": ["twitter", "google", "reddit"],                        "shape": "breakout"},
+    {"term": "small modular reactor","sources": ["twitter", "google", "reddit"],                        "shape": "breakout"},
+    {"term": "Rocket Lab",           "sources": ["twitter", "reddit"],                                  "shape": "breakout"},
+    {"term": "Reddit IPO",           "sources": ["twitter", "google", "reddit"],                        "shape": "spike"},
+    {"term": "DraftKings",           "sources": ["twitter", "tiktok", "reddit"],                        "shape": "volatile"},
+    {"term": "Roblox",               "sources": ["tiktok", "google", "reddit"],                         "shape": "steady"},
     {"term": "Hoka shoes",           "sources": ["tiktok", "instagram"],                      "shape": "breakout"},
     {"term": "Lululemon dupes",      "sources": ["tiktok", "instagram"],                      "shape": "steady"},
-    {"term": "uranium",              "sources": ["twitter"],                                  "shape": "breakout"},
-    {"term": "humanoid robot",       "sources": ["twitter", "tiktok"],                        "shape": "breakout"},
+    {"term": "uranium",              "sources": ["twitter", "reddit"],                                  "shape": "breakout"},
+    {"term": "humanoid robot",       "sources": ["twitter", "tiktok", "reddit"],                        "shape": "breakout"},
     {"term": "weight loss",          "sources": ["google", "tiktok", "instagram"],            "shape": "steady"},
-    {"term": "Nvidia",               "sources": ["twitter", "google"],                        "shape": "steady"},
-    {"term": "Palantir",             "sources": ["twitter"],                                  "shape": "breakout"},
+    {"term": "Nvidia",               "sources": ["twitter", "google", "reddit"],                        "shape": "steady"},
+    {"term": "Palantir",             "sources": ["twitter", "reddit"],                                  "shape": "breakout"},
     {"term": "Vision Pro",           "sources": ["tiktok", "twitter", "google"],              "shape": "decline"},
     {"term": "cannabis rescheduling","sources": ["twitter", "google"],                        "shape": "spike"},
     {"term": "solar panels",         "sources": ["google"],                                   "shape": "decline"},
     {"term": "Hims weight loss",     "sources": ["tiktok", "twitter"],                        "shape": "breakout"},
-    {"term": "SoundHound",           "sources": ["twitter"],                                  "shape": "volatile"},
+    {"term": "SoundHound",           "sources": ["twitter", "reddit"],                                  "shape": "volatile"},
     {"term": "Prime energy drink",   "sources": ["tiktok", "instagram"],                      "shape": "decline"},
 ]
 
@@ -400,6 +402,96 @@ def _fetch_tiktok_apify(token: str, n: int):
     return out
 
 
+def _fetch_reddit_live(client_id: str, n: int):
+    """Reddit / r/wallstreetbets ticker mention frequency via the public JSON API.
+
+    No PRAW dependency — Reddit's `.json` endpoints are usable read-only with
+    an OAuth-style token if you have one, otherwise we hit the anonymous JSON
+    listing (rate-limited, sufficient for trend sampling).
+    """
+    import json, urllib.request, urllib.error, re as _re
+    client_secret = os.environ.get("REDDIT_CLIENT_SECRET", "")
+    headers = {"User-Agent": "FinDash/0.1 social-trends radar"}
+
+    token = None
+    if client_secret:
+        try:
+            import base64
+            auth = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+            req = urllib.request.Request(
+                "https://www.reddit.com/api/v1/access_token",
+                data=b"grant_type=client_credentials",
+                headers={**headers, "Authorization": f"Basic {auth}"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                token = json.loads(r.read()).get("access_token")
+        except Exception:
+            token = None
+
+    base = "https://oauth.reddit.com" if token else "https://www.reddit.com"
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    titles = []
+    for sub in ("wallstreetbets", "stocks", "investing"):
+        try:
+            req = urllib.request.Request(f"{base}/r/{sub}/hot.json?limit=50",
+                                          headers=headers)
+            with urllib.request.urlopen(req, timeout=12) as r:
+                data = json.loads(r.read())
+            titles.extend([(c["data"].get("title") or "") for c in
+                            data.get("data", {}).get("children", [])])
+        except Exception:
+            continue
+
+    if not titles:
+        return []
+
+    # Count ticker-like all-caps tokens (length 2–5) across all titles.
+    counts: dict[str, int] = {}
+    pat = _re.compile(r"\b\$?([A-Z]{2,5})\b")
+    BLACKLIST = {"USA","CEO","ETF","IPO","FUD","DD","ATH","FOMO","YOLO","WSB",
+                 "EOD","CPI","FED","FOMC","SEC","EDT","EST","NYSE","API","ARK"}
+    for title in titles:
+        for tk in pat.findall(title):
+            if tk in BLACKLIST:
+                continue
+            counts[tk] = counts.get(tk, 0) + 1
+
+    out = []
+    for tk, cnt in sorted(counts.items(), key=lambda x: -x[1])[:15]:
+        shape = "breakout" if cnt >= 8 else "spike" if cnt >= 4 else "steady"
+        out.append({"term": tk, "series": _synth_series(f"reddit:live:{tk}", shape, n)})
+    return out
+
+
+# ── Lightweight sentiment lexicon (Phase κ.2) ───────────────────────────────
+# Hand-picked finance/social vocabulary; no model dependencies.
+_POS = {"moon","mooning","bullish","rally","rallied","ripping","squeeze","breakout","ath",
+        "win","wins","beat","beats","crushed","record","strong","jumped","soared","gain",
+        "gains","rocket","rockets","green","up","love","amazing","fire","🔥","🚀","🌙"}
+_NEG = {"crash","crashed","crashing","dump","dumped","plunge","plunged","bearish","tank",
+        "tanked","red","down","loss","losses","miss","missed","weak","fall","falls","fell",
+        "fraud","scam","warning","drop","drops","sell","selling","short","fading","fade",
+        "dying","dead"}
+
+
+def sentiment_score(text: str) -> dict:
+    """Crude lexicon-based sentiment.
+
+    Returns ``{"score": -1.0..+1.0, "label": str, "pos": int, "neg": int}``.
+    Good enough as a relative ranking signal; not a substitute for FinBERT.
+    """
+    if not text:
+        return {"score": 0.0, "label": "neutral", "pos": 0, "neg": 0}
+    tokens = re.findall(r"[A-Za-z🚀🌙🔥]+", text.lower())
+    pos = sum(1 for t in tokens if t in _POS)
+    neg = sum(1 for t in tokens if t in _NEG)
+    total = pos + neg
+    score = 0.0 if total == 0 else (pos - neg) / total
+    label = "positive" if score > 0.2 else "negative" if score < -0.2 else "neutral"
+    return {"score": round(score, 2), "label": label, "pos": pos, "neg": neg}
+
+
 def _fetch_keyed(source_id: str, n: int, geo: str = "US"):
     """TikTok / Twitter / Instagram: real call when a key is set, seed otherwise.
 
@@ -418,6 +510,10 @@ def _fetch_keyed(source_id: str, n: int, geo: str = "US"):
                 items = _fetch_tiktok_apify(token, n)
                 if items:
                     return items, True
+            elif source_id == "reddit":
+                items = _fetch_reddit_live(token, n)
+                if items:
+                    return items, True
             else:
                 raise NotImplementedError(
                     f"No live integration wired for {source_id}; add one in "
@@ -432,6 +528,7 @@ _PROVIDERS = {
     "google":    lambda n, geo: _fetch_google(n, geo),
     "tiktok":    lambda n, geo: _fetch_keyed("tiktok",    n, geo),
     "twitter":   lambda n, geo: _fetch_keyed("twitter",   n, geo),
+    "reddit":    lambda n, geo: _fetch_keyed("reddit",    n, geo),
     "instagram": lambda n, geo: _fetch_keyed("instagram", n, geo),
 }
 

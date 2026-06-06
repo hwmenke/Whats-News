@@ -658,6 +658,48 @@ def insights_trade_links_route(ticker):
     return jsonify({"ticker": ticker.upper(), "links": insights.trade_deeplinks(ticker)})
 
 
+@app.route("/api/insights/rotation", methods=["GET"])
+def insights_rotation_route():
+    """Phase ξ.3 — which themes gained or lost attention vs N days ago."""
+    try:
+        days = max(1, min(int(request.args.get("days", 7)), 60))
+    except (TypeError, ValueError):
+        days = 7
+    return jsonify(insights.theme_rotation(days_back=days))
+
+
+@app.route("/api/insights/scenario/<string:ticker>", methods=["GET"])
+def insights_scenario_route(ticker):
+    """Phase ο.2 — projected price if momentum hits a target."""
+    try:
+        target = int(request.args.get("target_mom", 95))
+        beta   = float(request.args.get("beta", 0.30))
+    except (TypeError, ValueError):
+        return jsonify({"error": "target_mom must be int, beta must be float"}), 400
+    payload = _payload_for_llm()
+    idea = next((i for i in payload.get("ideas") or [] if i["ticker"] == ticker.upper()), None)
+    if not idea:
+        return jsonify({"error": f"no idea for {ticker}"}), 404
+    return jsonify(insights.scenario(idea, target_momentum=target, theme_beta=beta))
+
+
+@app.route("/api/insights/signal", methods=["GET"])
+def insights_signal_route():
+    """Phase ρ — evaluate a tiny DSL expression against the current ideas list."""
+    expr = request.args.get("expr", "").strip()
+    if not expr:
+        return jsonify({"error": "expr required"}), 400
+    return jsonify(insights.evaluate_signal(expr, _payload_for_llm()))
+
+
+@app.route("/api/insights/sentiment", methods=["POST"])
+def insights_sentiment_route():
+    """Phase κ.2 — lightweight lexicon sentiment scorer."""
+    body = request.get_json(force=True, silent=True) or {}
+    text = body.get("text", "")
+    return jsonify(social_trends.sentiment_score(text))
+
+
 @app.route("/api/insights/notebook/<string:ticker>", methods=["GET"])
 def insights_notebook_route(ticker):
     payload = _payload_for_llm()
