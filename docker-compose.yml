@@ -1,0 +1,18 @@
+services:
+  findash:
+    build: .
+    image: findash
+    ports:
+      - "8050:8050"
+    environment:
+      # Uncomment to require login before serving anything:
+      # DASHBOARD_USER:     admin
+      # DASHBOARD_PASSWORD: changeme
+      #
+      # Live Social Trends sources (all optional — feature works on seed data):
+      # TWITTER_BEARER_TOKEN: ${TWITTER_BEARER_TOKEN}
+      # APIFY_TOKEN:          ${APIFY_TOKEN}
+      PORT: "8050"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
