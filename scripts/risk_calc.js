@@ -3,6 +3,7 @@
  */
 
 const _RC_KEY = 'risk_calc_prefs';
+let _lastRiskCalcResult = null;
 
 function initRiskCalc() {
     const sym = typeof state !== 'undefined' ? state.activeSymbol : null;
@@ -79,6 +80,7 @@ async function _calcPositionSize() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ account, risk_pct, entry, stop }),
         });
+        _lastRiskCalcResult = { ...d, entry, stop };
         _renderPositionResults(d);
         _render3Stop(entry, stop, d.shares, d.dollar_risk);
     } catch (e) {
@@ -104,6 +106,11 @@ function _renderPositionResults(d) {
             <div class="rc-target-row"><span class="rc-target-label">+3R</span><span style="color:var(--green)">$${d.tp2_3r.toFixed(2)}</span></div>
             <div class="rc-target-row"><span class="rc-target-label">+5R</span><span style="color:var(--green)">$${d.tp3_5r.toFixed(2)}</span></div>
             <div class="rc-target-row"><span class="rc-target-label">+10R</span><span style="color:var(--accent-bright)">$${d.tp4_10r.toFixed(2)}</span></div>
+        </div>
+        <div style="margin-top:12px;">
+            <button class="btn btn-ghost btn-sm" onclick="_sendRiskToJournal()" title="Pre-fill Journal with these trade parameters">
+                📋 Send to Journal
+            </button>
         </div>`;
 }
 
@@ -160,4 +167,23 @@ function _render3Stop(entry, stop, shares, dollarRisk) {
             <div class="stop3-stat"><span>Expected saving:</span><span style="color:var(--green)">$${savings.toLocaleString('en-US',{maximumFractionDigits:0})}</span></div>
             <div class="stop3-note">Goal: avg loss ≈ −0.67R vs −1.0R with single stop</div>
         </div>` : ''}`;
+}
+
+// ── Journal handoff ───────────────────────────────────────────────────────────
+
+function _sendRiskToJournal() {
+    const sym = (typeof state !== 'undefined' && state.activeSymbol) || '';
+    if (!sym) { toast('Select a symbol first', 'warning'); return; }
+    const r = _lastRiskCalcResult;
+    if (!r) { toast('Calculate position size first', 'warning'); return; }
+    window._jeffJournalPrefill = {
+        symbol:      sym,
+        entry:       r.entry,
+        stop:        r.stop,
+        qty:         r.shares,
+        setup:       '',
+        thesis:      `Risk: $${r.dollar_risk?.toFixed(0)} · Exp: $${r.gross_exp?.toFixed(0)} · ${r.pct_portfolio?.toFixed(1)}% of account`,
+    };
+    switchTab('journal');
+    toast(`Journal pre-filled for ${sym}`, 'info', 2000);
 }

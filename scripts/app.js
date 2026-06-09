@@ -697,6 +697,8 @@ const TAB_DEFS = {
     'process':   { area: 'process-area',   display: 'flex', onShow: () => { if (typeof initProcess === 'function') initProcess(); } },
     'risk-calc': { area: 'risk-calc-area', display: 'flex', onShow: () => { if (typeof initRiskCalc === 'function') initRiskCalc(); } },
     'dashboard': { area: 'dashboard-area', display: 'flex', onShow: () => { if (typeof initMarketDashboard === 'function') initMarketDashboard(); } },
+    'routine':   { area: 'routine-area',   display: 'flex', onShow: () => { if (typeof initRoutine  === 'function') initRoutine();  } },
+    'settings':  { area: 'settings-area',  display: 'flex', onShow: () => { if (typeof initSettings === 'function') initSettings(); } },
 };
 
 function _showOnly(activeId) {

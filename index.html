@@ -207,6 +207,15 @@
         <span class="tab-icon">🗄️</span> Data Manager
       </button>
 
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">Workflow</span>
+      <button id="tab-routine" class="tab-btn" onclick="switchTab('routine')" title="Morning Routine — run daily workflow components">
+        <span class="tab-icon">☀</span> Routine
+      </button>
+      <button id="tab-settings" class="tab-btn" onclick="switchTab('settings')" title="App Settings">
+        <span class="tab-icon">⚙</span> Settings
+      </button>
+
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -1328,6 +1337,12 @@
       </div>
     </div><!-- #dashboard-area -->
 
+    <!-- ── Morning Routine ─────────────────────────────────── -->
+    <div id="routine-area" class="feat-container" style="display:none;"></div>
+
+    <!-- ── Settings ────────────────────────────────────────── -->
+    <div id="settings-area" class="feat-container" style="display:none;"></div>
+
   </main>
 
 </div><!-- .app -->
@@ -1399,6 +1414,8 @@
 <script src="scripts/risk_calc.js"></script>
 <script src="scripts/market_dashboard.js"></script>
 <script src="scripts/command_palette.js"></script>
+<script src="scripts/routine.js"></script>
+<script src="scripts/settings_app.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>
