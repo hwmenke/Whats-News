@@ -49,15 +49,18 @@ function _jnlPnl(e) {
 async function loadJournal() {
     const tbody = document.getElementById('journal-body');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="9" class="jnl-muted"><span class="spinner"></span> Loading…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="jnl-muted"><span class="spinner"></span> Loading…</td></tr>';
     try {
         const entries = await apiFetch(`${API}/journal`);
         if (!Array.isArray(entries) || entries.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="jnl-muted">No journal entries yet.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" class="jnl-muted">No journal entries yet.</td></tr>';
             return;
         }
-        tbody.innerHTML = entries.map(e => `
-            <tr>
+        tbody.innerHTML = entries.map(e => {
+            const rg     = e.review_grade || '';
+            const rgCls  = rg === 'A+' || rg === 'A' ? 'jnl-pos' : rg === 'D' || rg === 'F' ? 'jnl-neg' : '';
+            const rgHtml = rg ? `<span class="${rgCls}" title="${_jnlEsc(e.review_lesson||'')} ${_jnlEsc(e.review_mistakes||'')}">${rg}</span>` : '—';
+            return `<tr>
                 <td><strong>${_jnlEsc(e.symbol)}</strong></td>
                 <td class="${e.direction === 'short' ? 'jnl-neg' : 'jnl-pos'}">${_jnlEsc(e.direction)}</td>
                 <td>${_jnlEsc(e.entry_date)}</td>
@@ -66,31 +69,51 @@ async function loadJournal() {
                 <td>${e.exit_price != null ? Number(e.exit_price).toFixed(2) : '—'}</td>
                 <td>${_jnlR(e)}</td>
                 <td>${_jnlPnl(e)}</td>
+                <td>${rgHtml}</td>
                 <td><button class="btn btn-ghost btn-icon" title="Delete" onclick="deleteJournalEntry(${e.id})">✕</button></td>
-            </tr>`).join('');
+            </tr>`;
+        }).join('');
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="9" class="jnl-muted">Failed: ${_jnlEsc(err.message || err)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" class="jnl-muted">Failed: ${_jnlEsc(err.message || err)}</td></tr>`;
     }
 }
 
 async function submitJournalEntry() {
     const g = id => document.getElementById(id);
+    const sym = (g('jnl-symbol')?.value || '').trim().toUpperCase();
     const body = {
-        symbol:      (g('jnl-symbol')?.value || '').trim().toUpperCase(),
-        direction:   g('jnl-direction')?.value || 'long',
-        entry_date:  g('jnl-entry-date')?.value || undefined,
-        entry_price: parseFloat(g('jnl-entry-price')?.value),
-        stop_loss:   g('jnl-stop-loss')?.value ? parseFloat(g('jnl-stop-loss').value) : undefined,
-        exit_price:  g('jnl-exit-price')?.value ? parseFloat(g('jnl-exit-price').value) : undefined,
-        qty:         g('jnl-qty')?.value ? parseFloat(g('jnl-qty').value) : 1,
-        setup:       g('jnl-setup')?.value || '',
-        tags:        g('jnl-tags')?.value || '',
-        thesis:      g('jnl-thesis')?.value || '',
+        symbol:           sym,
+        direction:        g('jnl-direction')?.value || 'long',
+        entry_date:       g('jnl-entry-date')?.value || undefined,
+        entry_price:      parseFloat(g('jnl-entry-price')?.value),
+        stop_loss:        g('jnl-stop-loss')?.value    ? parseFloat(g('jnl-stop-loss').value)    : undefined,
+        exit_price:       g('jnl-exit-price')?.value   ? parseFloat(g('jnl-exit-price').value)   : undefined,
+        exit_date:        g('jnl-exit-date')?.value    || undefined,
+        qty:              g('jnl-qty')?.value          ? parseFloat(g('jnl-qty').value)           : 1,
+        setup:            g('jnl-setup')?.value        || '',
+        tags:             g('jnl-tags')?.value         || '',
+        thesis:           g('jnl-thesis')?.value       || '',
+        review_grade:     g('jnl-review-grade')?.value    || '',
+        review_mistakes:  g('jnl-review-mistakes')?.value || '',
+        review_lesson:    g('jnl-review-lesson')?.value   || '',
     };
     if (!body.symbol || !Number.isFinite(body.entry_price)) {
         toast('Symbol and entry price are required', 'warning');
         return;
     }
+
+    // Earnings proximity warning
+    if (sym && typeof state !== 'undefined' && state.symbols) {
+        const symData = state.symbols.find(s => s.symbol === sym);
+        if (symData?.next_earnings) {
+            const earningsDate = new Date(symData.next_earnings);
+            const today = new Date(); today.setHours(0,0,0,0);
+            const diff  = Math.round((earningsDate - today) / 86400000);
+            if (diff >= 0 && diff <= 5)
+                toast(`⚠ ${sym} earnings in ${diff} day${diff === 1 ? '' : 's'} (${symData.next_earnings})`, 'warning', 5000);
+        }
+    }
+
     try {
         await apiFetch(`${API}/journal`, {
             method: 'POST',
@@ -98,9 +121,12 @@ async function submitJournalEntry() {
             body: JSON.stringify(body),
         });
         toast('Journal entry added', 'success');
-        ['jnl-symbol','jnl-entry-price','jnl-stop-loss','jnl-exit-price',
-         'jnl-qty','jnl-setup','jnl-tags','jnl-thesis']
+        ['jnl-symbol','jnl-entry-price','jnl-stop-loss','jnl-exit-price','jnl-exit-date',
+         'jnl-qty','jnl-setup','jnl-tags','jnl-thesis',
+         'jnl-review-mistakes','jnl-review-lesson']
             .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        const gradeEl = document.getElementById('jnl-review-grade');
+        if (gradeEl) gradeEl.value = '';
         loadJournal();
     } catch (e) {
         toastFromError(e, 'Journal');

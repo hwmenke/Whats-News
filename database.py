@@ -69,6 +69,9 @@ def init_db():
         ('lod_dist_atr',  'REAL'),
         ('mistake_tags',  "TEXT    DEFAULT ''"),
         ('stop_loss',     'REAL'),
+        ('review_grade',    "TEXT DEFAULT ''"),
+        ('review_mistakes', "TEXT DEFAULT ''"),
+        ('review_lesson',   "TEXT DEFAULT ''"),
     ]:
         try:
             cur.execute(f"ALTER TABLE journal ADD COLUMN {col} {defn}")
@@ -539,7 +542,8 @@ def add_journal_entry(symbol: str, direction: str, entry_date: str, entry_price:
 
 def update_journal_entry(entry_id: int, **kwargs):
     allowed = {"direction", "entry_date", "exit_date", "entry_price",
-               "exit_price", "stop_loss", "qty", "setup", "tags", "thesis"}
+               "exit_price", "stop_loss", "qty", "setup", "tags", "thesis",
+               "review_grade", "review_mistakes", "review_lesson"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return

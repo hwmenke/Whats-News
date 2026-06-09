@@ -163,10 +163,50 @@ async function _loadRAnalytics() {
                 <thead><tr><th>Grade</th><th>Trades</th><th>Win%</th><th>Avg R</th><th>Expectancy</th></tr></thead>
                 <tbody>${gradeRows}</tbody>
             </table>` : ''}
+
+            ${_renderRevGradeStats(d.rev_grade_stats || {})}
+            ${_renderMistakeFreq(d.mistake_freq || [])}
         `;
     } catch (e) {
         panel.innerHTML = `<div class="an-muted">Failed: ${_anEsc(e.message || e)}</div>`;
     }
+}
+
+function _renderRevGradeStats(stats) {
+    const entries = Object.entries(stats);
+    if (!entries.length) return '';
+    const rows = entries.map(([g, s]) => {
+        const cls = (g === 'A+' || g === 'A') ? 'an-pos' : (g === 'D' || g === 'F') ? 'an-neg' : '';
+        return `<tr>
+            <td class="${cls}"><strong>${g}</strong></td>
+            <td>${s.count}</td>
+            <td>${(s.win_rate * 100).toFixed(0)}%</td>
+            <td class="${s.avg_r >= 0 ? 'an-pos' : 'an-neg'}">${s.avg_r > 0 ? '+' : ''}${s.avg_r.toFixed(2)}R</td>
+        </tr>`;
+    }).join('');
+    return `
+        <div class="an-section-header" style="margin-top:14px;">Performance by Review Grade</div>
+        <table class="rh-grade-table">
+            <thead><tr><th>Grade</th><th>Trades</th><th>Win%</th><th>Avg R</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
+
+function _renderMistakeFreq(freq) {
+    if (!freq.length) return '';
+    const maxCount = freq[0][1];
+    const bars = freq.slice(0, 12).map(([tag, count]) => {
+        const w = Math.round(count / maxCount * 100);
+        return `<div class="rh-row">
+            <span class="rh-label">${_anEsc(tag)}</span>
+            <div class="rh-track"><div class="rh-bar rh-bar-loss" style="width:${w}%"></div></div>
+            <span class="rh-count">${count}</span>
+            <span class="rh-pct"></span>
+        </div>`;
+    }).join('');
+    return `
+        <div class="an-section-header" style="margin-top:14px;">Mistake Frequency</div>
+        <div class="rh-histogram">${bars}</div>`;
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────

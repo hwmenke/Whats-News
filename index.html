@@ -1136,13 +1136,37 @@
             <input id="jnl-thesis" class="feat-input" placeholder="Why this trade?" />
           </div>
           <div class="jnl-field">
+            <label for="jnl-exit-date">Exit Date</label>
+            <input id="jnl-exit-date" class="feat-input" type="date" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-review-grade">Review Grade</label>
+            <select id="jnl-review-grade" class="feat-input feat-input-sm">
+              <option value="">—</option>
+              <option value="A+">A+</option>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+              <option value="F">F</option>
+            </select>
+          </div>
+          <div class="jnl-field jnl-field-grow">
+            <label for="jnl-review-mistakes">Mistakes</label>
+            <input id="jnl-review-mistakes" class="feat-input" placeholder="early exit, oversized, chased…" title="Comma-separated mistake tags" />
+          </div>
+          <div class="jnl-field jnl-field-grow">
+            <label for="jnl-review-lesson">Lesson</label>
+            <input id="jnl-review-lesson" class="feat-input" placeholder="What to do differently next time?" />
+          </div>
+          <div class="jnl-field">
             <label>&nbsp;</label>
             <button class="btn btn-primary" onclick="submitJournalEntry()">Add Entry</button>
           </div>
         </div>
         <div class="feat-table-wrap">
           <table id="journal-table" class="feat-table">
-            <thead><tr><th>Symbol</th><th>Dir</th><th>Entry Date</th><th>Entry</th><th>Stop</th><th>Exit</th><th>R</th><th>P&L</th><th></th></tr></thead>
+            <thead><tr><th>Symbol</th><th>Dir</th><th>Entry Date</th><th>Entry</th><th>Stop</th><th>Exit</th><th>R</th><th>P&L</th><th title="Review Grade">Rev.</th><th></th></tr></thead>
             <tbody id="journal-body"></tbody>
           </table>
         </div>

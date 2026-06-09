@@ -231,10 +231,12 @@ def get_r_analytics():
             continue
         r = (exit_ - entry) / risk if e.get("direction", "long") != "short" else (entry - exit_) / risk
         r_trades.append({
-            "symbol":      e["symbol"],
-            "date":        (e.get("exit_date") or e.get("entry_date") or "")[:10],
-            "r":           round(r, 3),
-            "setup_grade": e.get("setup_grade") or "",
+            "symbol":       e["symbol"],
+            "date":         (e.get("exit_date") or e.get("entry_date") or "")[:10],
+            "r":            round(r, 3),
+            "setup_grade":  e.get("setup_grade")    or "",
+            "review_grade": e.get("review_grade")   or "",
+            "mistakes":     e.get("review_mistakes") or "",
         })
 
     if not r_trades:
@@ -276,6 +278,27 @@ def get_r_analytics():
             "expectancy": round(g_wr * g_aw + (1 - g_wr) * g_al, 3),
         }
 
+    # Mistake tag frequency (comma-separated tags in review_mistakes)
+    mistake_freq: dict = {}
+    for t in r_trades:
+        for tag in (t.get("mistakes") or "").split(","):
+            tag = tag.strip()
+            if tag:
+                mistake_freq[tag] = mistake_freq.get(tag, 0) + 1
+    mistake_list = sorted(mistake_freq.items(), key=lambda x: -x[1])
+
+    # Review grade breakdown (A+/A/B/C/D/F)
+    rev_grade_stats: dict = {}
+    for rg in ("A+", "A", "B", "C", "D", "F", ""):
+        rg_rs = [t["r"] for t in r_trades if t.get("review_grade", "") == rg]
+        if not rg_rs:
+            continue
+        rev_grade_stats[rg or "Ungraded"] = {
+            "count":    len(rg_rs),
+            "avg_r":    round(float(np.mean(rg_rs)), 3),
+            "win_rate": round(sum(1 for r in rg_rs if r > 0) / len(rg_rs), 3),
+        }
+
     return jsonify({
         "count":              n,
         "win_rate":           round(win_rate, 4),
@@ -286,6 +309,8 @@ def get_r_analytics():
         "avg_loss_slippage":  avg_loss_slippage,
         "histogram":          BUCKETS,
         "grade_stats":        grade_stats,
+        "mistake_freq":       mistake_list,
+        "rev_grade_stats":    rev_grade_stats,
     })
 
 
