@@ -18,19 +18,13 @@ import stats as stats
 import adaptive_trend as adaptive
 import scanner as scan
 import ticker_lists as tl
-import regression as reg
-import strategy_tester as st
 import swirligram as swirl
 import market_regime as mr
 import momentum_ranker as mom_rank
 import seasonality as seas
-import factor_model as fmodel
 import data_quality as dq
-import factor_attribution as fa
 import portfolio_backtest as pb
-import knn_forecast as knn
 import errors
-import pycaret_model
 import features_api
 from errors import ApiError
 
@@ -329,50 +323,7 @@ def fetch_ratio():
     return jsonify(result), 201
 
 
-# -- Regression -----------------------------------------------------------------
-
-@app.route("/api/regression/factor-status", methods=["GET"])
-def get_factor_status():
-    """Return availability of all macro factors in the DB."""
-    return jsonify(reg.factor_status())
-
-
-@app.route("/api/regression/<string:symbol>", methods=["GET"])
-def get_regression(symbol):
-    """Run OLS regression of symbol forward returns on macro factor features."""
-    freq = request.args.get("freq", "daily")
-    if freq not in ("daily", "weekly"):
-        raise errors.validation("freq must be 'daily' or 'weekly'")
-    try:
-        horizon  = int(request.args.get("horizon",  5))
-        lookback = int(request.args.get("lookback", 504))
-    except (TypeError, ValueError):
-        raise errors.validation("horizon and lookback must be integers")
-    if not (1 <= horizon <= 60):
-        raise errors.validation("horizon must be 1–60")
-    if not (60 <= lookback <= 2000):
-        raise errors.validation("lookback must be 60–2000")
-    result = reg.compute_regression(symbol.upper(), freq, horizon, lookback)
-    if "error" in result:
-        raise errors.no_data(symbol.upper())
-    return jsonify(result)
-
-
-# -- Strategy Tester ------------------------------------------------------------
-
-def _assert_data_quality(symbol: str, freq: str):
-    """Raise ApiError if the symbol's data has critical quality issues."""
-    df = db.get_ohlcv_df(symbol, freq, limit=200)
-    if df.empty:
-        return
-    report = dq.validate(df, freq)
-    if not report["ok"]:
-        crits = [i for i in report["issues"] if i["severity"] == "critical"]
-        if crits:
-            raise ApiError("DATA_QUALITY",
-                           f"Data quality check failed for {symbol}",
-                           hint=crits[0]["detail"], http=422)
-
+# -- Data Quality ----------------------------------------------------------------
 
 @app.route("/api/data-quality/<string:symbol>", methods=["GET"])
 def get_data_quality(symbol):
@@ -385,42 +336,6 @@ def get_data_quality(symbol):
             raise errors.no_data(symbol.upper())
         report = dq.validate(df, "daily")
     return jsonify(report)
-
-
-@app.route("/api/strategy/backtest", methods=["POST"])
-def strategy_backtest():
-    """Run a vectorised backtest for a symbol + strategy config."""
-    body   = request.get_json(force=True, silent=True) or {}
-    symbol = body.get("symbol", "")
-    freq   = body.get("freq", "daily")
-    config = body.get("config", {})
-    if not symbol:
-        raise errors.symbol_required()
-    if freq not in ("daily", "weekly"):
-        raise errors.validation("freq must be 'daily' or 'weekly'")
-    _assert_data_quality(symbol.upper(), freq)
-    result = st.run_backtest(symbol.upper(), freq, config)
-    if "error" in result:
-        raise errors.no_data(symbol.upper())
-    return jsonify(result)
-
-
-@app.route("/api/strategy/walk-forward", methods=["POST"])
-def strategy_walk_forward():
-    """Walk-forward optimization for a strategy config."""
-    body   = request.get_json(force=True, silent=True) or {}
-    symbol = body.get("symbol", "")
-    freq   = body.get("freq", "daily")
-    config = body.get("config", {})
-    if not symbol:
-        raise errors.symbol_required()
-    if freq not in ("daily", "weekly"):
-        raise errors.validation("freq must be 'daily' or 'weekly'")
-    _assert_data_quality(symbol.upper(), freq)
-    result = st.walk_forward_optimize(symbol.upper(), freq, config)
-    if "error" in result:
-        raise errors.no_data(symbol.upper())
-    return jsonify(result)
 
 
 @app.route("/api/strategy/portfolio-backtest", methods=["POST"])
@@ -457,39 +372,6 @@ def portfolio_backtest_endpoint():
     result = pb.run_portfolio_backtest(symbols, freq, config, sizing)
     if "error" in result:
         raise ApiError("COMPUTATION_FAILED", result["error"], http=422)
-    return jsonify(result)
-
-
-@app.route("/api/strategy/factor-attribution", methods=["POST"])
-def strategy_factor_attribution():
-    """Factor attribution for a strategy's bar-by-bar net returns."""
-    body     = request.get_json(force=True, silent=True) or {}
-    net_ret  = body.get("net_ret", [])
-    dates    = body.get("dates", [])
-    freq     = body.get("freq", "daily")
-    lookback = int(body.get("lookback", 504))
-    if not net_ret or not dates:
-        raise ApiError("SYMBOL_REQUIRED", "net_ret and dates are required", http=400)
-    if len(net_ret) != len(dates):
-        raise errors.validation("net_ret and dates must have equal length")
-    result = fa.compute_factor_attribution(net_ret, dates, freq, lookback)
-    if "error" in result:
-        raise ApiError("COMPUTATION_FAILED", result["error"],
-                       hint=result.get("missing_factors", []) and
-                       "Fetch " + ", ".join(result.get("missing_factors", [])) + " first",
-                       http=422)
-    return jsonify(result)
-
-
-@app.route("/api/strategy/monte-carlo", methods=["POST"])
-def strategy_monte_carlo():
-    """Bootstrap Monte Carlo simulation over a list of trade returns."""
-    body   = request.get_json(force=True, silent=True) or {}
-    trades = body.get("trades", [])
-    n_sim  = int(body.get("n_sim", 1000))
-    if not trades:
-        raise ApiError("SYMBOL_REQUIRED", "trades list required", http=400)
-    result = st.monte_carlo(trades, n_sim)
     return jsonify(result)
 
 
@@ -546,48 +428,6 @@ def seasonality_route(symbol: str):
     return jsonify(result)
 
 
-# -- Factor Model Analyzer ------------------------------------------------------
-
-@app.route("/api/factor-model", methods=["GET"])
-def factor_model_route():
-    lookback = min(int(request.args.get("lookback", 504)), 1260)
-    result   = fmodel.compute_factor_model(lookback)
-    if "error" in result:
-        return jsonify(result), 422
-    return jsonify(result)
-
-
-# -- KNN Pattern Forecast -------------------------------------------------------
-
-@app.route("/api/knn-forecast/<string:symbol>", methods=["POST"])
-def knn_forecast_route(symbol: str):
-    """
-    Weighted KNN pattern-recognition forecast.
-    Body (all optional):
-      { "freq": "daily"|"weekly", "k": 20,
-        "weights": { "trend":0.25, "momentum":0.25,
-                     "volatility":0.20, "price_action":0.20, "volume":0.10 } }
-    """
-    body   = request.get_json(silent=True) or {}
-    freq   = body.get("freq", "daily")
-    k      = max(5, min(int(body.get("k", 20)), 50))
-    raw_w  = body.get("weights", {})
-
-    # Normalise user-supplied weights so they sum to 1
-    group_weights = None
-    if raw_w:
-        total = sum(float(v) for v in raw_w.values() if v is not None)
-        if total > 1e-10:
-            group_weights = {g: float(raw_w.get(g, 0)) / total
-                             for g in ["trend", "momentum", "volatility",
-                                       "price_action", "volume"]}
-
-    result = knn.compute_knn_forecast(symbol.upper(), freq, k, group_weights)
-    if "error" in result:
-        return jsonify({"error": result["error"]}), 422
-    return jsonify(result)
-
-
 # -- Cache stats (debug) --------------------------------------------------------
 
 @app.route("/api/_cache/stats", methods=["GET"])
@@ -595,35 +435,6 @@ def get_cache_stats():
     """Return indicator cache hit/miss stats."""
     import indicator_cache as cache
     return jsonify(cache.cache_stats())
-
-
-# -- PyCaret AutoML -------------------------------------------------------------
-
-@app.route("/api/pycaret/<string:symbol>", methods=["GET"])
-def get_pycaret_prediction(symbol):
-    """
-    Train PyCaret classifiers on 17 technical features and predict the current
-    bar direction (UP / DOWN) for the given symbol.
-
-    Query params:
-        horizon  (int, default 5)  – forward return window in trading days (1, 5, 10, 20)
-        n_models (int, default 5)  – number of models to compare (1–7)
-    """
-    try:
-        horizon  = int(request.args.get("horizon",  5))
-        n_models = int(request.args.get("n_models", 5))
-    except (TypeError, ValueError):
-        raise errors.validation("horizon and n_models must be integers")
-
-    if horizon not in (1, 5, 10, 20):
-        raise errors.validation("horizon must be 1, 5, 10, or 20")
-    if not (1 <= n_models <= 7):
-        raise errors.validation("n_models must be between 1 and 7")
-
-    result = pycaret_model.train_and_predict(symbol.upper(), horizon=horizon, n_models=n_models)
-    if "error" in result:
-        return jsonify(result), 400
-    return jsonify(result)
 
 
 # -- Entry point ----------------------------------------------------------------

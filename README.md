@@ -1,6 +1,6 @@
 # FinDash - Financial Dashboard
 
-A professional-grade financial dashboard built with a Python (Flask) backend and a vanilla HTML/JS frontend. Fetches OHLCV data from Yahoo Finance, stores it locally in SQLite, and offers a wide range of quantitative analysis tools.
+A professional-grade financial dashboard built with a Python (Flask) backend and a vanilla HTML/JS frontend. Fetches OHLCV data from Yahoo Finance, stores it locally in SQLite, and offers a wide range of swing-trading and quantitative analysis tools.
 
 ## Quick Start
 
@@ -11,9 +11,8 @@ A professional-grade financial dashboard built with a Python (Flask) backend and
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/hwmenke/Whats-News.git /Users/hmenke/code/trading
-cd /Users/hmenke/code/trading
-git checkout claude/add-pycaret-integration-CcGEp
+git clone https://github.com/hwmenke/Whats-News.git
+cd Whats-News
 ```
 
 ### 2. Create a virtual environment
@@ -29,15 +28,13 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> PyCaret pulls in a large set of ML libraries (~500 MB). This step takes a few minutes on first run.
-
 ### 4. Start the server
 
 ```bash
 python3 app.py
 ```
 
-### 4. Open the dashboard
+### 5. Open the dashboard
 
 Navigate to **http://localhost:8050** in your browser.
 
@@ -52,22 +49,33 @@ Navigate to **http://localhost:8050** in your browser.
 - **Data Quality**: Automated OHLC-logic, gap, spike, and stale-close checks
 
 ### Charts & Analysis
-- **Main Chart**: Candlestick with SMA, EMA, Bollinger Bands, RSI, MACD, Volume overlays
+- **Main Chart**: Dual-panel daily/weekly candlesticks with KAMA, Bollinger Bands, volume
+- **Multi-TF**: Multi-timeframe chart grid for one symbol
+- **Compare**: Overlay several symbols' normalized performance
+- **Statistics**: Return distributions, volatility, Sharpe, drawdown, win-rate
 - **Adaptive Trend**: Multi-horizon KAMA/ADMA trend system with regime states, ratchet bands, and parameter optimizer
 - **Swirligram**: RSI phase-space charts with buy-setup signal scoring (daily + weekly)
-- **Scanner**: Multi-timeframe heatmap (daily/weekly/monthly) across all watchlist symbols
-
-### Strategy & Portfolio
-- **Strategy Tester**: Visual drag-and-drop backtester with a condition DSL (KAMA cross, RSI, MACD, Bollinger Bands, trend regime), walk-forward optimization, bootstrap confidence intervals, and Monte Carlo simulation
-- **Portfolio Backtest**: Multi-asset portfolio backtest with vol-target, risk-parity, and equal-weight sizing
-
-### Analytics
-- **Market Regime**: 5-state classifier (BULL STRONG / BULL / CHOP / BEAR / CRASH) with forward-return statistics per regime
-- **Momentum Ranker**: Jegadeesh-Titman momentum composite with z-score ranking across watchlist
 - **Seasonality**: Day-of-week, monthly, and quarterly return heatmaps
-- **Factor Model**: Fama-French 5-factor rolling OLS for every watchlist symbol (alpha, beta, R², attribution)
-- **KNN Forecast**: 17-feature weighted K-Nearest-Neighbor pattern-recognition forecast across 4 horizons (5/20/63/126 bars)
-- **Macro Regression**: OLS regression of any symbol's forward returns on 24 macro factors and cross-asset spread features
+- **Momentum**: Jegadeesh-Titman momentum composite with z-score ranking across watchlist
+- **Market Regime**: 5-state classifier (BULL STRONG / BULL / CHOP / BEAR / CRASH) with forward-return statistics per regime
+
+### Scanning & Workflow
+- **Scanner**: Jeff Sun setup scanner — actionable swing setups with opportunity scores, regime gating, earnings proximity, and a focus pipeline board
+- **Sector**: Sector heatmap of the watchlist
+- **Market Dashboard**: Watchlist breadth, symbol strength ranking, pre/post-market checklists
+- **Morning Routine**: One-click daily workflow — refresh data, regime check, Jeff scan, breadth, signals — with configurable components
+- **Settings**: Enable/disable and reorder routine components; CSV exports
+
+### Trading
+- **Journal**: Trade log with R-multiples, setup tags, and thesis
+- **Risk Calc**: R-based position sizer with 3-stop strategy breakdown and journal handoff
+- **Portfolio Backtest**: Multi-asset portfolio backtest with vol-target, risk-parity, and equal-weight sizing
+- **Process**: Trading process checklists and rules
+
+### News
+- **News**: Per-symbol headlines with sentiment
+- **Calendar**: Macro & earnings calendar
+- **Daily Edge**: Auto-generated daily newsletter from your watchlist data
 
 ---
 
@@ -78,6 +86,7 @@ Navigate to **http://localhost:8050** in your browser.
 | File | Role |
 |------|------|
 | `app.py` | Flask REST API server — entry point |
+| `features_api.py` | Blueprint with journal, alerts, news, swing, sector & position routes |
 | `database.py` | SQLite manager (WAL mode, upsert) |
 | `data_fetcher.py` | Yahoo Finance downloader; daily + weekly storage; ratio series |
 | `data_quality.py` | OHLC integrity, gap, spike, stale-close validation |
@@ -87,49 +96,23 @@ Navigate to **http://localhost:8050** in your browser.
 | `stats.py` | Summary statistics and KAMA analysis |
 | `adaptive_trend.py` | Multi-horizon adaptive trend system + grid optimizer |
 | `scanner.py` | Multi-timeframe scanner with heatmap output |
-| `strategy_tester.py` | Vectorised backtest engine, walk-forward, bootstrap CI, Monte Carlo |
+| `jeff_scanner.py` | Jeff Sun swing-setup scanner with opportunity scoring |
+| `swing_core.py` | Swing-trading core: setup detection, regime gate, R-multiples |
+| `strategy_tester.py` | Vectorised backtest engine (powers the portfolio backtester) |
 | `portfolio_backtest.py` | Multi-asset portfolio backtest with dynamic sizing |
 | `market_regime.py` | 5-state market regime classifier |
 | `momentum_ranker.py` | Jegadeesh-Titman momentum composite ranker |
 | `seasonality.py` | Day-of-week, monthly, quarterly seasonality |
-| `factor_model.py` | Cross-sectional 5-factor OLS model for all watchlist symbols |
-| `factor_attribution.py` | Per-strategy factor attribution using Fama-French factors |
-| `regression.py` | Macro-factor OLS regression (24 factors, pure numpy) |
-| `knn_forecast.py` | Weighted KNN pattern-recognition forecast (17 features, 4 horizons) |
-| `pycaret_model.py` | PyCaret AutoML — trains & compares classifiers to predict UP/DOWN direction |
+| `newsletter_engine.py` | Daily Edge newsletter generator |
 | `swirligram.py` | RSI phase-space swirligram with buy-setup scoring |
 | `ticker_lists.py` | Curated ticker library (~220 tickers, 12 categories) |
 | `errors.py` | Structured API error taxonomy |
 
 ### Frontend (JavaScript)
 
-All modules live in `scripts/`:
-
-`app.js` · `charts.js` · `chart_helpers.js` · `data_manager.js` · `factor_model.js` · `knn_forecast.js` · `market_regime.js` · `momentum_ranker.js` · `persistence.js` · `portfolio.js` · `regression.js` · `scanner.js` · `seasonality.js` · `shortcuts.js` · `strategy_tester.js` · `swirligram.js` · `trend_chart.js`
-
----
-
-## PyCaret AutoML Endpoint
-
-`GET /api/pycaret/<symbol>?horizon=5&n_models=5`
-
-Trains and compares up to 7 classifiers (LR, DT, RF, ET, NB, Ridge, LDA) on 17
-ATR-normalised technical features (same feature set as KNN Forecast) and returns
-a directional prediction for the most-recent bar.
-
-| Parameter | Default | Options |
-|-----------|---------|---------|
-| `horizon` | `5` | `1`, `5`, `10`, `20` (trading days) |
-| `n_models` | `5` | `1`–`7` |
-
-**Example:**
-```bash
-# Fetch data first, then predict
-curl -X POST http://localhost:8050/api/fetch/AAPL
-curl "http://localhost:8050/api/pycaret/AAPL?horizon=5&n_models=5"
-```
-
-Response includes: `prediction` (UP/DOWN), `confidence`, model `leaderboard`, `feature_importance`, and `current_features`.
+All modules live in `scripts/` — one module per tab plus shared helpers
+(`app.js`, `chart_helpers.js`, `persistence.js`, `shortcuts.js`,
+`command_palette.js`).
 
 ---
 
@@ -139,7 +122,8 @@ Response includes: `prediction` (UP/DOWN), `confidence`, model `leaderboard`, `f
 pytest
 ```
 
-38 tests covering TA primitives, API validation, error taxonomy, and backtest engine.
+Tests cover TA primitives, API validation, error taxonomy, the backtest
+engine, and the swing/scanner modules.
 
 ---
 
