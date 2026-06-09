@@ -34,6 +34,9 @@
       <span id="regime-badge-icon">○</span>
       <span id="regime-badge-label">—</span>
     </div>
+    <button id="btn-alerts" class="btn btn-ghost btn-icon topbar-icon" title="Alerts" aria-label="Manage alerts" onclick="toggleAlertsPanel(); _syncAlertSymbol();">
+      🔔<span id="alert-badge" class="alert-badge" style="display:none;">0</span>
+    </button>
     <button id="btn-theme-toggle" class="btn btn-ghost btn-icon topbar-icon" title="Switch to light mode" aria-label="Toggle color theme" onclick="toggleTheme()">☀️</button>
     <button id="btn-focus-mode"   class="btn btn-ghost btn-icon topbar-icon" title="Focus mode (F)" aria-label="Toggle focus mode" onclick="toggleFocusMode()">⛶</button>
   </header>
@@ -1344,6 +1347,42 @@
 
 </div><!-- .app -->
 
+<!-- ══ Alerts Panel ════════════════════════════════════════════ -->
+<div id="alerts-panel" class="alerts-panel" aria-label="Alerts panel">
+  <div class="alp-header">
+    <span class="alp-title">🔔 Alerts</span>
+    <button class="btn btn-ghost btn-icon" onclick="toggleAlertsPanel()" title="Close">✕</button>
+  </div>
+
+  <!-- Create form -->
+  <div class="alp-create">
+    <div class="alp-create-row">
+      <input id="alert-symbol" class="alp-input" placeholder="Symbol" maxlength="12"
+             autocomplete="off" spellcheck="false"
+             onkeydown="if(event.key==='Enter')createAlert()" />
+      <select id="alert-field" class="alp-select">
+        <option value="price">Price ($)</option>
+        <option value="rsi_14">RSI 14</option>
+        <option value="kama10_pct">KAMA 10 (%)</option>
+        <option value="kama20_pct">KAMA 20 (%)</option>
+        <option value="kama50_pct">KAMA 50 (%)</option>
+      </select>
+    </div>
+    <div class="alp-create-row">
+      <select id="alert-condition" class="alp-select">
+        <option value="above">Crosses Above</option>
+        <option value="below">Crosses Below</option>
+      </select>
+      <input id="alert-threshold" class="alp-input" type="number" step="any" placeholder="Threshold"
+             onkeydown="if(event.key==='Enter')createAlert()" />
+      <button class="btn btn-primary btn-sm" onclick="createAlert()">+ Add</button>
+    </div>
+  </div>
+
+  <!-- List -->
+  <div id="alerts-list" class="alp-list"></div>
+</div>
+
 <!-- Toast container -->
 <div id="toast-container" class="toast-container"></div>
 
@@ -1413,6 +1452,7 @@
 <script src="scripts/command_palette.js"></script>
 <script src="scripts/routine.js"></script>
 <script src="scripts/settings_app.js"></script>
+<script src="scripts/alerts_panel.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>
