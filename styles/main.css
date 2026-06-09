@@ -4564,3 +4564,25 @@ body.focus-mode .symbol-header { display: none; }
 }
 
 .sc-export-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ── Journal sub-tabs ──────────────────────────────────────────── */
+.jnl-sub-tabs { display: flex; gap: 4px; }
+.jnl-sub-tab {
+  padding: 5px 14px; border-radius: 6px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  font-size: 13px; font-weight: 500; transition: all 0.15s;
+}
+.jnl-sub-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.jnl-sub-tab.active {
+  background: rgba(59,130,246,0.15); border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Dashboard section headers ─────────────────────────────────── */
+.dash-section { width: 100%; }
+.dash-section-title {
+  font-size: 14px; font-weight: 600; color: var(--text-primary);
+  padding: 0 0 6px; border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+.btn-sm { padding: 3px 10px; font-size: 12px; }

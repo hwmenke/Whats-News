@@ -164,9 +164,6 @@
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')" title="Scanner (4)">
         <span class="tab-icon">📡</span> Scanner
       </button>
-      <button id="tab-sector" class="tab-btn" onclick="switchTab('sector')" title="Sector heatmap">
-        <span class="tab-icon">🗺️</span> Sector
-      </button>
       <button id="tab-dashboard" class="tab-btn" onclick="switchTab('dashboard')" title="Market dashboard (5)">
         <span class="tab-icon">📊</span> Dashboard
       </button>
@@ -176,19 +173,12 @@
       <button id="tab-journal" class="tab-btn" onclick="switchTab('journal')" title="Trade journal (6)">
         <span class="tab-icon">📝</span> Journal
       </button>
-      <button id="tab-analytics" class="tab-btn" onclick="switchTab('analytics')" title="Trade analytics">
-        <span class="tab-icon">📒</span> Analytics
-      </button>
       <button id="tab-portfolio" class="tab-btn" onclick="switchTab('portfolio')" title="Portfolio backtest (9)">
         <span class="tab-icon">📂</span> Portfolio
       </button>
       <button id="tab-risk-calc" class="tab-btn" onclick="switchTab('risk-calc')" title="Position size calculator">
         <span class="tab-icon">🧮</span> Risk Calc
       </button>
-      <button id="tab-process" class="tab-btn" onclick="switchTab('process')" title="Trading process checklists">
-        <span class="tab-icon">✅</span> Process
-      </button>
-
       <span class="tab-group-sep"></span>
       <span class="tab-group-label">News</span>
       <button id="tab-news" class="tab-btn" onclick="switchTab('news')" title="News & sentiment">
@@ -1078,91 +1068,88 @@
       </div>
     </div><!-- #seasonality-area -->
 
-    <!-- ── Sector Heatmap ── -->
-    <div id="sector-area" class="feat-container" style="display:none;">
-      <div class="feat-header"><h2>🗺️ Sector Heatmap</h2>
-        <span class="feat-sub">Return heatmap grouped by sector. Click a sector to expand its symbols.</span></div>
-      <div class="feat-table-wrap"><table id="sector-table" class="feat-table heat-table"></table></div>
-    </div><!-- #sector-area -->
 
-    <!-- ── Portfolio Analytics ── -->
-    <div id="analytics-area" class="feat-container" style="display:none;">
-      <div class="feat-header"><h2>📒 Trade Analytics</h2>
-        <span class="feat-sub">Dollar P&L from positions · R-distribution from journal.</span></div>
-
-      <!-- Dollar P&L section -->
-      <div class="an-section-header">Closed Position P&L</div>
-      <div id="analytics-kpis" class="an-kpi-grid"></div>
-      <div class="feat-chart-wrap"><canvas id="analytics-equity"></canvas></div>
-      <div class="feat-table-wrap">
-        <table class="feat-table">
-          <thead><tr><th>Symbol</th><th>Closed</th><th>P&L</th><th>Return</th></tr></thead>
-          <tbody id="analytics-trades"></tbody>
-        </table>
-      </div>
-
-      <!-- R-distribution section -->
-      <div id="r-analytics-panel" class="rh-panel"></div>
-    </div><!-- #analytics-area -->
-
-    <!-- ── Trade Journal ── -->
+    <!-- ── Trade Journal + Analytics ── -->
     <div id="journal-area" class="feat-container" style="display:none;">
-      <div class="feat-header"><h2>📝 Trade Journal</h2>
-        <span class="feat-sub">Log trade ideas, setups, and outcomes.</span></div>
-      <div class="jnl-form">
-        <div class="jnl-field">
-          <label for="jnl-symbol">Symbol</label>
-          <input id="jnl-symbol" class="feat-input" placeholder="AAPL" />
-        </div>
-        <div class="jnl-field">
-          <label for="jnl-direction">Direction</label>
-          <select id="jnl-direction" class="feat-input">
-            <option value="long">Long</option><option value="short">Short</option>
-          </select>
-        </div>
-        <div class="jnl-field">
-          <label for="jnl-entry-date">Entry Date</label>
-          <input id="jnl-entry-date" class="feat-input" type="date" />
-        </div>
-        <div class="jnl-field">
-          <label for="jnl-entry-price">Entry $</label>
-          <input id="jnl-entry-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="100.00" />
-        </div>
-        <div class="jnl-field">
-          <label for="jnl-stop-loss">Stop $</label>
-          <input id="jnl-stop-loss" class="feat-input feat-input-sm" type="number" step="any" placeholder="97.50" title="Planned stop price (used for R calculations)" />
-        </div>
-        <div class="jnl-field">
-          <label for="jnl-exit-price">Exit $</label>
-          <input id="jnl-exit-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="open" />
-        </div>
-        <div class="jnl-field">
-          <label for="jnl-qty">Qty</label>
-          <input id="jnl-qty" class="feat-input feat-input-sm" type="number" step="any" placeholder="1" />
-        </div>
-        <div class="jnl-field">
-          <label for="jnl-setup">Setup</label>
-          <input id="jnl-setup" class="feat-input" placeholder="breakout / EP / burst" />
-        </div>
-        <div class="jnl-field">
-          <label for="jnl-tags">Tags</label>
-          <input id="jnl-tags" class="feat-input" placeholder="earnings, gap…" />
-        </div>
-        <div class="jnl-field jnl-field-grow">
-          <label for="jnl-thesis">Thesis / Notes</label>
-          <input id="jnl-thesis" class="feat-input" placeholder="Why this trade?" />
-        </div>
-        <div class="jnl-field">
-          <label>&nbsp;</label>
-          <button class="btn btn-primary" onclick="submitJournalEntry()">Add Entry</button>
+      <div class="feat-header">
+        <h2>📝 Trade Journal</h2>
+        <div class="jnl-sub-tabs">
+          <button class="jnl-sub-tab active" id="jnl-tab-log" onclick="_switchJournalTab('log')">📝 Log</button>
+          <button class="jnl-sub-tab" id="jnl-tab-analytics" onclick="_switchJournalTab('analytics')">📊 Analytics</button>
         </div>
       </div>
-      <div class="feat-table-wrap">
-        <table class="feat-table">
-          <thead><tr><th>Symbol</th><th>Dir</th><th>Entry Date</th><th>Entry</th><th>Stop</th><th>Exit</th><th>R</th><th>P&L</th><th></th></tr></thead>
-          <tbody id="journal-body"></tbody>
-        </table>
-      </div>
+
+      <!-- Log panel -->
+      <div id="jnl-log-panel">
+        <div class="jnl-form">
+          <div class="jnl-field">
+            <label for="jnl-symbol">Symbol</label>
+            <input id="jnl-symbol" class="feat-input" placeholder="AAPL" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-direction">Direction</label>
+            <select id="jnl-direction" class="feat-input">
+              <option value="long">Long</option><option value="short">Short</option>
+            </select>
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-entry-date">Entry Date</label>
+            <input id="jnl-entry-date" class="feat-input" type="date" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-entry-price">Entry $</label>
+            <input id="jnl-entry-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="100.00" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-stop-loss">Stop $</label>
+            <input id="jnl-stop-loss" class="feat-input feat-input-sm" type="number" step="any" placeholder="97.50" title="Planned stop price (used for R calculations)" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-exit-price">Exit $</label>
+            <input id="jnl-exit-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="open" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-qty">Qty</label>
+            <input id="jnl-qty" class="feat-input feat-input-sm" type="number" step="any" placeholder="1" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-setup">Setup</label>
+            <input id="jnl-setup" class="feat-input" placeholder="breakout / EP / burst" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-tags">Tags</label>
+            <input id="jnl-tags" class="feat-input" placeholder="earnings, gap…" />
+          </div>
+          <div class="jnl-field jnl-field-grow">
+            <label for="jnl-thesis">Thesis / Notes</label>
+            <input id="jnl-thesis" class="feat-input" placeholder="Why this trade?" />
+          </div>
+          <div class="jnl-field">
+            <label>&nbsp;</label>
+            <button class="btn btn-primary" onclick="submitJournalEntry()">Add Entry</button>
+          </div>
+        </div>
+        <div class="feat-table-wrap">
+          <table class="feat-table">
+            <thead><tr><th>Symbol</th><th>Dir</th><th>Entry Date</th><th>Entry</th><th>Stop</th><th>Exit</th><th>R</th><th>P&L</th><th></th></tr></thead>
+            <tbody id="journal-body"></tbody>
+          </table>
+        </div>
+      </div><!-- #jnl-log-panel -->
+
+      <!-- Analytics panel (hidden by default) -->
+      <div id="jnl-analytics-panel" style="display:none;">
+        <div class="an-section-header">Closed Position P&amp;L</div>
+        <div id="analytics-kpis" class="an-kpi-grid"></div>
+        <div class="feat-chart-wrap"><canvas id="analytics-equity"></canvas></div>
+        <div class="feat-table-wrap">
+          <table class="feat-table">
+            <thead><tr><th>Symbol</th><th>Closed</th><th>P&amp;L</th><th>Return</th></tr></thead>
+            <tbody id="analytics-trades"></tbody>
+          </table>
+        </div>
+        <div id="r-analytics-panel" class="rh-panel"></div>
+      </div><!-- #jnl-analytics-panel -->
     </div><!-- #journal-area -->
 
     <!-- ── News & Sentiment ── -->
@@ -1234,32 +1221,6 @@
       <div id="mtf-grid"></div>
     </div><!-- #mtf-area -->
 
-    <!-- ── Process Tab ── -->
-    <div id="process-area" class="feat-container" style="display:none;">
-      <div class="feat-header">
-        <h2 class="feat-title">Trading Process</h2>
-        <button class="btn btn-ghost" onclick="_loadPipeline()">↻ Refresh Pipeline</button>
-      </div>
-
-      <!-- Focus Pipeline -->
-      <div class="process-section">
-        <div class="process-section-title">Focus Pipeline</div>
-        <div class="process-section-note">Move symbols through stages as they mature: Watchlist → Stalk → Focus → Active</div>
-        <div id="process-pipeline"></div>
-      </div>
-
-      <!-- Pre-Entry + No-Trade side by side -->
-      <div class="process-checklists-row">
-        <div class="process-section process-section-half">
-          <div class="process-section-title">Pre-Entry Checklist</div>
-          <div id="process-entry-checklist"></div>
-        </div>
-        <div class="process-section process-section-half">
-          <div class="process-section-title">No-Trade Disqualifier</div>
-          <div id="process-notrade-checklist"></div>
-        </div>
-      </div>
-    </div><!-- #process-area -->
 
     <!-- ── Risk Calc Tab ── -->
     <div id="risk-calc-area" class="feat-container" style="display:none;">
@@ -1333,6 +1294,33 @@
             <button class="btn btn-ghost btn-icon" style="float:right;font-size:11px;" onclick="_clearDash('pre',10)">Clear</button>
           </div>
           <div id="dash-pre-mkt-checklist"></div>
+        </div>
+      </div>
+
+      <!-- Sector Heatmap -->
+      <div class="dash-section" style="margin-top:24px;">
+        <div class="dash-section-title">🗺️ Sector Heatmap</div>
+        <div class="feat-table-wrap" style="margin-top:8px;"><table id="sector-table" class="feat-table heat-table"></table></div>
+      </div>
+
+      <!-- Focus Pipeline -->
+      <div class="dash-section" style="margin-top:24px;">
+        <div class="dash-section-title">🎯 Focus Pipeline
+          <button class="btn btn-ghost btn-sm" style="float:right;" onclick="_loadPipeline()">↻ Refresh</button>
+        </div>
+        <div class="process-section-note" style="margin:4px 0 10px;">Move symbols through stages: Watchlist → Stalk → Focus → Active</div>
+        <div id="process-pipeline"></div>
+      </div>
+
+      <!-- Pre-Entry + No-Trade Checklists -->
+      <div class="process-checklists-row" style="margin-top:24px;">
+        <div class="dash-panel process-section-half">
+          <div class="dash-panel-title">Pre-Entry Checklist</div>
+          <div id="process-entry-checklist"></div>
+        </div>
+        <div class="dash-panel process-section-half">
+          <div class="dash-panel-title">No-Trade Disqualifier</div>
+          <div id="process-notrade-checklist"></div>
         </div>
       </div>
     </div><!-- #dashboard-area -->

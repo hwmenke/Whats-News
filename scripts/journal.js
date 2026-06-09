@@ -1,6 +1,22 @@
 /**
- * journal.js — Trade Journal
+ * journal.js — Trade Journal + Analytics (sub-tabs)
  */
+
+let _jnlActiveSubTab = 'log';
+
+function _switchJournalTab(tab) {
+    _jnlActiveSubTab = tab;
+    const logPanel  = document.getElementById('jnl-log-panel');
+    const anPanel   = document.getElementById('jnl-analytics-panel');
+    const logBtn    = document.getElementById('jnl-tab-log');
+    const anBtn     = document.getElementById('jnl-tab-analytics');
+    if (logPanel)  logPanel.style.display  = tab === 'log'       ? '' : 'none';
+    if (anPanel)   anPanel.style.display   = tab === 'analytics' ? '' : 'none';
+    if (logBtn)    logBtn.classList.toggle('active', tab === 'log');
+    if (anBtn)     anBtn.classList.toggle('active',  tab === 'analytics');
+    // Highlight the Journal nav button regardless of sub-tab
+    document.getElementById('tab-journal')?.classList.add('active');
+}
 
 function _jnlEsc(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => (

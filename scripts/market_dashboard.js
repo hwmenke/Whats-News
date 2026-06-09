@@ -12,6 +12,8 @@ function initMarketDashboard() {
     _loadBreadth();
     _loadStrengthTable();
     _initDailyChecklists();
+    if (typeof initSector   === 'function') initSector();
+    if (typeof initProcess  === 'function') initProcess();
 }
 
 // ── A) Breadth ────────────────────────────────────────────────────────────────
