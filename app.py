@@ -25,13 +25,14 @@ import seasonality as seas
 import data_quality as dq
 import portfolio_backtest as pb
 import errors
-import features_api
 from errors import ApiError
+from api import ALL_BLUEPRINTS
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 errors.register(app)
-app.register_blueprint(features_api.features_bp)
+for _bp in ALL_BLUEPRINTS:
+    app.register_blueprint(_bp)
 
 # Initialise the database on startup
 db.init_db()
