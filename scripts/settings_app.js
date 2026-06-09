@@ -57,11 +57,18 @@ function _renderSettingsArea(area) {
                 <div class="sc-section-desc">Download the current table from any view as a CSV file.</div>
                 <div class="sc-export-btns">
                     <button class="btn btn-ghost"
-                        onclick="exportTableToCSV('#scanner-table','scanner.csv')">⬇ Scanner</button>
+                        onclick="exportTableToCSV('scanner-table','scanner.csv')">⬇ Scanner</button>
                     <button class="btn btn-ghost"
-                        onclick="exportTableToCSV('.mom-tbl','momentum.csv')">⬇ Momentum</button>
+                        onclick="exportTableToCSV('mom-tbl','momentum.csv')">⬇ Momentum</button>
                     <button class="btn btn-ghost"
-                        onclick="_exportJournal()">⬇ Journal</button>
+                        onclick="exportTableToCSV('journal-table','journal.csv')">⬇ Journal</button>
+                </div>
+            </section>
+            <section class="sc-section">
+                <div class="sc-section-title">Database Backup</div>
+                <div class="sc-section-desc">Download a copy of the SQLite database (finance.db) for safekeeping.</div>
+                <div class="sc-export-btns">
+                    <a class="btn btn-ghost" href="/api/backup" download>⬇ Download finance.db</a>
                 </div>
             </section>
         </div>`;

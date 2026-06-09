@@ -438,6 +438,24 @@ def get_cache_stats():
     return jsonify(cache.cache_stats())
 
 
+# -- Backup / restore -----------------------------------------------------------
+
+@app.route("/api/backup", methods=["GET"])
+def download_backup():
+    """Download a copy of the SQLite database for backup purposes."""
+    import shutil, datetime
+    src = db.DB_PATH
+    if not os.path.exists(src):
+        raise errors.ApiError("NO_DATA", "Database file not found", http=404)
+    date_tag = datetime.date.today().strftime("%Y%m%d")
+    return send_from_directory(
+        os.path.dirname(src),
+        os.path.basename(src),
+        as_attachment=True,
+        download_name=f"finance_{date_tag}.db",
+    )
+
+
 # -- Entry point ----------------------------------------------------------------
 
 if __name__ == "__main__":

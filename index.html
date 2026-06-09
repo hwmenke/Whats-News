@@ -657,6 +657,7 @@
             <button class="scan-mode-btn" data-mode="pipeline" onclick="setScanMode('pipeline')">🗂 Pipeline</button>
           </div>
           <button id="btn-scan" class="btn btn-primary" onclick="runScan()">⟳ Scan All</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportTableToCSV('scanner-table','scanner.csv')" title="Export scanner to CSV">⤓ CSV</button>
           <span id="scanner-ts" class="scanner-ts"></span>
         </div>
         <div class="scanner-controls-right" id="scan-tech-groups">
@@ -667,6 +668,9 @@
           <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="vol"  onclick="toggleScanGroup('vol')">Volatility</button>
         </div>
       </div>
+
+      <!-- Data freshness banner -->
+      <div id="scanner-freshness" class="data-freshness-banner" style="display:none;"></div>
 
       <!-- Jeff: market context banner -->
       <div id="jeff-banner" class="jf-banner" style="display:none;"></div>
@@ -973,6 +977,7 @@
     <!-- ── Market Regime Area ── -->
     <div id="regime-area" class="rg-container" style="display:none;">
       <div id="regime-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Computing regime…</div>
+      <div id="regime-freshness" class="data-freshness-banner" style="display:none;"></div>
       <div class="rg-controls">
         <span class="rg-ctrl-label">Regime Symbol</span>
         <input id="regime-symbol-input" type="text" class="rg-sym-input" value="SPY" placeholder="SPY" maxlength="10" />
@@ -999,8 +1004,10 @@
     <!-- ── Momentum Ranker Area ── -->
     <div id="momentum-area" class="mom-container" style="display:none;">
       <div id="mom-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Ranking symbols…</div>
+      <div id="momentum-freshness" class="data-freshness-banner" style="display:none;"></div>
       <div class="mom-controls">
         <button id="btn-mom-load" class="btn btn-primary btn-sm" onclick="loadMomentumRanks()">↻ Refresh</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportTableToCSV('mom-tbl','momentum.csv')" title="Export momentum to CSV">⤓ CSV</button>
         <span style="font-size:10px;color:var(--text-dim);margin-left:8px">Rankings use 3M / 6M / 12M-1M composite score · Jegadeesh-Titman construction</span>
       </div>
       <div id="mom-empty" class="empty-state">
@@ -1011,7 +1018,7 @@
         <div id="mom-summary" class="mom-summary"></div>
         <div class="mom-body">
           <div class="mom-table-wrap">
-            <table class="mom-tbl">
+            <table id="mom-tbl" class="mom-tbl">
               <thead><tr>
                 <th class="mom-th">#</th>
                 <th class="mom-th">Symbol</th>
@@ -1076,6 +1083,7 @@
         <div class="jnl-sub-tabs">
           <button class="jnl-sub-tab active" id="jnl-tab-log" onclick="_switchJournalTab('log')">📝 Log</button>
           <button class="jnl-sub-tab" id="jnl-tab-analytics" onclick="_switchJournalTab('analytics')">📊 Analytics</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportTableToCSV('journal-table','journal.csv')" title="Export journal to CSV">⤓ CSV</button>
         </div>
       </div>
 
@@ -1130,7 +1138,7 @@
           </div>
         </div>
         <div class="feat-table-wrap">
-          <table class="feat-table">
+          <table id="journal-table" class="feat-table">
             <thead><tr><th>Symbol</th><th>Dir</th><th>Entry Date</th><th>Entry</th><th>Stop</th><th>Exit</th><th>R</th><th>P&L</th><th></th></tr></thead>
             <tbody id="journal-body"></tbody>
           </table>
@@ -1266,6 +1274,7 @@
         <h2 class="feat-title">Market Dashboard</h2>
         <button class="btn btn-ghost" onclick="initMarketDashboard()">↻ Refresh</button>
       </div>
+      <div id="dashboard-freshness" class="data-freshness-banner" style="display:none;"></div>
 
       <div class="dash-grid">
         <!-- Breadth -->

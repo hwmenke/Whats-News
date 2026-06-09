@@ -20,6 +20,25 @@ let state = {
 
 let statsCharts = {};
 
+// ── Data freshness banner ─────────────────────────────────────
+function showFreshnessBanner(bannerId, latestDateStr, refreshCall) {
+    const el = document.getElementById(bannerId);
+    if (!el) return;
+    if (!latestDateStr) { el.style.display = 'none'; return; }
+    const latest   = new Date(latestDateStr);
+    const today    = new Date(); today.setHours(0,0,0,0);
+    const diffDays = Math.floor((today - latest) / 86400000);
+    const dow      = today.getDay();
+    const stale    = !(dow === 0 || dow === 6) && diffDays > 1;
+    const label    = stale
+        ? `<span class="dfb-stale">⚠ Data as of ${latestDateStr} — ${diffDays}d old</span>`
+        : `<span class="dfb-fresh">✓ Data current as of ${latestDateStr}</span>`;
+    el.innerHTML   = `<span class="dfb-label">${label}</span>` +
+        (refreshCall ? `<button class="dfb-refresh" onclick="${refreshCall}">⟳ Refresh Data</button>` : '');
+    el.style.display = 'flex';
+    el.classList.toggle('fresh', !stale);
+}
+
 // ── Toast system ─────────────────────────────────────────────
 function toast(message, type = 'info', duration = 3500) {
     const container = document.getElementById('toast-container');
@@ -173,11 +192,25 @@ function setupKamaAddForm() {
 // ── Symbol Watchlist ─────────────────────────────────────────
 async function loadSymbols() {
     try {
-        state.symbols = await apiFetch(`${API}/symbols`);
+        const [syms, stats] = await Promise.all([
+            apiFetch(`${API}/symbols`),
+            apiFetch(`${API}/symbols/quick-stats`).catch(() => []),
+        ]);
+        const statsMap = Object.fromEntries((stats || []).map(s => [s.symbol, s]));
+        state.symbols = syms.map(s => ({ ...s, ...(statsMap[s.symbol] || {}) }));
         renderSymbolList();
+        _refreshFreshnessBanners();
     } catch (e) {
         toastFromError(e, 'Symbols');
     }
+}
+
+function _refreshFreshnessBanners() {
+    const dates = state.symbols.map(s => s.last_fetch).filter(Boolean).sort();
+    const latest = dates.length ? dates[dates.length - 1].slice(0, 10) : null;
+    const rc = "document.getElementById('btn-refresh-all')?.click()";
+    ['scanner-freshness','momentum-freshness','regime-freshness','dashboard-freshness']
+        .forEach(id => showFreshnessBanner(id, latest, rc));
 }
 
 function _moveWatchlist(delta) {
@@ -233,11 +266,28 @@ function renderSymbolList() {
         ticker.className = 'sym-ticker' + (isRatio ? ' sym-ticker-ratio' : '');
         ticker.textContent = _displaySymbol(sym.symbol);
 
-        const lastFetch = document.createElement('span');
-        lastFetch.className = 'sym-change';
-        lastFetch.style.fontSize  = '10px';
-        lastFetch.style.color     = 'var(--text-dim)';
-        lastFetch.textContent = sym.last_fetch ? '⟳ ' + sym.last_fetch.slice(0, 10) : 'Not fetched';
+        const meta = document.createElement('div');
+        meta.className = 'sym-meta-row';
+
+        if (sym.chg != null) {
+            const chgSpan = document.createElement('span');
+            chgSpan.className = 'sym-chg ' + (sym.chg >= 0 ? 'sym-chg-pos' : 'sym-chg-neg');
+            chgSpan.textContent = (sym.chg >= 0 ? '+' : '') + sym.chg.toFixed(2) + '%';
+            meta.appendChild(chgSpan);
+        } else if (sym.last_fetch) {
+            const fetchSpan = document.createElement('span');
+            fetchSpan.className = 'sym-fetch-date';
+            fetchSpan.textContent = sym.last_fetch.slice(0, 10);
+            meta.appendChild(fetchSpan);
+        }
+
+        if (sym.sector && !isRatio) {
+            const secChip = document.createElement('span');
+            secChip.className = 'sym-sector-chip';
+            secChip.textContent = sym.sector.length > 14 ? sym.sector.slice(0, 13) + '…' : sym.sector;
+            secChip.title = sym.sector;
+            meta.appendChild(secChip);
+        }
 
         const removeBtn = document.createElement('span');
         removeBtn.className  = 'sym-remove';
@@ -246,7 +296,7 @@ function renderSymbolList() {
         removeBtn.addEventListener('click', e => { e.stopPropagation(); removeSymbol(sym.symbol); });
 
         item.appendChild(ticker);
-        item.appendChild(lastFetch);
+        item.appendChild(meta);
         item.appendChild(removeBtn);
         item.addEventListener('click', () => selectSymbol(sym.symbol));
         list.appendChild(item);

@@ -39,6 +39,13 @@ const ROUTINE_COMPONENTS = [
         desc: 'List currently-triggered alerts and new setup signals.',
         run:  _runSignals,
     },
+    {
+        id:   'what-changed',
+        name: 'What Changed',
+        icon: '📋',
+        desc: 'Highlight symbols with notable price moves, volume spikes, or MA crossovers today.',
+        run:  _runWhatChanged,
+    },
 ];
 
 const _ROUTINE_KEY = 'routine_settings_v1';
@@ -284,6 +291,57 @@ async function _runSignals() {
             <thead><tr><th>Symbol</th><th>Signal</th><th>Date</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>`;
+}
+
+async function _runWhatChanged() {
+    const stats = await apiFetch(`${API}/symbols/quick-stats`);
+    if (!Array.isArray(stats) || !stats.length)
+        return '<div class="routine-empty">No data available.</div>';
+
+    const notable = stats.filter(s =>
+        s.chg != null || s.vol_ratio != null
+    );
+    if (!notable.length)
+        return '<div class="routine-empty">Fetch data first to see daily changes.</div>';
+
+    const movers = notable.filter(s => s.chg != null && Math.abs(s.chg) >= 2)
+        .sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg));
+    const vols   = notable.filter(s => s.vol_ratio != null && s.vol_ratio >= 2)
+        .sort((a, b) => b.vol_ratio - a.vol_ratio);
+
+    let html = '';
+
+    if (movers.length) {
+        const rows = movers.slice(0, 10).map(s => {
+            const cls = s.chg >= 0 ? 'rc-text-green' : 'rc-text-red';
+            return `<tr>
+                <td><strong>${s.symbol}</strong></td>
+                <td class="${cls}">${s.chg >= 0 ? '+' : ''}${s.chg.toFixed(2)}%</td>
+                <td style="color:var(--text-muted)">${s.price != null ? '$' + s.price.toFixed(2) : '—'}</td>
+                <td style="color:var(--text-muted)">${s.rsi14 != null ? 'RSI ' + s.rsi14 : '—'}</td>
+            </tr>`;
+        }).join('');
+        html += `<div class="routine-summary">Big Movers (≥2%): ${movers.length}</div>
+            <table class="routine-table"><thead><tr><th>Symbol</th><th>Change</th><th>Price</th><th>RSI</th></tr></thead>
+            <tbody>${rows}</tbody></table>`;
+    } else {
+        html += '<div class="routine-empty">No symbols moved ≥2% today.</div>';
+    }
+
+    if (vols.length) {
+        const rows = vols.slice(0, 8).map(s =>
+            `<tr>
+                <td><strong>${s.symbol}</strong></td>
+                <td style="color:#f97316">${s.vol_ratio.toFixed(1)}× avg vol</td>
+                <td class="${(s.chg||0) >= 0 ? 'rc-text-green' : 'rc-text-red'}">${s.chg != null ? (s.chg >= 0 ? '+' : '') + s.chg.toFixed(2) + '%' : '—'}</td>
+            </tr>`
+        ).join('');
+        html += `<div class="routine-summary" style="margin-top:12px">Volume Spikes (≥2× avg): ${vols.length}</div>
+            <table class="routine-table"><thead><tr><th>Symbol</th><th>Volume</th><th>Change</th></tr></thead>
+            <tbody>${rows}</tbody></table>`;
+    }
+
+    return html || '<div class="routine-empty">No notable changes today.</div>';
 }
 
 // ── CSV export utility (used by settings tab and elsewhere) ───────────────────
