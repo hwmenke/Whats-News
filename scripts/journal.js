@@ -151,6 +151,9 @@ function initJournal() {
         set('jnl-symbol',      pf.symbol);
         set('jnl-entry-price', pf.entry_price);
         set('jnl-stop-loss',   pf.stop_loss);
+        set('jnl-qty',         pf.qty);
+        set('jnl-setup',       pf.setup);
+        set('jnl-thesis',      pf.thesis);
         const dirEl = document.getElementById('jnl-direction');
         if (dirEl && pf.direction) dirEl.value = pf.direction;
         loadJournal();

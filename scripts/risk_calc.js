@@ -178,8 +178,8 @@ function _sendRiskToJournal() {
     if (!r) { toast('Calculate position size first', 'warning'); return; }
     window._jeffJournalPrefill = {
         symbol:      sym,
-        entry:       r.entry,
-        stop:        r.stop,
+        entry_price: r.entry,
+        stop_loss:   r.stop,
         qty:         r.shares,
         setup:       '',
         thesis:      `Risk: $${r.dollar_risk?.toFixed(0)} · Exp: $${r.gross_exp?.toFixed(0)} · ${r.pct_portfolio?.toFixed(1)}% of account`,

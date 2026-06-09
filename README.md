@@ -83,10 +83,10 @@ Navigate to **http://localhost:8050** in your browser.
 
 ### Backend (Python)
 
-| File | Role |
-|------|------|
+| File / Directory | Role |
+|-----------------|------|
 | `app.py` | Flask REST API server — entry point |
-| `features_api.py` | Blueprint with journal, alerts, news, swing, sector & position routes |
+| `api/` | Domain blueprints: `symbols_meta`, `alerts`, `market`, `trade`, `news_routes`, `swing` |
 | `database.py` | SQLite manager (WAL mode, upsert) |
 | `data_fetcher.py` | Yahoo Finance downloader; daily + weekly storage; ratio series |
 | `data_quality.py` | OHLC integrity, gap, spike, stale-close validation |
@@ -98,8 +98,8 @@ Navigate to **http://localhost:8050** in your browser.
 | `scanner.py` | Multi-timeframe scanner with heatmap output |
 | `jeff_scanner.py` | Jeff Sun swing-setup scanner with opportunity scoring |
 | `swing_core.py` | Swing-trading core: setup detection, regime gate, R-multiples |
-| `strategy_tester.py` | Vectorised backtest engine (powers the portfolio backtester) |
 | `portfolio_backtest.py` | Multi-asset portfolio backtest with dynamic sizing |
+| `strategy_tester.py` | Vectorised backtest engine (used by portfolio_backtest) |
 | `market_regime.py` | 5-state market regime classifier |
 | `momentum_ranker.py` | Jegadeesh-Titman momentum composite ranker |
 | `seasonality.py` | Day-of-week, monthly, quarterly seasonality |
