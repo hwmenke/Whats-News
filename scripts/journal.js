@@ -61,7 +61,7 @@ async function loadJournal() {
             const rgCls  = rg === 'A+' || rg === 'A' ? 'jnl-pos' : rg === 'D' || rg === 'F' ? 'jnl-neg' : '';
             const rgHtml = rg ? `<span class="${rgCls}" title="${_jnlEsc(e.review_lesson||'')} ${_jnlEsc(e.review_mistakes||'')}">${rg}</span>` : '—';
             return `<tr>
-                <td><strong>${_jnlEsc(e.symbol)}</strong></td>
+                <td><strong data-hover-symbol="${_jnlEsc(e.symbol)}">${_jnlEsc(e.symbol)}</strong></td>
                 <td class="${e.direction === 'short' ? 'jnl-neg' : 'jnl-pos'}">${_jnlEsc(e.direction)}</td>
                 <td>${_jnlEsc(e.entry_date)}</td>
                 <td>${Number(e.entry_price).toFixed(2)}</td>

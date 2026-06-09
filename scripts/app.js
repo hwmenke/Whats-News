@@ -1146,7 +1146,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadSymbols();
 
     // Start alert polling (60s interval, first check immediate)
-    if (typeof startAlertPolling === 'function') startAlertPolling(60000);
+    if (typeof startAlertPolling  === 'function') startAlertPolling(60000);
+    // Init hover chart preview
+    if (typeof initHoverPreview   === 'function') initHoverPreview();
 
     // Load regime badge async (non-blocking)
     if (typeof loadRegimeBadge === 'function') loadRegimeBadge('SPY');

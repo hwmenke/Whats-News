@@ -268,10 +268,11 @@ function _buildRow(row) {
     tr.className = 'scan-row';
     if (row.error) tr.classList.add('scan-row-error');
 
-    // Symbol — click to load
+    // Symbol — click to load, hover for mini-chart
     const tdSym = _td('scan-td scan-td-sym');
     tdSym.textContent = row.symbol;
     tdSym.title = row.error ? `Error: ${row.error}` : `Load ${row.symbol}`;
+    tdSym.dataset.hoverSymbol = row.symbol;
     tdSym.addEventListener('click', () => {
         if (typeof selectSymbol === 'function') selectSymbol(row.symbol);
     });
@@ -730,7 +731,7 @@ function _jfRow(r) {
         return `<tr class="jf-row jf-row-err">
             <td></td>
             <td></td>
-            <td class="jf-sym-cell"><strong>${r.symbol}</strong></td>
+            <td class="jf-sym-cell"><strong data-hover-symbol="${r.symbol}">${r.symbol}</strong></td>
             <td colspan="9" class="jf-err-msg">${r.error}
                 <button class="jf-act jf-act-fetch" title="Open Data Manager"
                         onclick="event.stopPropagation(); switchTab('data-manager')">Fetch</button></td>
@@ -810,7 +811,7 @@ function _jfRow(r) {
 
         <td class="jf-sym-cell">
             ${tierIco ? `<span class="jf-tier" title="${r.tier}">${tierIco}</span>` : ''}
-            <strong${notesAttr}>${r.symbol}</strong>
+            <strong${notesAttr} data-hover-symbol="${r.symbol}">${r.symbol}</strong>
             <div class="jf-sym-badges">${posBadge}${earnBadge}${staleBadge}</div>
             ${sectorChip}
         </td>

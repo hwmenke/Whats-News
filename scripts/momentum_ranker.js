@@ -82,7 +82,7 @@ function _momRenderTable(rankings) {
         return `<tr class="mom-tr">
           <td class="mom-td mom-rank">${r.rank}</td>
           <td class="mom-td mom-symbol">
-            <b>${r.symbol}</b>
+            <b data-hover-symbol="${r.symbol}">${r.symbol}</b>
             ${r.name ? `<span class="mom-name">${r.name}</span>` : ''}
           </td>
           <td class="mom-td">

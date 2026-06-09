@@ -4677,3 +4677,21 @@ body.focus-mode .symbol-header { display: none; }
 .alp-status-active    { color: #22c55e; background: rgba(34,197,94,0.1); }
 .alp-status-triggered { color: #f59e0b; background: rgba(245,158,11,0.1); }
 .btn-xs { padding: 2px 6px; font-size: 11px; }
+
+/* ── Symbol hover mini-chart popover ───────────────────────────── */
+.hover-popover {
+  position: absolute; z-index: 950; display: none;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  padding: 8px; width: 280px;
+  pointer-events: none;
+}
+.hover-popover:hover { pointer-events: auto; }
+.hp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.hp-sym  { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.hp-chg  { font-size: 12px; font-weight: 600; }
+.hp-pos  { color: var(--green); }
+.hp-neg  { color: var(--red); }
+.hp-chart { width: 260px; height: 130px; }
+.hp-stats { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+[data-hover-symbol] { cursor: pointer; }
