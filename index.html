@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FinDash – Financial Dashboard</title>
   <meta name="description" content="Professional financial dashboard with Yahoo Finance data, SQLite storage, and technical analysis charts." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233b82f6'/%3E%3Cpath d='M7 21l6-7 4 4 8-10' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="styles/main.css" />
   <link rel="stylesheet" href="styles/newsletter.css" />
   <!-- TradingView Lightweight Charts -->
@@ -33,8 +34,8 @@
       <span id="regime-badge-icon">○</span>
       <span id="regime-badge-label">—</span>
     </div>
-    <button id="btn-theme-toggle" class="btn btn-ghost btn-icon topbar-icon" title="Switch to light mode" onclick="toggleTheme()">☀️</button>
-    <button id="btn-focus-mode"   class="btn btn-ghost btn-icon topbar-icon" title="Focus mode (F)" onclick="toggleFocusMode()">⛶</button>
+    <button id="btn-theme-toggle" class="btn btn-ghost btn-icon topbar-icon" title="Switch to light mode" aria-label="Toggle color theme" onclick="toggleTheme()">☀️</button>
+    <button id="btn-focus-mode"   class="btn btn-ghost btn-icon topbar-icon" title="Focus mode (F)" aria-label="Toggle focus mode" onclick="toggleFocusMode()">⛶</button>
   </header>
 
   <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
@@ -50,9 +51,9 @@
           autocomplete="off"
           spellcheck="false"
         />
-        <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add symbol (or type comma-separated)">+</button>
-        <button id="btn-bulk-add"   class="btn btn-ghost   btn-icon" title="Bulk import a list of tickers">≡</button>
-        <button id="btn-add-ratio"  class="btn btn-ghost   btn-icon" title="Add price ratio  A/B" onclick="toggleRatioForm()">÷</button>
+        <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add symbol (or type comma-separated)" aria-label="Add symbol">+</button>
+        <button id="btn-bulk-add"   class="btn btn-ghost   btn-icon" title="Bulk import a list of tickers" aria-label="Bulk import tickers">≡</button>
+        <button id="btn-add-ratio"  class="btn btn-ghost   btn-icon" title="Add price ratio  A/B" aria-label="Add price ratio" onclick="toggleRatioForm()">÷</button>
       </div>
 
       <!-- Ratio form — hidden until ÷ button clicked -->
@@ -125,69 +126,87 @@
 
     <!-- ═══════════════════ MAIN TABS ═══════════════════ -->
     <nav class="main-nav-tabs">
-      <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')">
+
+      <span class="tab-group-label">Chart</span>
+      <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')" title="Charts (1)">
         <span class="tab-icon">📈</span> Charts
       </button>
-      <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">
-        <span class="tab-icon">📊</span> Statistics
-      </button>
-      <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">
-        <span class="tab-icon">🎯</span> Adaptive Trend
-      </button>
-      <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">
-        <span class="tab-icon">📡</span> Scanner
-      </button>
-      <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
-        <span class="tab-icon">🗄️</span> Data Manager
-      </button>
-      <button id="tab-swirl" class="tab-btn" onclick="switchTab('swirl')">
-        <span class="tab-icon">🌀</span> Swirligram
-      </button>
-      <button id="tab-portfolio" class="tab-btn" onclick="switchTab('portfolio')">
-        <span class="tab-icon">📂</span> Portfolio
-      </button>
-      <button id="tab-regime" class="tab-btn" onclick="switchTab('regime')">
-        <span class="tab-icon">🌡</span> Regime
-      </button>
-      <button id="tab-momentum" class="tab-btn" onclick="switchTab('momentum')">
-        <span class="tab-icon">🏆</span> Momentum
-      </button>
-      <button id="tab-seasonality" class="tab-btn" onclick="switchTab('seasonality')">
-        <span class="tab-icon">📅</span> Seasonality
-      </button>
-      <button id="tab-sector" class="tab-btn" onclick="switchTab('sector')">
-        <span class="tab-icon">🗺️</span> Sector
-      </button>
-      <button id="tab-analytics" class="tab-btn" onclick="switchTab('analytics')">
-        <span class="tab-icon">📒</span> Analytics
-      </button>
-      <button id="tab-journal" class="tab-btn" onclick="switchTab('journal')">
-        <span class="tab-icon">📝</span> Journal
-      </button>
-      <button id="tab-news" class="tab-btn" onclick="switchTab('news')">
-        <span class="tab-icon">📰</span> News
-      </button>
-      <button id="tab-calendar" class="tab-btn" onclick="switchTab('calendar')">
-        <span class="tab-icon">🗓️</span> Calendar
-      </button>
-      <button id="tab-newsletter" class="tab-btn" onclick="switchTab('newsletter')">
-        <span class="tab-icon">📈</span> Daily Edge
-      </button>
-      <button id="tab-compare" class="tab-btn" onclick="switchTab('compare')">
-        <span class="tab-icon">⚖️</span> Compare
-      </button>
-      <button id="tab-mtf" class="tab-btn" onclick="switchTab('mtf')">
+      <button id="tab-mtf" class="tab-btn" onclick="switchTab('mtf')" title="Multi-timeframe grid">
         <span class="tab-icon">🔢</span> Multi-TF
       </button>
-      <button id="tab-process" class="tab-btn" onclick="switchTab('process')">
-        <span class="tab-icon">🎯</span> Process
+      <button id="tab-compare" class="tab-btn" onclick="switchTab('compare')" title="Compare symbols">
+        <span class="tab-icon">⚖️</span> Compare
       </button>
-      <button id="tab-risk-calc" class="tab-btn" onclick="switchTab('risk-calc')">
-        <span class="tab-icon">🧮</span> Risk Calc
+
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">Analyze</span>
+      <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')" title="Statistics (2)">
+        <span class="tab-icon">📊</span> Statistics
       </button>
-      <button id="tab-dashboard" class="tab-btn" onclick="switchTab('dashboard')">
+      <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')" title="Adaptive Trend (3)">
+        <span class="tab-icon">🎯</span> Adaptive Trend
+      </button>
+      <button id="tab-swirl" class="tab-btn" onclick="switchTab('swirl')" title="RSI phase-space charts">
+        <span class="tab-icon">🌀</span> Swirligram
+      </button>
+      <button id="tab-seasonality" class="tab-btn" onclick="switchTab('seasonality')" title="Seasonality patterns">
+        <span class="tab-icon">📅</span> Seasonality
+      </button>
+      <button id="tab-momentum" class="tab-btn" onclick="switchTab('momentum')" title="Momentum ranker (7)">
+        <span class="tab-icon">🏆</span> Momentum
+      </button>
+      <button id="tab-regime" class="tab-btn" onclick="switchTab('regime')" title="Market regime (8)">
+        <span class="tab-icon">🌡</span> Regime
+      </button>
+
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">Scan</span>
+      <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')" title="Scanner (4)">
+        <span class="tab-icon">📡</span> Scanner
+      </button>
+      <button id="tab-sector" class="tab-btn" onclick="switchTab('sector')" title="Sector heatmap">
+        <span class="tab-icon">🗺️</span> Sector
+      </button>
+      <button id="tab-dashboard" class="tab-btn" onclick="switchTab('dashboard')" title="Market dashboard (5)">
         <span class="tab-icon">📊</span> Dashboard
       </button>
+
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">Trade</span>
+      <button id="tab-journal" class="tab-btn" onclick="switchTab('journal')" title="Trade journal (6)">
+        <span class="tab-icon">📝</span> Journal
+      </button>
+      <button id="tab-analytics" class="tab-btn" onclick="switchTab('analytics')" title="Trade analytics">
+        <span class="tab-icon">📒</span> Analytics
+      </button>
+      <button id="tab-portfolio" class="tab-btn" onclick="switchTab('portfolio')" title="Portfolio backtest (9)">
+        <span class="tab-icon">📂</span> Portfolio
+      </button>
+      <button id="tab-risk-calc" class="tab-btn" onclick="switchTab('risk-calc')" title="Position size calculator">
+        <span class="tab-icon">🧮</span> Risk Calc
+      </button>
+      <button id="tab-process" class="tab-btn" onclick="switchTab('process')" title="Trading process checklists">
+        <span class="tab-icon">✅</span> Process
+      </button>
+
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">News</span>
+      <button id="tab-news" class="tab-btn" onclick="switchTab('news')" title="News & sentiment">
+        <span class="tab-icon">📰</span> News
+      </button>
+      <button id="tab-calendar" class="tab-btn" onclick="switchTab('calendar')" title="Macro & earnings calendar">
+        <span class="tab-icon">🗓️</span> Calendar
+      </button>
+      <button id="tab-newsletter" class="tab-btn" onclick="switchTab('newsletter')" title="Daily Edge newsletter">
+        <span class="tab-icon">☀️</span> Daily Edge
+      </button>
+
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">Data</span>
+      <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')" title="Data manager (0)">
+        <span class="tab-icon">🗄️</span> Data Manager
+      </button>
+
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -1081,19 +1100,53 @@
     <div id="journal-area" class="feat-container" style="display:none;">
       <div class="feat-header"><h2>📝 Trade Journal</h2>
         <span class="feat-sub">Log trade ideas, setups, and outcomes.</span></div>
-      <div class="feat-controls feat-controls-wrap">
-        <input id="jnl-symbol" class="feat-input" placeholder="Symbol" />
-        <select id="jnl-direction" class="feat-input">
-          <option value="long">Long</option><option value="short">Short</option>
-        </select>
-        <input id="jnl-entry-date" class="feat-input" type="date" />
-        <input id="jnl-entry-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="Entry $" />
-        <input id="jnl-stop-loss"   class="feat-input feat-input-sm" type="number" step="any" placeholder="Stop $" title="Planned stop price (used for R calculations)" />
-        <input id="jnl-exit-price"  class="feat-input feat-input-sm" type="number" step="any" placeholder="Exit $" />
-        <input id="jnl-qty" class="feat-input feat-input-sm" type="number" step="any" placeholder="Qty" />
-        <input id="jnl-setup" class="feat-input" placeholder="Setup" />
-        <input id="jnl-tags" class="feat-input" placeholder="Tags" />
-        <button class="btn btn-primary" onclick="submitJournalEntry()">Add Entry</button>
+      <div class="jnl-form">
+        <div class="jnl-field">
+          <label for="jnl-symbol">Symbol</label>
+          <input id="jnl-symbol" class="feat-input" placeholder="AAPL" />
+        </div>
+        <div class="jnl-field">
+          <label for="jnl-direction">Direction</label>
+          <select id="jnl-direction" class="feat-input">
+            <option value="long">Long</option><option value="short">Short</option>
+          </select>
+        </div>
+        <div class="jnl-field">
+          <label for="jnl-entry-date">Entry Date</label>
+          <input id="jnl-entry-date" class="feat-input" type="date" />
+        </div>
+        <div class="jnl-field">
+          <label for="jnl-entry-price">Entry $</label>
+          <input id="jnl-entry-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="100.00" />
+        </div>
+        <div class="jnl-field">
+          <label for="jnl-stop-loss">Stop $</label>
+          <input id="jnl-stop-loss" class="feat-input feat-input-sm" type="number" step="any" placeholder="97.50" title="Planned stop price (used for R calculations)" />
+        </div>
+        <div class="jnl-field">
+          <label for="jnl-exit-price">Exit $</label>
+          <input id="jnl-exit-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="open" />
+        </div>
+        <div class="jnl-field">
+          <label for="jnl-qty">Qty</label>
+          <input id="jnl-qty" class="feat-input feat-input-sm" type="number" step="any" placeholder="1" />
+        </div>
+        <div class="jnl-field">
+          <label for="jnl-setup">Setup</label>
+          <input id="jnl-setup" class="feat-input" placeholder="breakout / EP / burst" />
+        </div>
+        <div class="jnl-field">
+          <label for="jnl-tags">Tags</label>
+          <input id="jnl-tags" class="feat-input" placeholder="earnings, gap…" />
+        </div>
+        <div class="jnl-field jnl-field-grow">
+          <label for="jnl-thesis">Thesis / Notes</label>
+          <input id="jnl-thesis" class="feat-input" placeholder="Why this trade?" />
+        </div>
+        <div class="jnl-field">
+          <label>&nbsp;</label>
+          <button class="btn btn-primary" onclick="submitJournalEntry()">Add Entry</button>
+        </div>
       </div>
       <div class="feat-table-wrap">
         <table class="feat-table">

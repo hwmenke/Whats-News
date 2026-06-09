@@ -34,10 +34,26 @@ function toast(message, type = 'info', duration = 3500) {
 }
 
 // ── API helpers ──────────────────────────────────────────────
+function setConnStatus(ok) {
+    const dot = document.querySelector('.status-dot');
+    if (!dot) return;
+    dot.classList.toggle('offline', !ok);
+    dot.title = ok ? 'Connected' : 'Server unreachable';
+}
+
 async function apiFetch(url, opts = {}) {
-    console.log(`>> API Fetch: ${url}`, opts.method || 'GET');
-    const res = await fetch(url, opts);
-    console.log(`<< API Response: ${res.status} ${res.statusText}`);
+    let res;
+    try {
+        res = await fetch(url, opts);
+    } catch (e) {
+        setConnStatus(false);
+        const err  = new Error('Server unreachable');
+        err.code   = 'NETWORK';
+        err.hint   = 'Is the dashboard server running?';
+        err.status = 0;
+        throw err;
+    }
+    setConnStatus(true);
     let data;
     try { data = await res.json(); } catch (_) { data = null; }
     if (!res.ok) {
@@ -446,26 +462,10 @@ async function selectSymbol(symbol) {
     persistence.save({ activeSymbol: symbol });
     renderSymbolList();
     // Update header immediately with symbol name
-    const sym = state.symbols.find(s => s.symbol === symbol);
     const headerEl = document.getElementById('sym-title');
     if (headerEl) headerEl.textContent = _displaySymbol(symbol);
     if (typeof _extrasOnSymbolLoad === 'function') _extrasOnSymbolLoad(symbol);
-    if (state.activeTab === 'charts') {
-        await loadChartData(symbol);
-    } else if (state.activeTab === 'compare') {
-        if (typeof runCompare === 'function') runCompare();
-    } else if (state.activeTab === 'mtf') {
-        if (typeof loadMultiTF === 'function') loadMultiTF(symbol);
-    } else if (state.activeTab === 'stats') {
-        await loadStatsData(symbol);
-    } else if (state.activeTab === 'trend') {
-        await loadAdaptiveTrendData(symbol);
-    } else if (state.activeTab === 'regression') {
-        // Regression tab: just update header; user clicks Run to trigger
-        showRegressionArea();
-    } else if (state.activeTab === 'swirl') {
-        if (typeof swLoad === 'function') swLoad();
-    }
+    await TAB_DEFS[state.activeTab]?.onSymbol?.(symbol);
 }
 
 async function loadStatsData(symbol) {
@@ -641,35 +641,70 @@ async function loadAdaptiveTrendData(symbol) {
 
 // ── UI helpers ───────────────────────────────────────────────
 
-const _AREA_DISPLAY = {
-    'empty-state':       'flex',
-    'chart-area':        'flex',
-    'stats-area':        'block',
-    'trend-area':        'flex',
-    'scanner-area':      'flex',
-    'data-manager-area': 'flex',
-    'swirl-area':        'flex',
-    'portfolio-area':    'flex',
-    'regime-area':       'flex',
-    'momentum-area':     'flex',
-    'seasonality-area':  'flex',
-    'newsletter-area':   'flex',
-    'news-area':         'flex',
-    'sector-area':       'flex',
-    'calendar-area':     'flex',
-    'journal-area':      'flex',
-    'analytics-area':    'flex',
-    'compare-area':      'flex',
-    'mtf-area':          'flex',
-    'process-area':      'flex',
-    'risk-calc-area':    'flex',
-    'dashboard-area':    'flex',
+// Single source of truth for every tab: its content area, the display
+// mode that area needs, what to run when the tab is shown, and (for
+// symbol-driven tabs) what to run when the active symbol changes.
+const TAB_DEFS = {
+    'charts': {
+        area: 'chart-area', display: 'flex',
+        onShow:   () => state.activeSymbol ? loadChartData(state.activeSymbol) : showEmptyState(),
+        onSymbol: sym => loadChartData(sym),
+    },
+    'stats': {
+        area: 'stats-area', display: 'block',
+        onShow:   () => state.activeSymbol ? loadStatsData(state.activeSymbol) : showEmptyState(),
+        onSymbol: sym => loadStatsData(sym),
+    },
+    'trend': {
+        area: 'trend-area', display: 'flex',
+        onShow: () => {
+            if (!state.activeSymbol) { showEmptyState(); return; }
+            loadAdaptiveTrendData(state.activeSymbol);
+            if (typeof initSwingWidget === 'function') initSwingWidget();
+        },
+        onSymbol: sym => loadAdaptiveTrendData(sym),
+    },
+    'scanner': {
+        area: 'scanner-area', display: 'flex',
+        onShow: () => (typeof initScanner === 'function') ? initScanner() : loadScannerData(),
+    },
+    'data-manager': { area: 'data-manager-area', display: 'flex', onShow: () => initDataManager() },
+    'swirl': {
+        area: 'swirl-area', display: 'flex',
+        onShow:   () => { if (typeof initSwirligram === 'function') initSwirligram(); },
+        onSymbol: () => { if (typeof swLoad === 'function') swLoad(); },
+    },
+    'portfolio':   { area: 'portfolio-area',   display: 'flex', onShow: () => { if (typeof initPortfolioTester === 'function') initPortfolioTester(); } },
+    'regime':      { area: 'regime-area',      display: 'flex', onShow: () => { if (typeof initRegime === 'function') initRegime(); } },
+    'momentum':    { area: 'momentum-area',    display: 'flex', onShow: () => { if (typeof initMomentumRanker === 'function') initMomentumRanker(); } },
+    'seasonality': { area: 'seasonality-area', display: 'flex', onShow: () => { if (typeof initSeasonality === 'function') initSeasonality(); } },
+    'newsletter':  { area: 'newsletter-area',  display: 'flex', onShow: () => { if (typeof initNewsletter === 'function') initNewsletter(); } },
+    'news':        { area: 'news-area',        display: 'flex', onShow: () => { if (typeof initNews === 'function') initNews(); } },
+    'sector':      { area: 'sector-area',      display: 'flex', onShow: () => { if (typeof initSector === 'function') initSector(); } },
+    'calendar':    { area: 'calendar-area',    display: 'flex', onShow: () => { if (typeof initCalendar === 'function') initCalendar(); } },
+    'journal':     { area: 'journal-area',     display: 'flex', onShow: () => { if (typeof initJournal === 'function') initJournal(); } },
+    'analytics':   { area: 'analytics-area',   display: 'flex', onShow: () => { if (typeof initAnalytics === 'function') initAnalytics(); } },
+    'compare': {
+        area: 'compare-area', display: 'flex',
+        onShow:   () => { if (typeof initCompare === 'function') initCompare(); },
+        onSymbol: () => { if (typeof runCompare === 'function') runCompare(); },
+    },
+    'mtf': {
+        area: 'mtf-area', display: 'flex',
+        onShow:   () => { if (typeof initMtf === 'function') initMtf(); },
+        onSymbol: sym => { if (typeof loadMultiTF === 'function') loadMultiTF(sym); },
+    },
+    'process':   { area: 'process-area',   display: 'flex', onShow: () => { if (typeof initProcess === 'function') initProcess(); } },
+    'risk-calc': { area: 'risk-calc-area', display: 'flex', onShow: () => { if (typeof initRiskCalc === 'function') initRiskCalc(); } },
+    'dashboard': { area: 'dashboard-area', display: 'flex', onShow: () => { if (typeof initMarketDashboard === 'function') initMarketDashboard(); } },
 };
 
 function _showOnly(activeId) {
-    for (const [id, disp] of Object.entries(_AREA_DISPLAY)) {
-        const el = document.getElementById(id);
-        if (el) el.style.display = (id === activeId) ? disp : 'none';
+    const empty = document.getElementById('empty-state');
+    if (empty) empty.style.display = (activeId === 'empty-state') ? 'flex' : 'none';
+    for (const def of Object.values(TAB_DEFS)) {
+        const el = document.getElementById(def.area);
+        if (el) el.style.display = (def.area === activeId) ? def.display : 'none';
     }
     const tabBar = document.querySelector('.tab-bar');
     if (tabBar) tabBar.style.display = (activeId === 'chart-area') ? '' : 'none';
@@ -677,6 +712,10 @@ function _showOnly(activeId) {
 
 function showEmptyState()      { _showOnly('empty-state'); }
 function showChartArea()       { _showOnly('chart-area'); }
+function showStatsArea()       { _showOnly('stats-area'); }
+function showTrendArea()       { _showOnly('trend-area'); }
+function showScannerArea()     { _showOnly('scanner-area'); }
+function showDataManagerArea() { _showOnly('data-manager-area'); }
 
 function showLoadingOverlay(show) {
     document.getElementById('chart-loading').style.display = show ? 'flex' : 'none';
@@ -684,93 +723,22 @@ function showLoadingOverlay(show) {
 
 // ── Tab Switching ─────────────────────────────────────────────
 async function switchTab(tabId) {
+    const def = TAB_DEFS[tabId];
+    if (!def) return;
+
     state.activeTab = tabId;
     persistence.save({ activeTab: tabId });
 
-    // Update buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.id === `tab-${tabId}`);
+        const active = btn.id === `tab-${tabId}`;
+        btn.classList.toggle('active', active);
+        // The nav scrolls horizontally — keep the active tab visible
+        if (active) btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
 
-    if (tabId === 'charts') {
-        showChartArea();
-        if (state.activeSymbol) loadChartData(state.activeSymbol);
-    } else if (tabId === 'stats') {
-        showStatsArea();
-        if (state.activeSymbol) loadStatsData(state.activeSymbol);
-    } else if (tabId === 'trend') {
-        showTrendArea();
-        if (state.activeSymbol) {
-            loadAdaptiveTrendData(state.activeSymbol);
-            if (typeof initSwingWidget === 'function') initSwingWidget();
-        }
-    } else if (tabId === 'scanner') {
-        showScannerArea();
-        if (typeof initScanner === 'function') initScanner(); else loadScannerData();
-    } else if (tabId === 'data-manager') {
-        showDataManagerArea();
-        initDataManager();
-    } else if (tabId === 'swirl') {
-        showSwirlogramArea();
-        if (typeof initSwirligram === 'function') initSwirligram();
-    } else if (tabId === 'portfolio') {
-        showPortfolioArea();
-        if (typeof initPortfolioTester === 'function') initPortfolioTester();
-    } else if (tabId === 'regime') {
-        showRegimeArea();
-        if (typeof initRegime === 'function') initRegime();
-    } else if (tabId === 'momentum') {
-        showMomentumArea();
-        if (typeof initMomentumRanker === 'function') initMomentumRanker();
-    } else if (tabId === 'seasonality') {
-        showSeasonalityArea();
-        if (typeof initSeasonality === 'function') initSeasonality();
-    } else if (tabId === 'newsletter') {
-        _showOnly('newsletter-area');
-        if (typeof initNewsletter === 'function') initNewsletter();
-    } else if (tabId === 'news') {
-        _showOnly('news-area');
-        if (typeof initNews === 'function') initNews();
-    } else if (tabId === 'sector') {
-        _showOnly('sector-area');
-        if (typeof initSector === 'function') initSector();
-    } else if (tabId === 'calendar') {
-        _showOnly('calendar-area');
-        if (typeof initCalendar === 'function') initCalendar();
-    } else if (tabId === 'journal') {
-        _showOnly('journal-area');
-        if (typeof initJournal === 'function') initJournal();
-    } else if (tabId === 'analytics') {
-        _showOnly('analytics-area');
-        if (typeof initAnalytics === 'function') initAnalytics();
-    } else if (tabId === 'compare') {
-        _showOnly('compare-area');
-        if (typeof initCompare === 'function') initCompare();
-    } else if (tabId === 'mtf') {
-        _showOnly('mtf-area');
-        if (typeof initMtf === 'function') initMtf();
-    } else if (tabId === 'process') {
-        _showOnly('process-area');
-        if (typeof initProcess === 'function') initProcess();
-    } else if (tabId === 'risk-calc') {
-        _showOnly('risk-calc-area');
-        if (typeof initRiskCalc === 'function') initRiskCalc();
-    } else if (tabId === 'dashboard') {
-        _showOnly('dashboard-area');
-        if (typeof initMarketDashboard === 'function') initMarketDashboard();
-    }
+    _showOnly(def.area);
+    await def.onShow?.();
 }
-
-function showStatsArea()       { _showOnly('stats-area'); }
-function showTrendArea()       { _showOnly('trend-area'); }
-function showScannerArea()     { _showOnly('scanner-area'); }
-function showDataManagerArea() { _showOnly('data-manager-area'); }
-function showSwirlogramArea()  { _showOnly('swirl-area'); }
-function showPortfolioArea()   { _showOnly('portfolio-area'); }
-function showRegimeArea()      { _showOnly('regime-area'); }
-function showMomentumArea()    { _showOnly('momentum-area'); }
-function showSeasonalityArea() { _showOnly('seasonality-area'); }
-function showFactorModelArea() { _showOnly('factor-model-area'); }
 
 // ── Ratio Symbol UI ───────────────────────────────────────────
 function toggleRatioForm() {
@@ -886,7 +854,6 @@ function renderStats(data) {
     });
 
     // 2b. Price vs KAMA distance deciles (1D)
-    destroy('kamaDist1d');
     statsCharts['kamaDist1d'] = updateOrCreate('stats.kamaDist1d', document.getElementById('chart-kama-dist-1d'), {
         type: 'line',
         data: {
@@ -907,7 +874,6 @@ function renderStats(data) {
     });
 
     // 2. RSI Deciles 5D
-    destroy('rsi5d');
     statsCharts['rsi5d'] = updateOrCreate('stats.rsi5d', document.getElementById('chart-rsi-5d'), {
         type: 'bar',
         data: {
@@ -922,7 +888,6 @@ function renderStats(data) {
     });
 
     // 2c. Price vs KAMA distance deciles (5D)
-    destroy('kamaDist5d');
     statsCharts['kamaDist5d'] = updateOrCreate('stats.kamaDist5d', document.getElementById('chart-kama-dist-5d'), {
         type: 'line',
         data: {
@@ -943,7 +908,6 @@ function renderStats(data) {
     });
 
     // 3. Returns Distribution
-    destroy('dist');
     statsCharts['dist'] = updateOrCreate('stats.dist', document.getElementById('chart-dist'), {
         type: 'bar',
         data: {
@@ -968,7 +932,6 @@ function renderStats(data) {
 
     // 4. Seasonality
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    destroy('season');
     statsCharts['season'] = updateOrCreate('stats.season', document.getElementById('chart-seasonality'), {
         type: 'bar',
         data: {
@@ -982,7 +945,6 @@ function renderStats(data) {
     });
 
     // 4b. KAMA cross forward returns
-    destroy('kamaCross');
     statsCharts['kamaCross'] = updateOrCreate('stats.kamaCross', document.getElementById('chart-kama-cross'), {
         type: 'bar',
         data: {
@@ -1008,7 +970,6 @@ function renderStats(data) {
     });
 
     // 4c. KAMA cross event counts
-    destroy('kamaCrossCounts');
     statsCharts['kamaCrossCounts'] = updateOrCreate('stats.kamaCrossCounts', document.getElementById('chart-kama-cross-counts'), {
         type: 'bar',
         data: {
@@ -1026,9 +987,13 @@ function renderStats(data) {
 }
 
 function updateSymbolHeader(symbol, last, prev) {
-    document.getElementById('sym-title').textContent = symbol;
+    document.getElementById('sym-title').textContent = _displaySymbol(symbol);
     const symInfo = state.symbols.find(s => s.symbol === symbol);
     document.getElementById('sym-subtitle').textContent = symInfo?.name || '';
+
+    document.title = last
+        ? `${_displaySymbol(symbol)} $${last.close.toFixed(2)} — FinDash`
+        : `${_displaySymbol(symbol)} — FinDash`;
 
     if (!last) {
         document.getElementById('sym-price').textContent   = '--';
@@ -1114,10 +1079,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // Keyboard shortcuts
-    const TAB_ORDER = ['charts','stats','trend','scanner','data-manager','swirl','portfolio'];
+    // Keyboard shortcuts — 1-9 then 0 for the ten most-used tabs
+    const TAB_ORDER = ['charts','stats','trend','scanner','dashboard',
+                       'journal','momentum','regime','portfolio','data-manager'];
     TAB_ORDER.forEach((id, i) =>
-        registerShortcut({ key: String(i + 1), handler: () => switchTab(id), description: `Go to ${id}` })
+        registerShortcut({ key: String((i + 1) % 10), handler: () => switchTab(id), description: `Go to ${id}` })
     );
     registerShortcut({ key: 'j', handler: () => _moveWatchlist(+1), description: 'Next symbol' });
     registerShortcut({ key: 'k', handler: () => _moveWatchlist(-1), description: 'Previous symbol' });
@@ -1132,23 +1098,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const saved = persistence.load();
     const savedSym = saved?.activeSymbol;
-    const savedTab = saved?.activeTab || 'charts';
+    const savedTab = TAB_DEFS[saved?.activeTab] ? saved.activeTab : 'charts';
 
-    // Restore active tab button highlight first
-    const tabBtn = document.getElementById(`tab-${savedTab}`);
-    if (tabBtn) {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        tabBtn.classList.add('active');
-    }
-    state.activeTab = savedTab;
-
-    // Restore symbol only if it's still in the watchlist
+    // Restore symbol (without loading any view yet) only if still in the watchlist
     const validSym = savedSym && state.symbols.find(s => s.symbol === savedSym);
     if (validSym) {
-        await selectSymbol(savedSym);
+        state.activeSymbol = savedSym;
     } else if (state.symbols.length && state.symbols[0].last_fetch) {
-        await selectSymbol(state.symbols[0].symbol);
-    } else {
-        showEmptyState();
+        state.activeSymbol = state.symbols[0].symbol;
     }
+
+    if (state.activeSymbol) {
+        renderSymbolList();
+        const headerEl = document.getElementById('sym-title');
+        if (headerEl) headerEl.textContent = _displaySymbol(state.activeSymbol);
+        if (typeof _extrasOnSymbolLoad === 'function') _extrasOnSymbolLoad(state.activeSymbol);
+    }
+
+    // switchTab shows the saved tab's area and loads its data — previously a
+    // saved non-chart tab restored the button highlight but left the empty
+    // state on screen.
+    await switchTab(savedTab);
 });
