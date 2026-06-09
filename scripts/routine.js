@@ -202,55 +202,59 @@ async function _runDataRefresh() {
 }
 
 async function _runMarketRegime() {
-    const data  = await apiFetch(`${API}/market-regime`);
-    const score = data.score ?? 0;
-    const label = data.regime || 'Unknown';
-    const color = label.includes('Bull') ? 'var(--green)'
-                : label.includes('Bear') ? 'var(--red)'
-                : 'var(--yellow)';
+    const data    = await apiFetch(`${API}/market-regime`);
+    const cur     = data.current || {};
+    const score   = cur.score ?? 0;
+    const label   = cur.state || 'Unknown';
+    const color   = label.toLowerCase().includes('bull') ? 'var(--green)'
+                  : label.toLowerCase().includes('bear') ? 'var(--red)'
+                  : 'var(--yellow)';
 
-    const components = data.components || {};
-    const compRows = Object.entries(components).map(([k, v]) =>
+    const stats   = data.regime_stats || {};
+    const statRows = Object.entries(stats).map(([state, s]) =>
         `<div class="regime-row">
-            <span>${k}</span>
-            <span style="color:${v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-muted)'}">
-                ${v > 0 ? '+' : ''}${v}
-            </span>
+            <span>${state}</span>
+            <span style="color:var(--text-muted)">${s.count ?? 0}d</span>
         </div>`
     ).join('');
+
+    const daysIn  = cur.days_in != null ? `${cur.days_in}d in state` : '';
 
     return `
         <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">
             <div class="regime-badge-lg" style="border-color:${color};color:${color};">
                 <span class="regime-badge-label">${label}</span>
                 <span class="regime-badge-score">Score: ${score}/10</span>
+                ${daysIn ? `<span class="regime-badge-days">${daysIn}</span>` : ''}
             </div>
-            ${compRows ? `<div class="routine-regime-details">${compRows}</div>` : ''}
+            ${statRows ? `<div class="routine-regime-details">${statRows}</div>` : ''}
         </div>`;
 }
 
 async function _runJeffScan() {
-    const data   = await apiFetch(`${API}/jeff-scan`);
-    const setups = Array.isArray(data) ? data : (data.setups || []);
-    if (!setups.length)
-        return '<div class="routine-empty">No setups found today.</div>';
+    const data  = await apiFetch(`${API}/jeff-scan`);
+    const all   = Array.isArray(data) ? data : (data.rows || []);
+    // Only rows with a grade (exclude error rows)
+    const graded = all.filter(r => r.grade && !r.error).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    if (!graded.length)
+        return '<div class="routine-empty">No graded setups found. Run a data refresh first.</div>';
 
-    const top  = setups.slice(0, 12);
+    const top  = graded.slice(0, 12);
     const rows = top.map(s => {
-        const gateClass = (s.regime_gate || '') === 'pass' ? 'rc-text-green' : 'rc-text-red';
-        const score = s.score != null ? Number(s.score).toFixed(0) : '—';
+        const g    = (s.grade || '').toLowerCase();
+        const gCls = g === 'a' ? 'rc-text-green' : g === 'b' ? '' : 'rc-text-red';
         return `<tr>
             <td><strong>${s.symbol}</strong></td>
-            <td>${s.setup_type || s.setup || '—'}</td>
-            <td>${score}</td>
-            <td class="${gateClass}">${s.regime_gate || '—'}</td>
+            <td class="${gCls}">${s.grade || '—'}</td>
+            <td>${s.score != null ? s.score : '—'}</td>
+            <td style="color:var(--text-muted)">${s.pattern || '—'}</td>
         </tr>`;
     }).join('');
 
     return `
-        <div class="routine-summary">${setups.length} setups — <a href="#" onclick="switchTab('scanner');return false;">open scanner →</a></div>
+        <div class="routine-summary">${graded.length} setups — <a href="#" onclick="switchTab('scanner');setScanMode('jeff');return false;">open scanner →</a></div>
         <table class="routine-table">
-            <thead><tr><th>Symbol</th><th>Setup</th><th>Score</th><th>Regime</th></tr></thead>
+            <thead><tr><th>Symbol</th><th>Grade</th><th>Score</th><th>Pattern</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>`;
 }
@@ -258,12 +262,12 @@ async function _runJeffScan() {
 async function _runBreadth() {
     const data = await apiFetch(`${API}/breadth`);
     const items = [
-        { label: 'Above KAMA-20', value: data.above_kama_20  != null ? `${data.above_kama_20}%`  : '—' },
-        { label: 'Above KAMA-50', value: data.above_kama_50  != null ? `${data.above_kama_50}%`  : '—' },
-        { label: '52-wk Highs',   value: data.new_highs      ?? '—' },
-        { label: '52-wk Lows',    value: data.new_lows       ?? '—' },
-        { label: 'Trending Up',   value: data.trending_up    ?? '—' },
-        { label: 'Trending Down', value: data.trending_down  ?? '—' },
+        { label: 'Above 20-MA',  value: data.pct_above_20ma  != null ? `${data.pct_above_20ma}%`  : '—' },
+        { label: 'Above 50-MA',  value: data.pct_above_50ma  != null ? `${data.pct_above_50ma}%`  : '—' },
+        { label: 'Above 200-MA', value: data.pct_above_200ma != null ? `${data.pct_above_200ma}%` : '—' },
+        { label: '52-wk Highs',  value: data.new_highs       ?? '—' },
+        { label: '52-wk Lows',   value: data.new_lows        ?? '—' },
+        { label: 'A/D Ratio',    value: data.ad_ratio        != null ? data.ad_ratio.toFixed(2) : '—' },
     ];
     return `<div class="breadth-grid">${items.map(i =>
         `<div class="breadth-item">

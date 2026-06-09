@@ -271,7 +271,8 @@ html, body {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
-  flex: 1;
+  white-space: nowrap;
+  min-width: 52px;
 }
 
 .symbol-item .sym-change {
