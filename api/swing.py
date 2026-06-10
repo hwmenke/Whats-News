@@ -90,7 +90,8 @@ def set_symbol_tier_route(symbol):
     body = request.get_json(silent=True) or {}
     tier = body.get("tier", "watchlist")
     if not db.set_symbol_tier(symbol, tier):
-        raise errors.validation(f"Invalid tier: {tier}. Use watchlist/stalk/focus/active")
+        raise errors.validation(
+            f"Invalid tier: {tier}. Use back_watchlist/watchlist/stalk/focus/active")
     return jsonify({"symbol": symbol.upper(), "tier": tier})
 
 
@@ -121,3 +122,92 @@ def get_focus_pipeline():
             enriched.append(entry)
         result[tier] = enriched
     return jsonify(result)
+
+
+# ── Trade Plans (focus-list entry planner) ────────────────────────────────────
+
+@swing_bp.route("/api/trade-plans", methods=["GET"])
+def list_trade_plans_route():
+    """All saved plans + every focus/active-tier symbol, enriched with live
+    swing data, R-per-share, distance-to-trigger and hard-rule flags."""
+    plans   = {p["symbol"]: p for p in db.list_trade_plans()}
+    tiers   = db.list_symbols_by_tier()
+    symbols = {s["symbol"] for s in tiers.get("focus", []) + tiers.get("active", [])}
+    symbols |= set(plans.keys())
+
+    tier_of = {}
+    for tier, syms in tiers.items():
+        for s in syms:
+            tier_of[s["symbol"]] = tier
+
+    rows = []
+    for sym in sorted(symbols):
+        plan = plans.get(sym, {})
+        row = {
+            "symbol":        sym,
+            "tier":          tier_of.get(sym, ""),
+            "trigger_price": plan.get("trigger_price"),
+            "stop_price":    plan.get("stop_price"),
+            "trigger_type":  plan.get("trigger_type") or "",
+            "notes":         plan.get("notes") or "",
+            "has_plan":      sym in plans,
+        }
+        try:
+            sd = _swing_data_for(sym)
+            row.update({
+                "last_close":    sd["last_close"],
+                "atr_14":        sd["atr_14"],
+                "rvol":          sd["rvol"],
+                "adr_pct":       sd["adr_pct"],
+                "lod_dist_atr":  sd["lod_dist_atr"],
+                "atr_mult_50ma": sd["atr_mult_50ma"],
+            })
+            trig = row["trigger_price"]
+            stop = row["stop_price"]
+            if trig and stop and trig > stop:
+                row["risk_per_sh"] = round(trig - stop, 4)
+            if trig and sd["last_close"]:
+                row["dist_to_trigger_pct"] = round(
+                    (trig / sd["last_close"] - 1) * 100, 2)
+            row["flags"] = {
+                "lod_too_far":  sd["lod_dist_atr"] > 0.6,
+                "too_extended": sd["atr_mult_50ma"] > 4.0,
+                "low_rvol":     sd["rvol"] < 1.0,
+            }
+        except Exception:
+            row["error"] = "no data"
+        rows.append(row)
+
+    return jsonify({"rows": rows})
+
+
+@swing_bp.route("/api/trade-plans", methods=["POST"])
+def upsert_trade_plan_route():
+    body   = request.get_json(silent=True) or {}
+    symbol = (body.get("symbol") or "").strip().upper()
+    if not symbol:
+        raise errors.symbol_required()
+    trig = body.get("trigger_price")
+    stop = body.get("stop_price")
+    try:
+        trig = float(trig) if trig is not None else None
+        stop = float(stop) if stop is not None else None
+    except (TypeError, ValueError):
+        raise errors.validation("trigger_price and stop_price must be numbers")
+    if trig is not None and stop is not None and stop >= trig:
+        raise errors.validation("stop_price must be below trigger_price")
+
+    db.upsert_trade_plan(
+        symbol,
+        trigger_price=trig,
+        stop_price=stop,
+        trigger_type=body.get("trigger_type", ""),
+        notes=body.get("notes", ""),
+    )
+    return jsonify({"symbol": symbol, "message": "Plan saved"}), 201
+
+
+@swing_bp.route("/api/trade-plans/<string:symbol>", methods=["DELETE"])
+def delete_trade_plan_route(symbol):
+    db.delete_trade_plan(symbol)
+    return jsonify({"message": "deleted"})

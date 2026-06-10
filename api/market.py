@@ -505,8 +505,8 @@ def get_rrg():
     return jsonify({"benchmark": benchmark, "symbols": results})
 
 
-@market_bp.route("/api/breadth", methods=["GET"])
-def get_market_breadth():
+def _breadth_snapshot() -> dict:
+    """Watchlist breadth core (no external network calls)."""
     symbols = db.list_symbols()
     if not symbols:
         raise errors.ApiError("NO_DATA", "No symbols in watchlist", http=404)
@@ -536,6 +536,22 @@ def get_market_breadth():
             pass
 
     pct = lambda n: round(n / total * 100, 1) if total else 0
+    return {
+        "total":          total,
+        "pct_above_20ma": pct(above_20),
+        "pct_above_50ma": pct(above_50),
+        "pct_above_200ma":pct(above_200),
+        "advances":       advances,
+        "declines":       declines,
+        "ad_ratio":       round(advances / declines, 2) if declines else advances,
+        "new_highs":      new_highs,
+        "new_lows":       new_lows,
+    }
+
+
+@market_bp.route("/api/breadth", methods=["GET"])
+def get_market_breadth():
+    snap = _breadth_snapshot()
 
     # Equal-weight vs cap-weight divergence (RSP = EW S&P 500, SPY = CW S&P 500)
     ew_cw = None
@@ -556,15 +572,130 @@ def get_market_breadth():
     except Exception:
         pass
 
-    return jsonify({
-        "total":          total,
-        "pct_above_20ma": pct(above_20),
-        "pct_above_50ma": pct(above_50),
-        "pct_above_200ma":pct(above_200),
-        "advances":       advances,
-        "declines":       declines,
-        "ad_ratio":       round(advances / declines, 2) if declines else advances,
-        "new_highs":      new_highs,
-        "new_lows":       new_lows,
-        "ew_cw":          ew_cw,
-    })
+    return jsonify({**snap, "ew_cw": ew_cw})
+
+
+# ── Risk Pedal ────────────────────────────────────────────────────────────────
+
+def _compute_risk_pedal() -> dict:
+    """Translate regime + breadth + index extension into green/yellow/red."""
+    reasons = []
+
+    regime_state = ""
+    try:
+        import market_regime as mr
+        res = mr.compute_market_regime("SPY")
+        if "error" not in res:
+            regime_state = (res.get("current") or {}).get("state", "")
+    except Exception:
+        pass
+
+    try:
+        snap = _breadth_snapshot()
+    except errors.ApiError:
+        snap = {}
+    pct20 = snap.get("pct_above_20ma")
+
+    spy_ext = None
+    try:
+        sd = swing_core.swing_data_for("SPY")
+        spy_ext = sd.get("atr_mult_50ma")
+    except Exception:
+        pass
+
+    if not regime_state and pct20 is None:
+        return {
+            "pedal": "yellow", "regime_state": "", "breadth_pct20": None,
+            "breadth_pct50": None, "new_highs": None, "new_lows": None,
+            "spy_ext": spy_ext,
+            "reasons": ["Insufficient data — fetch SPY and watchlist OHLCV first"],
+        }
+
+    pedal = "green"
+    if regime_state in ("BEAR", "CRASH"):
+        pedal = "red"
+        reasons.append(f"Regime is {regime_state}")
+    elif pct20 is not None and pct20 < 30:
+        pedal = "red"
+        reasons.append(f"Only {pct20}% of watchlist above 20-MA")
+
+    if pedal != "red":
+        if regime_state == "CHOP":
+            pedal = "yellow"
+            reasons.append("Regime is CHOP")
+        if pct20 is not None and pct20 < 50:
+            pedal = "yellow"
+            reasons.append(f"{pct20}% of watchlist above 20-MA (weak breadth)")
+        if spy_ext is not None and spy_ext > 4:
+            pedal = "yellow"
+            reasons.append(f"SPY extended {spy_ext:.1f}× ATR from 50-MA")
+
+    if pedal == "green":
+        reasons.append("Regime and breadth supportive — take A setups at normal risk")
+    elif pedal == "yellow":
+        reasons.append("Reduce size, fewer new names, prefer existing winners")
+    else:
+        reasons.append("Minimal new risk — raise cash, manage existing positions")
+
+    return {
+        "pedal":         pedal,
+        "regime_state":  regime_state,
+        "breadth_pct20": pct20,
+        "breadth_pct50": snap.get("pct_above_50ma"),
+        "new_highs":     snap.get("new_highs"),
+        "new_lows":      snap.get("new_lows"),
+        "spy_ext":       spy_ext,
+        "reasons":       reasons,
+    }
+
+
+@market_bp.route("/api/risk-pedal", methods=["GET"])
+def get_risk_pedal():
+    return jsonify(_compute_risk_pedal())
+
+
+# ── Market Diary ──────────────────────────────────────────────────────────────
+
+@market_bp.route("/api/diary", methods=["GET"])
+def list_diary_route():
+    try:
+        limit = int(request.args.get("limit", 60))
+        if limit < 1:
+            raise ValueError
+    except (TypeError, ValueError):
+        raise errors.validation("limit must be a positive integer")
+    return jsonify(db.list_diary(limit=limit))
+
+
+@market_bp.route("/api/diary", methods=["POST"])
+def save_diary_route():
+    """Save today's (or the given date's) diary entry.  Context fields
+    (regime, pedal, breadth) are snapshotted server-side unless provided."""
+    from datetime import date as _date
+    body = request.get_json(silent=True) or {}
+    day  = (body.get("date") or _date.today().isoformat())[:10]
+
+    ctx = {}
+    if not body.get("regime_state") or body.get("risk_pedal") is None:
+        try:
+            ctx = _compute_risk_pedal()
+        except Exception:
+            ctx = {}
+
+    db.upsert_diary_entry(
+        date=day,
+        regime_state=body.get("regime_state")  or ctx.get("regime_state", ""),
+        risk_pedal=body.get("risk_pedal")      or ctx.get("pedal", ""),
+        breadth_pct20=body.get("breadth_pct20", ctx.get("breadth_pct20")),
+        breadth_pct50=body.get("breadth_pct50", ctx.get("breadth_pct50")),
+        new_highs=body.get("new_highs", ctx.get("new_highs")),
+        new_lows=body.get("new_lows",  ctx.get("new_lows")),
+        notes=body.get("notes", ""),
+    )
+    return jsonify({"date": day, "message": "Diary saved"}), 201
+
+
+@market_bp.route("/api/diary/<string:date>", methods=["DELETE"])
+def delete_diary_route(date):
+    db.delete_diary_entry(date[:10])
+    return jsonify({"message": "deleted"})

@@ -9,11 +9,108 @@
  */
 
 function initMarketDashboard() {
+    _loadRiskPedal();
     _loadBreadth();
     _loadStrengthTable();
     _initDailyChecklists();
+    _loadDiary();
     if (typeof initSector   === 'function') initSector();
     if (typeof initProcess  === 'function') initProcess();
+}
+
+// ── Risk Pedal ────────────────────────────────────────────────────────────────
+
+async function _loadRiskPedal() {
+    const banner = document.getElementById('dash-risk-pedal');
+    if (!banner) return;
+    try {
+        const d = await apiFetch(`${API}/risk-pedal`);
+        const meta = {
+            green:  { icon: '🟢', label: 'GREEN — Normal Risk' },
+            yellow: { icon: '🟡', label: 'YELLOW — Reduced Risk' },
+            red:    { icon: '🔴', label: 'RED — Minimal Risk' },
+        }[d.pedal] || { icon: '⚪', label: d.pedal };
+        const facts = [
+            d.regime_state ? `Regime: ${d.regime_state}` : '',
+            d.breadth_pct20 != null ? `${d.breadth_pct20}% > 20-MA` : '',
+            d.spy_ext != null ? `SPY ext ${d.spy_ext.toFixed(1)}× ATR` : '',
+        ].filter(Boolean).join(' · ');
+        banner.className = `risk-pedal-banner rp-${d.pedal}`;
+        banner.style.display = '';
+        banner.innerHTML = `
+            <span class="rp-light">${meta.icon}</span>
+            <span class="rp-label">${meta.label}</span>
+            <span class="rp-facts">${facts}</span>
+            <span class="rp-reason" title="${(d.reasons || []).join('\n')}">${(d.reasons || [])[0] || ''}</span>`;
+    } catch (_) {
+        banner.style.display = 'none';
+    }
+}
+
+// ── Market Diary ──────────────────────────────────────────────────────────────
+
+async function _loadDiary() {
+    const c = document.getElementById('diary-history');
+    if (!c) return;
+    try {
+        const entries = await apiFetch(`${API}/diary?limit=30`);
+        if (!entries.length) {
+            c.innerHTML = '<div class="feat-empty">No diary entries yet — save your first market read above.</div>';
+            return;
+        }
+        const pedalIco = { green: '🟢', yellow: '🟡', red: '🔴' };
+        const rows = entries.map(e => `
+            <tr>
+                <td>${e.date}</td>
+                <td>${e.regime_state || '—'}</td>
+                <td>${pedalIco[e.risk_pedal] || '—'}</td>
+                <td>${e.breadth_pct20 != null ? e.breadth_pct20.toFixed(0) + '%' : '—'}</td>
+                <td>${e.new_highs ?? '—'}/${e.new_lows ?? '—'}</td>
+                <td class="diary-notes-cell">${_mdEsc(e.notes || '')}</td>
+                <td><button class="btn btn-ghost btn-icon" title="Delete" onclick="_deleteDiary('${e.date}')">✕</button></td>
+            </tr>`).join('');
+        c.innerHTML = `
+            <div class="feat-table-wrap">
+            <table class="feat-table diary-table">
+                <thead><tr><th>Date</th><th>Regime</th><th title="Risk pedal">Pedal</th><th title="% of watchlist above 20-MA">>20MA</th><th title="New 52-wk highs / lows">NH/NL</th><th>Notes</th><th></th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+            </div>`;
+    } catch (e) {
+        c.innerHTML = `<div class="feat-empty" style="color:var(--red);">${e.message}</div>`;
+    }
+}
+
+async function _saveDiary() {
+    const notes = document.getElementById('diary-notes')?.value || '';
+    try {
+        await apiFetch(`${API}/diary`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes }),
+        });
+        toast('Diary saved — context snapshotted', 'success');
+        const el = document.getElementById('diary-notes');
+        if (el) el.value = '';
+        _loadDiary();
+    } catch (e) {
+        toastFromError(e, 'Diary');
+    }
+}
+
+async function _deleteDiary(date) {
+    try {
+        await apiFetch(`${API}/diary/${date}`, { method: 'DELETE' });
+        _loadDiary();
+    } catch (e) {
+        toastFromError(e, 'Diary');
+    }
+}
+
+function _mdEsc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
 }
 
 // ── A) Breadth ────────────────────────────────────────────────────────────────
@@ -99,7 +196,7 @@ function _renderStrengthTable(pipeline) {
     const panel = document.getElementById('dash-strength-table');
     if (!panel) return;
 
-    const all = ['focus', 'active', 'stalk', 'watchlist']
+    const all = ['focus', 'active', 'stalk', 'watchlist', 'back_watchlist']
         .flatMap(tier => (pipeline[tier] || []).map(s => ({ ...s, tier })));
 
     if (!all.length) {
@@ -110,7 +207,7 @@ function _renderStrengthTable(pipeline) {
     const gradeOrder = { A: 0, B: 1, C: 2, '': 3 };
     all.sort((a, b) => (gradeOrder[a.setup_grade] ?? 3) - (gradeOrder[b.setup_grade] ?? 3));
 
-    const tierMeta = { active: '⚡', focus: '🔥', stalk: '🎯', watchlist: '👁' };
+    const tierMeta = { active: '⚡', focus: '🔥', stalk: '🎯', watchlist: '👁', back_watchlist: '🌙' };
     const rows = all.map(s => {
         const grade    = s.setup_grade || '—';
         const gradeCls = `sw-grade-${grade.toLowerCase()}`;

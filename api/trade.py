@@ -102,6 +102,29 @@ def create_journal_entry():
 
     exit_p = body.get("exit_price")
     stop_p = body.get("stop_loss")
+    mae_r  = body.get("mae_r")
+    mfe_r  = body.get("mfe_r")
+
+    # Auto-capture entry context (regime, RVOL, LoD) so the 100-trade review
+    # can later slice performance by rule compliance.  Best-effort only.
+    regime = body.get("market_regime", "")
+    rvol   = body.get("entry_rvol")
+    lod    = body.get("lod_dist_atr")
+    if not regime:
+        try:
+            import market_regime as _mr
+            res = _mr.compute_market_regime("SPY")
+            regime = (res.get("current") or {}).get("state", "") if "error" not in res else ""
+        except Exception:
+            regime = ""
+    if rvol is None or lod is None:
+        try:
+            sd = swing_core.swing_data_for(symbol)
+            if rvol is None: rvol = sd.get("rvol")
+            if lod  is None: lod  = sd.get("lod_dist_atr")
+        except Exception:
+            pass
+
     jid = db.add_journal_entry(
         symbol=symbol,
         direction=body.get("direction", "long"),
@@ -114,7 +137,19 @@ def create_journal_entry():
         setup=body.get("setup", ""),
         tags=body.get("tags", ""),
         thesis=body.get("thesis", ""),
+        market_regime=regime,
+        entry_rvol=float(rvol) if rvol is not None else None,
+        lod_dist_atr=float(lod) if lod is not None else None,
+        mae_r=float(mae_r) if mae_r is not None else None,
+        mfe_r=float(mfe_r) if mfe_r is not None else None,
     )
+    if body.get("review_grade") or body.get("review_mistakes") or body.get("review_lesson"):
+        db.update_journal_entry(
+            jid,
+            review_grade=body.get("review_grade", ""),
+            review_mistakes=body.get("review_mistakes", ""),
+            review_lesson=body.get("review_lesson", ""),
+        )
     return jsonify({"id": jid, "message": "Journal entry created"}), 201
 
 
@@ -123,7 +158,8 @@ def update_journal_entry(entry_id):
     body    = request.get_json(silent=True) or {}
     allowed = {"direction", "entry_date", "exit_date", "entry_price",
                "exit_price", "stop_loss", "qty", "setup", "tags", "thesis",
-               "review_grade", "review_mistakes", "review_lesson"}
+               "review_grade", "review_mistakes", "review_lesson",
+               "market_regime", "entry_rvol", "lod_dist_atr", "mae_r", "mfe_r"}
     updates = {k: body[k] for k in allowed if k in body}
     if not updates:
         raise errors.validation("No valid fields to update")
@@ -234,9 +270,15 @@ def get_r_analytics():
             "symbol":       e["symbol"],
             "date":         (e.get("exit_date") or e.get("entry_date") or "")[:10],
             "r":            round(r, 3),
+            "setup":        (e.get("setup") or "").strip(),
             "setup_grade":  e.get("setup_grade")    or "",
             "review_grade": e.get("review_grade")   or "",
             "mistakes":     e.get("review_mistakes") or "",
+            "regime":       e.get("market_regime")  or "",
+            "entry_rvol":   e.get("entry_rvol"),
+            "lod":          e.get("lod_dist_atr"),
+            "mae_r":        e.get("mae_r"),
+            "mfe_r":        e.get("mfe_r"),
         })
 
     if not r_trades:
@@ -299,6 +341,72 @@ def get_r_analytics():
             "win_rate": round(sum(1 for r in rg_rs if r > 0) / len(rg_rs), 3),
         }
 
+    def _bucket_stats(rs_list):
+        if not rs_list:
+            return None
+        b_wins = [r for r in rs_list if r > 0]
+        b_wr   = len(b_wins) / len(rs_list)
+        return {
+            "count":    len(rs_list),
+            "win_rate": round(b_wr, 3),
+            "avg_r":    round(float(np.mean(rs_list)), 3),
+        }
+
+    # Setup-type breakdown (free-text 'setup' field, case-insensitive)
+    setup_groups: dict = {}
+    for t in r_trades:
+        key = t["setup"].lower() or "(none)"
+        setup_groups.setdefault(key, []).append(t["r"])
+    setup_stats = {
+        k: _bucket_stats(v)
+        for k, v in sorted(setup_groups.items(), key=lambda kv: -len(kv[1]))[:10]
+    }
+
+    # Rule-compliance slices — does breaking the hard rules cost money?
+    compliance = {
+        "lod": {
+            "pass":    _bucket_stats([t["r"] for t in r_trades if t["lod"] is not None and t["lod"] <= 0.6]),
+            "fail":    _bucket_stats([t["r"] for t in r_trades if t["lod"] is not None and t["lod"] > 0.6]),
+            "unknown": _bucket_stats([t["r"] for t in r_trades if t["lod"] is None]),
+        },
+        "rvol": {
+            "pass":    _bucket_stats([t["r"] for t in r_trades if t["entry_rvol"] is not None and t["entry_rvol"] >= 1.0]),
+            "fail":    _bucket_stats([t["r"] for t in r_trades if t["entry_rvol"] is not None and t["entry_rvol"] < 1.0]),
+            "unknown": _bucket_stats([t["r"] for t in r_trades if t["entry_rvol"] is None]),
+        },
+        "regime": {
+            "pass":    _bucket_stats([t["r"] for t in r_trades if t["regime"].upper().startswith("BULL")]),
+            "fail":    _bucket_stats([t["r"] for t in r_trades if t["regime"] and not t["regime"].upper().startswith("BULL")]),
+            "unknown": _bucket_stats([t["r"] for t in r_trades if not t["regime"]]),
+        },
+    }
+
+    # 100-trade review: expectancy over the most recent (up to) 100 closed trades
+    recent      = sorted(r_trades, key=lambda t: t["date"])[-100:]
+    recent_rs   = [t["r"] for t in recent]
+    rec_wins    = [r for r in recent_rs if r > 0]
+    rec_losses  = [r for r in recent_rs if r <= 0]
+    rec_wr      = len(rec_wins) / len(recent_rs)
+    rec_aw      = float(np.mean(rec_wins))   if rec_wins   else 0.0
+    rec_al      = float(np.mean(rec_losses)) if rec_losses else 0.0
+    last100 = {
+        "count":      len(recent_rs),
+        "win_rate":   round(rec_wr, 4),
+        "avg_win_r":  round(rec_aw, 3),
+        "avg_loss_r": round(rec_al, 3),
+        "expectancy": round(rec_wr * rec_aw + (1 - rec_wr) * rec_al, 3),
+    }
+
+    # MAE / MFE aggregates (only trades where they were recorded)
+    maes = [t["mae_r"] for t in r_trades if t["mae_r"] is not None]
+    mfes = [t["mfe_r"] for t in r_trades if t["mfe_r"] is not None]
+    excursion = {
+        "count_mae": len(maes),
+        "count_mfe": len(mfes),
+        "avg_mae_r": round(float(np.mean(maes)), 3) if maes else None,
+        "avg_mfe_r": round(float(np.mean(mfes)), 3) if mfes else None,
+    }
+
     return jsonify({
         "count":              n,
         "win_rate":           round(win_rate, 4),
@@ -311,6 +419,10 @@ def get_r_analytics():
         "grade_stats":        grade_stats,
         "mistake_freq":       mistake_list,
         "rev_grade_stats":    rev_grade_stats,
+        "setup_stats":        setup_stats,
+        "compliance":         compliance,
+        "last100":            last100,
+        "excursion":          excursion,
     })
 
 

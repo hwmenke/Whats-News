@@ -61,23 +61,6 @@ def init_db():
         except Exception:
             pass  # column already exists
 
-    # Enhanced journal columns for trade process tracking
-    for col, defn in [
-        ('setup_grade',   "TEXT    DEFAULT ''"),
-        ('market_regime', "TEXT    DEFAULT ''"),
-        ('entry_rvol',    'REAL'),
-        ('lod_dist_atr',  'REAL'),
-        ('mistake_tags',  "TEXT    DEFAULT ''"),
-        ('stop_loss',     'REAL'),
-        ('review_grade',    "TEXT DEFAULT ''"),
-        ('review_mistakes', "TEXT DEFAULT ''"),
-        ('review_lesson',   "TEXT DEFAULT ''"),
-    ]:
-        try:
-            cur.execute(f"ALTER TABLE journal ADD COLUMN {col} {defn}")
-        except Exception:
-            pass  # column already exists
-
     cur.execute("""
         CREATE TABLE IF NOT EXISTS ohlcv (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,6 +130,26 @@ def init_db():
         )
     """)
 
+    # Enhanced journal columns for trade process tracking.
+    # Must run AFTER the CREATE TABLE above so fresh databases get them too.
+    for col, defn in [
+        ('setup_grade',   "TEXT    DEFAULT ''"),
+        ('market_regime', "TEXT    DEFAULT ''"),
+        ('entry_rvol',    'REAL'),
+        ('lod_dist_atr',  'REAL'),
+        ('mistake_tags',  "TEXT    DEFAULT ''"),
+        ('stop_loss',     'REAL'),
+        ('review_grade',    "TEXT DEFAULT ''"),
+        ('review_mistakes', "TEXT DEFAULT ''"),
+        ('review_lesson',   "TEXT DEFAULT ''"),
+        ('mae_r',           'REAL'),
+        ('mfe_r',           'REAL'),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE journal ADD COLUMN {col} {defn}")
+        except Exception:
+            pass  # column already exists
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS strategies (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,6 +157,34 @@ def init_db():
             conditions TEXT NOT NULL DEFAULT '[]',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS market_diary (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            date          TEXT NOT NULL UNIQUE,
+            regime_state  TEXT DEFAULT '',
+            risk_pedal    TEXT DEFAULT '',
+            breadth_pct20 REAL,
+            breadth_pct50 REAL,
+            new_highs     INTEGER,
+            new_lows      INTEGER,
+            notes         TEXT DEFAULT '',
+            created_at    TEXT NOT NULL
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS trade_plans (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol        TEXT NOT NULL UNIQUE,
+            trigger_price REAL,
+            stop_price    REAL,
+            trigger_type  TEXT DEFAULT '',
+            notes         TEXT DEFAULT '',
+            created_at    TEXT NOT NULL,
+            updated_at    TEXT NOT NULL
         )
     """)
 
@@ -520,19 +551,29 @@ def list_journal(symbol: str = None, tag: str = None) -> list:
 def add_journal_entry(symbol: str, direction: str, entry_date: str, entry_price: float,
                       qty: float = 1, exit_date: str = None, exit_price: float = None,
                       stop_loss: float = None,
-                      setup: str = "", tags: str = "", thesis: str = "") -> int:
+                      setup: str = "", tags: str = "", thesis: str = "",
+                      market_regime: str = "", entry_rvol: float = None,
+                      lod_dist_atr: float = None,
+                      mae_r: float = None, mfe_r: float = None) -> int:
     conn = get_connection()
     now  = datetime.now(timezone.utc).isoformat()
     cur  = conn.execute(
         """INSERT INTO journal
            (symbol, direction, entry_date, exit_date, entry_price, exit_price,
-            stop_loss, qty, setup, tags, thesis, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            stop_loss, qty, setup, tags, thesis,
+            market_regime, entry_rvol, lod_dist_atr, mae_r, mfe_r, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (symbol.upper(), direction, entry_date, exit_date,
          float(entry_price),
          float(exit_price) if exit_price is not None else None,
          float(stop_loss) if stop_loss is not None else None,
-         float(qty), setup, tags, thesis, now)
+         float(qty), setup, tags, thesis,
+         market_regime,
+         float(entry_rvol) if entry_rvol is not None else None,
+         float(lod_dist_atr) if lod_dist_atr is not None else None,
+         float(mae_r) if mae_r is not None else None,
+         float(mfe_r) if mfe_r is not None else None,
+         now)
     )
     jid = cur.lastrowid
     conn.commit()
@@ -543,7 +584,8 @@ def add_journal_entry(symbol: str, direction: str, entry_date: str, entry_price:
 def update_journal_entry(entry_id: int, **kwargs):
     allowed = {"direction", "entry_date", "exit_date", "entry_price",
                "exit_price", "stop_loss", "qty", "setup", "tags", "thesis",
-               "review_grade", "review_mistakes", "review_lesson"}
+               "review_grade", "review_mistakes", "review_lesson",
+               "market_regime", "entry_rvol", "lod_dist_atr", "mae_r", "mfe_r"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return
@@ -613,7 +655,7 @@ def delete_strategy(strategy_id: int):
 
 # ── Watchlist Tier (focus pipeline) ───────────────────────────────────────────
 
-VALID_TIERS = {"watchlist", "stalk", "focus", "active"}
+VALID_TIERS = {"back_watchlist", "watchlist", "stalk", "focus", "active"}
 
 def get_symbol_tier(symbol: str) -> str:
     conn = get_connection()
@@ -644,10 +686,99 @@ def list_symbols_by_tier() -> dict:
     conn  = get_connection()
     rows  = conn.execute("SELECT * FROM symbols ORDER BY symbol").fetchall()
     conn.close()
-    result = {t: [] for t in ("watchlist", "stalk", "focus", "active")}
+    result = {t: [] for t in ("back_watchlist", "watchlist", "stalk", "focus", "active")}
     for r in rows:
         tier = r["watchlist_tier"] or "watchlist"
         if tier not in result:
             tier = "watchlist"
         result[tier].append(dict(r))
     return result
+
+
+# ── Market Diary CRUD ─────────────────────────────────────────────────────────
+
+def list_diary(limit: int = 60) -> list:
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM market_diary ORDER BY date DESC LIMIT ?", (int(limit),)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def upsert_diary_entry(date: str, regime_state: str = "", risk_pedal: str = "",
+                       breadth_pct20: float = None, breadth_pct50: float = None,
+                       new_highs: int = None, new_lows: int = None,
+                       notes: str = "") -> None:
+    conn = get_connection()
+    now  = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO market_diary
+           (date, regime_state, risk_pedal, breadth_pct20, breadth_pct50,
+            new_highs, new_lows, notes, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(date) DO UPDATE SET
+             regime_state=excluded.regime_state,
+             risk_pedal=excluded.risk_pedal,
+             breadth_pct20=excluded.breadth_pct20,
+             breadth_pct50=excluded.breadth_pct50,
+             new_highs=excluded.new_highs,
+             new_lows=excluded.new_lows,
+             notes=excluded.notes""",
+        (date, regime_state, risk_pedal,
+         float(breadth_pct20) if breadth_pct20 is not None else None,
+         float(breadth_pct50) if breadth_pct50 is not None else None,
+         int(new_highs) if new_highs is not None else None,
+         int(new_lows)  if new_lows  is not None else None,
+         notes, now)
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_diary_entry(date: str) -> None:
+    conn = get_connection()
+    conn.execute("DELETE FROM market_diary WHERE date=?", (date,))
+    conn.commit()
+    conn.close()
+
+
+# ── Trade Plans CRUD (focus-list entry planner) ───────────────────────────────
+
+def list_trade_plans() -> list:
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM trade_plans ORDER BY symbol").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def upsert_trade_plan(symbol: str, trigger_price: float = None,
+                      stop_price: float = None, trigger_type: str = "",
+                      notes: str = "") -> None:
+    conn = get_connection()
+    now  = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO trade_plans
+           (symbol, trigger_price, stop_price, trigger_type, notes,
+            created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?)
+           ON CONFLICT(symbol) DO UPDATE SET
+             trigger_price=excluded.trigger_price,
+             stop_price=excluded.stop_price,
+             trigger_type=excluded.trigger_type,
+             notes=excluded.notes,
+             updated_at=excluded.updated_at""",
+        (symbol.upper(),
+         float(trigger_price) if trigger_price is not None else None,
+         float(stop_price)    if stop_price    is not None else None,
+         trigger_type, notes, now, now)
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_trade_plan(symbol: str) -> None:
+    conn = get_connection()
+    conn.execute("DELETE FROM trade_plans WHERE symbol=?", (symbol.upper(),))
+    conn.commit()
+    conn.close()

@@ -12,6 +12,7 @@
 function initProcess() {
     _loadPipeline();
     _initChecklist();
+    _loadEntryPlanner();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -19,12 +20,13 @@ function initProcess() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const _TIER_LABELS = {
-    watchlist: { label: 'Watchlist',  icon: '👁',  color: '#8b949e' },
-    stalk:     { label: 'Stalk List', icon: '🎯',  color: '#f97316' },
-    focus:     { label: 'Focus List', icon: '🔥',  color: '#3b82f6' },
-    active:    { label: 'Active',     icon: '⚡',  color: '#22c55e' },
+    back_watchlist: { label: 'Back Burner', icon: '🌙', color: '#64748b' },
+    watchlist:      { label: 'Watchlist',   icon: '👁',  color: '#8b949e' },
+    stalk:          { label: 'Stalk List',  icon: '🎯',  color: '#f97316' },
+    focus:          { label: 'Focus List',  icon: '🔥',  color: '#3b82f6' },
+    active:         { label: 'Active',      icon: '⚡',  color: '#22c55e' },
 };
-const _TIER_ORDER = ['watchlist', 'stalk', 'focus', 'active'];
+const _TIER_ORDER = ['back_watchlist', 'watchlist', 'stalk', 'focus', 'active'];
 
 async function _loadPipeline() {
     const container = document.getElementById('process-pipeline');
@@ -269,4 +271,126 @@ function resetProcessChecklists() {
     });
     _updateChecklistVerdict();
     _updateNoTradeVerdict();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// D) ENTRY PLANNER — pre-market action sheet for Focus/Active names
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function _loadEntryPlanner() {
+    const container = document.getElementById('entry-planner');
+    if (!container) return;
+    container.innerHTML = '<div class="feat-loading"><span class="spinner"></span></div>';
+    try {
+        const data = await apiFetch(`${API}/trade-plans`);
+        _renderEntryPlanner(data.rows || []);
+    } catch (e) {
+        container.innerHTML = `<div class="feat-empty" style="color:var(--red);">${e.message}</div>`;
+    }
+}
+
+function _epFlags(r) {
+    const f = r.flags || {};
+    const chips = [];
+    if (f.lod_too_far)  chips.push('<span class="ep-flag" title="LoD distance > 0.6× ATR — entry too far from intraday invalidation">LoD</span>');
+    if (f.too_extended) chips.push('<span class="ep-flag" title="More than 4× ATR above 50-MA — too extended for fresh entry">EXT</span>');
+    if (f.low_rvol)     chips.push('<span class="ep-flag ep-flag-warn" title="RVOL below 1.0× — volume not confirming">RVOL</span>');
+    return chips.length ? chips.join('') : '<span class="ep-flag-clear" title="No hard-rule violations">✓</span>';
+}
+
+function _renderEntryPlanner(rows) {
+    const container = document.getElementById('entry-planner');
+    if (!container) return;
+
+    if (!rows.length) {
+        container.innerHTML = `<div class="feat-empty">No Focus or Active symbols yet —
+            promote names in the pipeline above to plan entries.</div>`;
+        return;
+    }
+
+    const body = rows.map(r => {
+        if (r.error) {
+            return `<tr><td><strong>${r.symbol}</strong></td>
+                <td colspan="8" class="jnl-muted">no data — fetch OHLCV first</td></tr>`;
+        }
+        const trig    = r.trigger_price != null ? r.trigger_price : '';
+        const stop    = r.stop_price    != null ? r.stop_price    : '';
+        const rps     = r.risk_per_sh   != null ? '$' + r.risk_per_sh.toFixed(2) : '—';
+        const dist    = r.dist_to_trigger_pct != null
+            ? `<span class="${Math.abs(r.dist_to_trigger_pct) <= 1 ? 'proc-bull' : ''}">${r.dist_to_trigger_pct > 0 ? '+' : ''}${r.dist_to_trigger_pct.toFixed(1)}%</span>`
+            : '—';
+        const tierIco = _TIER_LABELS[r.tier]?.icon || '';
+        return `<tr data-ep-symbol="${r.symbol}">
+            <td><strong data-hover-symbol="${r.symbol}">${r.symbol}</strong> ${tierIco}</td>
+            <td>${r.last_close != null ? r.last_close.toFixed(2) : '—'}</td>
+            <td><input type="number" step="any" class="feat-input feat-input-sm ep-input"
+                 id="ep-trig-${r.symbol}" value="${trig}" placeholder="trigger" /></td>
+            <td><input type="number" step="any" class="feat-input feat-input-sm ep-input"
+                 id="ep-stop-${r.symbol}" value="${stop}" placeholder="stop" /></td>
+            <td>${rps}</td>
+            <td>${dist}</td>
+            <td>${_epFlags(r)}</td>
+            <td class="ep-actions">
+                <button class="btn btn-ghost btn-icon" title="Save plan" onclick="_savePlan('${r.symbol}')">💾</button>
+                <button class="btn btn-ghost btn-icon" title="Size it in Risk Calc" onclick="_planToRiskCalc('${r.symbol}')">🧮</button>
+                ${r.has_plan ? `<button class="btn btn-ghost btn-icon" title="Delete plan" onclick="_deletePlan('${r.symbol}')">✕</button>` : ''}
+            </td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="feat-table-wrap">
+        <table class="feat-table ep-table">
+            <thead><tr>
+                <th>Symbol</th><th>Last</th><th>Trigger $</th><th>Stop $</th>
+                <th title="Risk per share = trigger − stop">R/share</th>
+                <th title="Distance from last close to trigger">To Trigger</th>
+                <th title="Hard-rule violations: LoD > 0.6 ATR, extension > 4× ATR, RVOL < 1">Flags</th><th></th>
+            </tr></thead>
+            <tbody>${body}</tbody>
+        </table>
+        </div>`;
+}
+
+async function _savePlan(symbol) {
+    const trig = document.getElementById(`ep-trig-${symbol}`)?.value;
+    const stop = document.getElementById(`ep-stop-${symbol}`)?.value;
+    if (!trig && !stop) { toast('Enter a trigger or stop price first', 'warning'); return; }
+    try {
+        await apiFetch(`${API}/trade-plans`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                symbol,
+                trigger_price: trig ? parseFloat(trig) : null,
+                stop_price:    stop ? parseFloat(stop) : null,
+            }),
+        });
+        toast(`Plan saved for ${symbol}`, 'success');
+        _loadEntryPlanner();
+    } catch (e) {
+        toastFromError(e, 'Entry Planner');
+    }
+}
+
+async function _deletePlan(symbol) {
+    try {
+        await apiFetch(`${API}/trade-plans/${symbol}`, { method: 'DELETE' });
+        toast(`Plan removed for ${symbol}`, 'info');
+        _loadEntryPlanner();
+    } catch (e) {
+        toastFromError(e, 'Entry Planner');
+    }
+}
+
+function _planToRiskCalc(symbol) {
+    const trig = parseFloat(document.getElementById(`ep-trig-${symbol}`)?.value);
+    const stop = parseFloat(document.getElementById(`ep-stop-${symbol}`)?.value);
+    window._jeffSizePrefill = {
+        symbol,
+        entry: Number.isFinite(trig) ? trig : null,
+        stop:  Number.isFinite(stop) ? stop : null,
+    };
+    if (typeof selectSymbol === 'function') selectSymbol(symbol);
+    switchTab('risk-calc');
 }

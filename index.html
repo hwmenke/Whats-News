@@ -1160,13 +1160,21 @@
             <input id="jnl-review-lesson" class="feat-input" placeholder="What to do differently next time?" />
           </div>
           <div class="jnl-field">
+            <label for="jnl-mfe" title="Max Favorable Excursion — best open profit in R during the trade">MFE (R)</label>
+            <input id="jnl-mfe" class="feat-input feat-input-sm" type="number" step="any" placeholder="+2.5" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-mae" title="Max Adverse Excursion — worst open loss in R during the trade">MAE (R)</label>
+            <input id="jnl-mae" class="feat-input feat-input-sm" type="number" step="any" placeholder="-0.4" />
+          </div>
+          <div class="jnl-field">
             <label>&nbsp;</label>
             <button class="btn btn-primary" onclick="submitJournalEntry()">Add Entry</button>
           </div>
         </div>
         <div class="feat-table-wrap">
           <table id="journal-table" class="feat-table">
-            <thead><tr><th>Symbol</th><th>Dir</th><th>Entry Date</th><th>Entry</th><th>Stop</th><th>Exit</th><th>R</th><th>P&L</th><th title="Review Grade">Rev.</th><th></th></tr></thead>
+            <thead><tr><th>Symbol</th><th>Dir</th><th>Entry Date</th><th title="Trading days since entry (T+3 rule) / holding period">Day</th><th>Entry</th><th>Stop</th><th>Exit</th><th>R</th><th title="MFE / MAE in R">MFE/MAE</th><th>P&L</th><th title="Review Grade">Rev.</th><th></th></tr></thead>
             <tbody id="journal-body"></tbody>
           </table>
         </div>
@@ -1303,6 +1311,9 @@
       </div>
       <div id="dashboard-freshness" class="data-freshness-banner" style="display:none;"></div>
 
+      <!-- Risk Pedal -->
+      <div id="dash-risk-pedal" class="risk-pedal-banner" style="display:none;"></div>
+
       <div class="dash-grid">
         <!-- Breadth -->
         <div class="dash-panel">
@@ -1344,8 +1355,28 @@
         <div class="dash-section-title">🎯 Focus Pipeline
           <button class="btn btn-ghost btn-sm" style="float:right;" onclick="_loadPipeline()">↻ Refresh</button>
         </div>
-        <div class="process-section-note" style="margin:4px 0 10px;">Move symbols through stages: Watchlist → Stalk → Focus → Active</div>
+        <div class="process-section-note" style="margin:4px 0 10px;">Move symbols through stages: Back Burner → Watchlist → Stalk → Focus → Active</div>
         <div id="process-pipeline"></div>
+      </div>
+
+      <!-- Entry Planner -->
+      <div class="dash-section" style="margin-top:24px;">
+        <div class="dash-section-title">📋 Entry Planner
+          <button class="btn btn-ghost btn-sm" style="float:right;" onclick="_loadEntryPlanner()">↻ Refresh</button>
+        </div>
+        <div class="process-section-note" style="margin:4px 0 10px;">Pre-market action sheet for Focus/Active names — trigger, stop, R-per-share, hard-rule flags</div>
+        <div id="entry-planner"></div>
+      </div>
+
+      <!-- Market Diary -->
+      <div class="dash-section" style="margin-top:24px;">
+        <div class="dash-section-title">📓 Market Diary</div>
+        <div class="process-section-note" style="margin:4px 0 10px;">One entry per day — regime, breadth and risk pedal are snapshotted automatically when you save</div>
+        <div class="diary-form">
+          <input id="diary-notes" class="feat-input" style="flex:1;" placeholder="Market notes — leadership, themes, what changed…" />
+          <button class="btn btn-primary" onclick="_saveDiary()">Save Today</button>
+        </div>
+        <div id="diary-history" style="margin-top:12px;"></div>
       </div>
 
       <!-- Pre-Entry + No-Trade Checklists -->

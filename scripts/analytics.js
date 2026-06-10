@@ -164,12 +164,85 @@ async function _loadRAnalytics() {
                 <tbody>${gradeRows}</tbody>
             </table>` : ''}
 
+            ${_renderLast100(d.last100, d.excursion)}
+            ${_renderSetupStats(d.setup_stats || {})}
+            ${_renderCompliance(d.compliance || {})}
             ${_renderRevGradeStats(d.rev_grade_stats || {})}
             ${_renderMistakeFreq(d.mistake_freq || [])}
         `;
     } catch (e) {
         panel.innerHTML = `<div class="an-muted">Failed: ${_anEsc(e.message || e)}</div>`;
     }
+}
+
+function _renderLast100(last100, excursion) {
+    if (!last100 || !last100.count) return '';
+    const exp    = last100.expectancy;
+    const expCls = exp > 0 ? 'an-pos' : 'an-neg';
+    const exc    = excursion || {};
+    const excHtml = (exc.avg_mfe_r != null || exc.avg_mae_r != null) ? `
+        <div class="rh-slip-note" style="margin-top:6px;">
+            Excursion (${exc.count_mfe || 0} trades):
+            avg MFE <span class="an-pos">+${(exc.avg_mfe_r ?? 0).toFixed(2)}R</span> ·
+            avg MAE <span class="an-neg">${(exc.avg_mae_r ?? 0).toFixed(2)}R</span>
+            — how much profit was available vs. heat taken
+        </div>` : '';
+    return `
+        <div class="an-section-header" style="margin-top:14px;">100-Trade Review
+            <span class="an-muted-inline">(last ${last100.count} closed trades)</span>
+        </div>
+        <div class="rh-expectancy-eq">
+            E = ${(last100.win_rate * 100).toFixed(0)}% × ${last100.avg_win_r > 0 ? '+' : ''}${last100.avg_win_r.toFixed(2)}R
+            &nbsp;−&nbsp; ${((1 - last100.win_rate) * 100).toFixed(0)}% × ${Math.abs(last100.avg_loss_r).toFixed(2)}R
+            &nbsp;=&nbsp; <span class="${expCls}">${exp > 0 ? '+' : ''}${exp.toFixed(3)}R / trade</span>
+        </div>
+        ${excHtml}`;
+}
+
+function _renderSetupStats(stats) {
+    const entries = Object.entries(stats).filter(([, s]) => s);
+    if (!entries.length) return '';
+    const rows = entries.map(([setup, s]) => `<tr>
+        <td>${_anEsc(setup)}</td>
+        <td>${s.count}</td>
+        <td>${(s.win_rate * 100).toFixed(0)}%</td>
+        <td class="${s.avg_r >= 0 ? 'an-pos' : 'an-neg'}">${s.avg_r > 0 ? '+' : ''}${s.avg_r.toFixed(2)}R</td>
+    </tr>`).join('');
+    return `
+        <div class="an-section-header" style="margin-top:14px;">Performance by Setup Type</div>
+        <table class="rh-grade-table">
+            <thead><tr><th>Setup</th><th>Trades</th><th>Win%</th><th>Avg R</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
+
+function _renderCompliance(compliance) {
+    const RULES = [
+        { key: 'lod',    label: 'LoD ≤ 0.6× ATR at entry' },
+        { key: 'rvol',   label: 'RVOL ≥ 1.0× at entry' },
+        { key: 'regime', label: 'Entered in BULL regime' },
+    ];
+    const cell = s => s
+        ? `${s.count} · ${(s.win_rate * 100).toFixed(0)}% · <span class="${s.avg_r >= 0 ? 'an-pos' : 'an-neg'}">${s.avg_r > 0 ? '+' : ''}${s.avg_r.toFixed(2)}R</span>`
+        : '—';
+    const rows = RULES.map(rule => {
+        const c = compliance[rule.key] || {};
+        if (!c.pass && !c.fail) return '';
+        return `<tr>
+            <td>${rule.label}</td>
+            <td>${cell(c.pass)}</td>
+            <td>${cell(c.fail)}</td>
+        </tr>`;
+    }).filter(Boolean).join('');
+    if (!rows) return '';
+    return `
+        <div class="an-section-header" style="margin-top:14px;">Rule Compliance
+            <span class="an-muted-inline">(trades · win% · avg R)</span>
+        </div>
+        <table class="rh-grade-table">
+            <thead><tr><th>Hard Rule</th><th>Followed</th><th>Violated</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
 }
 
 function _renderRevGradeStats(stats) {
