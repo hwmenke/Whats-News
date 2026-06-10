@@ -285,5 +285,10 @@ function _renderMistakeFreq(freq) {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 async function initAnalytics() {
+    // Auto-fill missing MFE/MAE on closed trades from daily bars (idempotent)
+    try {
+        const r = await apiFetch(`${API}/journal/backfill-excursions`, { method: 'POST' });
+        if (r && r.updated > 0) toast(`MFE/MAE computed for ${r.updated} closed trade${r.updated === 1 ? '' : 's'}`, 'info', 2500);
+    } catch (_) {}
     await Promise.all([_loadDollarAnalytics(), _loadRAnalytics()]);
 }

@@ -453,3 +453,44 @@ async function dmFillAll() {
     }
     _dmLogLine('Gap fill complete.', 'ok');
 }
+
+// ── Finviz Import ─────────────────────────────────────────────────────────────
+
+async function _fvFetch(preview) {
+    const url   = document.getElementById('fv-url')?.value.trim();
+    const auth  = document.getElementById('fv-auth')?.value.trim();
+    const pages = parseInt(document.getElementById('fv-pages')?.value || '1', 10);
+    const group = document.getElementById('fv-group')?.value.trim() || 'finviz';
+    const out   = document.getElementById('fv-result');
+    if (!url) { toast('Paste a Finviz screener URL first', 'warning'); return; }
+    if (out) out.innerHTML = '<span class="spinner"></span> Querying Finviz…';
+    try {
+        const d = await apiFetch(`${API}/finviz-import`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, auth: auth || undefined, pages,
+                                   group_tag: group, preview }),
+        });
+        if (!d.count) {
+            if (out) out.innerHTML = '<span class="fv-muted">Screen returned no tickers.</span>';
+            return;
+        }
+        const list = d.tickers.join(', ');
+        if (preview) {
+            if (out) out.innerHTML =
+                `<strong>${d.count}</strong> tickers: <span class="fv-list">${list}</span>`;
+        } else {
+            if (out) out.innerHTML =
+                `<strong class="fv-ok">✓ ${d.added}</strong> added (${d.count} returned, rest already in watchlist):
+                 <span class="fv-list">${list}</span>`;
+            toast(`Finviz: ${d.added} symbol${d.added === 1 ? '' : 's'} added to watchlist`, 'success');
+            if (typeof loadSymbols === 'function') loadSymbols();
+            dmLoadCoverage();
+        }
+    } catch (e) {
+        if (out) out.innerHTML = `<span class="fv-err">${e.message}</span>`;
+    }
+}
+
+function fvPreview() { _fvFetch(true);  }
+function fvImport()  { _fvFetch(false); }

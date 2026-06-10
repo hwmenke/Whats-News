@@ -734,6 +734,34 @@
           <!-- Rendered by data_manager.js -->
         </div>
 
+        <div class="dm-panel-header dm-panel-header-sub">Finviz Import</div>
+        <div class="dm-settings">
+          <div class="dm-field">
+            <label class="dm-label" for="fv-url">Screener URL</label>
+            <input id="fv-url" type="text" class="dm-input" placeholder="https://finviz.com/screener.ashx?v=111&f=cap_midover,ta_perf_4w30o…" />
+          </div>
+          <div class="dm-field">
+            <label class="dm-label" for="fv-auth">Elite auth token <span class="dm-hint-inline">(optional — uses official CSV export)</span></label>
+            <input id="fv-auth" type="password" class="dm-input" placeholder="leave empty to scrape the public page" autocomplete="off" />
+          </div>
+          <div class="dm-field dm-field-row" style="gap:12px;">
+            <label class="dm-label dm-label-inline" for="fv-pages">Pages
+              <select id="fv-pages" class="dm-select" style="width:70px;margin-left:6px;">
+                <option value="1" selected>1</option><option value="2">2</option>
+                <option value="3">3</option><option value="5">5</option>
+              </select>
+            </label>
+            <label class="dm-label dm-label-inline" for="fv-group">Group tag
+              <input id="fv-group" type="text" class="dm-input" style="width:110px;margin-left:6px;" value="finviz" />
+            </label>
+          </div>
+          <div class="dm-actions" style="margin-top:4px;">
+            <button class="btn btn-ghost" onclick="fvPreview()">👁 Preview</button>
+            <button class="btn btn-primary" onclick="fvImport()">⤵ Import to Watchlist</button>
+          </div>
+          <div id="fv-result" class="fv-result"></div>
+        </div>
+
         <div class="dm-panel-header dm-panel-header-sub">Batch Fetch Settings</div>
 
         <div class="dm-settings">
@@ -1092,6 +1120,7 @@
 
       <!-- Log panel -->
       <div id="jnl-log-panel">
+        <div id="jnl-manage-panel" class="jm-panel" style="display:none;"></div>
         <div class="jnl-form">
           <div class="jnl-field">
             <label for="jnl-symbol">Symbol</label>
@@ -1342,6 +1371,21 @@
           </div>
           <div id="dash-pre-mkt-checklist"></div>
         </div>
+        <div class="dash-panel process-section-half">
+          <div class="dash-panel-title">Weekly Review
+            <button class="btn btn-ghost btn-icon" style="float:right;font-size:11px;" onclick="_clearDash('weekly',10)">Clear</button>
+          </div>
+          <div id="dash-weekly-checklist"></div>
+        </div>
+      </div>
+
+      <!-- EOD Screens -->
+      <div class="dash-section" style="margin-top:24px;">
+        <div class="dash-section-title">📡 Screens
+          <button class="btn btn-ghost btn-sm" style="float:right;" onclick="_runScreen(_activeScreen)">↻ Refresh</button>
+        </div>
+        <div id="screens-chips" class="scan-mode-switch" style="margin:8px 0;"></div>
+        <div id="screens-results"></div>
       </div>
 
       <!-- Sector Heatmap -->

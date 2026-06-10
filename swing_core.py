@@ -46,6 +46,27 @@ def atr(high, low, close, window=14):
     return tr.ewm(alpha=1 / window, adjust=False).mean()
 
 
+def vars_score(close: pd.Series, bench_close: pd.Series, window: int = 63) -> float:
+    """Volatility-Adjusted Relative Strength (Jeff Sun's VARS, scalar form).
+
+    Excess return vs the benchmark over `window` bars, divided by the
+    symbol's own return volatility over the same window — strong RS in a
+    quiet stock scores higher than the same RS with violent swings.
+    Returns 0.0 when there is insufficient overlapping data.
+    """
+    common = close.index.intersection(bench_close.index)
+    if len(common) < window + 1:
+        return 0.0
+    c = close.loc[common].tail(window + 1)
+    b = bench_close.loc[common].tail(window + 1)
+    sym_ret   = float(c.iloc[-1] / c.iloc[0] - 1)
+    bench_ret = float(b.iloc[-1] / b.iloc[0] - 1)
+    daily_std = float(c.pct_change().dropna().std())
+    if daily_std <= 0:
+        return 0.0
+    return round((sym_ret - bench_ret) / (daily_std * np.sqrt(window)), 3)
+
+
 def kama(close: pd.Series, period: int = 10, fast: int = 2, slow: int = 30) -> pd.Series:
     """Kaufman Adaptive Moving Average."""
     vals = close.values.astype(float)
@@ -144,6 +165,31 @@ def swing_data_for(symbol: str, df: pd.DataFrame = None) -> dict:
     kama50_stat = _kama_stat(kama(close, 50))
     kama_alignment = sum(1 for s in [kama10_stat, kama20_stat, kama50_stat] if s and s["above"])
 
+    # Pocket pivot — up day whose volume beats every down-day volume of the
+    # prior 10 sessions (O'Neil/Morales institutional-accumulation signal)
+    pocket_pivot = False
+    if len(close) >= 12:
+        up_today   = last_close > float(close.iloc[-2])
+        prior      = df.iloc[-11:-1]
+        prev_close = df["close"].shift(1).iloc[-11:-1]
+        down_mask  = prior["close"].values < prev_close.values
+        down_vols  = prior["volume"].values[down_mask]
+        max_down   = float(down_vols.max()) if len(down_vols) else 0.0
+        pocket_pivot = bool(up_today and today_vol > max_down and max_down > 0)
+
+    # Volume dry-up — supply contraction inside a base
+    vol_dryup = bool(avg_vol_50 > 0 and today_vol < 0.5 * avg_vol_50)
+
+    # 200-day MA declining — structural overhead (hard no-trade rule)
+    ma200_declining = None
+    if len(close) >= 220:
+        ma200_now  = float(close.tail(200).mean())
+        ma200_back = float(close.iloc[-220:-20].mean())
+        ma200_declining = ma200_now < ma200_back
+
+    # Average dollar volume (20-day) — liquidity / position-size cap
+    avg_dollar_vol = float((close * volume).tail(20).mean())
+
     return {
         "symbol":        sym,
         "last_close":    round(last_close, 2),
@@ -167,6 +213,10 @@ def swing_data_for(symbol: str, df: pd.DataFrame = None) -> dict:
         "kama20":        kama20_stat,
         "kama50":        kama50_stat,
         "kama_alignment":kama_alignment,
+        "pocket_pivot":  pocket_pivot,
+        "vol_dryup":     vol_dryup,
+        "ma200_declining": ma200_declining,
+        "avg_dollar_vol": round(avg_dollar_vol, 0),
     }
 
 

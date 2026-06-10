@@ -75,10 +75,11 @@ async function _calcPositionSize() {
     }
 
     try {
+        const symbol = (typeof state !== 'undefined' && state.activeSymbol) || undefined;
         const d = await apiFetch(`${API}/position-size`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ account, risk_pct, entry, stop }),
+            body: JSON.stringify({ account, risk_pct, entry, stop, symbol }),
         });
         _lastRiskCalcResult = { ...d, entry, stop };
         _renderPositionResults(d);
@@ -107,6 +108,12 @@ function _renderPositionResults(d) {
             <div class="rc-target-row"><span class="rc-target-label">+5R</span><span style="color:var(--green)">$${d.tp3_5r.toFixed(2)}</span></div>
             <div class="rc-target-row"><span class="rc-target-label">+10R</span><span style="color:var(--accent-bright)">$${d.tp4_10r.toFixed(2)}</span></div>
         </div>
+        ${d.liq_pct_of_adv != null ? `
+        <div class="rc-liq ${d.liq_warning ? 'rc-liq-warn' : ''}">
+            Position = ${d.liq_pct_of_adv.toFixed(1)}% of avg daily $ volume
+            (${(d.adv_dollar / 1e6).toFixed(1)}M ADV)
+            ${d.liq_warning ? ' — above the ~2% liquidity cap, expect slippage' : ''}
+        </div>` : ''}
         <div style="margin-top:12px;">
             <button class="btn btn-ghost btn-sm" onclick="_sendRiskToJournal()" title="Pre-fill Journal with these trade parameters">
                 📋 Send to Journal

@@ -161,6 +161,8 @@ def list_trade_plans_route():
                 "adr_pct":       sd["adr_pct"],
                 "lod_dist_atr":  sd["lod_dist_atr"],
                 "atr_mult_50ma": sd["atr_mult_50ma"],
+                "pocket_pivot":  sd.get("pocket_pivot", False),
+                "vol_dryup":     sd.get("vol_dryup", False),
             })
             trig = row["trigger_price"]
             stop = row["stop_price"]
@@ -170,9 +172,10 @@ def list_trade_plans_route():
                 row["dist_to_trigger_pct"] = round(
                     (trig / sd["last_close"] - 1) * 100, 2)
             row["flags"] = {
-                "lod_too_far":  sd["lod_dist_atr"] > 0.6,
-                "too_extended": sd["atr_mult_50ma"] > 4.0,
-                "low_rvol":     sd["rvol"] < 1.0,
+                "lod_too_far":     sd["lod_dist_atr"] > 0.6,
+                "too_extended":    sd["atr_mult_50ma"] > 4.0,
+                "low_rvol":        sd["rvol"] < 1.0,
+                "ma200_declining": bool(sd.get("ma200_declining")),
             }
         except Exception:
             row["error"] = "no data"
@@ -211,3 +214,86 @@ def upsert_trade_plan_route():
 def delete_trade_plan_route(symbol):
     db.delete_trade_plan(symbol)
     return jsonify({"message": "deleted"})
+
+
+# ── EOD Screens (post-market watchlist-building scans) ────────────────────────
+
+_SCREEN_NAMES = ("parabolic_short", "pullback", "high_adr", "recent_ipo")
+
+
+@swing_bp.route("/api/screens/<string:name>", methods=["GET"])
+def run_screen(name):
+    """Watchlist screens computable from daily OHLCV alone:
+
+      parabolic_short — extreme upside extension (short / inverse candidates)
+      pullback        — strong uptrend resting on the 10/20-MA in low volume
+      high_adr        — highest average daily ranges (explosive movers)
+      recent_ipo      — short price history (proxy for recent listings)
+    """
+    if name not in _SCREEN_NAMES:
+        raise errors.validation(f"Unknown screen: {name}. Use one of {', '.join(_SCREEN_NAMES)}")
+
+    symbols = db.list_symbols()
+    rows = []
+    for s in symbols:
+        sym = s["symbol"]
+        try:
+            df = db.get_ohlcv_df(sym, freq="daily", limit=260)
+            if df.empty or len(df) < 20:
+                continue
+            sd    = _swing_data_for(sym, df=df)
+            close = df["close"]
+            row   = {
+                "symbol":        sym,
+                "sector":        s.get("sector") or "",
+                "last_close":    sd["last_close"],
+                "adr_pct":       sd["adr_pct"],
+                "rvol":          sd["rvol"],
+                "atr_mult_50ma": sd["atr_mult_50ma"],
+            }
+
+            if name == "parabolic_short":
+                ret_5d = (float(close.iloc[-1]) / float(close.iloc[-6]) - 1) * 100 if len(close) >= 6 else 0.0
+                if sd["atr_mult_50ma"] >= 6.0 or ret_5d >= 25.0:
+                    row["ret_5d"] = round(ret_5d, 1)
+                    rows.append(row)
+
+            elif name == "pullback":
+                if len(close) < 55:
+                    continue
+                ma50_now  = float(close.tail(50).mean())
+                ma50_back = float(close.iloc[-55:-5].mean())
+                ret_30d   = (float(close.iloc[-1]) / float(close.iloc[-31]) - 1) * 100 if len(close) >= 31 else 0.0
+                k20       = sd.get("kama20") or {}
+                dist_k20  = k20.get("dist_atr")
+                pulled_in = dist_k20 is not None and -1.0 <= dist_k20 <= 1.0
+                if (ma50_now > ma50_back and float(close.iloc[-1]) > ma50_now
+                        and ret_30d >= 15.0 and pulled_in and sd["rvol"] < 1.2):
+                    row["ret_30d"]   = round(ret_30d, 1)
+                    row["dist_k20"]  = dist_k20
+                    row["vol_dryup"] = sd["vol_dryup"]
+                    rows.append(row)
+
+            elif name == "high_adr":
+                row["ret_20d"] = sd["ret_20d"]
+                rows.append(row)
+
+            elif name == "recent_ipo":
+                if len(df) < 252:
+                    row["bars"] = len(df)
+                    row["ret_20d"] = sd["ret_20d"]
+                    rows.append(row)
+        except Exception:
+            continue
+
+    if name == "high_adr":
+        rows.sort(key=lambda r: -(r.get("adr_pct") or 0))
+        rows = rows[:25]
+    elif name == "parabolic_short":
+        rows.sort(key=lambda r: -(r.get("atr_mult_50ma") or 0))
+    elif name == "recent_ipo":
+        rows.sort(key=lambda r: r.get("bars") or 0)
+    else:
+        rows.sort(key=lambda r: -(r.get("ret_30d") or 0))
+
+    return jsonify({"screen": name, "rows": rows})

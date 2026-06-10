@@ -292,10 +292,16 @@ async function _loadEntryPlanner() {
 function _epFlags(r) {
     const f = r.flags || {};
     const chips = [];
-    if (f.lod_too_far)  chips.push('<span class="ep-flag" title="LoD distance > 0.6× ATR — entry too far from intraday invalidation">LoD</span>');
-    if (f.too_extended) chips.push('<span class="ep-flag" title="More than 4× ATR above 50-MA — too extended for fresh entry">EXT</span>');
-    if (f.low_rvol)     chips.push('<span class="ep-flag ep-flag-warn" title="RVOL below 1.0× — volume not confirming">RVOL</span>');
-    return chips.length ? chips.join('') : '<span class="ep-flag-clear" title="No hard-rule violations">✓</span>';
+    if (f.lod_too_far)     chips.push('<span class="ep-flag" title="LoD distance > 0.6× ATR — entry too far from intraday invalidation">LoD</span>');
+    if (f.too_extended)    chips.push('<span class="ep-flag" title="More than 4× ATR above 50-MA — too extended for fresh entry">EXT</span>');
+    if (f.ma200_declining) chips.push('<span class="ep-flag" title="200-day MA is declining — structural overhead">200↓</span>');
+    if (f.low_rvol)        chips.push('<span class="ep-flag ep-flag-warn" title="RVOL below 1.0× — volume not confirming">RVOL</span>');
+    if (r.pocket_pivot)    chips.push('<span class="ep-flag ep-flag-good" title="Pocket pivot — up-day volume beats every down-day volume of the last 10 sessions">PP</span>');
+    if (r.vol_dryup)       chips.push('<span class="ep-flag ep-flag-good" title="Volume dry-up — supply contracting inside the base">DU</span>');
+    const bad = f.lod_too_far || f.too_extended || f.low_rvol || f.ma200_declining;
+    if (!bad && !chips.length) return '<span class="ep-flag-clear" title="No hard-rule violations">✓</span>';
+    if (!bad) chips.unshift('<span class="ep-flag-clear" title="No hard-rule violations">✓</span>');
+    return chips.join('');
 }
 
 function _renderEntryPlanner(rows) {

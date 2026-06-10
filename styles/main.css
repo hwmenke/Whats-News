@@ -4746,3 +4746,47 @@ body.focus-mode .symbol-header { display: none; }
   padding: 10px 12px; background: var(--bg-elevated);
   border: 1px solid var(--border); border-radius: var(--radius-md);
 }
+
+/* ── Open-trade management cards ───────────────────────────────── */
+.jm-panel { margin-bottom: 16px; }
+.jm-cards { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.jm-card {
+  flex: 1; min-width: 220px; max-width: 320px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 10px 12px;
+}
+.jm-card-top { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.jm-day {
+  padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 700;
+  color: #3b82f6; background: rgba(59,130,246,0.12);
+}
+.jm-card-meta { color: var(--text-muted); font-size: 11px; margin: 4px 0 6px; }
+.jm-hint {
+  font-size: 11px; padding: 4px 8px; border-radius: 6px; margin-top: 4px;
+  border-left: 3px solid var(--border);
+}
+.jm-hint-green  { color: var(--green);  background: rgba(34,197,94,0.08);  border-left-color: var(--green); }
+.jm-hint-yellow { color: #f59e0b;       background: rgba(245,158,11,0.08); border-left-color: #f59e0b; }
+.jm-hint-red    { color: #ef4444;       background: rgba(239,68,68,0.08);  border-left-color: #ef4444; }
+.jm-hint-info   { color: var(--text-muted); background: var(--bg-base); }
+
+/* ── Risk calc liquidity cap ───────────────────────────────────── */
+.rc-liq {
+  margin-top: 10px; font-size: 12px; color: var(--text-muted);
+  padding: 6px 10px; border-radius: 6px; background: var(--bg-elevated);
+}
+.rc-liq-warn { color: #f59e0b; background: rgba(245,158,11,0.10); font-weight: 600; }
+
+/* ── Entry planner: positive signal chips ──────────────────────── */
+.ep-flag-good {
+  display: inline-block; padding: 1px 6px; margin-right: 3px; border-radius: 8px;
+  font-size: 10px; font-weight: 700; color: var(--green); background: rgba(34,197,94,0.12);
+}
+
+/* ── Finviz import ─────────────────────────────────────────────── */
+.dm-hint-inline { font-weight: 400; color: var(--text-muted); font-size: 11px; }
+.fv-result { margin-top: 8px; font-size: 12px; line-height: 1.5; }
+.fv-list  { color: var(--text-secondary); }
+.fv-muted { color: var(--text-muted); }
+.fv-ok    { color: var(--green); }
+.fv-err   { color: var(--red); }

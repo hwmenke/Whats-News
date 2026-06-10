@@ -141,6 +141,66 @@ def import_watchlist():
     return jsonify({"imported": added})
 
 
+@symbols_bp.route("/api/finviz-import", methods=["POST"])
+def finviz_import_route():
+    """Fetch tickers from a Finviz screener and (optionally) add them to the
+    watchlist.
+
+    Body: { url:        finviz screener URL (or `filters`: {f,s,o,v}),
+            auth:       Finviz Elite token — uses official CSV export if set,
+            pages:      public-scrape pages of 20 (default 1, max 5),
+            preview:    true = just return tickers, don't add (default false),
+            group_tag:  group to tag imported symbols with (default 'finviz') }
+    """
+    import finviz_import as fv
+
+    body = request.get_json(silent=True) or {}
+    url     = (body.get("url") or "").strip()
+    filters = body.get("filters") or {}
+    if not url and not filters:
+        raise errors.validation("Provide a finviz screener `url` or `filters`")
+
+    try:
+        rows = fv.fetch_finviz(
+            url=url or None,
+            filters=filters,
+            auth=(body.get("auth") or "").strip() or None,
+            pages=int(body.get("pages", 1)),
+        )
+    except ValueError as e:
+        raise errors.validation(str(e))
+    except Exception as e:
+        logger.warning("finviz fetch failed: %s", e)
+        raise errors.ApiError(
+            "UPSTREAM",
+            f"Finviz request failed ({e.__class__.__name__}). "
+            "The public screener rate-limits aggressively — try again in a "
+            "minute, fetch fewer pages, or use an Elite auth token.",
+            http=502)
+
+    if not rows:
+        return jsonify({"tickers": [], "count": 0, "added": 0,
+                        "message": "Screen returned no tickers"})
+
+    added = 0
+    if not body.get("preview"):
+        group = (body.get("group_tag") or "finviz").strip()
+        for r in rows:
+            try:
+                if db.add_symbol(r["symbol"], r.get("name", ""), r.get("sector", "")):
+                    added += 1
+                    if group:
+                        db.set_symbol_group(r["symbol"], group)
+            except Exception:
+                pass
+
+    return jsonify({
+        "tickers": [r["symbol"] for r in rows],
+        "count":   len(rows),
+        "added":   added,
+    })
+
+
 # ── Data Coverage ─────────────────────────────────────────────────────────────
 
 @symbols_bp.route("/api/data-coverage", methods=["GET"])

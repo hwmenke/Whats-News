@@ -91,7 +91,48 @@ function _jnlExcursion(e) {
     return `${mfe || '·'}<span class="jnl-muted-sm">/</span>${mae || '·'}`;
 }
 
+async function _loadManagePanel() {
+    const panel = document.getElementById('jnl-manage-panel');
+    if (!panel) return;
+    try {
+        const d = await apiFetch(`${API}/journal/manage`);
+        const trades = d.open_trades || [];
+        if (!trades.length) { panel.style.display = 'none'; return; }
+        panel.style.display = '';
+        const lvlCls = { green: 'jm-hint-green', yellow: 'jm-hint-yellow',
+                         red: 'jm-hint-red', info: 'jm-hint-info' };
+        panel.innerHTML = `
+            <div class="an-section-header">Open Positions — Management
+                <span class="an-muted-inline">(T+3 / 10-MA / extension rules)</span>
+            </div>
+            <div class="jm-cards">` +
+            trades.map(t => {
+                const rCls = t.current_r == null ? '' : t.current_r >= 0 ? 'jnl-pos' : 'jnl-neg';
+                const rTxt = t.current_r != null ? `${t.current_r >= 0 ? '+' : ''}${t.current_r}R` : '—';
+                const hints = (t.hints || []).map(h =>
+                    `<div class="jm-hint ${lvlCls[h.level] || 'jm-hint-info'}">${h.text}</div>`).join('');
+                const meta = [
+                    t.current_price != null ? `$${t.current_price}` : '',
+                    t.atr_mult_50ma != null ? `${t.atr_mult_50ma}× ATR` : '',
+                    t.below_10ma ? '<span class="jnl-neg">< 10-MA</span>' : '',
+                ].filter(Boolean).join(' · ');
+                return `<div class="jm-card">
+                    <div class="jm-card-top">
+                        <strong data-hover-symbol="${_jnlEsc(t.symbol)}">${_jnlEsc(t.symbol)}</strong>
+                        <span class="jm-day">T+${t.days_held}</span>
+                        <span class="${rCls}">${rTxt}</span>
+                    </div>
+                    <div class="jm-card-meta">${t.error ? 'no data' : meta}</div>
+                    ${hints}
+                </div>`;
+            }).join('') + '</div>';
+    } catch (_) {
+        panel.style.display = 'none';
+    }
+}
+
 async function loadJournal() {
+    _loadManagePanel();
     const tbody = document.getElementById('journal-body');
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="12" class="jnl-muted"><span class="spinner"></span> Loading…</td></tr>';
@@ -168,12 +209,15 @@ async function submitJournalEntry() {
     }
 
     try {
-        await apiFetch(`${API}/journal`, {
+        const res = await apiFetch(`${API}/journal`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
         toast('Journal entry added', 'success');
+        if (res && res.today_count > 3) {
+            toast(`⚠ ${res.today_count} new trades today — hard rule is max 3 per session`, 'warning', 6000);
+        }
         ['jnl-symbol','jnl-entry-price','jnl-stop-loss','jnl-exit-price','jnl-exit-date',
          'jnl-qty','jnl-setup','jnl-tags','jnl-thesis',
          'jnl-review-mistakes','jnl-review-lesson','jnl-mae','jnl-mfe']

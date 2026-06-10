@@ -14,6 +14,7 @@ function initMarketDashboard() {
     _loadStrengthTable();
     _initDailyChecklists();
     _loadDiary();
+    _initScreens();
     if (typeof initSector   === 'function') initSector();
     if (typeof initProcess  === 'function') initProcess();
 }
@@ -165,17 +166,23 @@ function _renderBreadth(d) {
             ${d.new_highs > d.new_lows * 3 ? '<span class="dash-regime-chip dash-regime-bull">Expanding Leadership</span>' :
               d.new_lows  > d.new_highs * 3 ? '<span class="dash-regime-chip dash-regime-bear">Narrowing Leadership</span>' : ''}
         </div>
-        ${d.ew_cw ? `
+        ${_ewRow('EW vs CW (RSP/SPY)',  d.ew_cw)}
+        ${_ewRow('EW vs CW (QQQE/QQQ)', d.qqqe_qqq)}`;
+}
+
+function _ewRow(label, r) {
+    if (!r) return '';
+    return `
         <div class="dash-ew-row">
-            <span class="dash-ew-label">EW vs CW (RSP/SPY)</span>
-            <span class="dash-ew-chg ${d.ew_cw.chg_20d >= 0 ? 'dash-ew-pos' : 'dash-ew-neg'}">
-                ${d.ew_cw.chg_20d >= 0 ? '+' : ''}${d.ew_cw.chg_20d}% (20d)
+            <span class="dash-ew-label">${label}</span>
+            <span class="dash-ew-chg ${r.chg_20d >= 0 ? 'dash-ew-pos' : 'dash-ew-neg'}">
+                ${r.chg_20d >= 0 ? '+' : ''}${r.chg_20d}% (20d)
             </span>
             <span class="dash-regime-chip ${
-                d.ew_cw.signal === 'broadening' ? 'dash-regime-bull' :
-                d.ew_cw.signal === 'narrowing'  ? 'dash-regime-bear' : 'dash-regime-mix'
-            }">${d.ew_cw.signal.charAt(0).toUpperCase() + d.ew_cw.signal.slice(1)}</span>
-        </div>` : ''}`;
+                r.signal === 'broadening' ? 'dash-regime-bull' :
+                r.signal === 'narrowing'  ? 'dash-regime-bear' : 'dash-regime-mix'
+            }">${r.signal.charAt(0).toUpperCase() + r.signal.slice(1)}</span>
+        </div>`;
 }
 
 // ── C) Watchlist Strength Table ───────────────────────────────────────────────
@@ -258,11 +265,25 @@ const _PRE_MARKET_STEPS = [
     'Define max new positions allowed today (≤3)',
 ];
 
+const _WEEKLY_REVIEW_STEPS = [
+    'Refresh all screens; prune broken charts from watchlists',
+    'Review Back Burner — any former leaders setting up again?',
+    'Re-rank watchlist by RS, ADR and theme',
+    'Review focus-list names that never triggered — why?',
+    'Study the biggest winners you missed this week',
+    'Study the biggest losses — rule break or bad luck?',
+    'Check mistake frequency in Analytics — top recurring leak',
+    'Check 100-trade expectancy and rule-compliance table',
+    'Archive stale names; update screen thresholds',
+    'Set risk posture for next week (pedal + size)',
+];
+
 const _STORAGE_KEY = 'dash_checklists';
 
 function _initDailyChecklists() {
     _renderDailyChecklist('dash-post-mkt-checklist', _POST_MARKET_STEPS, 'post');
     _renderDailyChecklist('dash-pre-mkt-checklist',  _PRE_MARKET_STEPS,  'pre');
+    _renderDailyChecklist('dash-weekly-checklist',   _WEEKLY_REVIEW_STEPS, 'weekly');
     _loadChecklistState();
 }
 
@@ -283,11 +304,16 @@ function _renderDailyChecklist(containerId, steps, prefix) {
         </div>`;
 }
 
+const _CHECKLIST_STEPS = {
+    post:   () => _POST_MARKET_STEPS,
+    pre:    () => _PRE_MARKET_STEPS,
+    weekly: () => _WEEKLY_REVIEW_STEPS,
+};
+
 function _saveDashChecklists() {
     const state = {};
-    ['post', 'pre'].forEach(prefix => {
-        const maxLen = prefix === 'post' ? _POST_MARKET_STEPS.length : _PRE_MARKET_STEPS.length;
-        for (let i = 0; i < maxLen; i++) {
+    Object.entries(_CHECKLIST_STEPS).forEach(([prefix, steps]) => {
+        for (let i = 0; i < steps().length; i++) {
             const cb = document.getElementById(`dash-${prefix}-${i}`);
             if (cb) state[`dash-${prefix}-${i}`] = cb.checked;
         }
@@ -324,6 +350,76 @@ function _clearDash(prefix, len) {
 }
 
 function clearAllDashChecklists() {
-    _clearDash('post', _POST_MARKET_STEPS.length);
-    _clearDash('pre',  _PRE_MARKET_STEPS.length);
+    _clearDash('post',   _POST_MARKET_STEPS.length);
+    _clearDash('pre',    _PRE_MARKET_STEPS.length);
+    _clearDash('weekly', _WEEKLY_REVIEW_STEPS.length);
+}
+
+// ── EOD Screens ───────────────────────────────────────────────────────────────
+
+const _SCREEN_DEFS = {
+    high_adr:        { label: '⚡ High ADR',        desc: 'Highest average daily ranges — explosive movers' },
+    pullback:        { label: '↩ Pullback',         desc: 'Strong uptrends resting on the 10/20-MA in quiet volume' },
+    parabolic_short: { label: '🪂 Parabolic',        desc: 'Extreme upside extension — short / inverse-ETF candidates' },
+    recent_ipo:      { label: '🌱 Recent IPO',       desc: 'Short price history — fresh listings building first bases' },
+};
+let _activeScreen = 'high_adr';
+
+function _initScreens() {
+    const chipBar = document.getElementById('screens-chips');
+    if (!chipBar) return;
+    chipBar.innerHTML = Object.entries(_SCREEN_DEFS).map(([name, m]) => `
+        <button class="scan-mode-btn ${name === _activeScreen ? 'scan-mode-on' : ''}"
+                data-screen="${name}" title="${m.desc}"
+                onclick="_runScreen('${name}')">${m.label}</button>`).join('');
+    _runScreen(_activeScreen);
+}
+
+async function _runScreen(name) {
+    _activeScreen = name;
+    document.querySelectorAll('#screens-chips .scan-mode-btn').forEach(b =>
+        b.classList.toggle('scan-mode-on', b.dataset.screen === name));
+    const c = document.getElementById('screens-results');
+    if (!c) return;
+    c.innerHTML = '<div class="feat-loading"><span class="spinner"></span></div>';
+    try {
+        const d    = await apiFetch(`${API}/screens/${name}`);
+        const rows = d.rows || [];
+        if (!rows.length) {
+            c.innerHTML = `<div class="feat-empty">No matches — ${_SCREEN_DEFS[name].desc.toLowerCase()}.</div>`;
+            return;
+        }
+        const extraHead = name === 'parabolic_short' ? '<th>5D %</th>'
+                        : name === 'pullback'        ? '<th>30D %</th><th title="Distance to KAMA-20 in ATRs">→K20</th>'
+                        : name === 'recent_ipo'      ? '<th>Bars</th><th>20D %</th>'
+                        : '<th>20D %</th>';
+        const body = rows.map(r => {
+            const extCls = r.atr_mult_50ma > 4 ? 'proc-bear' : r.atr_mult_50ma > 2.5 ? 'proc-warn' : '';
+            const extra  = name === 'parabolic_short'
+                ? `<td class="${r.ret_5d >= 0 ? 'proc-bull' : 'proc-bear'}">${r.ret_5d > 0 ? '+' : ''}${r.ret_5d}%</td>`
+                : name === 'pullback'
+                ? `<td class="proc-bull">+${r.ret_30d}%</td><td>${r.dist_k20 != null ? r.dist_k20.toFixed(1) + '×' : '—'}${r.vol_dryup ? ' <span class="ep-flag-good" title="Volume dry-up">DU</span>' : ''}</td>`
+                : name === 'recent_ipo'
+                ? `<td>${r.bars}</td><td class="${(r.ret_20d || 0) >= 0 ? 'proc-bull' : 'proc-bear'}">${r.ret_20d != null ? (r.ret_20d > 0 ? '+' : '') + r.ret_20d + '%' : '—'}</td>`
+                : `<td class="${(r.ret_20d || 0) >= 0 ? 'proc-bull' : 'proc-bear'}">${r.ret_20d != null ? (r.ret_20d > 0 ? '+' : '') + r.ret_20d + '%' : '—'}</td>`;
+            return `<tr style="cursor:pointer" onclick="selectSymbol('${r.symbol}')">
+                <td><strong data-hover-symbol="${r.symbol}">${r.symbol}</strong></td>
+                <td class="jnl-muted-sm">${r.sector || '—'}</td>
+                <td>${r.last_close != null ? r.last_close.toFixed(2) : '—'}</td>
+                <td>${r.adr_pct != null ? r.adr_pct.toFixed(1) + '%' : '—'}</td>
+                <td class="${extCls}">${r.atr_mult_50ma != null ? r.atr_mult_50ma.toFixed(1) + '×' : '—'}</td>
+                ${extra}
+            </tr>`;
+        }).join('');
+        c.innerHTML = `
+            <div class="process-section-note" style="margin:4px 0 8px;">${_SCREEN_DEFS[name].desc} — ${rows.length} match${rows.length === 1 ? '' : 'es'}</div>
+            <div class="feat-table-wrap">
+            <table class="feat-table">
+                <thead><tr><th>Symbol</th><th>Sector</th><th>Last</th><th>ADR%</th><th>ATR×50</th>${extraHead}</tr></thead>
+                <tbody>${body}</tbody>
+            </table>
+            </div>`;
+    } catch (e) {
+        c.innerHTML = `<div class="feat-empty" style="color:var(--red);">${e.message}</div>`;
+    }
 }

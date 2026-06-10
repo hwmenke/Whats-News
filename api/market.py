@@ -553,26 +553,34 @@ def _breadth_snapshot() -> dict:
 def get_market_breadth():
     snap = _breadth_snapshot()
 
-    # Equal-weight vs cap-weight divergence (RSP = EW S&P 500, SPY = CW S&P 500)
-    ew_cw = None
+    # Equal-weight vs cap-weight divergence:
+    #   RSP/SPY  — equal- vs cap-weight S&P 500
+    #   QQQE/QQQ — equal- vs cap-weight Nasdaq-100
+    def _ew_ratio(ew_sym, cw_sym, closes):
+        ew = closes[ew_sym].dropna()
+        cw = closes[cw_sym].dropna()
+        if len(ew) < 22 or len(cw) < 22:
+            return None
+        ratio_now  = float(ew.iloc[-1])  / float(cw.iloc[-1])
+        ratio_prev = float(ew.iloc[-22]) / float(cw.iloc[-22])
+        chg = round((ratio_now / ratio_prev - 1) * 100, 2)
+        return {
+            "ratio":   round(ratio_now, 4),
+            "chg_20d": chg,
+            "signal":  "broadening" if chg > 0.5 else "narrowing" if chg < -0.5 else "neutral",
+        }
+
+    ew_cw = qqqe_qqq = None
     try:
         import yfinance as yf
-        raw = yf.download(["SPY", "RSP"], period="2mo", auto_adjust=True, progress=False)["Close"]
-        spy = raw["SPY"].dropna()
-        rsp = raw["RSP"].dropna()
-        if len(spy) >= 22 and len(rsp) >= 22:
-            ratio_now  = float(rsp.iloc[-1])  / float(spy.iloc[-1])
-            ratio_prev = float(rsp.iloc[-22]) / float(spy.iloc[-22])
-            chg = round((ratio_now / ratio_prev - 1) * 100, 2)
-            ew_cw = {
-                "ratio":   round(ratio_now, 4),
-                "chg_20d": chg,
-                "signal":  "broadening" if chg > 0.5 else "narrowing" if chg < -0.5 else "neutral",
-            }
+        raw = yf.download(["SPY", "RSP", "QQQ", "QQQE"], period="2mo",
+                          auto_adjust=True, progress=False)["Close"]
+        ew_cw    = _ew_ratio("RSP",  "SPY", raw)
+        qqqe_qqq = _ew_ratio("QQQE", "QQQ", raw)
     except Exception:
         pass
 
-    return jsonify({**snap, "ew_cw": ew_cw})
+    return jsonify({**snap, "ew_cw": ew_cw, "qqqe_qqq": qqqe_qqq})
 
 
 # ── Risk Pedal ────────────────────────────────────────────────────────────────
@@ -597,9 +605,23 @@ def _compute_risk_pedal() -> dict:
     pct20 = snap.get("pct_above_20ma")
 
     spy_ext = None
+    spy_up_streak = None
     try:
         sd = swing_core.swing_data_for("SPY")
         spy_ext = sd.get("atr_mult_50ma")
+    except Exception:
+        pass
+    try:
+        spy_df = db.get_ohlcv_df("SPY", "daily", limit=15)
+        if not spy_df.empty and len(spy_df) >= 2:
+            closes = spy_df["close"].values
+            streak = 0
+            for i in range(len(closes) - 1, 0, -1):
+                if closes[i] > closes[i - 1]:
+                    streak += 1
+                else:
+                    break
+            spy_up_streak = streak
     except Exception:
         pass
 
@@ -629,6 +651,9 @@ def _compute_risk_pedal() -> dict:
         if spy_ext is not None and spy_ext > 4:
             pedal = "yellow"
             reasons.append(f"SPY extended {spy_ext:.1f}× ATR from 50-MA")
+        if spy_up_streak is not None and spy_up_streak >= 5:
+            pedal = "yellow"
+            reasons.append(f"SPY up {spy_up_streak} days in a row — late to the move, be cautious")
 
     if pedal == "green":
         reasons.append("Regime and breadth supportive — take A setups at normal risk")
@@ -645,6 +670,7 @@ def _compute_risk_pedal() -> dict:
         "new_highs":     snap.get("new_highs"),
         "new_lows":      snap.get("new_lows"),
         "spy_ext":       spy_ext,
+        "spy_up_streak": spy_up_streak,
         "reasons":       reasons,
     }
 

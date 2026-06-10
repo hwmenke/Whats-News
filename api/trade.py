@@ -150,7 +150,13 @@ def create_journal_entry():
             review_mistakes=body.get("review_mistakes", ""),
             review_lesson=body.get("review_lesson", ""),
         )
-    return jsonify({"id": jid, "message": "Journal entry created"}), 201
+
+    # Overtrading guard (hard rule: max 3 new positions per session)
+    today       = _dt.now().date().isoformat()
+    today_count = sum(1 for e in db.list_journal()
+                      if (e.get("entry_date") or "")[:10] == today)
+    return jsonify({"id": jid, "message": "Journal entry created",
+                    "today_count": today_count}), 201
 
 
 @trade_bp.route("/api/journal/<int:entry_id>", methods=["PUT"])
@@ -171,6 +177,138 @@ def update_journal_entry(entry_id):
 def delete_journal_entry(entry_id):
     db.delete_journal_entry(entry_id)
     return jsonify({"message": "deleted"})
+
+
+# ── Open-trade management (Part XV rules as action hints) ─────────────────────
+
+def _trading_days_since(date_str: str) -> int:
+    import numpy as _np
+    from datetime import date as _date
+    try:
+        return int(_np.busday_count(date_str[:10], _date.today().isoformat()))
+    except Exception:
+        return 0
+
+
+@trade_bp.route("/api/journal/manage", methods=["GET"])
+def manage_open_trades():
+    """Per open journal trade: current R, T+N, 10-MA / extension status and
+    rule-based action hints (shave >2R, T+3 breakeven, 10-MA exit prep…)."""
+    entries = [e for e in db.list_journal() if e.get("exit_price") is None]
+    out = []
+    for e in entries:
+        row = {
+            "id":         e["id"],
+            "symbol":     e["symbol"],
+            "direction":  e.get("direction", "long"),
+            "entry_date": e.get("entry_date"),
+            "entry_price":e.get("entry_price"),
+            "stop_loss":  e.get("stop_loss"),
+            "days_held":  _trading_days_since(e.get("entry_date") or ""),
+            "hints":      [],
+        }
+        try:
+            df = db.get_ohlcv_df(e["symbol"], "daily", limit=80)
+            if df.empty or len(df) < 12:
+                row["error"] = "no data"
+                out.append(row)
+                continue
+            close = df["close"]
+            cur   = float(close.iloc[-1])
+            ma10  = float(close.tail(10).mean())
+            ma50  = float(close.tail(51).mean()) if len(close) >= 51 else None
+            atr14 = float(_atr(df["high"], df["low"], close, 14).iloc[-1])
+            ext   = round((cur - ma50) / atr14, 1) if (ma50 and atr14 > 0) else None
+
+            row["current_price"]  = round(cur, 2)
+            row["ma10"]           = round(ma10, 2)
+            row["below_10ma"]     = cur < ma10
+            row["atr_mult_50ma"]  = ext
+
+            short = row["direction"] == "short"
+            entry = float(e["entry_price"])
+            stop  = e.get("stop_loss")
+            if stop is not None and abs(entry - float(stop)) > 1e-6:
+                risk  = abs(entry - float(stop))
+                cur_r = round(((entry - cur) if short else (cur - entry)) / risk, 2)
+                row["current_r"] = cur_r
+            else:
+                cur_r = None
+
+            n     = row["days_held"]
+            hints = row["hints"]
+            if cur_r is not None and cur_r <= -1.0:
+                hints.append({"level": "red",
+                              "text": f"≤ −1R ({cur_r}R) — stop is violated, execute it"})
+            if n <= 2 and cur_r is not None and cur_r >= 2.0:
+                hints.append({"level": "green",
+                              "text": f"+{cur_r}R in T+{n} — shave ⅓ into strength"})
+            if n == 3:
+                hints.append({"level": "yellow",
+                              "text": "T+3 — reduce risk, move stop toward breakeven"})
+            if n <= 3 and cur_r is not None and cur_r >= 4.0:
+                hints.append({"level": "green",
+                              "text": f"+{cur_r}R before day 4 — move stop to breakeven now"})
+            if ext is not None and ext >= 8.0 and not short:
+                hints.append({"level": "yellow",
+                              "text": f"{ext}× ATR above 50-MA — climactic, take a partial"})
+            if n >= 4 and cur < ma10 and not short:
+                hints.append({"level": "red",
+                              "text": "Closed below 10-MA — prepare next-day opening-range-low exit"})
+            if not hints:
+                hints.append({"level": "info",
+                              "text": "Early window — 3-stop layers active" if n <= 3
+                                      else "Hold — manage with the 10-day MA"})
+        except Exception:
+            row["error"] = "no data"
+        out.append(row)
+    return jsonify({"open_trades": out})
+
+
+@trade_bp.route("/api/journal/backfill-excursions", methods=["POST"])
+def backfill_excursions():
+    """Auto-compute MFE/MAE (in R) for closed trades from the daily bars
+    between entry and exit dates.  Only fills entries where they're missing."""
+    entries = db.list_journal()
+    updated = 0
+    dfs: dict = {}
+    for e in entries:
+        if (e.get("exit_price") is None or e.get("stop_loss") is None
+                or not e.get("entry_date") or not e.get("exit_date")):
+            continue
+        if e.get("mae_r") is not None and e.get("mfe_r") is not None:
+            continue
+        sym = e["symbol"]
+        try:
+            if sym not in dfs:
+                dfs[sym] = db.get_ohlcv_df(sym, "daily", limit=800)
+            df = dfs[sym]
+            if df.empty:
+                continue
+            seg = df.loc[str(e["entry_date"])[:10]: str(e["exit_date"])[:10]]
+            if seg.empty:
+                continue
+            entry = float(e["entry_price"])
+            risk  = abs(entry - float(e["stop_loss"]))
+            if risk < 1e-6:
+                continue
+            hi = float(seg["high"].max())
+            lo = float(seg["low"].min())
+            if e.get("direction", "long") == "short":
+                mfe = (entry - lo) / risk
+                mae = (entry - hi) / risk
+            else:
+                mfe = (hi - entry) / risk
+                mae = (lo - entry) / risk
+            db.update_journal_entry(
+                e["id"],
+                mfe_r=round(max(mfe, 0.0), 3),
+                mae_r=round(min(mae, 0.0), 3),
+            )
+            updated += 1
+        except Exception:
+            continue
+    return jsonify({"updated": updated})
 
 
 # ── Portfolio Analytics ────────────────────────────────────────────────────────
@@ -532,7 +670,24 @@ def calc_position_size():
     gross_exp    = shares * entry
     stop_pct     = (entry - stop) / entry * 100
 
+    # Liquidity cap (Jeff rule: position ≤ 1–3% of avg daily dollar volume)
+    adv_dollar = liq_pct = None
+    liq_warning = False
+    symbol = (body.get("symbol") or "").strip().upper()
+    if symbol:
+        try:
+            sd = swing_core.swing_data_for(symbol)
+            adv_dollar = sd.get("avg_dollar_vol")
+            if adv_dollar:
+                liq_pct     = round(gross_exp / adv_dollar * 100, 2)
+                liq_warning = liq_pct > 2.0
+        except Exception:
+            pass
+
     return jsonify({
+        "adv_dollar":   adv_dollar,
+        "liq_pct_of_adv": liq_pct,
+        "liq_warning":  liq_warning,
         "account":      account,
         "risk_pct":     risk_pct * 100,
         "entry":        entry,

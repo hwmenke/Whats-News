@@ -44,7 +44,7 @@ Navigate to **http://localhost:8050** in your browser.
 
 ### Data
 - **Watchlist**: Add/remove tickers; auto-fetch daily + weekly OHLCV from Yahoo Finance
-- **Data Manager**: Bulk-fetch full history for curated ticker lists (12 categories, ~220 symbols)
+- **Data Manager**: Bulk-fetch full history for curated ticker lists (12 categories, ~220 symbols); Finviz screener import (paste a screener URL — public scrape or Elite CSV export with auth token)
 - **Price Ratios**: Create synthetic A/B ratio series from any two fetched tickers
 - **Data Quality**: Automated OHLC-logic, gap, spike, and stale-close checks
 
@@ -62,14 +62,14 @@ Navigate to **http://localhost:8050** in your browser.
 ### Scanning & Workflow
 - **Scanner**: Jeff Sun setup scanner — actionable swing setups with opportunity scores, regime gating, earnings proximity, and a focus pipeline board
 - **Sector**: Sector heatmap of the watchlist
-- **Market Dashboard**: Risk pedal (green/yellow/red posture from regime + breadth + index extension), watchlist breadth, symbol strength ranking, focus pipeline (Back Burner → Watchlist → Stalk → Focus → Active), entry planner (trigger/stop/R-per-share with hard-rule flags), market diary, pre/post-market checklists
+- **Market Dashboard**: Risk pedal (green/yellow/red posture from regime + breadth + index extension + SPY up-streak), watchlist breadth with RSP/SPY and QQQE/QQQ equal-weight ratios, symbol strength ranking, focus pipeline (Back Burner → Watchlist → Stalk → Focus → Active), entry planner (trigger/stop/R-per-share with hard-rule + pocket-pivot/dry-up flags), EOD screens (high-ADR, pullback, parabolic, recent IPO), market diary, daily + weekly checklists
 - **Morning Routine**: One-click daily workflow — refresh data, regime check, Jeff scan, breadth, signals — with configurable components
 - **Settings**: Enable/disable and reorder routine components; CSV exports
 
 ### Trading
-- **Journal**: Trade log with R-multiples, setup tags, thesis, T+3 day tracking, MAE/MFE excursion, auto-captured entry context (regime/RVOL/LoD), and post-trade review (grade, mistakes, lesson)
+- **Journal**: Trade log with R-multiples, setup tags, thesis, T+3 day tracking, auto-computed MAE/MFE excursion, auto-captured entry context (regime/RVOL/LoD), open-position management hints (shave >2R, T+3 breakeven, 10-MA exit prep, 8× ATR partials), max-3-per-day overtrading guard, and post-trade review (grade, mistakes, lesson)
 - **Analytics**: R-distribution scorecard, 100-trade expectancy review, performance by setup type and review grade, hard-rule compliance slicing, mistake frequency
-- **Risk Calc**: R-based position sizer with 3-stop strategy breakdown and journal handoff
+- **Risk Calc**: R-based position sizer with 3-stop strategy breakdown, liquidity cap vs avg dollar volume, and journal handoff
 - **Portfolio Backtest**: Multi-asset portfolio backtest with vol-target, risk-parity, and equal-weight sizing
 - **Process**: Trading process checklists and rules
 
