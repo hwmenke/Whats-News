@@ -131,19 +131,19 @@ const TC = {
 function _trendBaseOpts() {
     return {
         layout: {
-            background:  { color: '#0d1117' },
+            background:  { color: '#0a0e16' },
             textColor:   '#8b949e',
             fontFamily:  "'JetBrains Mono', monospace",
             fontSize:    10,
         },
         grid: {
-            vertLines: { color: '#1c2230' },
-            horzLines: { color: '#1c2230' },
+            vertLines: { color: '#151c2b' },
+            horzLines: { color: '#151c2b' },
         },
         crosshair: {
             mode: LightweightCharts.CrosshairMode.Normal,
-            vertLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
-            horzLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
+            vertLine: { color: '#3d4965', labelBackgroundColor: '#151c2b' },
+            horzLine: { color: '#3d4965', labelBackgroundColor: '#151c2b' },
         },
         rightPriceScale: { borderColor: '#30363d' },
         timeScale: {

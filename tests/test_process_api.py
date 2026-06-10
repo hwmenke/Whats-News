@@ -193,3 +193,18 @@ def test_journal_post_route_persists_review_fields(client, monkeypatch):
     rows = db.list_journal("AAPL")
     assert rows[0]["review_grade"] == "A"
     assert rows[0]["review_lesson"] == "wait for RVOL"
+
+
+# ── Quick-stats sparkline ──────────────────────────────────────────────────────
+
+def test_quick_stats_includes_spark(client, monkeypatch, synth_ohlcv):
+    db.add_symbol("AAPL")
+    monkeypatch.setattr(db, "get_ohlcv_df",
+        lambda symbol, freq="daily", limit=60: synth_ohlcv.tail(limit))
+
+    resp = client.get("/api/symbols/quick-stats")
+    assert resp.status_code == 200
+    row = resp.get_json()[0]
+    assert row["symbol"] == "AAPL"
+    assert len(row["spark"]) == 20
+    assert row["spark"][-1] == pytest.approx(row["price"], abs=0.01)

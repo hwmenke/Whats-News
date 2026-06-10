@@ -55,9 +55,15 @@ function toast(message, type = 'info', duration = 3500) {
 // ── API helpers ──────────────────────────────────────────────
 function setConnStatus(ok) {
     const dot = document.querySelector('.status-dot');
-    if (!dot) return;
-    dot.classList.toggle('offline', !ok);
-    dot.title = ok ? 'Connected' : 'Server unreachable';
+    if (dot) {
+        dot.classList.toggle('offline', !ok);
+        dot.title = ok ? 'Connected' : 'Server unreachable';
+    }
+    const conn = document.getElementById('sb-conn');
+    if (conn) {
+        conn.textContent = ok ? 'LIVE' : 'OFFLINE';
+        conn.classList.toggle('sb-offline', !ok);
+    }
 }
 
 async function apiFetch(url, opts = {}) {
@@ -198,8 +204,11 @@ async function loadSymbols() {
         ]);
         const statsMap = Object.fromEntries((stats || []).map(s => [s.symbol, s]));
         state.symbols = syms.map(s => ({ ...s, ...(statsMap[s.symbol] || {}) }));
+        state.symbolsLoaded = true;
         renderSymbolList();
         _refreshFreshnessBanners();
+        if (typeof updateTickerTape  === 'function') updateTickerTape();
+        if (typeof _sbSetSymbolCount === 'function') _sbSetSymbolCount(state.symbols.length);
     } catch (e) {
         toastFromError(e, 'Symbols');
     }
@@ -211,6 +220,7 @@ function _refreshFreshnessBanners() {
     const rc = "document.getElementById('btn-refresh-all')?.click()";
     ['scanner-freshness','momentum-freshness','regime-freshness','dashboard-freshness']
         .forEach(id => showFreshnessBanner(id, latest, rc));
+    if (typeof _sbSetFreshness === 'function') _sbSetFreshness(latest);
 }
 
 function _moveWatchlist(delta) {
@@ -260,34 +270,59 @@ function renderSymbolList() {
         const isRatio = sym.symbol.includes('~');
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
+        if (sym.chg != null) item.classList.add(sym.chg >= 0 ? 'si-up' : 'si-down');
         item.dataset.symbol = sym.symbol;
+
+        // Left column: ticker + sector / fetch date
+        const left = document.createElement('div');
+        left.className = 'si-col si-col-left';
 
         const ticker = document.createElement('span');
         ticker.className = 'sym-ticker' + (isRatio ? ' sym-ticker-ratio' : '');
         ticker.textContent = _displaySymbol(sym.symbol);
-
-        const meta = document.createElement('div');
-        meta.className = 'sym-meta-row';
-
-        if (sym.chg != null) {
-            const chgSpan = document.createElement('span');
-            chgSpan.className = 'sym-chg ' + (sym.chg >= 0 ? 'sym-chg-pos' : 'sym-chg-neg');
-            chgSpan.textContent = (sym.chg >= 0 ? '+' : '') + sym.chg.toFixed(2) + '%';
-            meta.appendChild(chgSpan);
-        } else if (sym.last_fetch) {
-            const fetchSpan = document.createElement('span');
-            fetchSpan.className = 'sym-fetch-date';
-            fetchSpan.textContent = sym.last_fetch.slice(0, 10);
-            meta.appendChild(fetchSpan);
-        }
+        left.appendChild(ticker);
 
         if (sym.sector && !isRatio) {
             const secChip = document.createElement('span');
             secChip.className = 'sym-sector-chip';
             secChip.textContent = sym.sector.length > 14 ? sym.sector.slice(0, 13) + '…' : sym.sector;
             secChip.title = sym.sector;
-            meta.appendChild(secChip);
+            left.appendChild(secChip);
+        } else if (sym.last_fetch && sym.chg == null) {
+            const fetchSpan = document.createElement('span');
+            fetchSpan.className = 'sym-fetch-date';
+            fetchSpan.textContent = sym.last_fetch.slice(0, 10);
+            left.appendChild(fetchSpan);
         }
+
+        // Middle: 20-bar sparkline
+        if (Array.isArray(sym.spark) && sym.spark.length > 1 && typeof sparkSVG === 'function') {
+            item.appendChild(left);
+            item.appendChild(sparkSVG(sym.spark));
+        } else {
+            item.appendChild(left);
+            const gap = document.createElement('span');
+            gap.className = 'si-spark si-spark-empty';
+            item.appendChild(gap);
+        }
+
+        // Right column: price + daily change
+        const right = document.createElement('div');
+        right.className = 'si-col si-col-right';
+
+        if (sym.price != null) {
+            const px = document.createElement('span');
+            px.className = 'si-price';
+            px.textContent = sym.price >= 1000 ? sym.price.toFixed(0) : sym.price.toFixed(2);
+            right.appendChild(px);
+        }
+        if (sym.chg != null) {
+            const chgSpan = document.createElement('span');
+            chgSpan.className = 'sym-chg ' + (sym.chg >= 0 ? 'sym-chg-pos' : 'sym-chg-neg');
+            chgSpan.textContent = (sym.chg >= 0 ? '+' : '') + sym.chg.toFixed(2) + '%';
+            right.appendChild(chgSpan);
+        }
+        item.appendChild(right);
 
         const removeBtn = document.createElement('span');
         removeBtn.className  = 'sym-remove';
@@ -295,8 +330,6 @@ function renderSymbolList() {
         removeBtn.title       = 'Remove';
         removeBtn.addEventListener('click', e => { e.stopPropagation(); removeSymbol(sym.symbol); });
 
-        item.appendChild(ticker);
-        item.appendChild(meta);
         item.appendChild(removeBtn);
         item.addEventListener('click', () => selectSymbol(sym.symbol));
         list.appendChild(item);
@@ -603,7 +636,7 @@ async function loadChartData(symbol) {
 
         const last = dailyOhlcv[dailyOhlcv.length - 1];
         const prev = dailyOhlcv[dailyOhlcv.length - 2];
-        updateSymbolHeader(symbol, last, prev);
+        updateSymbolHeader(symbol, last, prev, dailyOhlcv);
     } catch (e) {
         toastFromError(e, 'Chart');
         showEmptyState();
@@ -672,7 +705,7 @@ async function loadAdaptiveTrendData(symbol) {
 
             const last = ohlcv[ohlcv.length - 1];
             const prev = ohlcv[ohlcv.length - 2];
-            updateSymbolHeader(symbol, last, prev);
+            updateSymbolHeader(symbol, last, prev, ohlcv);
         } else {
             const [ohlcv, trendData] = results;
             buildTrendCharts();
@@ -680,7 +713,7 @@ async function loadAdaptiveTrendData(symbol) {
 
             const last = ohlcv[ohlcv.length - 1];
             const prev = ohlcv[ohlcv.length - 2];
-            updateSymbolHeader(symbol, last, prev);
+            updateSymbolHeader(symbol, last, prev, freq === 'daily' ? ohlcv : null);
         }
     } catch (e) {
         toastFromError(e, 'Trend');
@@ -1038,10 +1071,12 @@ function renderStats(data) {
     });
 }
 
-function updateSymbolHeader(symbol, last, prev) {
+function updateSymbolHeader(symbol, last, prev, series) {
     document.getElementById('sym-title').textContent = _displaySymbol(symbol);
     const symInfo = state.symbols.find(s => s.symbol === symbol);
     document.getElementById('sym-subtitle').textContent = symInfo?.name || '';
+
+    if (typeof renderRange52 === 'function') renderRange52(series);
 
     document.title = last
         ? `${_displaySymbol(symbol)} $${last.close.toFixed(2)} — FinDash`

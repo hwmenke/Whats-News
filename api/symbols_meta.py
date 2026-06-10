@@ -23,7 +23,8 @@ def quick_stats():
     """
     Return per-symbol stats for watchlist badges + sort/filter.
     DB-only — no network calls. Runs on every page load.
-    Fields: price, chg (1D%), ret_5d (1W%), ret_1m, rsi14, vol_ratio, above_sma20
+    Fields: price, chg (1D%), ret_5d (1W%), ret_1m, rsi14, vol_ratio,
+    above_sma20, spark (last 20 closes for the sidebar sparkline)
     """
     import numpy as np
     from shared_indicators import _rsi
@@ -69,6 +70,8 @@ def quick_stats():
                 sma20 = float(close.iloc[-20:].mean())
                 above_sma20 = price > sma20
 
+            spark = [round(float(v), 4) for v in close.iloc[-20:].tolist()]
+
             results.append({
                 "symbol":      sym,
                 "price":       round(price, 2),
@@ -78,6 +81,7 @@ def quick_stats():
                 "rsi14":       rsi14,
                 "vol_ratio":   vol_ratio,
                 "above_sma20": above_sma20,
+                "spark":       spark,
             })
         except Exception:
             results.append({"symbol": sym})

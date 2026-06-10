@@ -42,6 +42,13 @@ Navigate to **http://localhost:8050** in your browser.
 
 ## Features
 
+### Terminal Shell
+- **Ticker tape**: scrolling live strip of watchlist quotes under the top bar (click to jump to a symbol; hover to pause)
+- **Status bar**: connection state, New York clock with NYSE session (PRE / OPEN / POST / CLOSED + countdown), market regime, risk pedal, watchlist size, data freshness
+- **Watchlist sidebar**: per-symbol price, daily change, and 20-bar sparkline with skeleton loading
+- **Quote board**: monospace tabular price header with OHLCV strip and 52-week range bar
+- **Keyboard-first**: command palette (Ctrl+K), numbered tab hotkeys shown on the tab bar, J/K symbol navigation
+
 ### Data
 - **Watchlist**: Add/remove tickers; auto-fetch daily + weekly OHLCV from Yahoo Finance
 - **Data Manager**: Bulk-fetch full history for curated ticker lists (12 categories, ~220 symbols); Finviz screener import (paste a screener URL — public scrape or Elite CSV export with auth token)

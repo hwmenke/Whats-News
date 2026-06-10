@@ -114,8 +114,8 @@ function _regimeRenderHistory(data) {
     if (!rows.length) return;
 
     regimeState.chart = LightweightCharts.createChart(canvas, {
-        layout: { background: { color: '#0d1117' }, textColor: '#8b949e', fontFamily: "'JetBrains Mono',monospace", fontSize: 10 },
-        grid:   { vertLines: { color: '#1c2230' }, horzLines: { color: '#1c2230' } },
+        layout: { background: { color: '#0a0e16' }, textColor: '#8b949e', fontFamily: "'JetBrains Mono',monospace", fontSize: 10 },
+        grid:   { vertLines: { color: '#151c2b' }, horzLines: { color: '#151c2b' } },
         rightPriceScale: { borderColor: '#30363d' },
         timeScale: { borderColor: '#30363d', timeVisible: true, secondsVisible: false },
         crosshair: { mode: LightweightCharts.CrosshairMode.Normal },

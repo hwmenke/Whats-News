@@ -55,8 +55,8 @@ async function loadMultiTF(symbol) {
             const chart = LightweightCharts.createChart(el, {
                 width:  el.clientWidth,
                 height: 200,
-                layout: { background: { color: '#0d1117' }, textColor: '#8b949e', fontSize: 9 },
-                grid:   { vertLines: { color: '#1c2230' }, horzLines: { color: '#1c2230' } },
+                layout: { background: { color: '#0a0e16' }, textColor: '#8b949e', fontSize: 9 },
+                grid:   { vertLines: { color: '#151c2b' }, horzLines: { color: '#151c2b' } },
                 rightPriceScale: { borderColor: '#30363d' },
                 timeScale: { borderColor: '#30363d', visible: true },
                 crosshair: { mode: 1 },
