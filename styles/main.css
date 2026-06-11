@@ -4845,6 +4845,7 @@ body.focus-mode .symbol-header { display: none; }
 
 .rc-text-green { color: var(--green); }
 .rc-text-red   { color: var(--red); }
+.rc-text-amber { color: var(--amber); }
 
 /* Regime card output */
 .regime-badge-lg {

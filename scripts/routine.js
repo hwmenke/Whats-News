@@ -232,29 +232,38 @@ async function _runMarketRegime() {
 }
 
 async function _runJeffScan() {
-    const data  = await apiFetch(`${API}/jeff-scan`);
-    const all   = Array.isArray(data) ? data : (data.rows || []);
-    // Only rows with a grade (exclude error rows)
-    const graded = all.filter(r => r.grade && !r.error).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    const data   = await apiFetch(`${API}/jeff-scan`);
+    const all    = Array.isArray(data) ? data : (data.rows || []);
+    // Sort by opportunity score (grade quality + readiness + RS + trigger proximity)
+    const graded = all.filter(r => r.grade && !r.error)
+                      .sort((a, b) => (b.opp_score ?? 0) - (a.opp_score ?? 0));
     if (!graded.length)
         return '<div class="routine-empty">No graded setups found. Run a data refresh first.</div>';
 
+    const nA = graded.filter(r => r.grade === 'A').length;
+    const nB = graded.filter(r => r.grade === 'B').length;
     const top  = graded.slice(0, 12);
     const rows = top.map(s => {
-        const g    = (s.grade || '').toLowerCase();
-        const gCls = g === 'a' ? 'rc-text-green' : g === 'b' ? '' : 'rc-text-red';
+        const g     = (s.grade || '').toLowerCase();
+        const gCls  = g === 'a' ? 'rc-text-green' : g === 'b' ? '' : 'rc-text-red';
+        const tStat = s.trigger_status || '—';
+        const tCls  = tStat === 'AT' ? 'rc-text-green' : tStat === 'NEAR' ? 'rc-text-amber' : '';
+        const tTxt  = tDist => tDist != null ? `${tStat} +${tDist}%` : tStat;
         return `<tr>
             <td><strong>${s.symbol}</strong></td>
             <td class="${gCls}">${s.grade || '—'}</td>
-            <td>${s.score != null ? s.score : '—'}</td>
-            <td style="color:var(--text-muted)">${s.pattern || '—'}</td>
+            <td style="color:var(--text-muted)">${s.opp_score ?? '—'}</td>
+            <td style="color:var(--text-muted)">${s.readiness ?? '—'}/5</td>
+            <td class="${tCls}">${tTxt(s.trigger_dist_pct)}</td>
         </tr>`;
     }).join('');
 
+    const errCount = all.filter(r => r.error).length;
+    const errNote  = errCount ? ` · ${errCount} no data` : '';
     return `
-        <div class="routine-summary">${graded.length} setups — <a href="#" onclick="switchTab('scanner');setScanMode('jeff');return false;">open scanner →</a></div>
+        <div class="routine-summary">${graded.length} setups (${nA}A · ${nB}B)${errNote} — <a href="#" onclick="switchTab('scanner');setScanMode('jeff');return false;">open scanner →</a></div>
         <table class="routine-table">
-            <thead><tr><th>Symbol</th><th>Grade</th><th>Score</th><th>Pattern</th></tr></thead>
+            <thead><tr><th>Symbol</th><th>Grade</th><th>Opp</th><th>Ready</th><th>Trigger</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>`;
 }

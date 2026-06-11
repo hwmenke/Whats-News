@@ -21,6 +21,7 @@ Timeframe lookbacks used for percentile rank windows:
 
 import numpy as np
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import database as db
 import indicator_cache as cache
 from ta_core import _kama, _rsi as _rsi_core
@@ -146,21 +147,44 @@ def _compute_tf(df: pd.DataFrame, lookback: int):
     sma200   = close.rolling(max(2, sma_n)).mean()
     dist_sma = (close / sma200.replace(0, np.nan) - 1.0) * 100
 
+    # ── Trend score (−3 … +3) ─────────────────────────────────────────
+    # Three ±1 components combined into a compact trend signal:
+    #   t1 — EMA(20) 3-bar slope direction (rising vs falling)
+    #   t2 — KAMA fast/medium cross (kf_km > +0.5% vs < −0.5%)
+    #   t3 — Price position relative to EMA(50) (above vs below)
+    e20_span   = max(2, min(20, nb - 1))
+    e50_span   = max(2, min(50, nb - 1))
+    ema20      = close.ewm(span=e20_span, adjust=False).mean()
+    ema50      = close.ewm(span=e50_span, adjust=False).mean()
+    _lp        = float(close.iloc[-1])
+    _e20_last  = float(ema20.iloc[-1])
+    _e20_prev  = float(ema20.iloc[max(0, len(ema20) - 4)])
+    _e50_last  = float(ema50.iloc[-1])
+    _kfkm_val  = _last(kf_km) or 0.0
+
+    _t1 = (0 if (np.isnan(_e20_last) or np.isnan(_e20_prev))
+           else (1 if _e20_last > _e20_prev else -1 if _e20_last < _e20_prev else 0))
+    _t2 = 1 if _kfkm_val > 0.5 else (-1 if _kfkm_val < -0.5 else 0)
+    _t3 = (0 if np.isnan(_e50_last)
+           else (1 if _lp > _e50_last else -1 if _lp < _e50_last else 0))
+    trend_score_val = _t1 + _t2 + _t3
+
     return {
-        'rsi_7':      _last(rsi7),
-        'rsi_14':     _last(rsi14),
-        'rsi_21':     _last(rsi21),
-        'p_kf_pct':   _last(p_kf_pct),
-        'p_km_pct':   _last(p_km_pct),
-        'kf_km':      _last(kf_km),
-        'bb_b':       _last(bb_b),
-        'atr_pct':    _last(atr_pct),
-        'roc_1m':     _last(roc_1m),
-        'roc_3m':     _last(roc_3m),
-        'roc_6m':     _last(roc_6m),
-        'vol_ratio':  _last(vol_ratio),
-        'dist_hi':    _last(dist_hi),
-        'dist_sma':   _last(dist_sma),
+        'rsi_7':       _last(rsi7),
+        'rsi_14':      _last(rsi14),
+        'rsi_21':      _last(rsi21),
+        'p_kf_pct':    _last(p_kf_pct),
+        'p_km_pct':    _last(p_km_pct),
+        'kf_km':       _last(kf_km),
+        'bb_b':        _last(bb_b),
+        'atr_pct':     _last(atr_pct),
+        'roc_1m':      _last(roc_1m),
+        'roc_3m':      _last(roc_3m),
+        'roc_6m':      _last(roc_6m),
+        'vol_ratio':   _last(vol_ratio),
+        'dist_hi':     _last(dist_hi),
+        'dist_sma':    _last(dist_sma),
+        'trend_score': trend_score_val,
     }
 
 
@@ -196,52 +220,64 @@ def compute_scanner(symbols: list) -> list:
     )
 
 
-def _compute_scanner_inner(symbols: list) -> list:
-    results = []
-    for sym in symbols:
-        try:
-            d_df = db.get_ohlcv_df(sym, 'daily',  limit=600)
-            w_df = db.get_ohlcv_df(sym, 'weekly', limit=200)
+def _scan_one(sym: str) -> dict:
+    """Compute D/W/M scanner metrics for a single symbol."""
+    try:
+        d_df = db.get_ohlcv_df(sym, 'daily',  limit=600)
+        w_df = db.get_ohlcv_df(sym, 'weekly', limit=200)
 
-            if d_df.empty:
-                results.append({
-                    'symbol': sym, 'error': 'No data — fetch first',
-                    'price': None, 'chg': None,
-                    'd': None, 'w': None, 'm': None,
-                })
-                continue
-
-            # Price / change computed before any further processing
-            price = _safe(d_df['close'].iloc[-1])
-            prev  = _safe(d_df['close'].iloc[-2]) if len(d_df) > 1 else None
-            chg   = round((price - prev) / prev * 100, 2) if price and prev else None
-
-            # Monthly resample — isolated so a failure doesn't kill price/D/W
-            try:
-                m_df = _to_monthly(d_df)
-            except Exception:
-                m_df = pd.DataFrame()
-
-            # Each timeframe is isolated — one failure won't blank the others
-            def _safe_tf(df, lb):
-                try:
-                    return _compute_tf(df, lb)
-                except Exception:
-                    return None
-
-            results.append({
-                'symbol': sym,
-                'price':  price,
-                'chg':    chg,
-                'd':      _safe_tf(d_df, 252),
-                'w':      _safe_tf(w_df, 52),
-                'm':      _safe_tf(m_df, 36),
-            })
-        except Exception as e:
-            results.append({
-                'symbol': sym, 'error': str(e),
+        if d_df.empty:
+            return {
+                'symbol': sym, 'error': 'No data — fetch first',
                 'price': None, 'chg': None,
                 'd': None, 'w': None, 'm': None,
-            })
+            }
 
-    return results
+        price = _safe(d_df['close'].iloc[-1])
+        prev  = _safe(d_df['close'].iloc[-2]) if len(d_df) > 1 else None
+        chg   = round((price - prev) / prev * 100, 2) if price and prev else None
+
+        try:
+            m_df = _to_monthly(d_df)
+        except Exception:
+            m_df = pd.DataFrame()
+
+        def _safe_tf(df, lb):
+            try:
+                return _compute_tf(df, lb)
+            except Exception:
+                return None
+
+        return {
+            'symbol': sym,
+            'price':  price,
+            'chg':    chg,
+            'd':      _safe_tf(d_df, 252),
+            'w':      _safe_tf(w_df, 52),
+            'm':      _safe_tf(m_df, 36),
+        }
+    except Exception as e:
+        return {
+            'symbol': sym, 'error': str(e),
+            'price': None, 'chg': None,
+            'd': None, 'w': None, 'm': None,
+        }
+
+
+def _compute_scanner_inner(symbols: list) -> list:
+    # SQLite WAL mode supports concurrent reads; parallelize across symbols
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = {ex.submit(_scan_one, s): s for s in symbols}
+        # Preserve original symbol order in output
+        result_map = {}
+        for f in as_completed(futures):
+            sym = futures[f]
+            try:
+                result_map[sym] = f.result()
+            except Exception as e:
+                result_map[sym] = {
+                    'symbol': sym, 'error': str(e),
+                    'price': None, 'chg': None,
+                    'd': None, 'w': None, 'm': None,
+                }
+    return [result_map[s] for s in symbols]

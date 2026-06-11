@@ -13,7 +13,7 @@ visits are instant and only invalidate when underlying OHLCV changes.
 import logging
 import numpy as np
 import pandas as pd
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timezone
 
 import database as db
@@ -244,7 +244,7 @@ def _row_for(sym, spy_rets, sym_info_map, open_pos_syms=None, active_alert_syms=
             **base,
         }
     except Exception as e:
-        logger.debug("jeff-scan row failed for %s: %s", sym, e)
+        logger.warning("jeff-scan row failed for %s: %s", sym, e, exc_info=True)
         return {"symbol": sym, "error": str(e),
                 "tier": info.get("watchlist_tier") or "watchlist",
                 "sector": info.get("sector") or "",
@@ -295,12 +295,31 @@ def _compute_jeff_inner(symbols: list) -> list:
     except Exception:
         pass
 
-    # Parallel compute (SQLite WAL allows concurrent reads)
+    # Parallel compute (SQLite WAL allows concurrent reads).
+    # Use per-future timeout so one slow symbol never blocks the whole scan.
     with ThreadPoolExecutor(max_workers=4) as ex:
-        rows = list(ex.map(
-            lambda s: _row_for(s, spy_rets, sym_info_map, open_pos_syms, active_alert_syms),
-            symbols
-        ))
+        futures = [
+            ex.submit(_row_for, s, spy_rets, sym_info_map, open_pos_syms, active_alert_syms)
+            for s in symbols
+        ]
+        rows = []
+        for f, sym in zip(futures, symbols):
+            try:
+                rows.append(f.result(timeout=30))
+            except Exception as e:
+                info = sym_info_map.get(sym, {})
+                logger.warning("jeff-scan future error for %s: %s", sym, e)
+                rows.append({
+                    "symbol": sym, "error": str(e),
+                    "tier":              info.get("watchlist_tier") or "watchlist",
+                    "sector":            info.get("sector") or "",
+                    "notes":             (info.get("notes") or "").strip(),
+                    "days_stale":        _days_stale(info.get("last_fetch")),
+                    "days_to_earnings":  _days_to_earnings(info.get("next_earnings")),
+                    "in_position":       sym in open_pos_syms,
+                    "has_alert":         bool(active_alert_syms.get(sym)),
+                    "alert_thresholds":  active_alert_syms.get(sym) or [],
+                })
 
     # Intra-list RS rank by 60-day return (percentile, 1=weakest … 100=strongest)
     ranked = [r for r in rows if not r.get("error") and r.get("ret_60d") is not None]
