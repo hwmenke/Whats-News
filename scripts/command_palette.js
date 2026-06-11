@@ -49,13 +49,48 @@
         });
         const syms = (typeof state !== 'undefined' && Array.isArray(state.symbols)) ? state.symbols : [];
         syms.forEach(s => {
+            const notes = s.notes ? ` · ${s.notes.slice(0, 40)}` : '';
+            const sub   = [s.name, s.sector].filter(Boolean).join(' · ') + notes;
             out.push({
                 type: 'Symbol',
                 label: s.symbol,
-                sub: s.name || '',
-                run: () => { if (typeof selectSymbol === 'function') selectSymbol(s.symbol); },
+                sub,
+                run: () => {
+                    if (typeof selectSymbol === 'function') selectSymbol(s.symbol);
+                    if (typeof switchTab    === 'function') switchTab('charts');
+                },
+            });
+            // Quick actions per symbol
+            out.push({
+                type: 'Action',
+                label: `Alert ${s.symbol}`,
+                sub: 'Set price alert at trigger',
+                run: () => {
+                    if (typeof selectSymbol === 'function') selectSymbol(s.symbol);
+                    if (typeof toggleAlertsPanel === 'function') toggleAlertsPanel();
+                },
+            });
+            out.push({
+                type: 'Action',
+                label: `Size ${s.symbol}`,
+                sub: 'Open risk calculator',
+                run: () => {
+                    if (typeof selectSymbol === 'function') selectSymbol(s.symbol);
+                    if (typeof switchTab    === 'function') switchTab('risk-calc');
+                },
             });
         });
+
+        // Global actions
+        const globalActions = [
+            { label: 'Scan All',         sub: 'Run watchlist scanner',     run: () => { if (typeof switchTab  === 'function') switchTab('scanner'); setTimeout(() => typeof runScan === 'function' && runScan(), 100); } },
+            { label: 'Jeff Scanner',     sub: 'Jeff setup scan mode',      run: () => { if (typeof switchTab  === 'function') switchTab('scanner'); setTimeout(() => typeof setScanMode === 'function' && setScanMode('jeff'), 100); } },
+            { label: 'Run All Routine',  sub: 'Morning routine all steps', run: () => { if (typeof switchTab  === 'function') switchTab('routine');  setTimeout(() => typeof runAllRoutine === 'function' && runAllRoutine(), 100); } },
+            { label: 'Toggle Sidebar',   sub: 'Ctrl+B — show/hide watchlist', run: () => typeof toggleSidebar === 'function' && toggleSidebar() },
+            { label: 'Keyboard Shortcuts', sub: '? — show all bindings',   run: () => typeof showShortcutsHelp === 'function' && showShortcutsHelp() },
+        ];
+        globalActions.forEach(a => out.push({ type: 'Action', ...a }));
+
         return out;
     }
 

@@ -133,17 +133,22 @@ def init_db():
     # Enhanced journal columns for trade process tracking.
     # Must run AFTER the CREATE TABLE above so fresh databases get them too.
     for col, defn in [
-        ('setup_grade',   "TEXT    DEFAULT ''"),
-        ('market_regime', "TEXT    DEFAULT ''"),
-        ('entry_rvol',    'REAL'),
-        ('lod_dist_atr',  'REAL'),
-        ('mistake_tags',  "TEXT    DEFAULT ''"),
-        ('stop_loss',     'REAL'),
+        ('setup_grade',    "TEXT    DEFAULT ''"),
+        ('market_regime',  "TEXT    DEFAULT ''"),
+        ('entry_rvol',     'REAL'),
+        ('lod_dist_atr',   'REAL'),
+        ('mistake_tags',   "TEXT    DEFAULT ''"),
+        ('stop_loss',      'REAL'),
         ('review_grade',    "TEXT DEFAULT ''"),
         ('review_mistakes', "TEXT DEFAULT ''"),
         ('review_lesson',   "TEXT DEFAULT ''"),
         ('mae_r',           'REAL'),
         ('mfe_r',           'REAL'),
+        # Setup context snapshot for edge attribution analytics
+        ('pattern',        "TEXT DEFAULT ''"),
+        ('trigger_status', "TEXT DEFAULT ''"),
+        ('readiness',      'INTEGER'),
+        ('rs_rank',        'INTEGER'),
     ]:
         try:
             cur.execute(f"ALTER TABLE journal ADD COLUMN {col} {defn}")
@@ -554,15 +559,18 @@ def add_journal_entry(symbol: str, direction: str, entry_date: str, entry_price:
                       setup: str = "", tags: str = "", thesis: str = "",
                       market_regime: str = "", entry_rvol: float = None,
                       lod_dist_atr: float = None,
-                      mae_r: float = None, mfe_r: float = None) -> int:
+                      mae_r: float = None, mfe_r: float = None,
+                      pattern: str = "", trigger_status: str = "",
+                      readiness: int = None, rs_rank: int = None) -> int:
     conn = get_connection()
     now  = datetime.now(timezone.utc).isoformat()
     cur  = conn.execute(
         """INSERT INTO journal
            (symbol, direction, entry_date, exit_date, entry_price, exit_price,
             stop_loss, qty, setup, tags, thesis,
-            market_regime, entry_rvol, lod_dist_atr, mae_r, mfe_r, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            market_regime, entry_rvol, lod_dist_atr, mae_r, mfe_r,
+            pattern, trigger_status, readiness, rs_rank, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (symbol.upper(), direction, entry_date, exit_date,
          float(entry_price),
          float(exit_price) if exit_price is not None else None,
@@ -573,6 +581,9 @@ def add_journal_entry(symbol: str, direction: str, entry_date: str, entry_price:
          float(lod_dist_atr) if lod_dist_atr is not None else None,
          float(mae_r) if mae_r is not None else None,
          float(mfe_r) if mfe_r is not None else None,
+         pattern or "", trigger_status or "",
+         int(readiness) if readiness is not None else None,
+         int(rs_rank)   if rs_rank   is not None else None,
          now)
     )
     jid = cur.lastrowid
@@ -585,7 +596,8 @@ def update_journal_entry(entry_id: int, **kwargs):
     allowed = {"direction", "entry_date", "exit_date", "entry_price",
                "exit_price", "stop_loss", "qty", "setup", "tags", "thesis",
                "review_grade", "review_mistakes", "review_lesson",
-               "market_regime", "entry_rvol", "lod_dist_atr", "mae_r", "mfe_r"}
+               "market_regime", "entry_rvol", "lod_dist_atr", "mae_r", "mfe_r",
+               "pattern", "trigger_status", "readiness", "rs_rank"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return

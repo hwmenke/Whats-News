@@ -53,6 +53,26 @@ function toast(message, type = 'info', duration = 3500) {
 }
 
 // ── API helpers ──────────────────────────────────────────────
+async function _loadOpenRiskBadge() {
+    const el = document.getElementById('sb-open-risk');
+    if (!el) return;
+    try {
+        const d = await apiFetch(`${API}/open-risk`);
+        if (!d.open_count) { el.style.display = 'none'; return; }
+        const fr   = d.total_float_r;
+        const sign = fr >= 0 ? '+' : '';
+        const cls  = fr >= 0 ? 'sb-risk-pos' : 'sb-risk-neg';
+        el.style.display = '';
+        el.innerHTML = `<span class="sb-label">OPEN</span>
+            <span class="sb-item">${d.open_count}</span>
+            <span class="sb-sep"></span>
+            <span class="sb-label">ΣR</span>
+            <span class="sb-item ${cls}" title="Floating R across ${d.open_count} open trade${d.open_count === 1 ? '' : 's'}">${sign}${fr.toFixed(1)}</span>`;
+    } catch (_) {
+        if (el) el.style.display = 'none';
+    }
+}
+
 function setConnStatus(ok) {
     const dot = document.querySelector('.status-dot');
     if (dot) {
@@ -1209,6 +1229,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (typeof startAlertPolling  === 'function') startAlertPolling(60000);
     // Init hover chart preview
     if (typeof initHoverPreview   === 'function') initHoverPreview();
+
+    // Open-risk status bar widget (non-blocking)
+    _loadOpenRiskBadge();
+    setInterval(_loadOpenRiskBadge, 60_000);
 
     // Load regime badge async (non-blocking)
     if (typeof loadRegimeBadge === 'function') loadRegimeBadge('SPY');

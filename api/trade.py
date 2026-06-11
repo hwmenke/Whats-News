@@ -142,6 +142,10 @@ def create_journal_entry():
         lod_dist_atr=float(lod) if lod is not None else None,
         mae_r=float(mae_r) if mae_r is not None else None,
         mfe_r=float(mfe_r) if mfe_r is not None else None,
+        pattern=body.get("pattern", ""),
+        trigger_status=body.get("trigger_status", ""),
+        readiness=int(body["readiness"]) if body.get("readiness") is not None else None,
+        rs_rank=int(body["rs_rank"])     if body.get("rs_rank")   is not None else None,
     )
     if body.get("review_grade") or body.get("review_mistakes") or body.get("review_lesson"):
         db.update_journal_entry(
@@ -165,7 +169,8 @@ def update_journal_entry(entry_id):
     allowed = {"direction", "entry_date", "exit_date", "entry_price",
                "exit_price", "stop_loss", "qty", "setup", "tags", "thesis",
                "review_grade", "review_mistakes", "review_lesson",
-               "market_regime", "entry_rvol", "lod_dist_atr", "mae_r", "mfe_r"}
+               "market_regime", "entry_rvol", "lod_dist_atr", "mae_r", "mfe_r",
+               "pattern", "trigger_status", "readiness", "rs_rank"}
     updates = {k: body[k] for k in allowed if k in body}
     if not updates:
         raise errors.validation("No valid fields to update")
@@ -405,18 +410,22 @@ def get_r_analytics():
             continue
         r = (exit_ - entry) / risk if e.get("direction", "long") != "short" else (entry - exit_) / risk
         r_trades.append({
-            "symbol":       e["symbol"],
-            "date":         (e.get("exit_date") or e.get("entry_date") or "")[:10],
-            "r":            round(r, 3),
-            "setup":        (e.get("setup") or "").strip(),
-            "setup_grade":  e.get("setup_grade")    or "",
-            "review_grade": e.get("review_grade")   or "",
-            "mistakes":     e.get("review_mistakes") or "",
-            "regime":       e.get("market_regime")  or "",
-            "entry_rvol":   e.get("entry_rvol"),
-            "lod":          e.get("lod_dist_atr"),
-            "mae_r":        e.get("mae_r"),
-            "mfe_r":        e.get("mfe_r"),
+            "symbol":         e["symbol"],
+            "date":           (e.get("exit_date") or e.get("entry_date") or "")[:10],
+            "r":              round(r, 3),
+            "setup":          (e.get("setup") or "").strip(),
+            "setup_grade":    e.get("setup_grade")    or "",
+            "review_grade":   e.get("review_grade")   or "",
+            "mistakes":       e.get("review_mistakes") or "",
+            "regime":         e.get("market_regime")  or "",
+            "entry_rvol":     e.get("entry_rvol"),
+            "lod":            e.get("lod_dist_atr"),
+            "mae_r":          e.get("mae_r"),
+            "mfe_r":          e.get("mfe_r"),
+            "pattern":        e.get("pattern")        or "",
+            "trigger_status": e.get("trigger_status") or "",
+            "readiness":      e.get("readiness"),
+            "rs_rank":        e.get("rs_rank"),
         })
 
     if not r_trades:
@@ -545,6 +554,40 @@ def get_r_analytics():
         "avg_mfe_r": round(float(np.mean(mfes)), 3) if mfes else None,
     }
 
+    # Pattern breakdown (which base pattern pays best?)
+    pattern_groups: dict = {}
+    for t in r_trades:
+        pat = (t.get("pattern") or "").strip() or "(none)"
+        pattern_groups.setdefault(pat, []).append(t["r"])
+    pattern_stats = {
+        k: _bucket_stats(v)
+        for k, v in sorted(pattern_groups.items(), key=lambda kv: -len(kv[1]))
+        if v and k != "(none)"
+    }
+
+    # Trigger-status breakdown (AT / NEAR / WATCH / EARLY)
+    trigger_groups: dict = {}
+    for t in r_trades:
+        ts = (t.get("trigger_status") or "").strip() or "(unknown)"
+        trigger_groups.setdefault(ts, []).append(t["r"])
+    trigger_order = ["AT", "NEAR", "WATCH", "EARLY", "(unknown)"]
+    trigger_stats = {
+        ts: _bucket_stats(trigger_groups[ts])
+        for ts in trigger_order
+        if ts in trigger_groups and trigger_groups[ts]
+    }
+
+    # Rolling 20-trade window for performance strip
+    recent20      = sorted(r_trades, key=lambda t: t["date"])[-20:]
+    recent20_rs   = [t["r"] for t in recent20]
+    if recent20_rs:
+        r20_wins = [r for r in recent20_rs if r > 0]
+        r20_wr   = round(len(r20_wins) / len(recent20_rs), 4)
+        r20_exp  = round(sum(recent20_rs) / len(recent20_rs), 3)
+    else:
+        r20_wr = r20_exp = None
+    rolling20 = {"count": len(recent20_rs), "win_rate": r20_wr, "expectancy": r20_exp}
+
     return jsonify({
         "count":              n,
         "win_rate":           round(win_rate, 4),
@@ -559,8 +602,63 @@ def get_r_analytics():
         "rev_grade_stats":    rev_grade_stats,
         "setup_stats":        setup_stats,
         "compliance":         compliance,
+        "pattern_stats":      pattern_stats,
+        "trigger_stats":      trigger_stats,
+        "rolling20":          rolling20,
         "last100":            last100,
         "excursion":          excursion,
+    })
+
+
+# ── Open-Risk Budget ──────────────────────────────────────────────────────────
+
+@trade_bp.route("/api/open-risk", methods=["GET"])
+def get_open_risk():
+    """Sum R-at-risk across open journal entries (exit_price IS NULL + stop_loss set)."""
+    entries = [e for e in db.list_journal()
+               if e.get("exit_price") is None and e.get("stop_loss") is not None]
+    rows = []
+    total_1r   = 0.0
+    total_float = 0.0
+
+    for e in entries:
+        entry = float(e["entry_price"])
+        stop  = float(e["stop_loss"])
+        risk  = abs(entry - stop)
+        if risk < 1e-6:
+            continue
+        qty = float(e.get("qty") or 1)
+        r1_dollars = risk * qty
+        total_1r += r1_dollars
+
+        cur_price = None
+        try:
+            ohlcv = db.get_ohlcv(e["symbol"], "daily", limit=1)
+            if ohlcv:
+                cur_price = float(ohlcv[-1]["close"])
+        except Exception:
+            pass
+
+        float_r = None
+        if cur_price is not None:
+            short = (e.get("direction") or "long") == "short"
+            float_r = round(((entry - cur_price) if short else (cur_price - entry)) / risk, 2)
+            total_float += float_r
+
+        rows.append({
+            "symbol":          e["symbol"],
+            "entry_price":     round(entry, 2),
+            "stop_loss":       round(stop, 2),
+            "risk_1r_dollars": round(r1_dollars, 2),
+            "current_price":   round(cur_price, 2) if cur_price is not None else None,
+            "float_r":         float_r,
+        })
+
+    return jsonify({
+        "open_count":       len(rows),
+        "total_1r_dollars": round(total_1r, 2),
+        "total_float_r":    round(total_float, 2),
+        "positions":        rows,
     })
 
 

@@ -28,7 +28,11 @@ const scannerState = {
     sortKey: null,
     sortDir: 1,
     visible: { rsi: true, kama: true, mom: true, vol: true, trend: true },
+    focusIdx: -1,   // keyboard-focused row index (-1 = none)
 };
+
+// Cache of the last rendered jeff rows for keyboard actions + log-trade context
+const _jeffRowCache = {};  // symbol → jeff row data
 
 // ── Column definitions ─────────────────────────────────────────────────
 // groups → metrics → timeframes → cells
@@ -472,6 +476,7 @@ function initScanner() {
     }
     _syncScanModeUI();
     runScan();
+    if (typeof initScannerKeyNav === 'function') initScannerKeyNav();
 }
 
 function runScan() {
@@ -726,9 +731,10 @@ function _jfOppBadge(score) {
     return `<td class="jf-opp-cell"><span class="jf-opp ${cls}" title="Opportunity score: grade + readiness + RS + trigger proximity (0–100)">${score}</span></td>`;
 }
 
-function _jfRow(r) {
+function _jfRow(r, rowIdx = -1) {
+    const focusCls = (rowIdx >= 0 && rowIdx === scannerState.focusIdx) ? ' jf-row-focus' : '';
     if (r.error) {
-        return `<tr class="jf-row jf-row-err">
+        return `<tr class="jf-row jf-row-err${focusCls}" data-row-idx="${rowIdx}" data-symbol="${r.symbol}">
             <td></td>
             <td></td>
             <td class="jf-sym-cell"><strong data-hover-symbol="${r.symbol}">${r.symbol}</strong></td>
@@ -805,7 +811,7 @@ function _jfRow(r) {
                    onclick="event.stopPropagation(); jeffLogTrade('${r.symbol}', ${r.trigger ?? 'null'}, ${r.last_close ?? 'null'}, ${r.atr_14 ?? 'null'}, '${r.grade}')">📝</button>`
         : '';
 
-    return `<tr class="jf-row jf-row-${g}${dte != null && dte <= 7 ? ' jf-row-earn' : ''}${r.in_position ? ' jf-row-inpos' : ''}" onclick="selectSymbol('${r.symbol}'); switchTab('charts')">
+    return `<tr class="jf-row jf-row-${g}${dte != null && dte <= 7 ? ' jf-row-earn' : ''}${r.in_position ? ' jf-row-inpos' : ''}${focusCls}" data-row-idx="${rowIdx}" data-symbol="${r.symbol}" onclick="selectSymbol('${r.symbol}'); switchTab('charts')">
         <td><span class="jf-grade jf-grade-${g}">${r.grade}</span></td>
         ${_jfOppBadge(r.opp_score)}
 
@@ -936,7 +942,8 @@ function _renderJeffScan() {
             (nAlt ? `<span class="jf-stat-alt">&#128276; ${nAlt} alerted</span>` : '');
     }
 
-    tbody.innerHTML = rows.map(_jfRow).join('');
+    rows.forEach(r => { if (!r.error) _jeffRowCache[r.symbol] = r; });
+    tbody.innerHTML = rows.map((r, i) => _jfRow(r, i)).join('');
 }
 
 // ── Row actions ──────────────────────────────────────────────────────────────────
@@ -987,12 +994,18 @@ async function jeffSetAlert(symbol, trigger) {
 
 function jeffLogTrade(symbol, trigger, lastClose, atr14, grade) {
     if (typeof selectSymbol === 'function') selectSymbol(symbol);
+    const r = _jeffRowCache[symbol] || {};
     window._jeffJournalPrefill = {
         symbol,
-        entry_price: trigger || lastClose || '',
-        stop_loss:   (lastClose != null && atr14 != null) ? +(lastClose - atr14 * 1.5).toFixed(2) : '',
-        setup_grade: grade || '',
-        direction:   'long',
+        entry_price:    trigger || lastClose || '',
+        stop_loss:      (lastClose != null && atr14 != null) ? +(lastClose - atr14 * 1.5).toFixed(2) : '',
+        setup_grade:    grade || r.grade || '',
+        direction:      'long',
+        // Setup context snapshot — stored in journal for edge attribution
+        pattern:        r.pattern        || '',
+        trigger_status: r.trigger_status || '',
+        readiness:      r.readiness      ?? null,
+        rs_rank:        r.rs_rank        ?? null,
     };
     switchTab('journal');
 }
@@ -1092,4 +1105,58 @@ async function jeffCycleTier(symbol, currentTier, btn) {
     const next  = order[(order.indexOf(currentTier) + 1) % order.length];
     await jeffSetTier(symbol, next, btn);
     _renderPipelineBoard();
+}
+
+// ── Keyboard row navigation (j/k in jeff mode) ────────────────────────────────
+
+function _scanFocusedRow() {
+    return document.querySelector('#scanner-tbody .jf-row[data-row-idx]');
+}
+
+function _scanFocusedSym() {
+    const tbody = document.getElementById('scanner-tbody');
+    if (!tbody) return null;
+    const rows = tbody.querySelectorAll('.jf-row[data-row-idx]');
+    const idx  = scannerState.focusIdx;
+    return rows[idx]?.dataset?.symbol ?? null;
+}
+
+function _scanMoveFocus(delta) {
+    if (scannerState.mode === 'jeff') {
+        const tbody = document.getElementById('scanner-tbody');
+        if (!tbody) return;
+        const rows  = tbody.querySelectorAll('.jf-row[data-row-idx]');
+        const count = rows.length;
+        if (!count) return;
+        scannerState.focusIdx = Math.max(0, Math.min(
+            scannerState.focusIdx < 0 ? (delta > 0 ? 0 : count - 1) : scannerState.focusIdx + delta,
+            count - 1,
+        ));
+        rows.forEach((r, i) => r.classList.toggle('jf-row-focus', i === scannerState.focusIdx));
+        rows[scannerState.focusIdx]?.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+function _scanActivateFocused() {
+    const sym = _scanFocusedSym();
+    if (sym) { if (typeof selectSymbol === 'function') selectSymbol(sym); switchTab('charts'); }
+}
+
+function initScannerKeyNav() {
+    registerShortcut({ key: 'j', handler: () => { if (state.activeTab === 'scanner') _scanMoveFocus(+1); }, description: 'Scanner: next row' });
+    registerShortcut({ key: 'k', handler: () => { if (state.activeTab === 'scanner') _scanMoveFocus(-1); }, description: 'Scanner: prev row' });
+    registerShortcut({ key: 'Enter', handler: () => { if (state.activeTab === 'scanner') _scanActivateFocused(); }, description: 'Scanner: open focused symbol' });
+    registerShortcut({ key: 'a', handler: () => {
+        if (state.activeTab !== 'scanner') return;
+        const sym = _scanFocusedSym();
+        const r   = sym && _jeffRowCache[sym];
+        if (r) jeffSetAlert(sym, r.trigger);
+        else if (sym) { if (typeof selectSymbol === 'function') selectSymbol(sym); if (typeof toggleAlertsPanel === 'function') toggleAlertsPanel(); }
+    }, description: 'Scanner: alert focused row' });
+    registerShortcut({ key: 's', handler: () => {
+        if (state.activeTab !== 'scanner') return;
+        const sym = _scanFocusedSym();
+        const r   = sym && _jeffRowCache[sym];
+        if (r) jeffSizeIt(sym, r.trigger, r.last_close, r.atr_14);
+    }, description: 'Scanner: size focused row' });
 }

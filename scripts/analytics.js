@@ -141,7 +141,23 @@ async function _loadRAnalytics() {
             </tr>`;
         }).join('');
 
+        // Rolling-20 performance strip
+        const r20 = d.rolling20 || {};
+        const r20Strip = r20.count ? (() => {
+            const wrCl20 = r20.win_rate >= 0.5 ? 'an-pos' : r20.win_rate >= 0.35 ? 'an-warn' : 'an-neg';
+            const expCl20 = (r20.expectancy ?? 0) >= 0 ? 'an-pos' : 'an-neg';
+            return `<div class="rh-perf-strip">
+                <span class="rh-strip-label">Last ${r20.count} trades</span>
+                <span class="rh-strip-kpi ${wrCl20}">${(r20.win_rate * 100).toFixed(0)}% W</span>
+                <span class="rh-strip-kpi ${expCl20}">${r20.expectancy >= 0 ? '+' : ''}${r20.expectancy.toFixed(3)}R/t</span>
+                ${(r20.expectancy ?? 0) >= 0
+                    ? '<span class="rh-strip-badge rh-strip-green">Edge holding</span>'
+                    : '<span class="rh-strip-badge rh-strip-red">Edge eroding — review</span>'}
+            </div>`;
+        })() : '';
+
         panel.innerHTML = `
+            ${r20Strip}
             <div class="an-section-header">R-Distribution Business Scorecard</div>
 
             <div class="an-kpis rh-kpis">
@@ -165,6 +181,8 @@ async function _loadRAnalytics() {
             </table>` : ''}
 
             ${_renderLast100(d.last100, d.excursion)}
+            ${_renderPatternStats(d.pattern_stats || {})}
+            ${_renderTriggerStats(d.trigger_stats || {})}
             ${_renderSetupStats(d.setup_stats || {})}
             ${_renderCompliance(d.compliance || {})}
             ${_renderRevGradeStats(d.rev_grade_stats || {})}
@@ -261,6 +279,45 @@ function _renderRevGradeStats(stats) {
         <div class="an-section-header" style="margin-top:14px;">Performance by Review Grade</div>
         <table class="rh-grade-table">
             <thead><tr><th>Grade</th><th>Trades</th><th>Win%</th><th>Avg R</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
+
+function _renderPatternStats(stats) {
+    const entries = Object.entries(stats).filter(([, s]) => s && s.count >= 2);
+    if (!entries.length) return '';
+    const rows = entries.map(([pat, s]) => `<tr>
+        <td>${_anEsc(pat)}</td>
+        <td>${s.count}</td>
+        <td>${(s.win_rate * 100).toFixed(0)}%</td>
+        <td class="${s.avg_r >= 0 ? 'an-pos' : 'an-neg'}">${s.avg_r > 0 ? '+' : ''}${s.avg_r.toFixed(2)}R</td>
+    </tr>`).join('');
+    return `
+        <div class="an-section-header" style="margin-top:14px;">Edge by Base Pattern
+            <span class="an-muted-inline">(≥2 trades)</span>
+        </div>
+        <table class="rh-grade-table">
+            <thead><tr><th>Pattern</th><th>Trades</th><th>Win%</th><th>Avg R</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
+
+function _renderTriggerStats(stats) {
+    const entries = Object.entries(stats).filter(([, s]) => s && s.count >= 2);
+    if (!entries.length) return '';
+    const tCls = { AT: 'an-pos', NEAR: '', WATCH: 'an-warn', EARLY: 'an-neg' };
+    const rows = entries.map(([ts, s]) => `<tr>
+        <td class="${tCls[ts] || ''}">${_anEsc(ts)}</td>
+        <td>${s.count}</td>
+        <td>${(s.win_rate * 100).toFixed(0)}%</td>
+        <td class="${s.avg_r >= 0 ? 'an-pos' : 'an-neg'}">${s.avg_r > 0 ? '+' : ''}${s.avg_r.toFixed(2)}R</td>
+    </tr>`).join('');
+    return `
+        <div class="an-section-header" style="margin-top:14px;">Edge by Entry Timing
+            <span class="an-muted-inline">(trigger status at entry)</span>
+        </div>
+        <table class="rh-grade-table">
+            <thead><tr><th>Timing</th><th>Trades</th><th>Win%</th><th>Avg R</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>`;
 }
