@@ -134,6 +134,8 @@ async function initQuantLab(force = false) {
         qlRenderKnn(data.knn);
         qlRenderCta(data.cta);
         qlRenderExhaustion(data.exhaustion);
+        qlRenderSqueeze(data.squeeze);
+        qlRenderMeanRev(data.mean_reversion);
     } catch (e) {
         results.style.display = 'none';
         errBox.style.display = 'flex';
@@ -183,6 +185,7 @@ function qlRenderHeader(d) {
         ['CTA',  comp.cta,      v2 => (v2 > 0 ? '+' : '') + qlNum(v2, 0)],
         ['KNN',  comp.knn,      v2 => (v2 > 0 ? '+' : '') + qlNum(v2, 0)],
         ['EXH',  comp.exh_kick, v2 => (v2 > 0 ? '+' : '') + qlNum(v2, 0)],
+        ['MR',   comp.mr,       v2 => (v2 > 0 ? '+' : '') + qlNum(v2, 0)],
         ['FV·1W', comp.fv_edge_1w, v2 => qlPct(v2, 2)],
     ].map(([lbl, val, fmt]) => `
         <span class="ql-chip">
@@ -471,6 +474,138 @@ function qlRenderExhaustion(exh) {
           title: 'Unconditional mean fwd 1-month return' },
         { label: 'TD COUNT', value: qlNum(exh.components.td_count, 0) },
         { label: 'VOL CLIMAX', value: qlNum(exh.components.vol_climax) },
+    ]);
+}
+
+// ── Squeeze panel ────────────────────────────────────────────
+
+function qlRenderSqueeze(sqz) {
+    if (!sqz) return;
+    const badge = document.getElementById('ql-sqz-badge');
+    const sc = sqz.score;
+    if (sc === null || sc === undefined) {
+        badge.textContent = 'N/A';
+    } else {
+        badge.textContent = sc >= 85 ? `COILED ${sc.toFixed(0)} · ${sqz.trend_side}`
+                          : sc >= 60 ? `TIGHTENING ${sc.toFixed(0)}`
+                          : `LOOSE ${sc.toFixed(0)}`;
+        badge.style.color = sc >= 85 ? QL.colors.amber
+                          : sc >= 60 ? QL.colors.cyan : QL.colors.gray;
+    }
+
+    const s = sqz.series;
+    const n = s.close.length;
+    const ev = Array(n).fill(null);
+    (sqz.events || []).forEach(e => { if (e.i >= 0 && e.i < n) ev[e.i] = e.price; });
+
+    qlChart('ql-sqz-chart', {
+        type: 'line',
+        data: {
+            labels: s.dates.map(d2 => d2.slice(2)),
+            datasets: [
+                { label: 'CLOSE', data: s.close, borderColor: QL.colors.white,
+                  borderWidth: 1.4, pointRadius: 0, fill: false },
+                { label: 'SQUEEZE START', data: ev, borderColor: 'transparent',
+                  pointStyle: 'rectRot', pointRadius: 6,
+                  pointBackgroundColor: QL.colors.amber, showLine: false },
+            ],
+        },
+        options: qlBaseOpts({ interaction: { mode: 'nearest', intersect: false } }),
+    });
+
+    qlChart('ql-sqz-osc-chart', {
+        type: 'line',
+        data: {
+            labels: s.dates.map(d2 => d2.slice(2)),
+            datasets: [
+                { data: s.sq, borderColor: QL.colors.amber, borderWidth: 1.2,
+                  pointRadius: 0, fill: { target: 'origin' },
+                  backgroundColor: 'rgba(251,139,30,0.08)' },
+                { data: Array(n).fill(85), borderColor: 'rgba(251,139,30,0.45)',
+                  borderWidth: 1, borderDash: [4, 4], pointRadius: 0 },
+            ],
+        },
+        options: qlBaseOpts({
+            scales: {
+                x: { display: false },
+                y: { min: 0, max: 100,
+                     grid: { color: QL.colors.grid },
+                     ticks: { color: '#6a7480', stepSize: 50,
+                              font: { family: "'JetBrains Mono', monospace", size: 9 } } },
+            },
+        }),
+    });
+
+    const st = sqz.stats;
+    qlStatChips('ql-sqz-stats', [
+        { label: 'COMPRESSION', value: `${qlNum(sqz.score, 0)}/100`,
+          color: sqz.score >= 85 ? QL.colors.amber : QL.colors.white },
+        { label: 'TREND SIDE', value: sqz.trend_side,
+          color: sqz.trend_side === 'LONG' ? QL.colors.green
+               : sqz.trend_side === 'SHORT' ? QL.colors.red : QL.colors.gray,
+          title: 'EWMAC 16/64 sign — the likely breakout direction' },
+        { label: '|1M| AFTER SQZ', value: `${qlPct(st.ev_abs_1m)} (n=${st.n_events})`,
+          title: 'Mean absolute 1-month move after past compression episodes' },
+        { label: '|1M| BASE', value: qlPct(st.base_abs_1m) },
+        { label: 'TREND CALLED IT', value: qlPct(st.dir_agree, 0),
+          title: 'How often the trend filter sign matched the post-squeeze move' },
+    ]);
+}
+
+// ── Mean Reversion panel ─────────────────────────────────────
+
+function qlRenderMeanRev(mr) {
+    const badge = document.getElementById('ql-mr-badge');
+    if (!mr) {
+        badge.textContent = 'N/A';
+        qlStatChips('ql-mr-stats', [{ label: 'STATUS', value: 'INSUFFICIENT HISTORY' }]);
+        if (QL.charts['ql-mr-chart']) { QL.charts['ql-mr-chart'].destroy(); delete QL.charts['ql-mr-chart']; }
+        return;
+    }
+    badge.textContent = mr.character;
+    badge.style.color = mr.character === 'MEAN-REVERTING' ? QL.colors.cyan
+                      : mr.character === 'TRENDING' ? QL.colors.amber : QL.colors.gray;
+
+    const s = mr.series;
+    const n = s.close.length;
+    const hasProj = (s.proj || []).length === 21;
+    const labels = s.dates.map(d2 => d2.slice(5))
+        .concat(Array.from({ length: 21 }, (_, i) => `+${i + 1}`));
+    const lastClose = s.close[n - 1];
+
+    qlChart('ql-mr-chart', {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { label: 'FAIR VALUE', data: s.fv.concat(hasProj ? s.fv_path : Array(21).fill(null)),
+                  borderColor: QL.colors.amber, borderWidth: 1.3, pointRadius: 0, fill: false },
+                ...(hasProj ? [{
+                  label: 'E[REVERSION PATH]',
+                  data: Array(n - 1).fill(null).concat([lastClose]).concat(s.proj),
+                  borderColor: QL.colors.cyan, borderWidth: 1.6, borderDash: [5, 4],
+                  pointRadius: 0, fill: false }] : []),
+                { label: 'CLOSE', data: s.close.concat(Array(21).fill(null)),
+                  borderColor: QL.colors.white, borderWidth: 1.5, pointRadius: 0, fill: false },
+            ],
+        },
+        options: qlBaseOpts({ interaction: { mode: 'nearest', intersect: false } }),
+    });
+
+    qlStatChips('ql-mr-stats', [
+        { label: 'STRETCH', value: `${qlNum(mr.resid_z, 1)}σ`,
+          color: qlSignColor(-(mr.resid_z ?? 0)),
+          title: 'Log-price residual vs the 126-bar trend channel' },
+        { label: 'HALF-LIFE', value: mr.half_life === null ? 'NONE' : `${qlNum(mr.half_life, 0)} BARS`,
+          title: 'Ornstein-Uhlenbeck half-life of the residual (AR(1) fit)' },
+        { label: 'AR(1) φ', value: qlNum(mr.phi, 3) },
+        { label: 'HURST', value: qlNum(mr.hurst, 2),
+          title: '< 0.5 mean-reverting · ≈ 0.5 random walk · > 0.5 trending' },
+        { label: 'VR(10)', value: qlNum(mr.vr10, 2),
+          title: 'Variance ratio: < 1 mean-reverting, > 1 trending' },
+        { label: 'REVERT HIT', value: mr.revert_hit === null ? '—'
+              : `${qlPct(mr.revert_hit, 0)} (n=${mr.n_stretch_events})`,
+          title: 'After |stretch| ≥ 2σ, how often it was smaller 21 bars later' },
     ]);
 }
 

@@ -99,6 +99,31 @@ def test_exhaustion_events_and_stats(ql_result):
     assert exh["stats"]["base"]["fwd21"] is not None
 
 
+def test_squeeze_sections(ql_result):
+    sqz = ql_result["squeeze"]
+    assert 0 <= sqz["score"] <= 100
+    assert sqz["trend_side"] in ("LONG", "SHORT", "FLAT")
+    s = sqz["series"]
+    assert len(s["dates"]) == len(s["close"]) == len(s["sq"])
+    for ev in sqz["events"]:
+        assert 0 <= ev["i"] < len(s["close"])
+    if sqz["stats"]["n_events"]:
+        assert sqz["stats"]["base_abs_1m"] is not None
+
+
+def test_mean_reversion_sections(ql_result):
+    mr = ql_result["mean_reversion"]
+    assert mr is not None
+    assert mr["character"] in ("MEAN-REVERTING", "TRENDING", "MIXED")
+    assert -100 <= mr["score"] <= 100
+    if mr["half_life"] is not None:
+        assert mr["half_life"] > 0
+        # projection exists and starts near the current price
+        assert len(mr["series"]["proj"]) == 21
+        assert len(mr["series"]["fv_path"]) == 21
+    assert "mr" in ql_result["composite"]["components"]
+
+
 def test_insufficient_data_error(monkeypatch, long_ohlcv):
     import database as db
     import quant_lab

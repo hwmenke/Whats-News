@@ -31,6 +31,18 @@ EXHAUSTION   Blow-off / capitulation composite: TD-sequential-style count,
              10-bar extension.  Event study of past |score| ≥ 70 episodes
              with forward-return stats vs the unconditional base rate.
 
+SQUEEZE      Volatility-compression model: Bollinger-width and realized-vol
+             percentile blend into a 0–100 compression score.  Event study
+             of past compression episodes (score ≥ 85): how big was the
+             next 1-month move, and how often did the prevailing EWMAC
+             trend call its direction.
+
+MEAN REV     Ornstein-Uhlenbeck fit on the trend-channel residual: AR(1)
+             phi, half-life of reversion, Hurst exponent and variance
+             ratio say whether the symbol mean-reverts or trends, and a
+             21-bar expected reversion path is projected from the current
+             stretch.
+
 All maths is vectorised numpy/pandas — no model fitting at request time.
 PyCaret AutoML stays on its own on-demand endpoint (/api/pycaret/<symbol>).
 """
@@ -99,14 +111,15 @@ def _max_drawdown(equity: np.ndarray) -> float:
 
 def _trend_channel(log_close: np.ndarray, window: int = 126):
     """
-    Rolling OLS of log price on time.  Returns (fit, resid_sigma, resid_z)
-    aligned to the input — the fitted value at each window's END bar.
+    Rolling OLS of log price on time.  Returns (fit, resid_sigma, resid_z,
+    slope) aligned to the input — the fitted value at each window's END bar.
     """
     n = len(log_close)
-    fit  = np.full(n, np.nan)
-    sig  = np.full(n, np.nan)
+    fit   = np.full(n, np.nan)
+    sig   = np.full(n, np.nan)
+    slp   = np.full(n, np.nan)
     if n < window:
-        return fit, sig, np.full(n, np.nan)
+        return fit, sig, np.full(n, np.nan), slp
 
     win    = sliding_window_view(log_close, window)          # (n-w+1, w)
     t      = np.arange(window, dtype=float)
@@ -121,10 +134,11 @@ def _trend_channel(log_close: np.ndarray, window: int = 126):
 
     fit[window - 1:] = intercept + slope * (window - 1)
     sig[window - 1:] = resid_sd
+    slp[window - 1:] = slope
 
     sig_safe = np.where(sig < 1e-12, np.nan, sig)
     resid_z  = np.clip((log_close - fit) / sig_safe, -4, 4)
-    return fit, sig, resid_z
+    return fit, sig, resid_z, slp
 
 
 # ── shared state frame ────────────────────────────────────────────────────────
@@ -142,10 +156,11 @@ def _state_frame(df: pd.DataFrame) -> pd.DataFrame:
                       * np.sqrt(ANN)).clip(lower=1e-4)
 
     # — fair-value channel —
-    fit, sig, resid_z = _trend_channel(out["logp"].values, 126)
+    fit, sig, resid_z, slope = _trend_channel(out["logp"].values, 126)
     out["fv"]       = np.exp(fit)
     out["fv_sig"]   = sig
     out["resid_z"]  = resid_z
+    out["fv_slope"] = slope
 
     # — valuation components (all roughly N(0,1)-scaled, clipped) —
     k20 = _kama(close, window=20)
@@ -201,6 +216,12 @@ def _state_frame(df: pd.DataFrame) -> pd.DataFrame:
     out["volp"]     = (_pct_rank(out["vol_ann"]) - 0.5) * 4.0
     vol_ema = vol.ewm(span=20, adjust=False).mean().clip(lower=1)
     out["volume_z"] = _z(np.log((vol / vol_ema).clip(lower=1e-9)), 60, min_p=30)
+
+    # — squeeze (vol compression, 0 = loose … 100 = maximally coiled) —
+    up20, _, lo20 = _bollinger(close, window=20, num_std=2.0)
+    bbw_pct  = _pct_rank((up20 - lo20) / close.clip(lower=1e-9))
+    vol_pct  = _pct_rank(out["vol_ann"])
+    out["squeeze"] = (1.0 - (0.6 * bbw_pct + 0.4 * vol_pct)) * 100.0
 
     # — composites —
     val_cols = ["resid_z", "kama_gap_z", "range_pos", "rsi_pct", "bb60"]
@@ -484,25 +505,174 @@ def _exhaustion(st: pd.DataFrame) -> dict:
     }
 
 
-# ── composite dials ───────────────────────────────────────────────────────────
+# ── model 5: squeeze (volatility compression) ────────────────────────────────
+
+def _squeeze(st: pd.DataFrame) -> dict:
+    sq    = st["squeeze"]
+    close = st["close"]
+    fwd21 = close.shift(-21) / close - 1.0
+    trend = st["ewmac_16"]
+
+    # compression episodes: score crosses up through 85, 21-bar cool-off
+    sq_arr = sq.values
+    ev_idx = []
+    last = -10_000
+    for i in range(1, len(sq_arr)):
+        if (np.isfinite(sq_arr[i]) and sq_arr[i] >= 85
+                and (sq_arr[i - 1] < 85 or not np.isfinite(sq_arr[i - 1]))
+                and i - last >= 21):
+            ev_idx.append(i)
+            last = i
+
+    f21   = fwd21.values
+    tr    = trend.values
+    moves = np.array([f21[i] for i in ev_idx if np.isfinite(f21[i])])
+    agree = np.array([np.sign(f21[i]) == np.sign(tr[i])
+                      for i in ev_idx
+                      if np.isfinite(f21[i]) and np.isfinite(tr[i]) and tr[i] != 0])
+    base  = fwd21.dropna()
+
+    tail_n = min(504, len(st))
+    tail   = st.tail(tail_n)
+    start  = len(st) - tail_n
+    events = [{"i": i - start,
+               "date": st.index[i].strftime("%Y-%m-%d"),
+               "price": _fl(close.iloc[i], 4)}
+              for i in ev_idx if i >= start]
+
+    cur_trend = float(tr[-1]) if np.isfinite(tr[-1]) else 0.0
+    return {
+        "score":      _fl(sq.iloc[-1], 1),                 # 0 … 100
+        "trend_side": "LONG" if cur_trend > 0 else "SHORT" if cur_trend < 0 else "FLAT",
+        "stats": {
+            "n_events":   len(ev_idx),
+            "ev_abs_1m":  _fl(np.abs(moves).mean()) if len(moves) else None,
+            "base_abs_1m": _fl(base.abs().mean()) if len(base) else None,
+            "dir_agree":  _fl(agree.mean(), 3) if len(agree) else None,
+        },
+        "events": events,
+        "series": {
+            "dates": [d.strftime("%Y-%m-%d") for d in tail.index],
+            "close": _fl_list(tail["close"], 4),
+            "sq":    _fl_list(tail["squeeze"], 1),
+        },
+    }
+
+
+# ── model 6: mean reversion & character ──────────────────────────────────────
+
+def _mean_reversion(st: pd.DataFrame) -> dict | None:
+    logp = st["logp"].values
+    fv   = st["fv"].values
+    with np.errstate(invalid="ignore"):
+        resid = logp - np.log(np.where(fv > 0, fv, np.nan))
+
+    ok = np.isfinite(resid)
+    if ok.sum() < 200:
+        return None
+    r_tail = resid[ok][-504:]
+
+    # AR(1):  Δx_t = a + b·x_{t-1}   →  φ = 1 + b
+    x, dx = r_tail[:-1], np.diff(r_tail)
+    var_x = x.var()
+    if var_x < 1e-14:
+        return None
+    b   = np.cov(x, dx)[0, 1] / var_x
+    phi = 1.0 + b
+    half_life = float(-np.log(2) / np.log(phi)) if 0 < phi < 1 else None
+
+    # Hurst exponent: slope of log σ(q-bar returns) vs log q
+    lp = st["logp"].values[-504:]
+    qs, sds = [], []
+    for q in (1, 2, 4, 8, 16):
+        d = lp[q:] - lp[:-q]
+        d = d[np.isfinite(d)]
+        if len(d) > 30 and d.std() > 1e-12:
+            qs.append(np.log(q))
+            sds.append(np.log(d.std()))
+    hurst = float(np.polyfit(qs, sds, 1)[0]) if len(qs) >= 3 else None
+
+    r1 = np.diff(lp)
+    r1 = r1[np.isfinite(r1)]
+    d10 = lp[10:] - lp[:-10]
+    d10 = d10[np.isfinite(d10)]
+    vr10 = (float(d10.var() / (10 * r1.var()))
+            if len(r1) > 50 and r1.var() > 1e-14 else None)
+
+    character = ("MEAN-REVERTING" if (hurst is not None and hurst < 0.45
+                                      and half_life is not None) else
+                 "TRENDING" if (hurst is not None and hurst > 0.55) else "MIXED")
+
+    # reversion hit rate: after |z| ≥ 2, was |z| smaller 21 bars later?
+    z = st["resid_z"].values
+    hits, n_ev, last = 0, 0, -10_000
+    for i in range(len(z) - 21):
+        if np.isfinite(z[i]) and abs(z[i]) >= 2.0 and i - last >= 10:
+            last = i
+            if np.isfinite(z[i + 21]):
+                n_ev += 1
+                hits += abs(z[i + 21]) < abs(z[i])
+    revert_hit = hits / n_ev if n_ev else None
+
+    # 21-bar projection: residual decays at φ, fair value drifts at slope
+    cur_resid = float(resid[ok][-1])
+    slope     = float(st["fv_slope"].iloc[-1]) if np.isfinite(st["fv_slope"].iloc[-1]) else 0.0
+    log_fv0   = float(np.log(fv[-1])) if np.isfinite(fv[-1]) and fv[-1] > 0 else None
+    proj, fv_path = [], []
+    if log_fv0 is not None and half_life is not None:
+        for h in range(1, 22):
+            fv_h = log_fv0 + slope * h
+            fv_path.append(np.exp(fv_h))
+            proj.append(np.exp(fv_h + cur_resid * phi ** h))
+
+    # direction kicker: expected 21-bar move from residual decay, in σ21 units
+    score = 0.0
+    if half_life is not None and half_life <= 126:
+        exp_ret = np.exp(cur_resid * (phi ** 21 - 1.0)) - 1.0
+        sigma21 = float(st["vol_ann"].iloc[-1]) / np.sqrt(ANN) * np.sqrt(21)
+        score   = float(np.clip(exp_ret / max(sigma21, 1e-6), -1.5, 1.5) / 1.5 * 100.0)
+
+    tail = st.tail(ANN)
+    return {
+        "score":      _fl(score, 1),
+        "character":  character,
+        "phi":        _fl(phi, 3),
+        "half_life":  _fl(half_life, 1),
+        "hurst":      _fl(hurst, 2),
+        "vr10":       _fl(vr10, 2),
+        "resid_z":    _fl(st["resid_z"].iloc[-1], 2),
+        "revert_hit": _fl(revert_hit, 3),
+        "n_stretch_events": n_ev,
+        "series": {
+            "dates": [d.strftime("%Y-%m-%d") for d in tail.index],
+            "close": _fl_list(tail["close"], 4),
+            "fv":    _fl_list(tail["fv"], 4),
+            "proj":    _fl_list(proj, 4),
+            "fv_path": _fl_list(fv_path, 4),
+        },
+    }
+
+
 
 def _composite(st: pd.DataFrame, fv: dict, knn: dict | None,
-               cta: dict, exh: dict) -> dict:
+               cta: dict, exh: dict, mr: dict | None) -> dict:
     val = fv.get("score")
     cta_s = cta.get("score") or 0.0
     knn_s = (knn or {}).get("score") or 0.0
     e     = exh.get("score") or 0.0
+    mr_s  = (mr or {}).get("score") or 0.0
 
     # exhaustion kicker: contrarian, only meaningful at extremes
     exh_kick = -e * (abs(e) / 100.0) ** 2
 
-    direction = float(np.clip(0.50 * cta_s + 0.30 * knn_s + 0.20 * exh_kick,
-                              -100, 100))
+    direction = float(np.clip(0.45 * cta_s + 0.25 * knn_s
+                              + 0.15 * exh_kick + 0.15 * mr_s, -100, 100))
 
-    # conviction: how many of {CTA, KNN, valuation-edge} agree with the call
+    # conviction: how many of {CTA, KNN, MR, valuation-edge} agree with the call
     votes, agree = 0, 0
     edge = fv.get("edge_1w")
-    for sig in (cta_s, knn_s, (edge or 0.0) * 1e4 if edge is not None else None):
+    for sig in (cta_s, knn_s, mr_s,
+                (edge or 0.0) * 1e4 if edge is not None else None):
         if sig is None or abs(sig) < 1e-9:
             continue
         votes += 1
@@ -519,6 +689,7 @@ def _composite(st: pd.DataFrame, fv: dict, knn: dict | None,
             "cta":      _fl(cta_s, 1),
             "knn":      _fl(knn_s, 1),
             "exh_kick": _fl(exh_kick, 1),
+            "mr":       _fl(mr_s, 1),
             "fv_edge_1w": _fl(edge),
         },
     }
@@ -544,15 +715,19 @@ def _compute_inner(symbol: str) -> dict:
     knn = _knn(st)
     cta = _cta(st)
     exh = _exhaustion(st)
+    sqz = _squeeze(st)
+    mr  = _mean_reversion(st)
 
     return {
         "symbol":     symbol,
         "as_of":      st.index[-1].strftime("%Y-%m-%d"),
         "last_close": _fl(st["close"].iloc[-1], 4),
         "n_bars":     int(len(st)),
-        "composite":  _composite(st, fv, knn, cta, exh),
+        "composite":  _composite(st, fv, knn, cta, exh, mr),
         "fair_value": fv,
         "knn":        knn,
         "cta":        cta,
         "exhaustion": exh,
+        "squeeze":    sqz,
+        "mean_reversion": mr,
     }

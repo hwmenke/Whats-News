@@ -68,8 +68,23 @@ conviction read from cross-model agreement:
 - **Exhaustion**: blow-off/capitulation composite (TD-style count, fast RSI, ATR
   stretch percentile, signed volume climax, 10-bar extension) with an event study of
   past ±70 readings vs the unconditional base rate
+- **Squeeze**: Bollinger-width + realized-vol percentile compression score (0–100)
+  with an event study of past compression episodes — how big the next 1-month move
+  was and how often the trend filter called its direction
+- **Mean Reversion**: Ornstein-Uhlenbeck fit on the trend-channel residual — AR(1) φ,
+  half-life, Hurst exponent and variance ratio classify the symbol's character
+  (TRENDING / MEAN-REVERTING / MIXED) and project a 21-bar expected reversion path
 - **AutoML**: on-demand PyCaret classifier comparison (leaderboard, prediction,
   feature importance) straight from the header strip
+
+### Signals (flaggable scanners)
+Pluggable signal routines swept across the whole watchlist — one decorated function
+per routine in `signal_scanner.py`, picked up automatically by the API and UI:
+**Valuation Extreme**, **Value + Turn**, **Trend Flip**, **Exhaustion**, **Squeeze**,
+**52W Break**, **Analog Skew**, **MR Stretch**, **Volume Climax**, **TD-9 Count**.
+Toggle routines on/off, filter by side (bull / bear / watch), and **★ flag** any
+signal to keep it on a persistent flagged list across scans and sessions. Clicking
+a symbol jumps straight into its Quant Lab screen.
 
 ### Charts & Analysis
 - **Main Chart**: Candlestick with SMA, EMA, Bollinger Bands, RSI, MACD, Volume overlays
@@ -114,7 +129,8 @@ conviction read from cross-model agreement:
 | `factor_model.py` | Cross-sectional 5-factor OLS model for all watchlist symbols |
 | `factor_attribution.py` | Per-strategy factor attribution using Fama-French factors |
 | `regression.py` | Macro-factor OLS regression (24 factors, pure numpy) |
-| `quant_lab.py` | Quant Lab engine — fair-value channel, KNN fan forecast, CTA strategy, exhaustion, composite dials |
+| `quant_lab.py` | Quant Lab engine — fair-value channel, KNN fan, CTA, exhaustion, squeeze, mean reversion, composite dials |
+| `signal_scanner.py` | Pluggable signal routines scanned across the watchlist (10 scanners, thread-pooled, cached) |
 | `pycaret_model.py` | PyCaret AutoML — trains & compares classifiers to predict UP/DOWN direction |
 | `swirligram.py` | RSI phase-space swirligram with buy-setup scoring |
 | `ticker_lists.py` | Curated ticker library (~220 tickers, 12 categories) |
@@ -124,7 +140,7 @@ conviction read from cross-model agreement:
 
 All modules live in `scripts/`:
 
-`app.js` · `charts.js` · `chart_helpers.js` · `data_manager.js` · `factor_model.js` · `market_regime.js` · `momentum_ranker.js` · `persistence.js` · `portfolio.js` · `quant_lab.js` · `regression.js` · `scanner.js` · `seasonality.js` · `shortcuts.js` · `strategy_tester.js` · `swirligram.js` · `trend_chart.js`
+`app.js` · `charts.js` · `chart_helpers.js` · `data_manager.js` · `factor_model.js` · `market_regime.js` · `momentum_ranker.js` · `persistence.js` · `portfolio.js` · `quant_lab.js` · `regression.js` · `scanner.js` · `seasonality.js` · `shortcuts.js` · `signal_scanner.js` · `strategy_tester.js` · `swirligram.js` · `trend_chart.js`
 
 ---
 
@@ -132,13 +148,28 @@ All modules live in `scripts/`:
 
 `GET /api/quant-lab/<symbol>`
 
-Runs the full quant stack (fair value, KNN fan, CTA, exhaustion, composite dials)
-for a symbol with ≥ 300 daily bars. All maths is vectorised — typical response
-time is ~100 ms. Powers the **⚡ Quant Lab** tab.
+Runs the full quant stack (fair value, KNN fan, CTA, exhaustion, squeeze, mean
+reversion, composite dials) for a symbol with ≥ 300 daily bars. All maths is
+vectorised — typical response time is well under a second. Powers the
+**⚡ Quant Lab** tab.
 
 ```bash
 curl -X POST http://localhost:8050/api/fetch/AAPL
 curl "http://localhost:8050/api/quant-lab/AAPL"
+```
+
+## Signals Endpoint
+
+`GET /api/signals?routines=<csv>&symbols=<csv>` (both params optional)
+
+Sweeps the signal routines across the watchlist (thread-pooled, cached per
+symbol) and returns fired signals sorted by strength, plus per-routine counts.
+`GET /api/signals/routines` returns the routine catalog. Powers the
+**🚨 Signals** tab.
+
+```bash
+curl "http://localhost:8050/api/signals"
+curl "http://localhost:8050/api/signals?routines=squeeze_alert,exh_event"
 ```
 
 ---
@@ -173,7 +204,7 @@ Response includes: `prediction` (UP/DOWN), `confidence`, model `leaderboard`, `f
 pytest
 ```
 
-46 tests covering TA primitives, API validation, error taxonomy, backtest engine, and the Quant Lab models.
+52 tests covering TA primitives, API validation, error taxonomy, backtest engine, the Quant Lab models, and the signal scanner.
 
 ---
 

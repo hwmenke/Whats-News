@@ -29,6 +29,7 @@ import data_quality as dq
 import factor_attribution as fa
 import portfolio_backtest as pb
 import quant_lab as ql
+import signal_scanner as sigscan
 import errors
 import pycaret_model
 from errors import ApiError
@@ -567,6 +568,35 @@ def quant_lab_route(symbol: str):
     result = ql.compute_quant_lab(symbol.upper())
     if "error" in result:
         return jsonify({"error": result["error"]}), 422
+    return jsonify(result)
+
+
+# -- Signal Scanner ---------------------------------------------------------------
+
+@app.route("/api/signals/routines", methods=["GET"])
+def signal_routines_route():
+    """Catalog of available signal routines (id, label, description)."""
+    return jsonify(sigscan.routine_catalog())
+
+
+@app.route("/api/signals", methods=["GET"])
+def signals_route():
+    """
+    Run the signal routines across symbols and return fired signals.
+
+    Query params (both optional):
+        routines  csv of routine ids to include (default: all)
+        symbols   csv of symbols (default: full watchlist)
+    """
+    routines = [r.strip() for r in request.args.get("routines", "").split(",") if r.strip()]
+    symbols  = [s.strip() for s in request.args.get("symbols", "").split(",") if s.strip()]
+
+    known = {r["id"] for r in sigscan.routine_catalog()}
+    bad   = [r for r in routines if r not in known]
+    if bad:
+        raise errors.validation(f"unknown routines: {', '.join(bad)}")
+
+    result = sigscan.scan_symbols(symbols or None, routines or None)
     return jsonify(result)
 
 

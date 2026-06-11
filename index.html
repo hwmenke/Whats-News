@@ -126,6 +126,9 @@
       <button id="tab-quant" class="tab-btn tab-btn-quant" onclick="switchTab('quant')">
         <span class="tab-icon">⚡</span> Quant Lab
       </button>
+      <button id="tab-signals" class="tab-btn tab-btn-quant" onclick="switchTab('signals')">
+        <span class="tab-icon">🚨</span> Signals
+      </button>
       <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">
         <span class="tab-icon">📊</span> Statistics
       </button>
@@ -1272,11 +1275,75 @@
             <div id="ql-exh-stats" class="ql-stat-row"></div>
           </section>
 
+          <section class="ql-panel">
+            <header class="ql-panel-head">
+              <span class="ql-fn">SQZ</span> SQUEEZE · VOL COMPRESSION
+              <span id="ql-sqz-badge" class="ql-badge">—</span>
+            </header>
+            <div class="ql-chart-wrap"><canvas id="ql-sqz-chart"></canvas></div>
+            <div class="ql-subtitle">COMPRESSION 0–100 · ◆ EPISODE START ≥ 85 · DIRECTION FROM TREND FILTER</div>
+            <div class="ql-chart-strip"><canvas id="ql-sqz-osc-chart"></canvas></div>
+            <div id="ql-sqz-stats" class="ql-stat-row"></div>
+          </section>
+
+          <section class="ql-panel">
+            <header class="ql-panel-head">
+              <span class="ql-fn">MR</span> MEAN REVERSION · OU HALF-LIFE &amp; CHARACTER
+              <span id="ql-mr-badge" class="ql-badge">—</span>
+            </header>
+            <div class="ql-chart-wrap ql-chart-tall"><canvas id="ql-mr-chart"></canvas></div>
+            <div id="ql-mr-stats" class="ql-stat-row"></div>
+          </section>
+
         </div><!-- .ql-grid -->
 
       </div><!-- #ql-results -->
 
     </div><!-- #quant-area -->
+
+    <!-- ── Signal Scanner Area ── -->
+    <div id="signals-area" class="ql-container" style="display:none;">
+
+      <div id="sg-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span> Scanning watchlist…
+      </div>
+
+      <div class="sg-controls">
+        <button id="btn-sg-scan" class="ql-btn" onclick="sgRunScan()">SCAN ▸ WATCHLIST</button>
+        <span id="sg-meta" class="sg-meta"></span>
+        <div class="sg-filters">
+          <button class="sg-filter-btn sg-f-active" data-f="all"     onclick="sgSetFilter('all')">ALL</button>
+          <button class="sg-filter-btn" data-f="bull"    onclick="sgSetFilter('bull')">▲ BULL</button>
+          <button class="sg-filter-btn" data-f="bear"    onclick="sgSetFilter('bear')">▼ BEAR</button>
+          <button class="sg-filter-btn" data-f="watch"   onclick="sgSetFilter('watch')">◆ WATCH</button>
+          <button class="sg-filter-btn" data-f="flagged" onclick="sgSetFilter('flagged')">★ FLAGGED <span id="sg-flag-count"></span></button>
+        </div>
+      </div>
+
+      <div class="sg-routines-bar">
+        <span class="sg-routines-label">ROUTINES</span>
+        <div id="sg-routine-pills" class="sg-routine-pills"></div>
+      </div>
+
+      <div id="sg-empty" class="empty-state">
+        <div class="empty-icon">🚨</div>
+        <p>Toggle the routines you care about, then <b>SCAN ▸ WATCHLIST</b>.<br>
+           Star a signal to keep it on your ★ FLAGGED list across scans.</p>
+      </div>
+
+      <div id="sg-results" class="sg-results" style="display:none;">
+        <table class="sg-table">
+          <thead>
+            <tr>
+              <th></th><th>SYMBOL</th><th>SIGNAL</th><th>SIDE</th>
+              <th>STRENGTH</th><th>DETAIL</th><th>DATE</th><th>PRICE</th>
+            </tr>
+          </thead>
+          <tbody id="sg-tbody"></tbody>
+        </table>
+      </div>
+
+    </div><!-- #signals-area -->
 
     <!-- ── Market Regime Area ── -->
     <div id="regime-area" class="rg-container" style="display:none;">
@@ -1473,6 +1540,7 @@
 <script src="scripts/swirligram.js"></script>
 <script src="scripts/portfolio.js"></script>
 <script src="scripts/quant_lab.js"></script>
+<script src="scripts/signal_scanner.js"></script>
 <script src="scripts/market_regime.js"></script>
 <script src="scripts/momentum_ranker.js"></script>
 <script src="scripts/seasonality.js"></script>
