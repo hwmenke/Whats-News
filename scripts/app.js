@@ -460,6 +460,8 @@ async function selectSymbol(symbol) {
         showRegressionArea();
     } else if (state.activeTab === 'swirl') {
         if (typeof swLoad === 'function') swLoad();
+    } else if (state.activeTab === 'quant') {
+        if (typeof initQuantLab === 'function') initQuantLab();
     }
 }
 
@@ -647,7 +649,7 @@ const _AREA_DISPLAY = {
     'strategy-area':     'flex',
     'swirl-area':        'flex',
     'portfolio-area':    'flex',
-    'knn-area':          'flex',
+    'quant-area':        'flex',
     'regime-area':       'flex',
     'momentum-area':     'flex',
     'seasonality-area':  'flex',
@@ -672,6 +674,7 @@ function showLoadingOverlay(show) {
 
 // ── Tab Switching ─────────────────────────────────────────────
 async function switchTab(tabId) {
+    if (tabId === 'knn') tabId = 'quant';   // legacy persisted tab id
     state.activeTab = tabId;
     persistence.save({ activeTab: tabId });
 
@@ -707,9 +710,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'portfolio') {
         showPortfolioArea();
         if (typeof initPortfolioTester === 'function') initPortfolioTester();
-    } else if (tabId === 'knn') {
-        showKnnArea();
-        if (typeof initKnnForecast === 'function') initKnnForecast();
+    } else if (tabId === 'quant') {
+        showQuantArea();
+        if (typeof initQuantLab === 'function') initQuantLab();
     } else if (tabId === 'regime') {
         showRegimeArea();
         if (typeof initRegime === 'function') initRegime();
@@ -733,7 +736,7 @@ function showRegressionArea()  { _showOnly('regression-area'); }
 function showStrategyArea()    { _showOnly('strategy-area'); }
 function showSwirlogramArea()  { _showOnly('swirl-area'); }
 function showPortfolioArea()   { _showOnly('portfolio-area'); }
-function showKnnArea()         { _showOnly('knn-area'); }
+function showQuantArea()       { _showOnly('quant-area'); }
 function showRegimeArea()      { _showOnly('regime-area'); }
 function showMomentumArea()    { _showOnly('momentum-area'); }
 function showSeasonalityArea() { _showOnly('seasonality-area'); }
@@ -1082,7 +1085,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Keyboard shortcuts
-    const TAB_ORDER = ['charts','stats','trend','scanner','data-manager','regression','strategy','swirl','portfolio','knn'];
+    const TAB_ORDER = ['charts','quant','stats','trend','scanner','data-manager','regression','strategy','swirl','portfolio'];
     TAB_ORDER.forEach((id, i) =>
         registerShortcut({ key: String(i + 1), handler: () => switchTab(id), description: `Go to ${id}` })
     );

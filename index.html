@@ -123,6 +123,9 @@
       <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')">
         <span class="tab-icon">📈</span> Charts
       </button>
+      <button id="tab-quant" class="tab-btn tab-btn-quant" onclick="switchTab('quant')">
+        <span class="tab-icon">⚡</span> Quant Lab
+      </button>
       <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">
         <span class="tab-icon">📊</span> Statistics
       </button>
@@ -146,9 +149,6 @@
       </button>
       <button id="tab-portfolio" class="tab-btn" onclick="switchTab('portfolio')">
         <span class="tab-icon">📂</span> Portfolio
-      </button>
-      <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">
-        <span class="tab-icon">🔮</span> KNN
       </button>
       <button id="tab-regime" class="tab-btn" onclick="switchTab('regime')">
         <span class="tab-icon">🌡</span> Regime
@@ -1167,111 +1167,116 @@
 
     </div><!-- #portfolio-area -->
 
-    <!-- ── KNN Pattern Forecast Area ── -->
-    <div id="knn-area" class="knn-container" style="display:none;">
+    <!-- ── Quant Lab Area (Bloomberg-terminal style) ── -->
+    <div id="quant-area" class="ql-container" style="display:none;">
 
-      <div id="knn-loading" class="chart-loading" style="display:none;">
-        <span class="spinner"></span> Searching for similar patterns…
+      <div id="ql-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span> Running quant models…
       </div>
 
-      <!-- Controls bar -->
-      <div class="knn-controls">
-        <!-- Left: Freq + K + Run -->
-        <div class="knn-controls-left">
-          <div class="knn-ctrl-group">
-            <span class="knn-ctrl-label">Freq</span>
-            <button class="ind-pill knn-freq-btn knn-active" data-val="daily"  onclick="knnSetFreq('daily')">Daily</button>
-            <button class="ind-pill knn-freq-btn"            data-val="weekly" onclick="knnSetFreq('weekly')">Weekly</button>
-          </div>
-          <div class="knn-ctrl-group">
-            <span class="knn-ctrl-label">Neighbours</span>
-            <input id="knn-k-input" type="number" class="knn-k-input" value="20" min="5" max="50" step="5" />
-          </div>
-          <button id="btn-knn-run" class="btn btn-primary knn-run-btn" onclick="knnRunForecast()">
-            🔮 Find Patterns
-          </button>
-        </div>
-
-        <!-- Right: Weight sliders -->
-        <div class="knn-controls-right">
-          <span class="knn-ctrl-label">Feature Weights</span>
-          <div class="knn-sliders">
-            <div class="knn-slider-row">
-              <span class="knn-slider-icon">📊</span>
-              <span class="knn-slider-label">Trend</span>
-              <input id="knn-slider-trend" class="knn-slider" type="range" min="0" max="1" step="0.05"
-                     value="0.25" oninput="knnUpdateWeight('trend',this.value)">
-              <span id="knn-w-val-trend" class="knn-slider-val">0.25</span>
-            </div>
-            <div class="knn-slider-row">
-              <span class="knn-slider-icon">⚡</span>
-              <span class="knn-slider-label">Momentum</span>
-              <input id="knn-slider-momentum" class="knn-slider" type="range" min="0" max="1" step="0.05"
-                     value="0.25" oninput="knnUpdateWeight('momentum',this.value)">
-              <span id="knn-w-val-momentum" class="knn-slider-val">0.25</span>
-            </div>
-            <div class="knn-slider-row">
-              <span class="knn-slider-icon">🌊</span>
-              <span class="knn-slider-label">Volatility</span>
-              <input id="knn-slider-volatility" class="knn-slider" type="range" min="0" max="1" step="0.05"
-                     value="0.20" oninput="knnUpdateWeight('volatility',this.value)">
-              <span id="knn-w-val-volatility" class="knn-slider-val">0.20</span>
-            </div>
-            <div class="knn-slider-row">
-              <span class="knn-slider-icon">🕯</span>
-              <span class="knn-slider-label">Price Action</span>
-              <input id="knn-slider-price_action" class="knn-slider" type="range" min="0" max="1" step="0.05"
-                     value="0.20" oninput="knnUpdateWeight('price_action',this.value)">
-              <span id="knn-w-val-price_action" class="knn-slider-val">0.20</span>
-            </div>
-            <div class="knn-slider-row">
-              <span class="knn-slider-icon">📦</span>
-              <span class="knn-slider-label">Volume</span>
-              <input id="knn-slider-volume" class="knn-slider" type="range" min="0" max="1" step="0.05"
-                     value="0.10" oninput="knnUpdateWeight('volume',this.value)">
-              <span id="knn-w-val-volume" class="knn-slider-val">0.10</span>
-            </div>
-          </div>
-          <div class="knn-weight-row">
-            <span class="knn-ctrl-label">Total:</span>
-            <span id="knn-weight-total" class="knn-weight-total knn-wt-ok">1.00</span>
-            <button class="ind-pill" onclick="knnResetWeights()" style="font-size:10px;padding:2px 8px;">↺ Reset</button>
-          </div>
-        </div>
-      </div><!-- .knn-controls -->
-
-      <!-- Meta row (shown after run) -->
-      <div id="knn-meta" class="knn-meta" style="display:none;"></div>
-
-      <!-- Empty state -->
-      <div id="knn-empty" class="empty-state">
-        <div class="empty-icon">🔮</div>
-        <p>Select a symbol and click <b>Find Patterns</b> to run KNN analysis across 5 feature groups and 4 time horizons.</p>
+      <div id="ql-empty" class="empty-state">
+        <div class="empty-icon">⚡</div>
+        <p>Select a symbol to run the quant stack:<br>
+           <b>Fair Value</b> · <b>KNN Analog Forecast</b> · <b>CTA Trend</b> · <b>Exhaustion</b></p>
       </div>
 
-      <!-- Results -->
-      <div id="knn-results" style="display:none;" class="knn-results">
+      <div id="ql-error" class="ql-error" style="display:none;"></div>
 
-        <!-- Horizon cards (4 across) -->
-        <div id="knn-horizon-cards" class="knn-horizon-cards"></div>
+      <div id="ql-results" class="ql-results" style="display:none;">
 
-        <!-- Bottom: neighbour table + feature panel -->
-        <div class="knn-bottom">
-
-          <!-- Neighbour table -->
-          <div id="knn-neighbor-table" class="knn-neighbor-table"></div>
-
-          <!-- Feature snapshot -->
-          <div class="knn-feature-sidebar">
-            <div class="knn-feat-title">Current Feature Snapshot</div>
-            <div id="knn-feature-panel" class="knn-feature-panel"></div>
+        <!-- ── terminal header strip ── -->
+        <div class="ql-strip">
+          <div class="ql-strip-id">
+            <span id="ql-sym" class="ql-sym">—</span>
+            <span id="ql-last" class="ql-last">—</span>
+            <span id="ql-asof" class="ql-asof">—</span>
           </div>
 
-        </div><!-- .knn-bottom -->
+          <div class="ql-dial">
+            <div class="ql-dial-head">
+              <span class="ql-dial-pole ql-pole-green">CHEAP</span>
+              <span class="ql-dial-title">VALUATION</span>
+              <span class="ql-dial-pole ql-pole-red">RICH</span>
+            </div>
+            <div class="ql-track"><div id="ql-val-marker" class="ql-marker"></div></div>
+            <div id="ql-val-read" class="ql-dial-read">—</div>
+          </div>
 
-      </div><!-- #knn-results -->
+          <div class="ql-dial">
+            <div class="ql-dial-head">
+              <span class="ql-dial-pole ql-pole-red">LOWER</span>
+              <span class="ql-dial-title">DIRECTION</span>
+              <span class="ql-dial-pole ql-pole-green">HIGHER</span>
+            </div>
+            <div class="ql-track ql-track-dir"><div id="ql-dir-marker" class="ql-marker"></div></div>
+            <div id="ql-dir-read" class="ql-dial-read">—</div>
+          </div>
 
-    </div><!-- #knn-area -->
+          <div class="ql-conv">
+            <div class="ql-conv-label">CONVICTION</div>
+            <div id="ql-conv" class="ql-conv-val">—</div>
+            <div id="ql-comp-chips" class="ql-comp-chips"></div>
+          </div>
+
+          <div class="ql-strip-actions">
+            <button id="ql-automl-btn" class="ql-btn" onclick="qlRunAutoML()">AUTOML ▸ RUN</button>
+            <button class="ql-btn ql-btn-ghost" onclick="initQuantLab(true)" title="Recompute">⟳</button>
+          </div>
+        </div>
+
+        <!-- ── AutoML strip (hidden until run) ── -->
+        <div id="ql-automl" class="ql-automl" style="display:none;"></div>
+
+        <!-- ── 2 × 2 model grid ── -->
+        <div class="ql-grid">
+
+          <section class="ql-panel">
+            <header class="ql-panel-head">
+              <span class="ql-fn">FV</span> FAIR VALUE · 126-BAR TREND CHANNEL
+              <span id="ql-fv-badge" class="ql-badge">—</span>
+            </header>
+            <div class="ql-chart-wrap"><canvas id="ql-fv-chart"></canvas></div>
+            <div class="ql-subtitle">VALUATION BUCKET → AVG FWD 1-WEEK RETURN (%) · CURRENT = AMBER</div>
+            <div class="ql-chart-strip"><canvas id="ql-edge-chart"></canvas></div>
+            <div id="ql-fv-stats" class="ql-stat-row"></div>
+          </section>
+
+          <section class="ql-panel" id="ql-knn-panel">
+            <header class="ql-panel-head">
+              <span class="ql-fn">KNN</span> ANALOG FAN FORECAST · 21 BARS FWD
+              <span id="ql-knn-badge" class="ql-badge">—</span>
+            </header>
+            <div class="ql-chart-wrap ql-chart-tall"><canvas id="ql-knn-chart"></canvas></div>
+            <div id="ql-knn-stats" class="ql-stat-row"></div>
+          </section>
+
+          <section class="ql-panel">
+            <header class="ql-panel-head">
+              <span class="ql-fn">CTA</span> TREND STRATEGY · EWMAC 8/32 · 16/64 · 32/128
+              <span id="ql-cta-badge" class="ql-badge">—</span>
+            </header>
+            <div class="ql-chart-wrap"><canvas id="ql-cta-chart"></canvas></div>
+            <div class="ql-subtitle">FORECAST −100 … +100 · VOL-TARGETED · COSTED 2BP</div>
+            <div class="ql-chart-strip"><canvas id="ql-cta-fc-chart"></canvas></div>
+            <div id="ql-cta-stats" class="ql-stat-row"></div>
+          </section>
+
+          <section class="ql-panel">
+            <header class="ql-panel-head">
+              <span class="ql-fn">EXH</span> EXHAUSTION · EVENT STUDY
+              <span id="ql-exh-badge" class="ql-badge">—</span>
+            </header>
+            <div class="ql-chart-wrap"><canvas id="ql-exh-chart"></canvas></div>
+            <div class="ql-subtitle">COMPOSITE OSC · ▼ BLOW-OFF ≥ +70 · ▲ CAPITULATION ≤ −70</div>
+            <div class="ql-chart-strip"><canvas id="ql-exh-osc-chart"></canvas></div>
+            <div id="ql-exh-stats" class="ql-stat-row"></div>
+          </section>
+
+        </div><!-- .ql-grid -->
+
+      </div><!-- #ql-results -->
+
+    </div><!-- #quant-area -->
 
     <!-- ── Market Regime Area ── -->
     <div id="regime-area" class="rg-container" style="display:none;">
@@ -1467,7 +1472,7 @@
 <script src="scripts/strategy_tester.js"></script>
 <script src="scripts/swirligram.js"></script>
 <script src="scripts/portfolio.js"></script>
-<script src="scripts/knn_forecast.js"></script>
+<script src="scripts/quant_lab.js"></script>
 <script src="scripts/market_regime.js"></script>
 <script src="scripts/momentum_ranker.js"></script>
 <script src="scripts/seasonality.js"></script>

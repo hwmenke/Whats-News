@@ -1,10 +1,11 @@
 """
 pycaret_model.py  –  AutoML directional-prediction module using PyCaret.
 
-Trains classification models on the same 17-feature set used by knn_forecast.py
-to predict whether the stock will close UP or DOWN over the next `horizon`
-trading days.  The best model from compare_models() classifies the current
-(most-recent) bar.
+Trains classification models on a 17-feature technical set (trend, momentum,
+volatility, price action, volume) to predict whether the stock will close UP
+or DOWN over the next `horizon` trading days.  The best model from
+compare_models() classifies the current (most-recent) bar.  Surfaced in the
+Quant Lab tab via the AUTOML button.
 
 Feature groups:
     trend        – KAMA-10/20/50 distance (ATR-normalised), KAMA-10 slope

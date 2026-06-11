@@ -51,6 +51,26 @@ Navigate to **http://localhost:8050** in your browser.
 - **Price Ratios**: Create synthetic A/B ratio series from any two fetched tickers
 - **Data Quality**: Automated OHLC-logic, gap, spike, and stale-close checks
 
+### Quant Lab (flagship)
+Bloomberg-terminal-style quant screen for any symbol — one request, four models,
+two composite dials (**VALUATION** cheap↔rich, **DIRECTION** lower↔higher) plus a
+conviction read from cross-model agreement:
+
+- **Fair Value**: 126-bar log-linear trend channel (fair value ± 1σ/2σ bands) blended
+  with KAMA-50 gap, 52-week range position, RSI percentile and slow Bollinger %B into
+  a single valuation score — and an *edge curve* showing the realised forward 1-week
+  return per historical valuation bucket (the current bucket highlighted)
+- **KNN Analog Forecast**: the current bar's 10-feature state vector matched against
+  all history; the 25 nearest non-overlapping analogs project a 21-bar percentile fan
+  (P10/25/50/75/90) + analog spaghetti, with P(up) and median moves at 1w/2w/1m
+- **CTA Trend Strategy**: 3-speed EWMAC (8/32, 16/64, 32/128), vol-normalised forecasts
+  through the AHL response curve, vol-targeted position, costed backtest vs buy & hold
+- **Exhaustion**: blow-off/capitulation composite (TD-style count, fast RSI, ATR
+  stretch percentile, signed volume climax, 10-bar extension) with an event study of
+  past ±70 readings vs the unconditional base rate
+- **AutoML**: on-demand PyCaret classifier comparison (leaderboard, prediction,
+  feature importance) straight from the header strip
+
 ### Charts & Analysis
 - **Main Chart**: Candlestick with SMA, EMA, Bollinger Bands, RSI, MACD, Volume overlays
 - **Adaptive Trend**: Multi-horizon KAMA/ADMA trend system with regime states, ratchet bands, and parameter optimizer
@@ -66,7 +86,6 @@ Navigate to **http://localhost:8050** in your browser.
 - **Momentum Ranker**: Jegadeesh-Titman momentum composite with z-score ranking across watchlist
 - **Seasonality**: Day-of-week, monthly, and quarterly return heatmaps
 - **Factor Model**: Fama-French 5-factor rolling OLS for every watchlist symbol (alpha, beta, R², attribution)
-- **KNN Forecast**: 17-feature weighted K-Nearest-Neighbor pattern-recognition forecast across 4 horizons (5/20/63/126 bars)
 - **Macro Regression**: OLS regression of any symbol's forward returns on 24 macro factors and cross-asset spread features
 
 ---
@@ -95,7 +114,7 @@ Navigate to **http://localhost:8050** in your browser.
 | `factor_model.py` | Cross-sectional 5-factor OLS model for all watchlist symbols |
 | `factor_attribution.py` | Per-strategy factor attribution using Fama-French factors |
 | `regression.py` | Macro-factor OLS regression (24 factors, pure numpy) |
-| `knn_forecast.py` | Weighted KNN pattern-recognition forecast (17 features, 4 horizons) |
+| `quant_lab.py` | Quant Lab engine — fair-value channel, KNN fan forecast, CTA strategy, exhaustion, composite dials |
 | `pycaret_model.py` | PyCaret AutoML — trains & compares classifiers to predict UP/DOWN direction |
 | `swirligram.py` | RSI phase-space swirligram with buy-setup scoring |
 | `ticker_lists.py` | Curated ticker library (~220 tickers, 12 categories) |
@@ -105,7 +124,22 @@ Navigate to **http://localhost:8050** in your browser.
 
 All modules live in `scripts/`:
 
-`app.js` · `charts.js` · `chart_helpers.js` · `data_manager.js` · `factor_model.js` · `knn_forecast.js` · `market_regime.js` · `momentum_ranker.js` · `persistence.js` · `portfolio.js` · `regression.js` · `scanner.js` · `seasonality.js` · `shortcuts.js` · `strategy_tester.js` · `swirligram.js` · `trend_chart.js`
+`app.js` · `charts.js` · `chart_helpers.js` · `data_manager.js` · `factor_model.js` · `market_regime.js` · `momentum_ranker.js` · `persistence.js` · `portfolio.js` · `quant_lab.js` · `regression.js` · `scanner.js` · `seasonality.js` · `shortcuts.js` · `strategy_tester.js` · `swirligram.js` · `trend_chart.js`
+
+---
+
+## Quant Lab Endpoint
+
+`GET /api/quant-lab/<symbol>`
+
+Runs the full quant stack (fair value, KNN fan, CTA, exhaustion, composite dials)
+for a symbol with ≥ 300 daily bars. All maths is vectorised — typical response
+time is ~100 ms. Powers the **⚡ Quant Lab** tab.
+
+```bash
+curl -X POST http://localhost:8050/api/fetch/AAPL
+curl "http://localhost:8050/api/quant-lab/AAPL"
+```
 
 ---
 
@@ -139,7 +173,7 @@ Response includes: `prediction` (UP/DOWN), `confidence`, model `leaderboard`, `f
 pytest
 ```
 
-38 tests covering TA primitives, API validation, error taxonomy, and backtest engine.
+46 tests covering TA primitives, API validation, error taxonomy, backtest engine, and the Quant Lab models.
 
 ---
 

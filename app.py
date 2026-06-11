@@ -28,7 +28,7 @@ import factor_model as fmodel
 import data_quality as dq
 import factor_attribution as fa
 import portfolio_backtest as pb
-import knn_forecast as knn
+import quant_lab as ql
 import errors
 import pycaret_model
 from errors import ApiError
@@ -555,32 +555,16 @@ def factor_model_route():
     return jsonify(result)
 
 
-# -- KNN Pattern Forecast -------------------------------------------------------
+# -- Quant Lab --------------------------------------------------------------------
 
-@app.route("/api/knn-forecast/<string:symbol>", methods=["POST"])
-def knn_forecast_route(symbol: str):
+@app.route("/api/quant-lab/<string:symbol>", methods=["GET"])
+def quant_lab_route(symbol: str):
     """
-    Weighted KNN pattern-recognition forecast.
-    Body (all optional):
-      { "freq": "daily"|"weekly", "k": 20,
-        "weights": { "trend":0.25, "momentum":0.25,
-                     "volatility":0.20, "price_action":0.20, "volume":0.10 } }
+    Bloomberg-terminal-style quant analysis: fair-value channel + edge curve,
+    KNN analog fan forecast, 3-speed CTA strategy, exhaustion event study,
+    and composite VALUATION / DIRECTION scores.
     """
-    body   = request.get_json(silent=True) or {}
-    freq   = body.get("freq", "daily")
-    k      = max(5, min(int(body.get("k", 20)), 50))
-    raw_w  = body.get("weights", {})
-
-    # Normalise user-supplied weights so they sum to 1
-    group_weights = None
-    if raw_w:
-        total = sum(float(v) for v in raw_w.values() if v is not None)
-        if total > 1e-10:
-            group_weights = {g: float(raw_w.get(g, 0)) / total
-                             for g in ["trend", "momentum", "volatility",
-                                       "price_action", "volume"]}
-
-    result = knn.compute_knn_forecast(symbol.upper(), freq, k, group_weights)
+    result = ql.compute_quant_lab(symbol.upper())
     if "error" in result:
         return jsonify({"error": result["error"]}), 422
     return jsonify(result)
