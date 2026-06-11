@@ -2927,6 +2927,92 @@ html, body {
 .sg-detail { color: #8a94a0; font-size: 10px; }
 .sg-date, .sg-price { color: #5a6472; font-size: 10px; white-space: nowrap; }
 
+/* ═══════════════════════ FAIR VALUE LAB (538 style) ═══════════════════════ */
+
+.fvd-container {
+  flex: 1; overflow-y: auto; background: #d8d8d8;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+.fvd-article {
+  max-width: 1020px; margin: 0 auto; min-height: 100%;
+  background: #f0f0f0; padding: 30px 40px 50px;
+  box-shadow: 0 0 30px rgba(0,0,0,0.25);
+}
+
+.fvd-error {
+  margin: 24px auto; max-width: 700px; padding: 14px 20px;
+  background: #fff; border-left: 5px solid #fc4f30;
+  color: #b33a24; font-size: 13px; font-weight: 600;
+}
+
+.fvd-kicker {
+  font-size: 11px; font-weight: 800; letter-spacing: 3px; color: #fc4f30;
+  margin-bottom: 6px;
+}
+.fvd-title {
+  font-size: 30px; font-weight: 800; color: #111; line-height: 1.15;
+  margin: 0 0 8px;
+}
+.fvd-subtitle {
+  font-size: 14px; color: #5e5e5e; line-height: 1.5; max-width: 820px;
+  margin: 0 0 16px;
+}
+
+.fvd-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+.fvd-model-btn {
+  background: #fff; border: 2px solid #c7c7c7; color: #5e5e5e;
+  font-family: inherit; font-size: 11px; font-weight: 800; letter-spacing: 1px;
+  padding: 8px 16px; cursor: pointer;
+}
+.fvd-model-btn:hover { border-color: #111; color: #111; }
+.fvd-model-active { background: #111; border-color: #111; color: #fff !important; }
+.fvd-universe { font-size: 10px; color: #8b8b8b; letter-spacing: 1px; font-weight: 700; }
+
+/* stat cards */
+.fvd-cards {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+  margin-bottom: 14px;
+}
+@media (max-width: 1000px) { .fvd-cards { grid-template-columns: repeat(2, 1fr); } }
+.fvd-card {
+  background: #fff; border-top: 4px solid #111; padding: 10px 12px 9px;
+}
+.fvd-card-verdict { border-top-width: 4px; }
+.fvd-card-label { font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: #8b8b8b; }
+.fvd-card-big   { font-size: 26px; font-weight: 800; line-height: 1.2; color: #111; }
+.fvd-card-foot  { font-size: 10px; color: #8b8b8b; line-height: 1.35; margin-top: 2px; }
+
+/* report card strip */
+.fvd-report {
+  display: flex; flex-wrap: wrap; align-items: stretch;
+  background: #fff; border-top: 4px solid #111;
+  margin-bottom: 26px;
+}
+.fvd-rep-head {
+  flex-basis: 100%; padding: 8px 12px 0;
+  font-size: 9px; font-weight: 800; letter-spacing: 2px; color: #8b8b8b;
+}
+.fvd-rep-item {
+  display: flex; flex-direction: column; gap: 0;
+  padding: 6px 16px 10px 12px; border-right: 1px solid #ececec;
+}
+.fvd-rep-label { font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #8b8b8b; }
+.fvd-rep-val   { font-size: 16px; font-weight: 800; color: #111; }
+
+/* chart panels */
+.fvd-panel { margin-bottom: 30px; }
+.fvd-panel-title {
+  font-size: 17px; font-weight: 800; color: #111; margin-bottom: 2px;
+}
+.fvd-panel-sub { font-size: 12px; color: #777; margin-bottom: 10px; }
+.fvd-chart-wrap { position: relative; height: 320px; }
+.fvd-chart-mid  { height: 230px; }
+
+.fvd-footer {
+  border-top: 1px solid #c7c7c7; padding-top: 8px;
+  font-size: 9px; letter-spacing: 1px; color: #9b9b9b; font-weight: 600;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    REGIME BADGE (topbar pill)
    ═══════════════════════════════════════════════════════════════ */

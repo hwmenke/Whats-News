@@ -129,6 +129,9 @@
       <button id="tab-signals" class="tab-btn tab-btn-quant" onclick="switchTab('signals')">
         <span class="tab-icon">🚨</span> Signals
       </button>
+      <button id="tab-fvd" class="tab-btn tab-btn-quant" onclick="switchTab('fvd')">
+        <span class="tab-icon">⚖️</span> Fair Value
+      </button>
       <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">
         <span class="tab-icon">📊</span> Statistics
       </button>
@@ -1345,6 +1348,66 @@
 
     </div><!-- #signals-area -->
 
+    <!-- ── Fair Value Lab Area (538 style) ── -->
+    <div id="fvd-area" class="fvd-container" style="display:none;">
+
+      <div id="fvd-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span> Fitting fair-value model…
+      </div>
+
+      <div id="fvd-empty" class="empty-state">
+        <div class="empty-icon">⚖️</div>
+        <p>Select a symbol to fit a fair-value divergence model<br>
+           with walk-forward out-of-sample validation.</p>
+      </div>
+
+      <div id="fvd-error" class="fvd-error" style="display:none;"></div>
+
+      <div id="fvd-results" class="fvd-article" style="display:none;">
+
+        <!-- ── header block ── -->
+        <div class="fvd-kicker">FAIR VALUE LAB</div>
+        <h1 id="fvd-title" class="fvd-title">—</h1>
+        <p id="fvd-subtitle" class="fvd-subtitle">—</p>
+
+        <div class="fvd-controls">
+          <button id="fvd-model-trend" class="fvd-model-btn fvd-model-active"
+                  onclick="fvdSetModel('trend')">TREND ANCHOR</button>
+          <button id="fvd-model-pca" class="fvd-model-btn"
+                  onclick="fvdSetModel('pca')">PCA FACTOR ANCHOR</button>
+          <span id="fvd-universe" class="fvd-universe"></span>
+        </div>
+
+        <div id="fvd-cards" class="fvd-cards"></div>
+        <div id="fvd-report" class="fvd-report"></div>
+
+        <!-- ── panel 1: price vs fair value ── -->
+        <div class="fvd-panel">
+          <div class="fvd-panel-title">Price vs. model fair value</div>
+          <div class="fvd-panel-sub">Shaded bands at ±1σ and ±2σ of the divergence</div>
+          <div class="fvd-chart-wrap"><canvas id="fvd-price-chart"></canvas></div>
+        </div>
+
+        <!-- ── panel 2: divergence ── -->
+        <div class="fvd-panel">
+          <div class="fvd-panel-title">Divergence from fair value</div>
+          <div class="fvd-panel-sub">In standard deviations · guide lines at ±1σ, ±2σ and ±3σ</div>
+          <div class="fvd-chart-wrap fvd-chart-mid"><canvas id="fvd-div-chart"></canvas></div>
+        </div>
+
+        <!-- ── panel 3: distribution ── -->
+        <div class="fvd-panel">
+          <div class="fvd-panel-title">Where today sits in the divergence distribution</div>
+          <div class="fvd-panel-sub" id="fvd-dist-sub">—</div>
+          <div class="fvd-chart-wrap"><canvas id="fvd-dist-chart"></canvas></div>
+        </div>
+
+        <div id="fvd-footer" class="fvd-footer">—</div>
+
+      </div><!-- #fvd-results -->
+
+    </div><!-- #fvd-area -->
+
     <!-- ── Market Regime Area ── -->
     <div id="regime-area" class="rg-container" style="display:none;">
       <div id="regime-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Computing regime…</div>
@@ -1541,6 +1604,7 @@
 <script src="scripts/portfolio.js"></script>
 <script src="scripts/quant_lab.js"></script>
 <script src="scripts/signal_scanner.js"></script>
+<script src="scripts/fair_value_lab.js"></script>
 <script src="scripts/market_regime.js"></script>
 <script src="scripts/momentum_ranker.js"></script>
 <script src="scripts/seasonality.js"></script>

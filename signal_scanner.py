@@ -191,15 +191,42 @@ def _r_vol_climax(ctx):
             "detail": f"signed volume climax {vc:+.1f} ({'buying' if vc > 0 else 'selling'} crescendo)"}
 
 
-@_routine("td9", "TD-9 COUNT",
-          "TD-sequential-style count reached ±9 — classic setup completion")
+@_routine("td9", "TD-9 SETUP",
+          "TD-sequential-style count reached ±9 — setup completion zone (9–12)")
 def _r_td9(ctx):
     td = _last(ctx["st"], "td") * 6.5
-    if not np.isfinite(td) or abs(td) < 9:
+    if not np.isfinite(td) or abs(td) < 9 or abs(td) >= 13:
         return None
     return {"side": "bull" if td < 0 else "bear",
             "strength": min(abs(td) / 13 * 100, 100),
             "detail": f"{'sell' if td > 0 else 'buy'} setup count {td:+.0f}"}
+
+
+@_routine("td13", "TD-13 EXHAUSTION",
+          "TD-sequential-style count hit the ±13 cap — full countdown exhaustion")
+def _r_td13(ctx):
+    td = _last(ctx["st"], "td") * 6.5
+    if not np.isfinite(td) or abs(td) < 13:
+        return None
+    return {"side": "bull" if td < 0 else "bear",
+            "strength": 100,
+            "detail": f"count exhausted at {td:+.0f} — {'sell' if td > 0 else 'buy'} countdown complete"}
+
+
+@_routine("pca_divergence", "PCA DIVERGENCE",
+          "Price ≥ 2σ away from its PCA eigenportfolio factor anchor (stat-arb residual)")
+def _r_pca_divergence(ctx):
+    try:
+        import fair_value_lab as fvl
+        pca = fvl.pca_divergence(ctx["symbol"])
+    except Exception:
+        return None
+    if not pca or abs(pca["z"]) < 2.0:
+        return None
+    z = pca["z"]
+    return {"side": "bull" if z < 0 else "bear",
+            "strength": min(abs(z) * 30, 100),
+            "detail": f"{z:+.1f}σ vs PCA factor anchor ({pca['n_universe']}-asset panel)"}
 
 
 # ── scanning ──────────────────────────────────────────────────────────────────
@@ -210,7 +237,8 @@ def _scan_one_inner(symbol: str) -> dict:
         return {"symbol": symbol, "skipped": f"need ≥ {MIN_BARS} bars", "signals": []}
 
     st  = ql._state_frame(df)
-    ctx = {"st": st, "knn": ql._knn(st), "mr": ql._mean_reversion(st)}
+    ctx = {"symbol": symbol, "st": st,
+           "knn": ql._knn(st), "mr": ql._mean_reversion(st)}
 
     date  = st.index[-1].strftime("%Y-%m-%d")
     price = ql._fl(st["close"].iloc[-1], 4)

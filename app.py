@@ -30,6 +30,7 @@ import factor_attribution as fa
 import portfolio_backtest as pb
 import quant_lab as ql
 import signal_scanner as sigscan
+import fair_value_lab as fvl
 import errors
 import pycaret_model
 from errors import ApiError
@@ -566,6 +567,26 @@ def quant_lab_route(symbol: str):
     and composite VALUATION / DIRECTION scores.
     """
     result = ql.compute_quant_lab(symbol.upper())
+    if "error" in result:
+        return jsonify({"error": result["error"]}), 422
+    return jsonify(result)
+
+
+# -- Fair Value Lab ---------------------------------------------------------------
+
+@app.route("/api/fair-value/<string:symbol>", methods=["GET"])
+def fair_value_route(symbol: str):
+    """
+    Fair-value divergence model with walk-forward OOS validation.
+
+    Query params:
+        model  'trend' (126-bar trend channel) or 'pca' (eigenportfolio
+               factor anchor built from the watchlist)  — default 'trend'
+    """
+    model = request.args.get("model", "trend")
+    if model not in ("trend", "pca"):
+        raise errors.validation("model must be 'trend' or 'pca'")
+    result = fvl.compute_fair_value(symbol.upper(), model)
     if "error" in result:
         return jsonify({"error": result["error"]}), 422
     return jsonify(result)

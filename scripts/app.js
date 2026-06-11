@@ -462,6 +462,8 @@ async function selectSymbol(symbol) {
         if (typeof swLoad === 'function') swLoad();
     } else if (state.activeTab === 'quant') {
         if (typeof initQuantLab === 'function') initQuantLab();
+    } else if (state.activeTab === 'fvd') {
+        if (typeof initFairValueLab === 'function') initFairValueLab();
     }
 }
 
@@ -651,6 +653,7 @@ const _AREA_DISPLAY = {
     'portfolio-area':    'flex',
     'quant-area':        'flex',
     'signals-area':      'flex',
+    'fvd-area':          'flex',
     'regime-area':       'flex',
     'momentum-area':     'flex',
     'seasonality-area':  'flex',
@@ -717,6 +720,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'signals') {
         showSignalsArea();
         if (typeof initSignalScanner === 'function') initSignalScanner();
+    } else if (tabId === 'fvd') {
+        showFvdArea();
+        if (typeof initFairValueLab === 'function') initFairValueLab();
     } else if (tabId === 'regime') {
         showRegimeArea();
         if (typeof initRegime === 'function') initRegime();
@@ -742,6 +748,7 @@ function showSwirlogramArea()  { _showOnly('swirl-area'); }
 function showPortfolioArea()   { _showOnly('portfolio-area'); }
 function showQuantArea()       { _showOnly('quant-area'); }
 function showSignalsArea()     { _showOnly('signals-area'); }
+function showFvdArea()         { _showOnly('fvd-area'); }
 function showRegimeArea()      { _showOnly('regime-area'); }
 function showMomentumArea()    { _showOnly('momentum-area'); }
 function showSeasonalityArea() { _showOnly('seasonality-area'); }
@@ -1090,7 +1097,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Keyboard shortcuts
-    const TAB_ORDER = ['charts','quant','signals','stats','trend','scanner','data-manager','regression','strategy','swirl'];
+    const TAB_ORDER = ['charts','quant','signals','fvd','stats','trend','scanner','data-manager','regression','strategy'];
     TAB_ORDER.forEach((id, i) =>
         registerShortcut({ key: String(i + 1), handler: () => switchTab(id), description: `Go to ${id}` })
     );

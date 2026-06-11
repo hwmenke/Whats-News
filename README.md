@@ -77,11 +77,29 @@ conviction read from cross-model agreement:
 - **AutoML**: on-demand PyCaret classifier comparison (leaderboard, prediction,
   feature importance) straight from the header strip
 
+### Fair Value Lab (538-style)
+Fair-value divergence models that forecast 1-week / 1-month returns and prove —
+out of sample — that price actually reverts to the anchor (rather than the anchor
+chasing price):
+
+- **Anchors**: `trend` (126-bar rolling log-linear channel) and `pca`
+  (Avellaneda-Lee eigenportfolio factor anchor built from the watchlist — the
+  target is excluded from factor construction so the anchor cannot follow it)
+- **Walk-forward forecasts**: expanding-window regression of forward returns on the
+  divergence z-score, refit every 21 bars, predictions strictly causal
+- **OOS report card**: hit rate after ±2σ events, IC, mean return after cheap/rich
+  events, convergence rate, and the *price-does-the-work* share (of the gap that
+  closed, how much closed by price moving to the model) → STRONG / OK / WEAK verdict
+- **Three panels, FiveThirtyEight style**: price vs fair value with ±1σ/±2σ bands;
+  divergence with ±1/2/3σ guide lines; and the divergence distribution (histogram +
+  KDE + normal fit) with a TODAY marker and percentile readout
+
 ### Signals (flaggable scanners)
 Pluggable signal routines swept across the whole watchlist — one decorated function
 per routine in `signal_scanner.py`, picked up automatically by the API and UI:
 **Valuation Extreme**, **Value + Turn**, **Trend Flip**, **Exhaustion**, **Squeeze**,
-**52W Break**, **Analog Skew**, **MR Stretch**, **Volume Climax**, **TD-9 Count**.
+**52W Break**, **Analog Skew**, **MR Stretch**, **Volume Climax**, **TD-9 Setup**,
+**TD-13 Exhaustion**, **PCA Divergence**.
 Toggle routines on/off, filter by side (bull / bear / watch), and **★ flag** any
 signal to keep it on a persistent flagged list across scans and sessions. Clicking
 a symbol jumps straight into its Quant Lab screen.
@@ -130,7 +148,8 @@ a symbol jumps straight into its Quant Lab screen.
 | `factor_attribution.py` | Per-strategy factor attribution using Fama-French factors |
 | `regression.py` | Macro-factor OLS regression (24 factors, pure numpy) |
 | `quant_lab.py` | Quant Lab engine — fair-value channel, KNN fan, CTA, exhaustion, squeeze, mean reversion, composite dials |
-| `signal_scanner.py` | Pluggable signal routines scanned across the watchlist (10 scanners, thread-pooled, cached) |
+| `signal_scanner.py` | Pluggable signal routines scanned across the watchlist (12 scanners, thread-pooled, cached) |
+| `fair_value_lab.py` | Fair-value divergence models (trend / PCA anchors) with walk-forward OOS validation |
 | `pycaret_model.py` | PyCaret AutoML — trains & compares classifiers to predict UP/DOWN direction |
 | `swirligram.py` | RSI phase-space swirligram with buy-setup scoring |
 | `ticker_lists.py` | Curated ticker library (~220 tickers, 12 categories) |
@@ -140,7 +159,7 @@ a symbol jumps straight into its Quant Lab screen.
 
 All modules live in `scripts/`:
 
-`app.js` · `charts.js` · `chart_helpers.js` · `data_manager.js` · `factor_model.js` · `market_regime.js` · `momentum_ranker.js` · `persistence.js` · `portfolio.js` · `quant_lab.js` · `regression.js` · `scanner.js` · `seasonality.js` · `shortcuts.js` · `signal_scanner.js` · `strategy_tester.js` · `swirligram.js` · `trend_chart.js`
+`app.js` · `charts.js` · `chart_helpers.js` · `data_manager.js` · `factor_model.js` · `fair_value_lab.js` · `market_regime.js` · `momentum_ranker.js` · `persistence.js` · `portfolio.js` · `quant_lab.js` · `regression.js` · `scanner.js` · `seasonality.js` · `shortcuts.js` · `signal_scanner.js` · `strategy_tester.js` · `swirligram.js` · `trend_chart.js`
 
 ---
 
@@ -156,6 +175,18 @@ vectorised — typical response time is well under a second. Powers the
 ```bash
 curl -X POST http://localhost:8050/api/fetch/AAPL
 curl "http://localhost:8050/api/quant-lab/AAPL"
+```
+
+## Fair Value Endpoint
+
+`GET /api/fair-value/<symbol>?model=trend|pca`
+
+Fits the fair-value divergence model, runs the walk-forward validation and
+returns current state (z, percentile, 1W/1M forecasts), the OOS report card,
+and the three chart-panel series. Powers the **⚖️ Fair Value** tab.
+
+```bash
+curl "http://localhost:8050/api/fair-value/AAPL?model=pca"
 ```
 
 ## Signals Endpoint
@@ -204,7 +235,7 @@ Response includes: `prediction` (UP/DOWN), `confidence`, model `leaderboard`, `f
 pytest
 ```
 
-52 tests covering TA primitives, API validation, error taxonomy, backtest engine, the Quant Lab models, and the signal scanner.
+58 tests covering TA primitives, API validation, error taxonomy, backtest engine, the Quant Lab models, the Fair Value Lab, and the signal scanner.
 
 ---
 
