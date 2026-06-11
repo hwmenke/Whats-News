@@ -889,28 +889,24 @@
       <!-- Loading -->
       <div id="sw-loading" class="sw-loading" style="display:none;">⏳ Computing…</div>
 
-      <!-- Charts grid: daily | weekly -->
+      <!-- How to read — the process in one line -->
+      <div class="sw-howto">
+        <span class="sw-howto-step"><b>1 · Anchor</b> weekly RSI holding 50–65</span>
+        <span class="sw-howto-sep">→</span>
+        <span class="sw-howto-step"><b>2 · Trigger</b> daily dot hooks up (Δ&gt;0) inside 30–50</span>
+        <span class="sw-howto-sep">→</span>
+        <span class="sw-howto-step"><b>3 · Confirm</b> extension not stretched, trend rank ≥ 50</span>
+        <span class="sw-howto-sep">·</span>
+        <span class="sw-howto-step sw-howto-warn">avoid chasing dots in the red &gt;70 band</span>
+      </div>
+
+      <!-- Charts grid: process order — anchor, trigger, extension, trend -->
       <div class="sw-grid">
 
-        <!-- Daily panel -->
+        <!-- 1 · Weekly anchor -->
         <div class="sw-panel">
-          <div class="sw-panel-title">Daily RSI Phase Space
-            <span class="sw-panel-hint">X = RSI · Y = Δ RSI per bar · trail = last N bars · ● = today</span>
-          </div>
-          <div class="sw-chart-wrap">
-            <canvas id="sw-daily-phase"></canvas>
-          </div>
-          <div id="sw-daily-signal" class="sw-signal-box"></div>
-          <div class="sw-panel-title sw-mini-title">Daily RSI Timeline</div>
-          <div class="sw-timeline-wrap">
-            <canvas id="sw-daily-timeline"></canvas>
-          </div>
-        </div>
-
-        <!-- Weekly panel -->
-        <div class="sw-panel">
-          <div class="sw-panel-title">Weekly RSI Phase Space
-            <span class="sw-panel-hint">Ideal anchor: RSI 50–62 · ● = this week</span>
+          <div class="sw-panel-title"><span class="sw-step-badge">1</span> Weekly RSI — Trend Anchor
+            <span class="sw-panel-hint">Ideal anchor 50–62 · ● = this week · the worm should live in the green band</span>
           </div>
           <div class="sw-chart-wrap">
             <canvas id="sw-weekly-phase"></canvas>
@@ -922,31 +918,46 @@
           </div>
         </div>
 
-        <!-- KAMA Fast Pct panel -->
+        <!-- 2 · Daily trigger -->
         <div class="sw-panel">
-          <div class="sw-panel-title">Close/KAMA₁₀ Pct Rank Phase
-            <span class="sw-panel-hint">X = %ile rank of close/KAMA(10) · Y = Δ rank/bar · 252-bar rolling window</span>
+          <div class="sw-panel-title"><span class="sw-step-badge">2</span> Daily RSI — Entry Trigger
+            <span class="sw-panel-hint">X = RSI · Y = Δ RSI/bar · buy = hook up from the 30–50 pullback zone</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-daily-phase"></canvas>
+          </div>
+          <div id="sw-daily-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">Daily RSI Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-daily-timeline"></canvas>
+          </div>
+        </div>
+
+        <!-- 3 · Extension -->
+        <div class="sw-panel">
+          <div class="sw-panel-title"><span class="sw-step-badge">3</span> Extension — Close vs KAMA₁₀ Rank
+            <span class="sw-panel-hint">How stretched price is vs its adaptive average · &gt;75 = chase risk · 30–60 turning up = reset entry</span>
           </div>
           <div class="sw-chart-wrap">
             <canvas id="sw-kama-fast-phase"></canvas>
           </div>
           <div id="sw-kama-fast-signal" class="sw-signal-box"></div>
-          <div class="sw-panel-title sw-mini-title">Close/KAMA₁₀ Pct Rank Timeline</div>
+          <div class="sw-panel-title sw-mini-title">Extension Rank Timeline</div>
           <div class="sw-timeline-wrap">
             <canvas id="sw-kama-fast-tl"></canvas>
           </div>
         </div>
 
-        <!-- KAMA Trend Pct panel -->
+        <!-- 4 · Trend persistence -->
         <div class="sw-panel">
-          <div class="sw-panel-title">KAMA₁₀/KAMA₂₀ Pct Rank Phase
-            <span class="sw-panel-hint">X = %ile rank of KAMA(10)/KAMA(20) · trend momentum · 252-bar window</span>
+          <div class="sw-panel-title"><span class="sw-step-badge">4</span> Trend Persistence — KAMA₁₀/KAMA₂₀ Rank
+            <span class="sw-panel-hint">Fast vs slow adaptive MA · ≥50 and rising = trend intact · &lt;25 = broken</span>
           </div>
           <div class="sw-chart-wrap">
             <canvas id="sw-kama-trend-phase"></canvas>
           </div>
           <div id="sw-kama-trend-signal" class="sw-signal-box"></div>
-          <div class="sw-panel-title sw-mini-title">KAMA Trend Pct Rank Timeline</div>
+          <div class="sw-panel-title sw-mini-title">Trend Rank Timeline</div>
           <div class="sw-timeline-wrap">
             <canvas id="sw-kama-trend-tl"></canvas>
           </div>
@@ -1086,7 +1097,7 @@
           </div>
           <div class="mom-chart-wrap">
             <div class="mom-chart-label">Momentum Portfolio vs Equal-Weight</div>
-            <canvas id="mom-portfolio-chart" style="width:100%;height:220px;"></canvas>
+            <div class="mom-canvas-box"><canvas id="mom-portfolio-chart"></canvas></div>
           </div>
         </div>
       </div>
@@ -1110,15 +1121,15 @@
         <div class="seas-charts-row">
           <div class="seas-chart-card">
             <div class="seas-chart-title">Average Monthly Return</div>
-            <canvas id="seas-month-chart" style="width:100%;height:180px;"></canvas>
+            <div class="seas-canvas-box"><canvas id="seas-month-chart"></canvas></div>
           </div>
           <div class="seas-chart-card">
             <div class="seas-chart-title">Day-of-Week Effect</div>
-            <canvas id="seas-dow-chart" style="width:100%;height:180px;"></canvas>
+            <div class="seas-canvas-box"><canvas id="seas-dow-chart"></canvas></div>
           </div>
           <div class="seas-chart-card">
             <div class="seas-chart-title">Quarterly Returns + Hit Rate</div>
-            <canvas id="seas-quarter-chart" style="width:100%;height:180px;"></canvas>
+            <div class="seas-canvas-box"><canvas id="seas-quarter-chart"></canvas></div>
           </div>
         </div>
         <div id="seas-heatmap" class="seas-heatmap-wrap"></div>
@@ -1361,6 +1372,20 @@
 
       <!-- Risk Pedal -->
       <div id="dash-risk-pedal" class="risk-pedal-banner" style="display:none;"></div>
+
+      <!-- Breakout Board — process candidates vs their pivots -->
+      <div class="dash-section" style="margin-top:4px;">
+        <div class="dash-section-title">🚀 Breakout Board
+          <span id="bb-summary" class="bb-summary"></span>
+          <button class="btn btn-ghost btn-sm" style="float:right;" onclick="_loadBreakoutBoard()">↻ Refresh</button>
+        </div>
+        <div class="process-section-note" style="margin:4px 0 8px;">
+          Stalk / Focus / Active candidates vs their breakout pivot (saved plan trigger, or auto = 20-day high).
+          Triggered and at-pivot names float to the top — check RVOL and the gates before acting.
+        </div>
+        <div id="bb-tier-chips" class="scan-mode-switch" style="margin:0 0 8px;"></div>
+        <div id="breakout-board"></div>
+      </div>
 
       <div class="dash-grid">
         <!-- Breadth -->

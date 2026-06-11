@@ -208,3 +208,98 @@ def test_quick_stats_includes_spark(client, monkeypatch, synth_ohlcv):
     assert row["symbol"] == "AAPL"
     assert len(row["spark"]) == 20
     assert row["spark"][-1] == pytest.approx(row["price"], abs=0.01)
+
+
+# ── Breakout board ─────────────────────────────────────────────────────────────
+
+def test_breakout_board_empty(client):
+    d = client.get("/api/breakout-board").get_json()
+    assert d["rows"] == []
+
+
+def test_breakout_board_statuses(client, monkeypatch, synth_ohlcv):
+    db.add_symbol("AAPL")
+    db.set_symbol_tier("AAPL", "focus")
+    monkeypatch.setattr(db, "get_ohlcv_df",
+        lambda symbol, freq="daily", limit=260: synth_ohlcv.tail(limit))
+
+    d = client.get("/api/breakout-board").get_json()
+    assert len(d["rows"]) == 1
+    r = d["rows"][0]
+    assert r["symbol"] == "AAPL"
+    assert r["tier"] == "focus"
+    assert r["pivot_source"] == "auto20"
+    # pivot is the prior-20-bar high (today excluded)
+    expected_pivot = round(float(synth_ohlcv["high"].iloc[:-1].tail(20).max()), 2)
+    assert r["pivot"] == expected_pivot
+    assert r["status"] in ("TRIGGERED", "BREAKING", "AT PIVOT", "NEAR", "BASING")
+    assert r["grade"] in ("A", "B", "C")
+
+
+def test_breakout_board_triggered(client, monkeypatch, synth_ohlcv):
+    df = synth_ohlcv.copy()
+    prior_max = float(df["high"].iloc[:-1].tail(20).max())
+    df.iloc[-1, df.columns.get_loc("high")]  = prior_max + 5
+    df.iloc[-1, df.columns.get_loc("close")] = prior_max + 3
+
+    db.add_symbol("NVDA")
+    db.set_symbol_tier("NVDA", "stalk")
+    monkeypatch.setattr(db, "get_ohlcv_df",
+        lambda symbol, freq="daily", limit=260: df.tail(limit))
+
+    r = client.get("/api/breakout-board").get_json()["rows"][0]
+    assert r["status"] == "TRIGGERED"
+    assert r["dist_pct"] < 0  # close is above the pivot
+
+
+def test_breakout_board_plan_overrides_pivot(client, monkeypatch, synth_ohlcv):
+    db.add_symbol("MSFT")
+    db.set_symbol_tier("MSFT", "focus")
+    last_close = float(synth_ohlcv["close"].iloc[-1])
+    db.upsert_trade_plan("MSFT", trigger_price=last_close * 1.5,
+                         stop_price=last_close * 0.9)
+    monkeypatch.setattr(db, "get_ohlcv_df",
+        lambda symbol, freq="daily", limit=260: synth_ohlcv.tail(limit))
+
+    r = client.get("/api/breakout-board").get_json()["rows"][0]
+    assert r["pivot_source"] == "plan"
+    assert r["pivot"] == round(last_close * 1.5, 2)
+    assert r["status"] == "BASING"      # 50% away
+    assert r["has_plan"] is True
+    assert r["stop_price"] == pytest.approx(last_close * 0.9)
+
+
+def test_breakout_board_tier_filter(client, monkeypatch, synth_ohlcv):
+    db.add_symbol("AAPL"); db.set_symbol_tier("AAPL", "watchlist")
+    db.add_symbol("NVDA"); db.set_symbol_tier("NVDA", "focus")
+    monkeypatch.setattr(db, "get_ohlcv_df",
+        lambda symbol, freq="daily", limit=260: synth_ohlcv.tail(limit))
+
+    rows = client.get("/api/breakout-board").get_json()["rows"]
+    assert [r["symbol"] for r in rows] == ["NVDA"]   # watchlist excluded by default
+
+    rows = client.get("/api/breakout-board?tiers=watchlist,focus").get_json()["rows"]
+    assert {r["symbol"] for r in rows} == {"AAPL", "NVDA"}
+
+
+# ── Optimizer error surface ────────────────────────────────────────────────────
+
+def test_optimize_both_freq_maps_to_daily(client, monkeypatch, synth_ohlcv):
+    db.add_symbol("AAPL")
+    monkeypatch.setattr(db, "get_ohlcv_df",
+        lambda symbol, freq="daily", limit=1500: synth_ohlcv.tail(limit))
+    resp = client.post("/api/adaptive-trend/AAPL/optimize",
+                       json={"freq": "both", "method": "kama"})
+    assert resp.status_code == 200
+    assert "optimal_params" in resp.get_json()
+
+
+def test_optimize_insufficient_bars_message(client, monkeypatch, synth_ohlcv):
+    db.add_symbol("TINY")
+    short = synth_ohlcv.tail(60)
+    monkeypatch.setattr(db, "get_ohlcv_df",
+        lambda symbol, freq="daily", limit=1500: short)
+    resp = client.post("/api/adaptive-trend/TINY/optimize",
+                       json={"freq": "daily", "method": "kama"})
+    assert resp.status_code == 422
+    assert "150 bars" in resp.get_json()["message"]

@@ -672,16 +672,19 @@ async function loadAdaptiveTrendData(symbol) {
     };
 
     try {
-        // In "Both" mode fetch daily + weekly concurrently
+        // In "Both" mode fetch daily + weekly concurrently.
+        // limit=1500 matches the adaptive-trend computation window — with the
+        // default 500 the older trend markers fall outside the candle range
+        // and lightweight-charts piles them up on the leftmost bar.
         const fetches = isBoth
             ? [
-                apiFetch(`${API}/ohlcv/${symbol}?freq=${freqD}`),
+                apiFetch(`${API}/ohlcv/${symbol}?freq=${freqD}&limit=1500`),
                 apiFetch(_trendUrl(freqD)),
-                apiFetch(`${API}/ohlcv/${symbol}?freq=${freqW}`),
+                apiFetch(`${API}/ohlcv/${symbol}?freq=${freqW}&limit=1500`),
                 apiFetch(_trendUrl(freqW)),
               ]
             : [
-                apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
+                apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}&limit=1500`),
                 apiFetch(_trendUrl(freq)),
               ];
 

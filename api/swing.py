@@ -184,6 +184,105 @@ def list_trade_plans_route():
     return jsonify({"rows": rows})
 
 
+# ── Breakout Board ─────────────────────────────────────────────────────────────
+
+def _auto_pivot(sym: str):
+    """Consolidation pivot = highest high of the last 20 completed bars
+    (excluding today), plus today's high/close for trigger detection."""
+    df = db.get_ohlcv_df(sym, "daily", limit=30)
+    if df.empty or len(df) < 5:
+        return None, None, None
+    today      = df.iloc[-1]
+    prior      = df.iloc[:-1].tail(20)
+    pivot      = float(prior["high"].max())
+    return pivot, float(today["high"]), float(today["close"])
+
+
+def _breakout_status(pivot, today_high, close, dist_pct):
+    if pivot is None or dist_pct is None:
+        return "UNKNOWN"
+    if today_high is not None and today_high >= pivot:
+        return "TRIGGERED" if close >= pivot else "BREAKING"
+    if dist_pct <= 1.0:
+        return "AT PIVOT"
+    if dist_pct <= 5.0:
+        return "NEAR"
+    return "BASING"
+
+
+_STATUS_ORDER = {"TRIGGERED": 0, "BREAKING": 1, "AT PIVOT": 2,
+                 "NEAR": 3, "BASING": 4, "UNKNOWN": 5}
+
+
+@swing_bp.route("/api/breakout-board", methods=["GET"])
+def get_breakout_board():
+    """Process candidates (stalk/focus/active tiers + planned symbols) with
+    live breakout status: pivot, distance to trigger, hard-rule gates and
+    volume character — the 'how are my candidates doing on breakouts' view."""
+    want = request.args.get("tiers", "stalk,focus,active")
+    want_tiers = {t.strip() for t in want.split(",") if t.strip()}
+
+    tiers = db.list_symbols_by_tier()
+    plans = {p["symbol"]: p for p in db.list_trade_plans()}
+
+    tier_of, symbols = {}, set()
+    for tier, syms in tiers.items():
+        for s in syms:
+            tier_of[s["symbol"]] = tier
+            if tier in want_tiers:
+                symbols.add(s["symbol"])
+    symbols |= set(plans.keys())
+
+    rows = []
+    for sym in sorted(symbols):
+        plan = plans.get(sym, {})
+        row = {
+            "symbol":   sym,
+            "tier":     tier_of.get(sym, ""),
+            "has_plan": sym in plans,
+        }
+        try:
+            sd = _swing_data_for(sym)
+            g  = _grade_from_swing(sd)
+            pivot, today_high, close = _auto_pivot(sym)
+            # A saved plan trigger overrides the auto pivot
+            if plan.get("trigger_price"):
+                pivot = float(plan["trigger_price"])
+
+            dist_pct = None
+            if pivot and close:
+                dist_pct = round((pivot / close - 1) * 100, 2)
+
+            row.update({
+                "grade":         g["grade"],
+                "score":         g["score"],
+                "last_close":    sd["last_close"],
+                "pivot":         round(pivot, 2) if pivot else None,
+                "pivot_source":  "plan" if plan.get("trigger_price") else "auto20",
+                "dist_pct":      dist_pct,
+                "status":        _breakout_status(pivot, today_high, close, dist_pct),
+                "rvol":          sd["rvol"],
+                "adr_pct":       sd["adr_pct"],
+                "atr_mult_50ma": sd["atr_mult_50ma"],
+                "lod_dist_atr":  sd["lod_dist_atr"],
+                "pocket_pivot":  bool(sd.get("pocket_pivot")),
+                "vol_dryup":     bool(sd.get("vol_dryup")),
+                "too_extended":  sd["atr_mult_50ma"] > 4.0,
+                "lod_too_far":   sd["lod_dist_atr"] > 0.6,
+                "low_rvol":      sd["rvol"] < 1.0,
+                "ma200_declining": bool(sd.get("ma200_declining")),
+                "stop_price":    plan.get("stop_price"),
+            })
+        except Exception:
+            row["error"] = "no data"
+            row["status"] = "UNKNOWN"
+        rows.append(row)
+
+    rows.sort(key=lambda r: (_STATUS_ORDER.get(r.get("status"), 9),
+                             r.get("dist_pct") if r.get("dist_pct") is not None else 999))
+    return jsonify({"rows": rows, "tiers": sorted(want_tiers)})
+
+
 @swing_bp.route("/api/trade-plans", methods=["POST"])
 def upsert_trade_plan_route():
     body   = request.get_json(silent=True) or {}

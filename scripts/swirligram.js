@@ -161,6 +161,8 @@ function _swRenderPhaseChart(canvasId, xArr, yArr, dates, signal, stateKey, opts
         trailColor = '59,130,246',
         buyZones   = [],
         xBands     = [],
+        quadLabels = null,    // {tl, tr, bl, br} corner annotations
+        hookLabel  = null,    // e.g. '⤴ PULLBACK HOOK' tag at the current dot
     } = opts;
 
     const pts = [];
@@ -220,6 +222,60 @@ function _swRenderPhaseChart(canvasId, xArr, yArr, dates, signal, stateKey, opts
                 ctx.font = '8px Inter, sans-serif';
                 ctx.textAlign = 'left';
                 ctx.fillText('Δ=0', ca.left + 2, y0 - 3);
+            }
+
+            // Quadrant corner annotations — plain-English reading aid
+            if (quadLabels) {
+                ctx.fillStyle = 'rgba(148,163,184,0.45)';
+                ctx.font = 'italic 9px Inter, sans-serif';
+                if (quadLabels.tl) { ctx.textAlign = 'left';  ctx.fillText(quadLabels.tl, ca.left + 5,  ca.top + 22); }
+                if (quadLabels.tr) { ctx.textAlign = 'right'; ctx.fillText(quadLabels.tr, ca.right - 5, ca.top + 22); }
+                if (quadLabels.bl) { ctx.textAlign = 'left';  ctx.fillText(quadLabels.bl, ca.left + 5,  ca.bottom - 8); }
+                if (quadLabels.br) { ctx.textAlign = 'right'; ctx.fillText(quadLabels.br, ca.right - 5, ca.bottom - 8); }
+            }
+            ctx.restore();
+        },
+    };
+
+    // Direction arrowhead + "now" tag on the worm's head
+    const headPlugin = {
+        id: 'swHead_' + canvasId,
+        afterDatasetsDraw(chart) {
+            const ca = chart.chartArea;
+            const sx = chart.scales?.x;
+            const sy = chart.scales?.y;
+            if (!ca || !sx || !sy || n < 2) return;
+            const { ctx } = chart;
+            const hx = sx.getPixelForValue(pts[n - 1].x);
+            const hy = sy.getPixelForValue(pts[n - 1].y);
+            const px = sx.getPixelForValue(pts[n - 2].x);
+            const py = sy.getPixelForValue(pts[n - 2].y);
+            const ang = Math.atan2(hy - py, hx - px);
+
+            ctx.save();
+            // Arrowhead showing travel direction
+            ctx.translate(hx, hy);
+            ctx.rotate(ang);
+            ctx.fillStyle = sigColor;
+            ctx.beginPath();
+            ctx.moveTo(14, 0);
+            ctx.lineTo(5, -5);
+            ctx.lineTo(5, 5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            // "now" tag + optional hook annotation
+            ctx.save();
+            ctx.font = 'bold 9px Inter, sans-serif';
+            ctx.textAlign = 'left';
+            const tagX = Math.min(hx + 13, ca.right - 60);
+            ctx.fillStyle = sigColor;
+            ctx.fillText('now', tagX, Math.max(hy - 10, ca.top + 10));
+            if (hookLabel) {
+                ctx.font = 'bold 10px Inter, sans-serif';
+                ctx.fillStyle = '#22c55e';
+                ctx.fillText(hookLabel, tagX, Math.min(hy + 18, ca.bottom - 4));
             }
             ctx.restore();
         },
@@ -330,7 +386,7 @@ function _swRenderPhaseChart(canvasId, xArr, yArr, dates, signal, stateKey, opts
                 },
             },
         },
-        plugins: [zoneBgPlugin, buyZonePlugin],
+        plugins: [zoneBgPlugin, buyZonePlugin, headPlugin],
     });
 }
 
@@ -340,10 +396,29 @@ function _swRenderRsiPhaseChart(canvasId, data, freq, stateKey) {
     const buyZones = freq === 'daily'
         ? [{ xMin: 25, xMax: 45, yFloor: true,  color: 'rgba(34,197,94,0.85)',  label: '↑ Daily Buy Zone' }]
         : [{ xMin: 50, xMax: 62, yFloor: false, color: 'rgba(59,130,246,0.85)', label: 'Weekly Anchor'    }];
+
+    // Pullback hook — ΔRSI flips positive inside the 30–52 pullback zone.
+    // This is the daily entry trigger of the swing process.
+    let hookLabel = null;
+    if (freq === 'daily') {
+        const r = data.rsi, d = data.drsi, n = r.length;
+        if (n >= 2 && d[n - 1] != null && d[n - 2] != null &&
+            d[n - 1] > 0 && d[n - 2] <= 0 &&
+            r[n - 1] >= 30 && r[n - 1] <= 52) {
+            hookLabel = '⤴ PULLBACK HOOK';
+        }
+    }
+
     _swRenderPhaseChart(canvasId, data.rsi, data.drsi, data.dates, data.signal, stateKey, {
         xLabel: 'RSI', yLabel: 'Δ RSI / bar',
         xMin: 0, xMax: 100, trailColor: '59,130,246',
         buyZones,
+        hookLabel,
+        quadLabels: freq === 'daily'
+            ? { tl: 'weak · turning up = watch', tr: 'hot · still rising',
+                bl: 'weak · falling = stand aside', br: 'strong · rolling over' }
+            : { tl: 'rebuilding', tr: 'trend strengthening',
+                bl: 'breaking down', br: 'trend tiring' },
         xBands: [
             { xMin: 0,   xMax: 20,  color: 'rgba(239,68,68,0.15)',   label: 'Deeply OS'  },
             { xMin: 20,  xMax: 30,  color: 'rgba(249,115,22,0.11)',  label: 'Oversold'   },
@@ -373,9 +448,14 @@ function _swRenderKamaPhaseChart(canvasId, kamaData, kind, stateKey) {
         { xMin: 50,  xMax: 75,  color: 'rgba(34,197,94,0.09)',   label: 'Bullish'  },
         { xMin: 75,  xMax: 100, color: 'rgba(34,197,94,0.14)',   label: 'Strong'   },
     ];
+    const quadLabels = isFast
+        ? { tl: 'reset · re-expanding = entry', tr: 'stretched · extending = chase risk',
+            bl: 'compressing', br: 'extension unwinding' }
+        : { tl: 'trend rebuilding', tr: 'trend accelerating',
+            bl: 'trend broken', br: 'trend fading' };
     _swRenderPhaseChart(
         canvasId, kamaData.pct, kamaData.dpct, kamaData.dates, kamaData.signal, stateKey,
-        { xLabel: 'Pct Rank', yLabel: 'Δ Pct / bar', xMin: 0, xMax: 100, trailColor: tc, buyZones, xBands }
+        { xLabel: 'Pct Rank', yLabel: 'Δ Pct / bar', xMin: 0, xMax: 100, trailColor: tc, buyZones, xBands, quadLabels }
     );
 }
 

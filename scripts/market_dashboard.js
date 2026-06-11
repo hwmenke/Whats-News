@@ -10,6 +10,7 @@
 
 function initMarketDashboard() {
     _loadRiskPedal();
+    _loadBreakoutBoard();
     _loadBreadth();
     _loadStrengthTable();
     _initDailyChecklists();
@@ -17,6 +18,120 @@ function initMarketDashboard() {
     _initScreens();
     if (typeof initSector   === 'function') initSector();
     if (typeof initProcess  === 'function') initProcess();
+}
+
+// ── Breakout Board ────────────────────────────────────────────────────────────
+// "How are my Jeff/Qullamaggie candidates doing on breakouts?" — pipeline
+// candidates vs their pivots, triggered names first.
+
+let _bbTiers = 'stalk,focus,active';
+
+const _BB_STATUS_META = {
+    'TRIGGERED': { cls: 'bb-st-trig',  hint: 'Today\'s high cleared the pivot and price is holding above it' },
+    'BREAKING':  { cls: 'bb-st-break', hint: 'Poked above the pivot intraday but closed back below — watch for retest' },
+    'AT PIVOT':  { cls: 'bb-st-at',    hint: 'Within 1% of the pivot — set alerts, size the entry' },
+    'NEAR':      { cls: 'bb-st-near',  hint: '1–5% below the pivot — building' },
+    'BASING':    { cls: 'bb-st-base',  hint: 'More than 5% below the pivot — still basing' },
+    'UNKNOWN':   { cls: 'bb-st-unk',   hint: 'No data — fetch OHLCV first' },
+};
+
+function _bbRenderTierChips() {
+    const el = document.getElementById('bb-tier-chips');
+    if (!el) return;
+    const opts = [
+        { id: 'stalk,focus,active',           label: 'Stalk + Focus + Active' },
+        { id: 'focus,active',                 label: 'Focus + Active' },
+        { id: 'watchlist,stalk,focus,active', label: '+ Watchlist' },
+    ];
+    el.innerHTML = opts.map(o =>
+        `<button class="scan-mode-btn ${o.id === _bbTiers ? 'active' : ''}"
+                 onclick="_bbTiers='${o.id}';_loadBreakoutBoard()">${o.label}</button>`).join('');
+}
+
+async function _loadBreakoutBoard() {
+    const el = document.getElementById('breakout-board');
+    if (!el) return;
+    _bbRenderTierChips();
+    el.innerHTML = '<div class="bb-loading">Loading candidates…</div>';
+    try {
+        const d    = await apiFetch(`${API}/breakout-board?tiers=${encodeURIComponent(_bbTiers)}`);
+        const rows = d.rows || [];
+
+        const summary = document.getElementById('bb-summary');
+        if (summary) {
+            const trig = rows.filter(r => r.status === 'TRIGGERED' || r.status === 'BREAKING').length;
+            const at   = rows.filter(r => r.status === 'AT PIVOT').length;
+            summary.textContent = rows.length
+                ? `${rows.length} candidates · ${trig} triggered · ${at} at pivot`
+                : '';
+        }
+
+        if (!rows.length) {
+            el.innerHTML = `<div class="bb-empty">No candidates in these tiers yet —
+                promote symbols to Stalk/Focus in the Focus Pipeline below,
+                or run the Scanner and add A-grade names.</div>`;
+            return;
+        }
+
+        const fmt  = (v, dp = 2) => v == null ? '—' : v.toFixed(dp);
+        const body = rows.map(r => {
+            const meta = _BB_STATUS_META[r.status] || _BB_STATUS_META.UNKNOWN;
+            if (r.error) {
+                return `<tr class="bb-row-err"><td><span class="bb-status ${meta.cls}">—</span></td>
+                    <td class="bb-sym" data-hover-symbol="${r.symbol}">${r.symbol}</td>
+                    <td>${r.tier || ''}</td><td colspan="8" class="bb-muted">no data — fetch OHLCV</td></tr>`;
+            }
+            const distCls = r.dist_pct == null ? '' :
+                r.dist_pct <= 0 ? 'bb-d-thru' : r.dist_pct <= 1 ? 'bb-d-at' :
+                r.dist_pct <= 5 ? 'bb-d-near' : 'bb-d-far';
+            const gates = [
+                r.too_extended    ? '<span class="ep-flag ep-flag-warn" title="More than 4 ATR above the 50-MA — no chase">EXT</span>' : '',
+                r.lod_too_far     ? '<span class="ep-flag ep-flag-warn" title="More than 0.6 ATR off the low of day — late entry">LoD</span>' : '',
+                r.ma200_declining ? '<span class="ep-flag ep-flag-warn" title="200-MA declining">200↓</span>' : '',
+                r.low_rvol        ? '<span class="ep-flag" title="RVOL below 1 — needs volume to confirm">VOL?</span>' : '',
+                r.pocket_pivot    ? '<span class="ep-flag ep-flag-good" title="Pocket pivot — up-day volume above every down-day volume of the last 10">PP</span>' : '',
+                r.vol_dryup       ? '<span class="ep-flag ep-flag-good" title="Volume dry-up — tight and quiet, ready">DU</span>' : '',
+            ].filter(Boolean).join('') || '<span class="ep-flag-clear">clean</span>';
+            const rvolCls = r.rvol == null ? '' : r.rvol >= 1.5 ? 'bb-rvol-hot' : r.rvol >= 1.0 ? 'bb-rvol-ok' : 'bb-rvol-low';
+            return `<tr>
+                <td><span class="bb-status ${meta.cls}" title="${meta.hint}">${r.status}</span></td>
+                <td class="bb-sym" data-hover-symbol="${r.symbol}" onclick="selectSymbol('${r.symbol}');switchTab('charts')">${r.symbol}</td>
+                <td class="bb-muted">${r.tier || '—'}</td>
+                <td>${r.grade ? `<span class="sw-grade sw-grade-${r.grade.toLowerCase()} sw-grade-sm">${r.grade}</span>` : '—'}</td>
+                <td class="bb-num">${fmt(r.last_close)}</td>
+                <td class="bb-num">${fmt(r.pivot)}${r.pivot_source === 'plan' ? '<span class="bb-plan-dot" title="From your saved trade plan">●</span>' : ''}</td>
+                <td class="bb-num ${distCls}">${r.dist_pct == null ? '—' : (r.dist_pct > 0 ? '+' : '') + r.dist_pct.toFixed(1) + '%'}</td>
+                <td class="bb-num ${rvolCls}">${fmt(r.rvol, 2)}</td>
+                <td class="bb-num">${fmt(r.atr_mult_50ma, 1)}×</td>
+                <td>${gates}</td>
+                <td><button class="btn btn-ghost btn-sm" title="Send to Risk Calc"
+                        onclick="_bbToRisk('${r.symbol}', ${r.pivot ?? 'null'}, ${r.stop_price ?? 'null'})">→ Risk</button></td>
+            </tr>`;
+        }).join('');
+
+        el.innerHTML = `<div class="feat-table-wrap"><table class="feat-table bb-table">
+            <thead><tr>
+                <th>Status</th><th>Symbol</th><th>Tier</th><th>Grade</th>
+                <th title="Last close">Last</th>
+                <th title="Breakout pivot — saved plan trigger or the 20-day high">Pivot</th>
+                <th title="Distance from last close to the pivot">To&nbsp;Pivot</th>
+                <th title="Relative volume vs the 20-day average">RVOL</th>
+                <th title="ATR multiples above the 50-MA — over 4 is too extended to chase">Ext</th>
+                <th>Gates</th><th></th>
+            </tr></thead><tbody>${body}</tbody></table></div>`;
+    } catch (e) {
+        el.innerHTML = `<div class="bb-empty">Breakout board failed: ${_mdEsc(e.message)}</div>`;
+    }
+}
+
+function _bbToRisk(symbol, entry, stop) {
+    window._jeffSizePrefill = {
+        symbol,
+        entry: Number.isFinite(entry) ? entry : null,
+        stop:  Number.isFinite(stop)  ? stop  : null,
+    };
+    if (typeof selectSymbol === 'function') selectSymbol(symbol);
+    switchTab('risk-calc');
 }
 
 // ── Risk Pedal ────────────────────────────────────────────────────────────────

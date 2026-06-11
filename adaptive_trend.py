@@ -385,8 +385,12 @@ def optimize_adaptive_trend(symbol: str, freq: str = "daily",
     df = db.get_ohlcv_df(symbol, freq, limit=1500)
     if df.empty:
         return {"error": "No OHLCV data found"}
+    # Defensive clean-up: real-world feeds occasionally contain NaN rows or
+    # duplicate dates, which crash the numba indicator kernels.
+    df = df.dropna(subset=["high", "low", "close"])
+    df = df[~df.index.duplicated(keep="last")].sort_index()
     if len(df) < 150:
-        return {"error": "Insufficient data — need at least 150 bars"}
+        return {"error": f"Insufficient data — need at least 150 bars, have {len(df)}"}
 
     default_p = {**DEFAULT_PARAMS}
     baseline  = _score_params(df, method, default_p)

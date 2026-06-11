@@ -4,6 +4,7 @@ Run: python app.py
 """
 
 import json
+import logging
 import os
 import re
 import time
@@ -27,6 +28,8 @@ import portfolio_backtest as pb
 import errors
 from errors import ApiError
 from api import ALL_BLUEPRINTS
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -199,13 +202,21 @@ def optimize_trend(symbol):
     body   = request.get_json(force=True) or {}
     freq   = body.get("freq", "daily")
     method = body.get("method", "kama")
+    if freq == "both":          # UI "Both" mode — optimize on the daily series
+        freq = "daily"
     if freq not in ("daily", "weekly"):
         raise errors.validation("freq must be 'daily' or 'weekly'")
     if method not in ("kama", "adma"):
         raise errors.validation("method must be 'kama' or 'adma'")
-    result = adaptive.optimize_adaptive_trend(symbol.upper(), freq, method)
+    try:
+        result = adaptive.optimize_adaptive_trend(symbol.upper(), freq, method)
+    except Exception as e:
+        logger.exception("optimize_adaptive_trend crashed for %s", symbol)
+        raise errors.computation_failed(f"{type(e).__name__}: {e}")
     if "error" in result:
-        raise errors.no_data(symbol.upper())
+        # Pass the real reason through (e.g. insufficient bars) instead of
+        # masking everything as a 404 no-data error.
+        raise errors.ApiError("OPTIMIZE_FAILED", result["error"], http=422)
     return jsonify(result)
 
 

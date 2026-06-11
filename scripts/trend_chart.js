@@ -485,16 +485,21 @@ function loadTrendData(data, ohlcvRows) {
     trendSeries.lrt.setData(_toLine(data.lrt));
     trendSeries.ldb.setData(_toLine(data.ldb));
 
-    // Entry markers (long ▲ below bar, short ▼ above bar)
+    // Entry markers (long ▲ below bar, short ▼ above bar).
+    // Markers outside the candle date range get clamped to the chart edge by
+    // lightweight-charts and stack on one bar — keep only in-range dates.
+    const firstBar = ohlcvRows[0].date;
+    const lastBar  = ohlcvRows[ohlcvRows.length - 1].date;
+    const inRange  = t => t >= firstBar && t <= lastBar;
     const markers = [];
     (data.entry_long  || []).forEach(d => {
-        if (d.value) markers.push({
+        if (d.value && inRange(d.date)) markers.push({
             time: d.date, position: 'belowBar', color: TC.bull,
             shape: 'arrowUp', text: 'L',
         });
     });
     (data.entry_short || []).forEach(d => {
-        if (d.value) markers.push({
+        if (d.value && inRange(d.date)) markers.push({
             time: d.date, position: 'aboveBar', color: TC.bear,
             shape: 'arrowDown', text: 'S',
         });
@@ -544,12 +549,15 @@ function loadWeeklyTrendData(data, ohlcvRows) {
     trendSeriesW.lrt.setData(_toLine(data.lrt));
     trendSeriesW.ldb.setData(_toLine(data.ldb));
 
+    const firstBarW = ohlcvRows[0].date;
+    const lastBarW  = ohlcvRows[ohlcvRows.length - 1].date;
+    const inRangeW  = t => t >= firstBarW && t <= lastBarW;
     const markers = [];
     (data.entry_long  || []).forEach(d => {
-        if (d.value) markers.push({ time: d.date, position: 'belowBar', color: TC.bull, shape: 'arrowUp', text: 'L' });
+        if (d.value && inRangeW(d.date)) markers.push({ time: d.date, position: 'belowBar', color: TC.bull, shape: 'arrowUp', text: 'L' });
     });
     (data.entry_short || []).forEach(d => {
-        if (d.value) markers.push({ time: d.date, position: 'aboveBar', color: TC.bear, shape: 'arrowDown', text: 'S' });
+        if (d.value && inRangeW(d.date)) markers.push({ time: d.date, position: 'aboveBar', color: TC.bear, shape: 'arrowDown', text: 'S' });
     });
     markers.sort((a, b) => a.time.localeCompare(b.time));
     trendSeriesW.candle.setMarkers(markers);
@@ -977,18 +985,21 @@ async function runTrendOptimize() {
     if (panel) { panel.style.display = 'none'; panel.innerHTML = ''; }
 
     try {
+        // "Both" mode optimizes on the daily series
+        const optFreq = trendState.freq === 'both' ? 'daily' : trendState.freq;
         const res = await fetch(
             `${typeof API !== 'undefined' ? API : '/api'}/adaptive-trend/${symbol}/optimize`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ freq: trendState.freq, method: trendState.method }),
+                body: JSON.stringify({ freq: optFreq, method: trendState.method }),
                 signal: _optAbortCtrl.signal,
             }
         );
         if (!res.ok) {
-            const err = await res.json().catch(() => ({ error: res.statusText }));
-            throw new Error(err.error || res.statusText);
+            const err = await res.json().catch(() => ({}));
+            const msg = err.message || err.error || res.statusText;
+            throw new Error(err.hint ? `${msg} — ${err.hint}` : msg);
         }
         const data = await res.json();
         _renderOptPanel(data);
