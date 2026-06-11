@@ -277,7 +277,9 @@ async function removeSymbol(symbol) {
         toast(`${symbol} removed`, 'warning');
         if (state.activeSymbol === symbol) {
             state.activeSymbol = null;
-            showEmptyState();
+            // symbol-independent tabs (signals, scanner, …) stay put
+            const symbolTabs = ['charts', 'stats', 'trend', 'swirl', 'quant', 'fvd'];
+            if (symbolTabs.includes(state.activeTab)) showEmptyState();
         }
         await loadSymbols();
     } catch (e) {
@@ -555,7 +557,9 @@ async function loadChartData(symbol) {
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
         toastFromError(e, 'Chart');
-        showEmptyState();
+        // only fall back to the empty state if the user is still on the
+        // charts tab — a slow failure must not hide a tab they switched to
+        if (state.activeTab === 'charts') showEmptyState();
     } finally {
         state.loading = false;
         showLoadingOverlay(false);
@@ -1132,5 +1136,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         await selectSymbol(state.symbols[0].symbol);
     } else {
         showEmptyState();
+    }
+
+    // selectSymbol only restores symbol-driven tabs; tabs like signals,
+    // scanner or data-manager need an explicit switch or the default
+    // empty-state stays on screen under their highlighted button
+    const selfLoadingTabs = ['charts', 'stats', 'trend', 'regression', 'swirl', 'quant', 'fvd'];
+    if (!selfLoadingTabs.includes(savedTab)) {
+        await switchTab(savedTab);
     }
 });

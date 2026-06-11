@@ -251,7 +251,7 @@ function fvdRenderDivergence(d) {
         data: Array(n).fill(lvl), borderColor: color, borderWidth: width,
         borderDash: [6, 4], pointRadius: 0, fill: false,
     });
-    const zMax = Math.max(3.4, ...s.z.filter(v => v !== null).map(Math.abs)) + 0.3;
+    const zMax = Math.ceil(Math.max(3.4, ...s.z.filter(v => v !== null).map(Math.abs)) + 0.3);
 
     fvdChart('fvd-div-chart', {
         type: 'line',

@@ -393,7 +393,7 @@ function qlRenderCta(cta) {
 
     const st = cta.stats, sp = (cta.speeds || []);
     qlStatChips('ql-cta-stats', [
-        { label: 'POSITION', value: `${qlNum(cta.position, 2)}x`,
+        { label: 'POSITION', value: cta.position === null ? '—' : `${qlNum(cta.position, 2)}x`,
           color: qlSignColor(cta.position),
           title: 'Vol-targeted position (15% ann. target, ±2x cap)' },
         { label: 'SHARPE', value: `${qlNum(st.strategy.sharpe)} / ${qlNum(st.buy_hold.sharpe)}`,

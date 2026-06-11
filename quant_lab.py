@@ -145,7 +145,11 @@ def _trend_channel(log_close: np.ndarray, window: int = 126):
 
 def _state_frame(df: pd.DataFrame) -> pd.DataFrame:
     """All intermediate series every model draws from, aligned to df.index."""
-    close, high, low, vol = df["close"], df["high"], df["low"], df["volume"]
+    close, high, low = df["close"], df["high"], df["low"]
+    vol = df["volume"].fillna(0.0)
+    # FX pairs / some indices report no volume — neutralise volume features
+    # instead of letting NaNs poison the exhaustion and KNN composites
+    vol_ok = bool((vol > 0).mean() >= 0.5)
     out = pd.DataFrame(index=df.index)
 
     out["close"] = close
@@ -207,15 +211,21 @@ def _state_frame(df: pd.DataFrame) -> pd.DataFrame:
     rsi3 = _rsi(close, window=3)
     out["rsi3_x"]   = ((rsi3 - 50.0) / 30.0).clip(-2, 2)
     out["stretch"]  = (_pct_rank((close - k20) / out["atr"]) - 0.5) * 4.0
-    vol_z = _z(np.log(vol.clip(lower=1)), 60, min_p=30)
-    out["vol_climax"] = (vol_z * np.sign(out["ret"])).clip(-3, 3)
+    if vol_ok:
+        vol_z = _z(np.log(vol.clip(lower=1)), 60, min_p=30)
+        out["vol_climax"] = (vol_z * np.sign(out["ret"])).clip(-3, 3)
+    else:
+        out["vol_climax"] = 0.0
     out["ext10"]    = _z(np.log(close / close.shift(10).replace(0, np.nan)))
 
     # — extra KNN state —
     out["roc20_z"]  = _z(np.log(close / close.shift(20).replace(0, np.nan)))
     out["volp"]     = (_pct_rank(out["vol_ann"]) - 0.5) * 4.0
-    vol_ema = vol.ewm(span=20, adjust=False).mean().clip(lower=1)
-    out["volume_z"] = _z(np.log((vol / vol_ema).clip(lower=1e-9)), 60, min_p=30)
+    if vol_ok:
+        vol_ema = vol.ewm(span=20, adjust=False).mean().clip(lower=1)
+        out["volume_z"] = _z(np.log((vol / vol_ema).clip(lower=1e-9)), 60, min_p=30)
+    else:
+        out["volume_z"] = 0.0
 
     # — squeeze (vol compression, 0 = loose … 100 = maximally coiled) —
     up20, _, lo20 = _bollinger(close, window=20, num_std=2.0)
@@ -272,10 +282,6 @@ def _fair_value(st: pd.DataFrame) -> dict:
             "current": is_cur,
         })
 
-    # scatter sample (even stride, max 500 points)
-    stride = max(1, len(v_h) // 500)
-    scat_v, scat_r = v_h[::stride], r_h[::stride]
-
     # chart series — last 252 bars
     tail = st.tail(ANN)
     sig  = tail["fv_sig"]
@@ -291,7 +297,6 @@ def _fair_value(st: pd.DataFrame) -> dict:
             "bb60":        _fl(st["bb60"].iloc[-1], 2),
         },
         "bins": bins,
-        "scatter": {"v": _fl_list(scat_v, 1), "r": _fl_list(scat_r)},
         "series": {
             "dates": [d.strftime("%Y-%m-%d") for d in tail.index],
             "close": _fl_list(tail["close"], 4),
@@ -407,6 +412,15 @@ def _cta(st: pd.DataFrame) -> dict:
     valid = pos.shift(1).notna()
     strat = strat[valid]
     bh    = ret[valid].fillna(0.0)
+
+    if strat.empty:                      # degenerate input (e.g. flat price)
+        none_stats = {"sharpe": None, "cagr": None, "maxdd": None}
+        return {"score": None, "position": None,
+                "speeds": [{"label": f"EWMAC {f}/{s}", "score": None}
+                           for f, s in EWMAC_SPEEDS],
+                "stats": {"strategy": dict(none_stats),
+                          "buy_hold": dict(none_stats), "hit": None},
+                "series": {"dates": [], "equity": [], "bh": [], "forecast": []}}
 
     eq    = np.exp(np.log1p(strat.clip(lower=-0.99)).cumsum()) * 100.0
     eq_bh = np.exp(np.log1p(bh.clip(lower=-0.99)).cumsum()) * 100.0

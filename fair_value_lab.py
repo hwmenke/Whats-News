@@ -40,6 +40,7 @@ Verdict: STRONG / OK / WEAK from the 1-month hit rate and price share.
 from __future__ import annotations
 
 import math
+import threading
 import time
 
 import numpy as np
@@ -76,11 +77,19 @@ def _trend_anchor(logp: np.ndarray):
     return fit, sig, {"anchor": "126-bar log-linear trend channel"}
 
 
-# PCA panel of watchlist log prices, memoised for 10 minutes
+# PCA panel of watchlist log prices, memoised for 10 minutes.
+# The lock matters: the signal scanner calls pca_divergence() from a thread
+# pool, and without it every worker would rebuild the panel simultaneously.
 _PANEL_MEMO: dict = {"ts": 0.0, "panel": None}
+_PANEL_LOCK = threading.Lock()
 
 
 def _build_pca_panel() -> pd.DataFrame | None:
+    with _PANEL_LOCK:
+        return _build_pca_panel_locked()
+
+
+def _build_pca_panel_locked() -> pd.DataFrame | None:
     now = time.time()
     if _PANEL_MEMO["panel"] is not None and now - _PANEL_MEMO["ts"] < 600:
         return _PANEL_MEMO["panel"]
@@ -301,7 +310,8 @@ def _compute_inner(symbol: str, model: str) -> dict:
     D = logp - fv_log
     z = np.clip(D / sigma, -6, 6)
     if not np.isfinite(z[-1]):
-        return {"error": "divergence undefined on the latest bar (insufficient overlap)"}
+        return {"error": "divergence undefined on the latest bar "
+                         "(degenerate price series or insufficient overlap)"}
 
     # — validation —
     v = {f"h{h}": _validate_horizon(logp, z, h) for h in HORIZONS}

@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
 import database as db
+import fair_value_lab as fvl
 import indicator_cache as cache
 import quant_lab as ql
 
@@ -217,7 +218,6 @@ def _r_td13(ctx):
           "Price ≥ 2σ away from its PCA eigenportfolio factor anchor (stat-arb residual)")
 def _r_pca_divergence(ctx):
     try:
-        import fair_value_lab as fvl
         pca = fvl.pca_divergence(ctx["symbol"])
     except Exception:
         return None
@@ -286,7 +286,8 @@ def scan_symbols(symbols: list[str] | None = None,
 
     counts = {}
     for sig in signals:
-        counts[sig["routine"]] = counts.get(sig["routine"], 0) + 1
+        if not sig.get("error"):
+            counts[sig["routine"]] = counts.get(sig["routine"], 0) + 1
     catalog = [{**r, "count": counts.get(r["id"], 0)} for r in routine_catalog()]
 
     return {

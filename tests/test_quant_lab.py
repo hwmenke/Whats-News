@@ -124,6 +124,40 @@ def test_mean_reversion_sections(ql_result):
     assert "mr" in ql_result["composite"]["components"]
 
 
+def test_zero_volume_keeps_models_alive(monkeypatch):
+    """FX-style data (volume = 0) must not kill the exhaustion/KNN models."""
+    import database as db
+    import quant_lab
+    rng = np.random.default_rng(1)
+    n = 900
+    idx = pd.date_range("2021-01-04", periods=n, freq="B")
+    close = 100 * np.exp(np.cumsum(rng.normal(0.0003, 0.012, n)))
+    df = pd.DataFrame({"open": np.r_[close[0], close[:-1]], "high": close * 1.005,
+                       "low": close * 0.995, "close": close, "volume": 0.0}, index=idx)
+    monkeypatch.setattr(db, "get_ohlcv_df", lambda s, freq="daily", limit=1000: df.tail(limit))
+    r = quant_lab._compute_inner("FX")
+    assert "error" not in r
+    json.dumps(r, allow_nan=False)
+    assert r["exhaustion"]["score"] is not None
+    assert r["knn"] is not None
+    assert r["exhaustion"]["components"]["vol_climax"] == 0.0
+
+
+def test_flat_price_does_not_crash(monkeypatch):
+    """A constant price series must degrade gracefully, not raise."""
+    import database as db
+    import quant_lab
+    idx = pd.date_range("2021-01-04", periods=900, freq="B")
+    df = pd.DataFrame({"open": 100.0, "high": 100.0, "low": 100.0,
+                       "close": 100.0, "volume": 1e6}, index=idx)
+    monkeypatch.setattr(db, "get_ohlcv_df", lambda s, freq="daily", limit=1000: df.tail(limit))
+    r = quant_lab._compute_inner("FLAT")
+    assert "error" not in r
+    json.dumps(r, allow_nan=False)
+    assert r["cta"]["score"] is None
+    assert r["cta"]["series"]["equity"] == []
+
+
 def test_insufficient_data_error(monkeypatch, long_ohlcv):
     import database as db
     import quant_lab
