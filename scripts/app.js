@@ -807,22 +807,14 @@ function showDataManagerArea() { _showOnly('data-manager-area'); }
 
 // ── Sidebar collapse ──────────────────────────────────────────
 function toggleSidebar() {
-    const app = document.querySelector('.app');
-    const btn = document.getElementById('sidebar-collapse-btn');
-    const hidden = app.classList.toggle('sidebar-hidden');
+    const appEl = document.querySelector('.app');
+    const btn   = document.getElementById('sidebar-collapse-btn');
+    const hidden = appEl.classList.toggle('sidebar-hidden');
     if (btn) btn.textContent = hidden ? '›' : '‹';
     try { localStorage.setItem('sidebar_hidden', hidden ? '1' : '0'); } catch (_) {}
-    // Allow chart to fill the freed space
-    setTimeout(() => {
-        if (typeof trendCharts !== 'undefined') {
-            [trendCharts?.price, trendCharts?.regime].forEach(c => {
-                if (c) try { c.resize(c.chartElement.parentElement.clientWidth, c.chartElement.parentElement.clientHeight); } catch (_) {}
-            });
-        }
-        if (typeof chart !== 'undefined' && chart) {
-            try { chart.resize(chart.chartElement.parentElement.clientWidth, chart.chartElement.parentElement.clientHeight); } catch (_) {}
-        }
-    }, 300);
+    // Fire a resize event after the CSS transition completes so ResizeObservers
+    // on chart containers pick up the new width.
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 280);
 }
 
 function showLoadingOverlay(show) {

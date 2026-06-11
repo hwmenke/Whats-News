@@ -748,13 +748,13 @@ function _updateSignalPanel(data, ohlcvRows) {
             `Medium ${arrow(ms)}  ·  Long ${arrow(ls)}${shortNote}`;
     }
 
-    // Strength bar (filled dots 0-3)
+    // Strength bar (filled dots 0-3) — driven by mlComp (-2…+2), scaled to 2 dots max
     const strengthEl = document.getElementById('trend-strength');
     if (strengthEl) {
-        const abs  = Math.abs(comp);
+        const abs  = Math.abs(mlComp);
         const dot  = '●';  const empty = '○';
         strengthEl.textContent = Array.from({ length: 3 }, (_, i) => i < abs ? dot : empty).join(' ');
-        strengthEl.className   = `trend-strength-bar ${comp >= 0 ? 'bull' : 'bear'}`;
+        strengthEl.className   = `trend-strength-bar ${mlComp >= 0 ? 'bull' : 'bear'}`;
     }
 
     // ── Individual states ─────────────────────────────────────
@@ -845,10 +845,10 @@ function _updateSignalPanelW(data, ohlcvRows) {
     }
     const strengthWEl = document.getElementById('trend-strength-w');
     if (strengthWEl) {
-        const abs = Math.abs(comp);
+        const abs = Math.abs(mlComp);
         const dot = '●'; const empty = '○';
         strengthWEl.textContent = Array.from({ length: 3 }, (_, i) => i < abs ? dot : empty).join(' ');
-        strengthWEl.className   = `trend-strength-bar ${comp >= 0 ? 'bull' : 'bear'}`;
+        strengthWEl.className   = `trend-strength-bar ${mlComp >= 0 ? 'bull' : 'bear'}`;
     }
 
     const stateLabel = v => v > 0 ? 'LONG' : v < 0 ? 'SHORT' : 'NEUT';

@@ -301,7 +301,8 @@ def get_anomalies():
 
         # Price gap: open vs prev close
         if "open" in df.columns and len(df) >= 2:
-            gap_pct = (df["open"].iloc[-1] - close.iloc[-2]) / close.iloc[-2]
+            prev_close = close.iloc[-2]
+            gap_pct = (df["open"].iloc[-1] - prev_close) / prev_close if prev_close != 0 else 0.0
             if abs(gap_pct) > 0.02:
                 flags.append({"type": "price_gap", "label": f"Gap {gap_pct*100:+.1f}%", "z": round(float(gap_pct), 4)})
 

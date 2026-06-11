@@ -119,7 +119,7 @@ def swing_data_for(symbol: str, df: pd.DataFrame = None) -> dict:
     rvol = round(today_vol / avg_vol_50, 2) if avg_vol_50 > 0 else 0.0
 
     # ATR multiple from 50-MA
-    ma50 = float(close.tail(51).mean())
+    ma50 = float(close.tail(50).mean())
     atr_mult_50ma = float((last_close - ma50) / atr14) if atr14 > 0 else 0.0
 
     # LoD distance as fraction of ATR (article rule: >0.6 = don't enter)
