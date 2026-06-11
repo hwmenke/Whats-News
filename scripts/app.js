@@ -53,6 +53,65 @@ function toast(message, type = 'info', duration = 3500) {
 }
 
 // ── API helpers ──────────────────────────────────────────────
+// ── UI preferences (accent / density / scale / tab visibility) ───────────────
+
+const UI_PREFS_KEY = 'ui_prefs_v1';
+
+function loadUiPrefs() {
+    try { return JSON.parse(localStorage.getItem(UI_PREFS_KEY) || '{}'); }
+    catch (_) { return {}; }
+}
+
+function saveUiPrefs(prefs) {
+    try { localStorage.setItem(UI_PREFS_KEY, JSON.stringify(prefs)); } catch (_) {}
+    applyUiPrefs();
+}
+
+function applyUiPrefs() {
+    const p    = loadUiPrefs();
+    const body = document.body;
+
+    // Accent color — overrides the amber design tokens app-wide
+    body.classList.remove('accent-blue', 'accent-green', 'accent-purple', 'accent-cyan');
+    if (p.accent && p.accent !== 'amber') body.classList.add(`accent-${p.accent}`);
+
+    // Density
+    body.classList.toggle('ui-compact', p.density === 'compact');
+
+    // UI scale (zoom is supported by all modern browsers incl. Firefox 126+)
+    body.style.zoom = (p.scale && p.scale !== 100) ? String(p.scale / 100) : '';
+
+    // Tab visibility
+    const hidden = new Set(p.hiddenTabs || []);
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        const id = (btn.id || '').replace(/^tab-/, '');
+        if (!id || id === 'charts' || id === 'settings') return;  // never hideable
+        btn.style.display = hidden.has(id) ? 'none' : '';
+    });
+}
+
+// ── Macro event proximity chip (status bar) ───────────────────────────────────
+
+async function _loadMacroChip() {
+    const el = document.getElementById('sb-macro');
+    if (!el) return;
+    try {
+        const events = await apiFetch(`${API}/calendar?days_past=0&days_fwd=10`);
+        const today  = new Date().toISOString().slice(0, 10);
+        const next   = (events || []).find(e =>
+            e.date >= today && e.importance >= 3 && e.category !== 'earnings');
+        if (!next) { el.style.display = 'none'; return; }
+        const days = Math.round((new Date(next.date) - new Date(today)) / 86400000);
+        const txt  = days === 0 ? 'today' : `${days}d`;
+        el.style.display = '';
+        el.className = `sb-macro ${days <= 1 ? 'sb-macro-hot' : days <= 3 ? 'sb-macro-warn' : ''}`;
+        el.innerHTML = `⚡ ${next.type} ${txt}`;
+        el.title = `${next.label} — ${next.date}${next.approx ? ' (estimated)' : ''}. Click for calendar.`;
+    } catch (_) {
+        el.style.display = 'none';
+    }
+}
+
 async function _loadOpenRiskBadge() {
     const el = document.getElementById('sb-open-risk');
     if (!el) return;
@@ -1230,9 +1289,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Init hover chart preview
     if (typeof initHoverPreview   === 'function') initHoverPreview();
 
+    // Apply saved UI preferences (accent, density, scale, hidden tabs)
+    applyUiPrefs();
+
     // Open-risk status bar widget (non-blocking)
     _loadOpenRiskBadge();
     setInterval(_loadOpenRiskBadge, 60_000);
+
+    // Macro event proximity chip (refresh every 6h)
+    _loadMacroChip();
+    setInterval(_loadMacroChip, 6 * 3600_000);
 
     // Load regime badge async (non-blocking)
     if (typeof loadRegimeBadge === 'function') loadRegimeBadge('SPY');

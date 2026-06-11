@@ -5350,3 +5350,111 @@ body.focus-mode .symbol-header { display: none; }
 }
 .rh-strip-green { background: rgba(34,197,94,.15); color: var(--green); border: 1px solid var(--green); }
 .rh-strip-red   { background: rgba(239,68,68,.15);  color: var(--red);   border: 1px solid var(--red); }
+
+/* ═══════════════════════════════════════════════════════════════
+   ACCENT THEMES — override the amber design tokens app-wide
+════════════════════════════════════════════════════════════════ */
+body.accent-blue   { --amber: #3b82f6; --amber-bright: #60a5fa; --amber-dim: rgba(59,130,246,0.12); }
+body.accent-green  { --amber: #22c55e; --amber-bright: #4ade80; --amber-dim: rgba(34,197,94,0.12); }
+body.accent-purple { --amber: #a855f7; --amber-bright: #c084fc; --amber-dim: rgba(168,85,247,0.12); }
+body.accent-cyan   { --amber: #06b6d4; --amber-bright: #22d3ee; --amber-dim: rgba(6,182,212,0.12); }
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPACT DENSITY
+════════════════════════════════════════════════════════════════ */
+body.ui-compact .tab-btn           { padding: 4px 6px; font-size: 11px; }
+body.ui-compact .scan-td,
+body.ui-compact .scan-th           { padding: 2px 5px; font-size: 10.5px; }
+body.ui-compact .jf-table td       { padding: 3px 6px; }
+body.ui-compact .routine-table td,
+body.ui-compact .routine-table th  { padding: 3px 6px; font-size: 11px; }
+body.ui-compact .rh-grade-table td,
+body.ui-compact .rh-grade-table th { padding: 3px 6px; font-size: 11px; }
+body.ui-compact .sym-item          { padding: 4px 8px; }
+body.ui-compact .cal-event         { padding: 3px 6px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   CALENDAR — filters, banner, importance
+════════════════════════════════════════════════════════════════ */
+.cal-banner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; margin-bottom: 14px;
+  background: var(--bg-card); border: 1px solid var(--border-accent);
+  border-radius: 6px; font-size: 12px;
+  font-family: var(--font-mono);
+}
+.cal-banner-hot  { border-color: var(--red);   background: rgba(239,68,68,0.07); }
+.cal-banner-warm { border-color: var(--amber); background: rgba(240,163,47,0.06); }
+.cal-banner-icon { font-size: 14px; }
+.cal-banner-text { color: var(--text-primary); }
+.cal-banner-date { margin-left: auto; color: var(--text-muted); }
+
+.cal-filters {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.cal-chip {
+  padding: 3px 10px; font-size: 11px; font-family: var(--font-mono);
+  background: var(--bg-card); color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 12px; cursor: pointer;
+}
+.cal-chip:hover   { color: var(--text-primary); border-color: var(--border-accent); }
+.cal-chip-on      { color: var(--amber); border-color: var(--amber); background: var(--amber-dim); }
+.cal-chip-spacer  { flex: 1; }
+
+.cal-imp        { font-size: 8px; letter-spacing: 1px; width: 30px; display: inline-block; }
+.cal-imp-hi     { color: var(--red); }
+.cal-imp-med    { color: var(--amber); }
+.cal-imp-lo     { color: var(--text-dim); }
+.cal-dow        { color: var(--text-dim); font-size: 10px; }
+.cal-approx     { color: var(--text-dim); margin-right: 2px; cursor: help; }
+.cal-today      { background: var(--amber-dim); border-radius: 4px; }
+.cal-today-badge {
+  font-size: 9px; font-weight: 700; color: var(--amber);
+  border: 1px solid var(--amber); border-radius: 3px; padding: 0 4px; margin-left: 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STATUS BAR — macro proximity chip
+════════════════════════════════════════════════════════════════ */
+.sb-macro {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  padding: 1px 8px; margin-left: 8px; border-radius: 3px;
+  color: var(--text-muted); border: 1px solid var(--border);
+}
+.sb-macro-warn { color: var(--amber); border-color: var(--amber); background: var(--amber-dim); }
+.sb-macro-hot  { color: var(--red);   border-color: var(--red);   background: rgba(239,68,68,0.10); }
+
+/* ═══════════════════════════════════════════════════════════════
+   SETTINGS — appearance, tab visibility, FRED
+════════════════════════════════════════════════════════════════ */
+.sc-appearance-grid { display: flex; flex-direction: column; gap: 12px; }
+.sc-app-row   { display: flex; align-items: center; gap: 14px; }
+.sc-app-label { width: 70px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+.sc-swatches  { display: flex; gap: 8px; }
+.sc-swatch {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--swatch); border: 2px solid transparent;
+  cursor: pointer; transition: transform 0.1s;
+}
+.sc-swatch:hover    { transform: scale(1.15); }
+.sc-swatch-on       { border-color: var(--text-primary); box-shadow: 0 0 8px var(--swatch); }
+
+.sc-tab-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+}
+.sc-tab-check {
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 9px; font-size: 11.5px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 4px; cursor: pointer; color: var(--text-primary);
+}
+.sc-tab-check:hover { border-color: var(--border-accent); }
+.sc-tab-off         { opacity: 0.5; }
+.sc-tab-check input { accent-color: var(--amber); }
+
+.sc-fred-row    { display: flex; align-items: center; gap: 10px; }
+.sc-fred-status { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+.sc-fred-ok     { color: var(--green); }
+.sc-section-desc a { color: var(--accent-bright); }
