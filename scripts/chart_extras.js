@@ -46,10 +46,30 @@ function _initTheme() {
 // ─── Focus Mode ───────────────────────────────────────────────────────────────
 
 let _focusMode = false;
+let _focusHintEl = null;
 
 function toggleFocusMode() {
     _focusMode = !_focusMode;
     document.body.classList.toggle('focus-mode', _focusMode);
+    const btn = document.getElementById('btn-focus-mode');
+    if (btn) btn.style.color = _focusMode ? 'var(--amber)' : '';
+
+    if (_focusMode) {
+        // Show a small persistent restore hint
+        if (!_focusHintEl) {
+            _focusHintEl = document.createElement('div');
+            _focusHintEl.id = 'focus-restore-hint';
+            _focusHintEl.innerHTML = 'Focus mode — press <kbd>F</kbd> to restore';
+            _focusHintEl.style.cssText =
+                'position:fixed;bottom:8px;right:12px;z-index:9999;' +
+                'font-size:11px;color:rgba(240,163,47,0.7);pointer-events:none;' +
+                'font-family:var(--font-mono);letter-spacing:0.04em;';
+            document.body.appendChild(_focusHintEl);
+        }
+        _focusHintEl.style.display = 'block';
+    } else {
+        if (_focusHintEl) _focusHintEl.style.display = 'none';
+    }
 }
 
 // ─── Live Polling ─────────────────────────────────────────────────────────────

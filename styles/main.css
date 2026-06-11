@@ -343,6 +343,7 @@ kbd {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 
 .sidebar-header {
@@ -943,37 +944,36 @@ kbd {
 .main-nav-tabs {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 16px;
+  gap: 1px;
+  padding: 0 8px;
   margin-bottom: 8px;
   border-bottom: 1px solid rgba(255,255,255,0.1);
-  /* 22 tabs never fit on one screen — keep one row and scroll */
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
   white-space: nowrap;
 }
-.main-nav-tabs::-webkit-scrollbar { height: 5px; }
+.main-nav-tabs::-webkit-scrollbar { height: 4px; }
 .main-nav-tabs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 
 .tab-group-label {
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.10em;
   text-transform: uppercase;
   color: var(--amber);
-  opacity: 0.75;
-  padding: 0 6px 0 4px;
+  opacity: 0.65;
+  padding: 0 4px 0 3px;
   user-select: none;
   flex-shrink: 0;
 }
 
 .tab-group-sep {
   width: 1px;
-  height: 22px;
+  height: 18px;
   background: var(--border);
-  margin: 0 8px;
+  margin: 0 5px;
   flex-shrink: 0;
 }
 
@@ -981,13 +981,13 @@ kbd {
   background: transparent;
   border: none;
   color: var(--text-muted);
-  padding: 8px 9px;
-  font-size: 12px;
+  padding: 6px 7px;
+  font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
   border-bottom: 2px solid transparent;
   flex-shrink: 0;
@@ -1006,7 +1006,7 @@ kbd {
 }
 
 .tab-icon {
-  font-size: 13px;
+  font-size: 12px;
   filter: grayscale(1) opacity(0.6);
   transition: filter 0.15s;
 }
@@ -1016,20 +1016,57 @@ kbd {
 .tab-btn[data-key]::after {
   content: attr(data-key);
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: 8px;
   font-weight: 700;
   color: var(--text-dim);
   border: 1px solid var(--border);
   border-radius: 2px;
-  padding: 0 3px;
+  padding: 0 2px;
   line-height: 1.3;
-  margin-left: 2px;
+  margin-left: 1px;
 }
 .tab-btn.active[data-key]::after {
   color: var(--amber);
   border-color: var(--amber);
   opacity: 0.8;
 }
+
+/* Sidebar collapse toggle */
+.sidebar-collapse-btn {
+  position: absolute;
+  right: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 32px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: var(--text-dim);
+  z-index: 10;
+  transition: color 0.15s, background 0.15s;
+}
+.sidebar-collapse-btn:hover { color: var(--amber); background: var(--bg-hover); }
+
+/* Collapsed sidebar — icon-only strip */
+.app.sidebar-hidden {
+  grid-template-columns: 32px 1fr;
+  transition: grid-template-columns 0.25s ease;
+}
+.app.sidebar-hidden .sidebar {
+  overflow: hidden;
+}
+.app.sidebar-hidden .sidebar > *:not(.sidebar-collapse-btn) { display: none !important; }
+.app.sidebar-hidden .sidebar-collapse-btn { right: 0; border-radius: 0; border-right: none; border-left: 1px solid var(--border); }
+
+/* Smooth grid column transition when sidebar opens */
+.app { transition: grid-template-columns 0.25s ease; }
 
 /* ═══════════════════ STATISTICS VIEW ═══════════════════ */
 .stats-container {

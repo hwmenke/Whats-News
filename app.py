@@ -225,11 +225,15 @@ def optimize_trend(symbol):
 @app.route("/api/scanner", methods=["GET"])
 def get_scanner():
     """Compute multi-timeframe scanner metrics for every watched symbol."""
-    symbols = [s['symbol'] for s in db.list_symbols()]
-    if not symbols:
-        return jsonify([])
-    data = scan.compute_scanner(symbols)
-    return jsonify(data)
+    try:
+        symbols = [s['symbol'] for s in db.list_symbols()]
+        if not symbols:
+            return jsonify([])
+        data = scan.compute_scanner(symbols)
+        return jsonify(data)
+    except Exception:
+        logger.exception("Scanner computation failed")
+        raise errors.computation_failed("Scanner computation failed — check server logs")
 
 
 # -- Data Manager ---------------------------------------------------------------

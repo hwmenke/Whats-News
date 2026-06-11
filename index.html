@@ -47,6 +47,8 @@
 
   <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
   <aside class="sidebar">
+    <button class="sidebar-collapse-btn" id="sidebar-collapse-btn"
+            onclick="toggleSidebar()" title="Hide/show watchlist (Ctrl+B)">‹</button>
     <div class="sidebar-header">
       <div class="sidebar-title">Watchlist</div>
       <div class="add-symbol-form">
@@ -1283,6 +1285,51 @@
           <button id="btn-nl-refresh" class="btn btn-primary" onclick="loadNewsletterData()">⟳ Refresh</button>
         </div>
       </div>
+
+      <!-- ── Morning Brief ── -->
+      <div class="nl-morning-brief" id="nl-morning-brief">
+        <div class="nl-section-title">Morning Brief</div>
+        <div class="nl-brief-grid" id="nl-brief-grid">
+          <div class="nl-brief-tile" id="nl-brief-regime">
+            <div class="nl-brief-label">Market Regime</div>
+            <div class="nl-brief-value" id="nl-brief-regime-val">—</div>
+          </div>
+          <div class="nl-brief-tile" id="nl-brief-breadth">
+            <div class="nl-brief-label">% Above 20-MA</div>
+            <div class="nl-brief-value" id="nl-brief-20ma">—</div>
+          </div>
+          <div class="nl-brief-tile">
+            <div class="nl-brief-label">% Above 50-MA</div>
+            <div class="nl-brief-value" id="nl-brief-50ma">—</div>
+          </div>
+          <div class="nl-brief-tile">
+            <div class="nl-brief-label">52W Highs / Lows</div>
+            <div class="nl-brief-value" id="nl-brief-hl">—</div>
+          </div>
+          <div class="nl-brief-tile">
+            <div class="nl-brief-label">A/D Ratio</div>
+            <div class="nl-brief-value" id="nl-brief-ad">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Best Setups ── -->
+      <div class="nl-setups-section" id="nl-setups-section">
+        <div class="nl-section-title">Best Setups Today
+          <span class="nl-section-sub">Jeff process — top graded, by readiness</span>
+        </div>
+        <div id="nl-setups-grid" class="nl-setups-grid"></div>
+      </div>
+
+      <!-- ── Breakout Board ── -->
+      <div class="nl-bb-section" id="nl-bb-section" style="display:none;">
+        <div class="nl-section-title">Breakout Watch
+          <span class="nl-section-sub">Pipeline candidates near trigger</span>
+        </div>
+        <div id="nl-bb-grid" class="nl-setups-grid"></div>
+      </div>
+
+      <!-- ── Lead Stories ── -->
       <div class="nl-lead-section">
         <div class="nl-section-title">Lead Stories</div>
         <div id="nl-lead-stories" class="nl-lead-grid"></div>

@@ -719,18 +719,19 @@ function _updateSignalPanel(data, ohlcvRows) {
     const ms = lastOf(data.medium_state)?.value || 0;
     const ls = lastOf(data.long_state)?.value   || 0;
 
-    // ── Composite signal (-3 … +3) ────────────────────────────
-    const comp = ss + ms + ls;
+    // ── Composite signal — medium is master; long confirms; short shows momentum ─
+    // Medium state drives entries so it's the primary label.
+    // Long state adds/removes confidence. Short state shows near-term momentum only.
+    const mlComp = ms + ls;   // medium + long (-2…+2) → structural bias
     const compMap = {
-         3: ['STRONG LONG',  'bull-strong'],
-         2: ['LONG',         'bull'],
-         1: ['LEAN LONG',    'bull-soft'],
-         0: ['NEUTRAL',      'neutral'],
-        '-1': ['LEAN SHORT', 'bear-soft'],
-        '-2': ['SHORT',      'bear'],
-        '-3': ['STRONG SHORT','bear-strong'],
+         2: ['STRONG LONG',  'bull-strong'],
+         1: ['LONG',         'bull'],
+         0: ms > 0 ? ['LEAN LONG', 'bull-soft'] : ms < 0 ? ['LEAN SHORT', 'bear-soft'] : ['NEUTRAL', 'neutral'],
+        '-1': ['SHORT',      'bear'],
+        '-2': ['STRONG SHORT','bear-strong'],
     };
-    const [compLabel, compCls] = compMap[String(comp)] || ['—', 'neutral'];
+    const key = String(mlComp);
+    const [compLabel, compCls] = (key in compMap) ? compMap[key] : (compMap[mlComp] || ['—', 'neutral']);
     const compEl = document.getElementById('trend-composite');
     if (compEl) {
         compEl.textContent = compLabel;
@@ -740,8 +741,11 @@ function _updateSignalPanel(data, ohlcvRows) {
     const arrow = s => s > 0 ? '↑' : s < 0 ? '↓' : '–';
     const alignEl = document.getElementById('trend-align');
     if (alignEl) {
+        // Show short-term momentum divergence clearly
+        const shortDiverges = (ss > 0 && ms <= 0) || (ss < 0 && ms >= 0);
+        const shortNote = shortDiverges ? (ss > 0 ? '  ⚠ S-term ↑' : '  ⚠ S-term ↓') : '';
         alignEl.textContent =
-            `Short ${arrow(ss)}  ·  Medium ${arrow(ms)}  ·  Long ${arrow(ls)}`;
+            `Medium ${arrow(ms)}  ·  Long ${arrow(ls)}${shortNote}`;
     }
 
     // Strength bar (filled dots 0-3)
@@ -823,18 +827,16 @@ function _updateSignalPanelW(data, ohlcvRows) {
     const ss = lastOf(data.short_state)?.value  || 0;
     const ms = lastOf(data.medium_state)?.value || 0;
     const ls = lastOf(data.long_state)?.value   || 0;
-    const comp = ss + ms + ls;
-
-    const compMap = {
-         3: ['STRONG LONG',  'bull-strong'],
-         2: ['LONG',         'bull'],
-         1: ['LEAN LONG',    'bull-soft'],
-         0: ['NEUTRAL',      'neutral'],
-        '-1': ['LEAN SHORT', 'bear-soft'],
-        '-2': ['SHORT',      'bear'],
-        '-3': ['STRONG SHORT','bear-strong'],
+    const mlComp = ms + ls;
+    const wCompMap = {
+         2: ['STRONG LONG',  'bull-strong'],
+         1: ['LONG',         'bull'],
+         0: ms > 0 ? ['LEAN LONG', 'bull-soft'] : ms < 0 ? ['LEAN SHORT', 'bear-soft'] : ['NEUTRAL', 'neutral'],
+        '-1': ['SHORT',      'bear'],
+        '-2': ['STRONG SHORT','bear-strong'],
     };
-    const [compLabel, compCls] = compMap[String(comp)] || ['—', 'neutral'];
+    const wKey = String(mlComp);
+    const [compLabel, compCls] = (wKey in wCompMap) ? wCompMap[wKey] : (wCompMap[mlComp] || ['—', 'neutral']);
 
     const compWEl = document.getElementById('trend-composite-w');
     if (compWEl) {

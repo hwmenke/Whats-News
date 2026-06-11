@@ -31,16 +31,136 @@ if (window.Chart && window.ChartAnnotation) {
 }
 
 // ── Native tab entry point (app.js switchTab dispatches here) ──
-// app.js handles area show/hide via _showOnly('newsletter-area');
-// this just (re)loads the data when the tab is opened.
 function initNewsletter() {
     loadNewsletterData();
+    _nlLoadMorningBrief();
+    _nlLoadSetups();
+    _nlLoadBreakoutWatch();
+}
+
+// ── Morning Brief ─────────────────────────────────────────────
+async function _nlLoadMorningBrief() {
+    const set = (id, val, cls) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = val;
+        if (cls) el.className = `nl-brief-value ${cls}`;
+    };
+
+    try {
+        const breadth = await apiFetch(`${API}/breadth`).catch(() => null);
+        if (breadth) {
+            const pct20 = breadth.pct_above_20ma ?? null;
+            const pct50 = breadth.pct_above_50ma ?? null;
+            const hl    = `${breadth.new_highs ?? 0} / ${breadth.new_lows ?? 0}`;
+            const ad    = breadth.ad_ratio != null ? breadth.ad_ratio.toFixed(2) : '—';
+            set('nl-brief-20ma', pct20 != null ? `${pct20}%` : '—',
+                pct20 >= 60 ? 'nl-bull' : pct20 <= 30 ? 'nl-bear' : '');
+            set('nl-brief-50ma', pct50 != null ? `${pct50}%` : '—',
+                pct50 >= 60 ? 'nl-bull' : pct50 <= 30 ? 'nl-bear' : '');
+            set('nl-brief-hl',  hl);
+            set('nl-brief-ad',  ad, parseFloat(ad) >= 1 ? 'nl-bull' : 'nl-bear');
+        }
+    } catch (_) {}
+
+    try {
+        const regime = await apiFetch(`${API}/market-regime`).catch(() => null);
+        if (regime && regime.current) {
+            const state = regime.current.state || '—';
+            const score = regime.current.score ?? '';
+            const cls   = state.toLowerCase().includes('bull') ? 'nl-bull'
+                        : state.toLowerCase().includes('bear') ? 'nl-bear' : '';
+            set('nl-brief-regime-val', `${state}${score !== '' ? ` (${score}/10)` : ''}`, cls);
+        }
+    } catch (_) {}
+}
+
+// ── Best Setups ───────────────────────────────────────────────
+async function _nlLoadSetups() {
+    const $grid = document.getElementById('nl-setups-grid');
+    if (!$grid) return;
+    $grid.innerHTML = '<div class="nl-setup-loading">Loading setups…</div>';
+    try {
+        const data = await apiFetch(`${API}/jeff-scan`).catch(() => null);
+        const rows = (data?.rows || [])
+            .filter(r => !r.error && r.grade)
+            .sort((a, b) => (b.opp_score ?? 0) - (a.opp_score ?? 0))
+            .slice(0, 8);
+        if (!rows.length) {
+            $grid.innerHTML = '<div class="nl-setup-empty">No graded setups. Fetch data and run scanner first.</div>';
+            return;
+        }
+        $grid.innerHTML = rows.map(r => {
+            const g    = (r.grade || '').toUpperCase();
+            const gCls = g === 'A' ? 'grade-a' : g === 'B' ? 'grade-b' : 'grade-c';
+            const chk  = r.checks || {};
+            const gates = [
+                chk.rvol ? '✓ RVOL' : '✗ RVOL',
+                chk.ext  ? '✓ EXT'  : '✗ EXT',
+                chk.kama ? '✓ KAMA' : '✗ KAMA',
+                chk.vcp  ? '✓ VCP'  : '',
+            ].filter(Boolean).join('  ');
+            const distStr = r.trigger_dist_pct != null
+                ? `${r.trigger_dist_pct > 0 ? '+' : ''}${r.trigger_dist_pct.toFixed(1)}% to trigger`
+                : '';
+            return `<div class="nl-setup-card" onclick="selectSymbol('${_esc(r.symbol)}');switchTab('charts');">
+                <div class="nl-setup-top">
+                    <strong class="nl-setup-sym">${_esc(r.symbol)}</strong>
+                    <span class="nl-setup-grade ${gCls}">${g}</span>
+                    <span class="nl-setup-sector">${_esc(r.sector || '')}</span>
+                </div>
+                <div class="nl-setup-pattern">${_esc(r.pattern || '—')}</div>
+                <div class="nl-setup-dist">${_esc(distStr)}</div>
+                <div class="nl-setup-gates">${_esc(gates)}</div>
+                <div class="nl-setup-score">Score ${r.opp_score ?? 0} · Ready ${r.readiness ?? 0}/5</div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        $grid.innerHTML = `<div class="nl-setup-empty">Could not load setups: ${_esc(e.message)}</div>`;
+    }
+}
+
+// ── Breakout Watch (pipeline candidates near trigger) ─────────
+async function _nlLoadBreakoutWatch() {
+    const $section = document.getElementById('nl-bb-section');
+    const $grid    = document.getElementById('nl-bb-grid');
+    if (!$section || !$grid) return;
+    try {
+        const data = await apiFetch(`${API}/breakout-board`).catch(() => null);
+        const rows = (data?.rows || [])
+            .filter(r => !r.error && ['TRIGGERED','BREAKING','AT PIVOT','NEAR'].includes(r.status))
+            .slice(0, 6);
+        if (!rows.length) return;   // hide section if nothing near trigger
+
+        $section.style.display = '';
+        $grid.innerHTML = rows.map(r => {
+            const statusCls = {
+                TRIGGERED: 'bb-triggered', BREAKING: 'bb-breaking',
+                'AT PIVOT': 'bb-at', NEAR: 'bb-near',
+            }[r.status] || '';
+            const distStr = r.dist_pct != null ? `${r.dist_pct.toFixed(1)}% away` : '';
+            return `<div class="nl-setup-card" onclick="selectSymbol('${_esc(r.symbol)}');switchTab('charts');">
+                <div class="nl-setup-top">
+                    <strong class="nl-setup-sym">${_esc(r.symbol)}</strong>
+                    <span class="nl-setup-grade ${statusCls}">${_esc(r.status)}</span>
+                    <span class="nl-setup-sector">${_esc(r.tier || '')}</span>
+                </div>
+                <div class="nl-setup-pattern">Pivot: $${r.pivot != null ? r.pivot.toFixed(2) : '—'} (${_esc(r.pivot_source || '')})</div>
+                <div class="nl-setup-dist">${_esc(distStr)}</div>
+                <div class="nl-setup-gates">${r.pocket_pivot ? '✓ PP ' : ''}${r.vol_dryup ? '✓ DU ' : ''}${r.too_extended ? '⚠ EXT ' : ''}${r.lod_too_far ? '⚠ LoD' : ''}</div>
+            </div>`;
+        }).join('');
+    } catch (_) {}
 }
 
 // ── Main loader ───────────────────────────────────────────────
 async function loadNewsletterData() {
     if (nlState.loading) return;
     nlState.loading = true;
+    // Refresh all sections in parallel
+    _nlLoadMorningBrief();
+    _nlLoadSetups();
+    _nlLoadBreakoutWatch();
 
     const $loading = document.getElementById('newsletter-loading');
     const $error   = document.getElementById('nl-error');

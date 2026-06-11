@@ -805,6 +805,26 @@ function showTrendArea()       { _showOnly('trend-area'); }
 function showScannerArea()     { _showOnly('scanner-area'); }
 function showDataManagerArea() { _showOnly('data-manager-area'); }
 
+// ── Sidebar collapse ──────────────────────────────────────────
+function toggleSidebar() {
+    const app = document.querySelector('.app');
+    const btn = document.getElementById('sidebar-collapse-btn');
+    const hidden = app.classList.toggle('sidebar-hidden');
+    if (btn) btn.textContent = hidden ? '›' : '‹';
+    try { localStorage.setItem('sidebar_hidden', hidden ? '1' : '0'); } catch (_) {}
+    // Allow chart to fill the freed space
+    setTimeout(() => {
+        if (typeof trendCharts !== 'undefined') {
+            [trendCharts?.price, trendCharts?.regime].forEach(c => {
+                if (c) try { c.resize(c.chartElement.parentElement.clientWidth, c.chartElement.parentElement.clientHeight); } catch (_) {}
+            });
+        }
+        if (typeof chart !== 'undefined' && chart) {
+            try { chart.resize(chart.chartElement.parentElement.clientWidth, chart.chartElement.parentElement.clientHeight); } catch (_) {}
+        }
+    }, 300);
+}
+
 function showLoadingOverlay(show) {
     document.getElementById('chart-loading').style.display = show ? 'flex' : 'none';
 }
@@ -1180,6 +1200,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     registerShortcut({ key: 'r', handler: () => { if (state.activeSymbol) switchTab(state.activeTab); }, description: 'Reload view' });
     registerShortcut({ key: '/', handler: () => document.getElementById('watchlist-search')?.focus(), description: 'Focus watchlist search' });
     registerShortcut({ key: '?', shift: true, handler: showShortcutsHelp, description: 'Show this help' });
+    registerShortcut({ key: 'b', ctrl: true, handler: toggleSidebar, description: 'Toggle sidebar' });
+
+    // Restore sidebar collapsed state
+    try {
+        if (localStorage.getItem('sidebar_hidden') === '1') {
+            document.querySelector('.app')?.classList.add('sidebar-hidden');
+            const btn = document.getElementById('sidebar-collapse-btn');
+            if (btn) btn.textContent = '›';
+        }
+    } catch (_) {}
 
     await loadSymbols();
 
