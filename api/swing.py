@@ -1,10 +1,11 @@
 """Jeff Sun swing-workflow routes: swing data, setup grade, scan,
-focus-pipeline tiers."""
+focus-pipeline tiers, and guru strategy scans."""
 import logging
 from flask import Blueprint, jsonify, request
 
 import database as db
 import errors
+import guru_scanner
 import jeff_scanner
 import swing_core
 
@@ -396,3 +397,57 @@ def run_screen(name):
         rows.sort(key=lambda r: -(r.get("ret_30d") or 0))
 
     return jsonify({"screen": name, "rows": rows})
+
+
+# ── Guru scanner ───────────────────────────────────────────────────────────────
+
+_GURU_STRATEGIES = list(guru_scanner.STRATEGIES)
+
+_GURU_META = {
+    "qullamaggie": {"label": "Qullamaggie Breakouts",   "icon": "🔥"},
+    "minervini":   {"label": "Minervini TTM",            "icon": "📐"},
+    "stockbee_4":  {"label": "Stockbee 4% Daily",       "icon": "⚡"},
+    "stockbee_20": {"label": "Stockbee 20% Weekly",     "icon": "🚀"},
+    "stockbee_9m": {"label": "Stockbee 9M Movers",      "icon": "💰"},
+    "canslim":     {"label": "O'Neil CANSLIM",          "icon": "🏆"},
+}
+
+
+@swing_bp.route("/api/guru-scan/<string:strategy>", methods=["GET"])
+def get_guru_scan(strategy):
+    """Run one of the 6 guru strategies against the watchlist.
+
+    Strategies: qullamaggie | minervini | stockbee_4 | stockbee_20 | stockbee_9m | canslim
+    """
+    if strategy not in _GURU_STRATEGIES:
+        raise errors.validation(
+            f"Unknown strategy '{strategy}'. Valid: {', '.join(sorted(_GURU_STRATEGIES))}"
+        )
+    symbols = [s["symbol"] for s in db.list_symbols()]
+    if not symbols:
+        return jsonify({"strategy": strategy, "rows": [], "count": 0,
+                        "meta": _GURU_META.get(strategy, {})})
+    try:
+        rows = guru_scanner.compute_guru_scan(strategy, symbols)
+        return jsonify({
+            "strategy": strategy,
+            "rows":     rows,
+            "count":    len(rows),
+            "meta":     _GURU_META.get(strategy, {}),
+        })
+    except Exception as e:
+        logger.exception("guru-scan error")
+        raise errors.computation_failed(str(e))
+
+
+@swing_bp.route("/api/stage-distribution", methods=["GET"])
+def get_stage_distribution():
+    """Stage distribution across the full watchlist."""
+    symbols = [s["symbol"] for s in db.list_symbols()]
+    if not symbols:
+        return jsonify({"counts": {}, "stage_totals": {}, "total": 0, "pct": {}})
+    try:
+        return jsonify(guru_scanner.compute_stage_distribution(symbols))
+    except Exception as e:
+        logger.exception("stage-distribution error")
+        raise errors.computation_failed(str(e))

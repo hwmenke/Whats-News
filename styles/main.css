@@ -5526,3 +5526,101 @@ body.ui-compact .cal-event         { padding: 3px 6px; }
 .sr-neg      { color: var(--red);   font-family: var(--font-mono); font-size: 11.5px; }
 .sr-row-gain { background: rgba(34,197,94,0.04); }
 .sr-row-lose { background: rgba(239,68,68,0.04); }
+
+/* ── Guru Scanner ─────────────────────────────────────────────────────────── */
+
+/* Strategy tab bar */
+.guru-tabs {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 8px 0 10px; border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.guru-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 6px; cursor: pointer;
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--text-secondary); font-size: 12px; font-weight: 500;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.guru-tab:hover     { border-color: var(--border-accent); color: var(--text-primary); }
+.guru-tab-on        { background: var(--bg-active); border-color: var(--accent); color: var(--accent-bright); }
+.guru-tab-icon      { font-size: 14px; }
+.guru-tab-label     { font-family: var(--font-mono); font-size: 11.5px; }
+
+/* Stage distribution widget */
+.guru-stage-dist    { padding: 8px 0 4px; margin-bottom: 8px; }
+.gs-dist-title      { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 6px; }
+.gs-dist-total      { opacity: 0.7; }
+.gs-dist-bars       { display: flex; gap: 10px; align-items: flex-end; }
+.gs-dist-col        { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 48px; }
+.gs-dist-bar-wrap   { height: 60px; display: flex; align-items: flex-end; }
+.gs-dist-bar        { width: 32px; border-radius: 3px 3px 0 0; transition: height 0.3s; min-height: 4px; }
+.gs-dist-2          { background: var(--green); }
+.gs-dist-1          { background: var(--text-muted); }
+.gs-dist-3          { background: var(--yellow); }
+.gs-dist-4          { background: var(--red); }
+.gs-dist-label      { font-size: 10px; font-weight: 700; color: var(--text-muted); font-family: var(--font-mono); }
+.gs-dist-pct        { font-size: 10px; color: var(--text-secondary); }
+.gs-dist-subs       { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.gs-dist-sub        { font-size: 9px; color: var(--text-muted); font-family: var(--font-mono); }
+.gs-dist-note       { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.gs-dist-chip {
+  padding: 2px 7px; border-radius: 3px; font-size: 10px;
+  font-family: var(--font-mono); opacity: 0.8;
+}
+.gs-dist-chip.gs-dist-2 { background: rgba(34,197,94,0.15); color: var(--green); }
+.gs-dist-chip.gs-dist-1 { background: rgba(142,155,176,0.15); color: var(--text-muted); }
+.gs-dist-chip.gs-dist-3 { background: rgba(234,179,8,0.15); color: var(--yellow); }
+.gs-dist-chip.gs-dist-4 { background: rgba(239,68,68,0.15); color: var(--red); }
+
+/* Guru table */
+.gs-table   { width: 100%; }
+.gs-row     { transition: background 0.1s; cursor: pointer; }
+.gs-row:hover { background: var(--bg-hover); }
+.gs-stage1-row { }
+.gs-stage2-row { }
+.gs-stage3-row { background: rgba(234,179,8,0.03); }
+.gs-stage4-row { background: rgba(239,68,68,0.03); }
+
+/* Stage badge */
+.gs-stage {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-size: 11px; font-weight: 700; font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.gs-stage-2  { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+.gs-stage-1  { background: rgba(142,155,176,0.1); color: var(--text-muted); border: 1px solid var(--border); }
+.gs-stage-3  { background: rgba(234,179,8,0.15); color: var(--yellow); border: 1px solid rgba(234,179,8,0.3); }
+.gs-stage-4  { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+.gs-stage-na { color: var(--text-muted); font-size: 11px; }
+
+/* ATR extension badge */
+.gs-ext    { padding: 1px 6px; border-radius: 3px; font-size: 11px; font-family: var(--font-mono); font-weight: 600; }
+.gs-ext-ok   { background: rgba(34,197,94,0.1); color: var(--green); }
+.gs-ext-warn { background: rgba(234,179,8,0.1); color: var(--yellow); }
+.gs-ext-red  { background: rgba(239,68,68,0.1); color: var(--red); }
+
+/* R:R badge */
+.gs-rr     { padding: 1px 6px; border-radius: 3px; font-size: 11px; font-family: var(--font-mono); font-weight: 600; }
+.gs-rr-good { background: rgba(34,197,94,0.1); color: var(--green); }
+.gs-rr-ok   { background: rgba(142,155,176,0.1); color: var(--text-muted); }
+.gs-rr-low  { background: rgba(239,68,68,0.08); color: var(--red); }
+
+/* Table cell helpers */
+.gs-num     { font-family: var(--font-mono); font-size: 12px; }
+.gs-muted   { color: var(--text-muted); font-size: 11.5px; }
+.gs-pos     { color: var(--green); }
+.gs-neg     { color: var(--red); }
+.gs-sym-cell{ font-weight: 600; }
+.gs-tier    { margin-left: 3px; font-size: 13px; }
+.gs-actions { white-space: nowrap; }
+
+/* TTM flag dots (Minervini) */
+.ttm-dots { display: flex; gap: 3px; flex-wrap: nowrap; }
+.ttm-dot  {
+  width: 18px; height: 14px; border-radius: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 8px; font-weight: 700; font-family: var(--font-mono);
+}
+.ttm-dot-on  { background: rgba(34,197,94,0.2); color: var(--green); }
+.ttm-dot-off { background: rgba(142,155,176,0.1); color: var(--text-muted); opacity: 0.5; }

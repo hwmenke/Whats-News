@@ -480,8 +480,9 @@ function initScanner() {
 }
 
 function runScan() {
-    if (scannerState.mode === 'jeff') loadJeffScan();
-    else                              loadScannerData();
+    if      (scannerState.mode === 'jeff')  loadJeffScan();
+    else if (scannerState.mode === 'guru')  { if (typeof loadGuruScan === 'function') loadGuruScan(_guruState?.strategy || 'qullamaggie'); }
+    else                                    loadScannerData();
 }
 
 function setScanMode(mode) {
@@ -490,17 +491,49 @@ function setScanMode(mode) {
     _persistScanner();
     _syncScanModeUI();
     if (mode === 'pipeline') {
+        _hideGuruMode();
         if (scannerState.jeff) _renderPipelineBoard();
         else                   loadJeffScan();
     } else if (mode === 'jeff') {
         _hidePipelineBoard();
+        _hideGuruMode();
         if (scannerState.jeff) _renderJeffScan();
         else                   loadJeffScan();
+    } else if (mode === 'guru') {
+        _hidePipelineBoard();
+        _showGuruMode();
     } else {
         _hidePipelineBoard();
+        _hideGuruMode();
         if (scannerState.data) renderScannerTable(scannerState.data);
         else                   loadScannerData();
     }
+}
+
+function _showGuruMode() {
+    const tabs  = document.getElementById('guru-strategy-tabs');
+    const dist  = document.getElementById('guru-stage-dist');
+    const filt  = document.getElementById('scan-jeff-filters');
+    const bann  = document.getElementById('jeff-banner');
+    const stats = document.getElementById('jf-stats-bar');
+    if (tabs)  tabs.style.display  = '';
+    if (dist)  dist.style.display  = '';
+    if (filt)  filt.style.display  = 'none';
+    if (bann)  bann.style.display  = 'none';
+    if (stats) stats.style.display = 'none';
+    // Show scanner-table-wrap (may have been hidden by pipeline board)
+    const wrap = document.querySelector('.scanner-table-wrap');
+    if (wrap) wrap.style.display = '';
+    // Init or re-init guru
+    if (typeof initGuruScanner === 'function') initGuruScanner();
+    if (typeof loadStageDistribution === 'function') loadStageDistribution();
+}
+
+function _hideGuruMode() {
+    const tabs = document.getElementById('guru-strategy-tabs');
+    const dist = document.getElementById('guru-stage-dist');
+    if (tabs) tabs.style.display = 'none';
+    if (dist) dist.style.display = 'none';
 }
 
 function _hidePipelineBoard() {
@@ -515,13 +548,14 @@ function _hidePipelineBoard() {
 function _syncScanModeUI() {
     const isJeff     = scannerState.mode === 'jeff';
     const isPipeline = scannerState.mode === 'pipeline';
+    const isGuru     = scannerState.mode === 'guru';
     document.querySelectorAll('.scan-mode-btn').forEach(b =>
         b.classList.toggle('scan-mode-on', b.dataset.mode === scannerState.mode));
     const tech  = document.getElementById('scan-tech-groups');
     const filt  = document.getElementById('scan-jeff-filters');
     const bann  = document.getElementById('jeff-banner');
     const stats = document.getElementById('jf-stats-bar');
-    if (tech)  tech.style.display  = (isJeff || isPipeline) ? 'none' : '';
+    if (tech)  tech.style.display  = (isJeff || isPipeline || isGuru) ? 'none' : '';
     if (filt)  filt.style.display  = isJeff ? 'flex' : 'none';
     if (bann)  bann.style.display  = (isJeff || isPipeline) ? '' : 'none';
     if (stats) stats.style.display = isJeff ? 'flex' : 'none';
