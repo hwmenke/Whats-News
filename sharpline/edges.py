@@ -68,7 +68,8 @@ def best_price(game, market, side):
 
 
 def analyse_game(game, ratings, settings):
-    pred = predict_game(game["home"], game["away"], ratings, hfa=settings["hfa"])
+    pred = predict_game(game["home"], game["away"], ratings, hfa=settings["hfa"],
+                        situational=game.get("situational"))
     consensus = market_consensus(game)
     plays = []
 
@@ -151,4 +152,4 @@ def analyse_board(board, ratings, settings):
     ]
     picks.sort(key=lambda p: -p["edge"])
     return {"as_of": board["as_of"], "source": board["source"],
-            "games": games, "picks": picks}
+            "sources": board.get("sources"), "games": games, "picks": picks}

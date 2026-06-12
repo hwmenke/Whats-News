@@ -15,15 +15,23 @@ python3 app.py
 
 Open **http://localhost:8051**.
 
-With no configuration the app serves a realistic **sample slate** (clearly
-badged) so every feature works offline. For live lines:
+**Zero configuration needed.** On first start the app:
 
-```bash
-export ODDS_API_KEY=your_key   # free at https://the-odds-api.com (500 req/mo)
-python3 app.py
-```
+1. **Syncs power ratings automatically** from [nflverse](https://github.com/nflverse/nfldata)
+   game data (every NFL result since 1999) — margin-weighted Elo, regressed ⅓
+   to the mean each season, converted to a points scale.
+2. **Pulls live lines keylessly** from ESPN's public scoreboard API (ESPN BET
+   spread/ML/total) during the season, plus **Polymarket** and **Kalshi** win
+   probabilities — no keys for any of these.
+3. Falls back to pricing the **real upcoming schedule** with the model when no
+   odds feed is reachable (offseason/offline), so the UI always works. Source
+   chips in the masthead show exactly where every layer of data came from.
+4. Re-snapshots the board every 10 minutes in the background, building
+   line-movement history automatically.
 
-Polymarket and Kalshi prices are fetched from their public APIs — no key needed.
+For multi-book line shopping (DraftKings, FanDuel, BetMGM, Caesars…), paste a
+free [The Odds API](https://the-odds-api.com) key (500 req/mo) into
+**Bet Tracker → Settings** — no restart needed. `ODDS_API_KEY` env var works too.
 
 ## What's inside
 
@@ -38,7 +46,10 @@ Polymarket and Kalshi prices are fetched from their public APIs — no key neede
 ## The model (the Walters playbook)
 
 1. **Power ratings** — each team rated in points vs. league average; the
-   difference is the neutral-field margin. Yours to edit.
+   difference is the neutral-field margin. Auto-computed from nflverse data
+   (Elo), re-syncable with one click, and still fully editable by hand.
+   Rest-day situations (byes, short weeks) flow in from the real schedule
+   automatically.
 2. **Home field + situations** — configurable HFA, bye-week rest edges,
    short-week penalties, long road trips.
 3. **Key numbers** — margins are priced with a distribution re-weighted at
@@ -54,9 +65,10 @@ Polymarket and Kalshi prices are fetched from their public APIs — no key neede
 
 ```
 sharpline/
-├── app.py          Flask REST API (port 8051)
-├── sources.py      The Odds API + Polymarket + Kalshi fetchers, sample fallback
-├── sample_data.py  Deterministic offline slate
+├── app.py          Flask REST API (port 8051), auto-sync + background refresh
+├── sources.py      The Odds API + ESPN + Polymarket + Kalshi, layered fallback
+├── ratings.py      nflverse data fetch, Elo power ratings, real schedule
+├── sample_data.py  Model-priced lines for offline/offseason
 ├── model.py        Power ratings, HFA, key-number margin distribution
 ├── edges.py        Market consensus, best-price scan, edge & stake engine
 ├── odds_math.py    Conversions, de-vig (multiplicative & power), EV, Kelly

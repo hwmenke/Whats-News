@@ -103,6 +103,62 @@ def test_all_teams_have_ratings_and_colors():
         assert info["color"].startswith("#")
 
 
+# -- ratings engine -----------------------------------------------------------------
+
+def _synthetic_games():
+    # Team A beats everyone by 10 at home and away; B and C split evenly.
+    rows = []
+    for season in ("2024", "2025"):
+        for wk, (away, home, result) in enumerate([
+            ("B", "A", 10), ("C", "A", 10), ("A", "B", -10), ("A", "C", -10),
+            ("B", "C", 0), ("C", "B", 3),
+        ], start=1):
+            rows.append({
+                "season": season, "week": str(wk), "game_type": "REG",
+                "gameday": f"{season}-10-{wk:02d}", "gametime": "13:00",
+                "away_team": away, "home_team": home, "result": str(result),
+                "location": "Home",
+            })
+    return rows
+
+
+def test_elo_ratings_order_and_scale():
+    from ratings import compute_elo_ratings
+    ratings, meta = compute_elo_ratings(_synthetic_games())
+    assert ratings["A"] > ratings["B"]
+    assert ratings["A"] > ratings["C"]
+    assert ratings["A"] > 0 > min(ratings["B"], ratings["C"])
+    assert meta["games_used"] == 12
+    assert meta["through_season"] == 2025
+
+
+def test_elo_regresses_into_new_season():
+    from ratings import compute_elo_ratings
+    games = _synthetic_games()
+    # add an unplayed 2026 game: ratings should be regressed toward zero
+    games.append({"season": "2026", "week": "1", "game_type": "REG",
+                  "gameday": "2026-09-13", "gametime": "13:00",
+                  "away_team": "B", "home_team": "A", "result": "",
+                  "location": "Home"})
+    with_next, _ = compute_elo_ratings(games)
+    without_next, _ = compute_elo_ratings(_synthetic_games())
+    assert abs(with_next["A"]) < abs(without_next["A"])
+
+
+def test_upcoming_slate_situational_flags():
+    from ratings import upcoming_slate
+    games = [{
+        "season": "2099", "week": "5", "game_type": "REG",
+        "gameday": "2099-10-11", "gametime": "13:00",
+        "away_team": "B", "home_team": "A", "result": "",
+        "away_rest": "14", "home_rest": "4", "location": "Home",
+    }]
+    slate = upcoming_slate(games)
+    assert slate and slate[0]["situational"]["away_bye"]
+    assert slate[0]["situational"]["home_short_week"]
+    assert slate[0]["id"] == "20991011-B-A"
+
+
 # -- sample board & edges --------------------------------------------------------------
 
 def test_sample_board_shape():

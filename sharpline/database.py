@@ -21,6 +21,9 @@ DEFAULT_SETTINGS = {
     "max_bet_pct": "0.03",      # hard cap per Walters: never >3% on one game
     "edge_threshold": "0.02",   # min model-vs-market prob edge to flag a play
     "hfa": "2.0",
+    "odds_api_key": "",         # The Odds API key; blank = ESPN/model fallback
+    "ratings_source": "seed",   # seed | nflverse | manual
+    "ratings_synced_at": "",
 }
 
 

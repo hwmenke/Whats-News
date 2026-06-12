@@ -1,15 +1,20 @@
 """
-sources.py - Live odds ingestion with graceful fallback.
+sources.py - Seamless odds ingestion: live where possible, graceful everywhere.
 
-Sources, in order of preference:
-  1. The Odds API (https://the-odds-api.com) - sportsbook lines across US books.
-     Free tier: 500 requests/month. Set ODDS_API_KEY in the environment.
-  2. Polymarket Gamma API - public, no key. NFL winner markets.
-  3. Kalshi public API - no key needed for market data. NFL game markets.
+Sportsbook lines, in priority order:
+  1. The Odds API (https://the-odds-api.com) - lines across all major US books.
+     Free tier: 500 requests/month. Paste your key in Settings (or set
+     ODDS_API_KEY in the environment).
+  2. ESPN's public scoreboard API - no key at all; carries ESPN BET's spread,
+     total and moneylines for every game of the current week.
+  3. Model-generated lines on the REAL upcoming schedule (from nflverse).
+  4. A built-in fictional slate (only if the schedule has never been fetched).
 
-If nothing is reachable (offline, offseason, no key) the bundled sample slate
-is served instead, and the response is tagged "source": "sample" so the UI can
-say so honestly.
+Prediction markets (Polymarket, Kalshi) are layered on top whenever reachable -
+both are public, keyless APIs.
+
+Every response carries a "sources" dict so the UI can show exactly where each
+piece of data came from.
 """
 
 import os
@@ -18,14 +23,15 @@ import time
 
 import requests
 
+import ratings as ratings_mod
 from model import NFL_TEAMS
-from sample_data import build_sample_board
+from sample_data import build_board_from_slate, build_sample_board
 
-ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 ODDS_API_URL = (
     "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds"
     "?regions=us&markets=h2h,spreads,totals&oddsFormat=american&apiKey={key}"
 )
+ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
 POLYMARKET_URL = "https://gamma-api.polymarket.com/events?tag_slug=nfl&closed=false&limit=100"
 KALSHI_URL = "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNFLGAME&status=open&limit=200"
 
@@ -33,11 +39,10 @@ TIMEOUT = 12
 
 # Map full team names (as the APIs return them) to our abbreviations.
 NAME_TO_ABBR = {info["name"].lower(): abbr for abbr, info in NFL_TEAMS.items()}
-# Also accept city-less nicknames ("Chiefs") and city names ("Kansas City").
 for abbr, info in list(NFL_TEAMS.items()):
     parts = info["name"].rsplit(" ", 1)
-    NAME_TO_ABBR[parts[-1].lower()] = abbr
-    NAME_TO_ABBR[parts[0].lower()] = abbr
+    NAME_TO_ABBR[parts[-1].lower()] = abbr   # nickname ("Chiefs")
+    NAME_TO_ABBR[parts[0].lower()] = abbr    # city ("Kansas City")
 
 
 def team_abbr(name):
@@ -48,19 +53,18 @@ def team_abbr(name):
         return key.upper()
     if key in NAME_TO_ABBR:
         return NAME_TO_ABBR[key]
-    # last word usually carries the nickname
     last = key.rsplit(" ", 1)[-1]
     return NAME_TO_ABBR.get(last)
 
 
 # -- The Odds API -------------------------------------------------------------------
 
-def fetch_sportsbook_odds():
+def fetch_odds_api(api_key):
     """Returns a list of normalised games, or None on any failure."""
-    if not ODDS_API_KEY:
+    if not api_key:
         return None
     try:
-        resp = requests.get(ODDS_API_URL.format(key=ODDS_API_KEY), timeout=TIMEOUT)
+        resp = requests.get(ODDS_API_URL.format(key=api_key), timeout=TIMEOUT)
         resp.raise_for_status()
         raw = resp.json()
     except Exception:
@@ -111,6 +115,81 @@ def fetch_sportsbook_odds():
                 game["books"][book] = entry
         if game["books"]:
             games.append(game)
+    return games or None
+
+
+# -- ESPN (keyless) ------------------------------------------------------------------
+
+def fetch_espn():
+    """ESPN BET lines from the public scoreboard - zero configuration."""
+    try:
+        resp = requests.get(ESPN_URL, timeout=TIMEOUT)
+        resp.raise_for_status()
+        events = resp.json().get("events", [])
+    except Exception:
+        return None
+
+    games = []
+    for ev in events:
+        try:
+            comp = ev["competitions"][0]
+            if comp.get("status", {}).get("type", {}).get("completed"):
+                continue
+            home = away = None
+            for c in comp.get("competitors", []):
+                abbr = team_abbr(c.get("team", {}).get("abbreviation")
+                                 or c.get("team", {}).get("displayName"))
+                if c.get("homeAway") == "home":
+                    home = abbr
+                else:
+                    away = abbr
+            if not home or not away:
+                continue
+            odds_list = comp.get("odds") or []
+            if not odds_list:
+                continue
+            o = odds_list[0]
+            book = (o.get("provider") or {}).get("name") or "ESPN BET"
+            entry = {}
+
+            # Spread: parse "BUF -2.5" so we know which side is favoured.
+            details = o.get("details") or ""
+            m = re.match(r"([A-Z]{2,4})\s*([+-]?\d+(?:\.\d+)?)", details)
+            if m:
+                fav, line = team_abbr(m.group(1)), float(m.group(2))
+                if fav in (home, away):
+                    home_line = line if fav == home else -line
+                    hto, ato = o.get("homeTeamOdds") or {}, o.get("awayTeamOdds") or {}
+                    entry["spread"] = {
+                        "home_line": home_line,
+                        "home_price": int(hto.get("spreadOdds") or -110),
+                        "away_price": int(ato.get("spreadOdds") or -110),
+                    }
+
+            hto, ato = o.get("homeTeamOdds") or {}, o.get("awayTeamOdds") or {}
+            if hto.get("moneyLine") and ato.get("moneyLine"):
+                entry["moneyline"] = {"home": int(hto["moneyLine"]),
+                                      "away": int(ato["moneyLine"])}
+            if o.get("overUnder"):
+                entry["total"] = {
+                    "line": float(o["overUnder"]),
+                    "over": int(o.get("overOdds") or -110),
+                    "under": int(o.get("underOdds") or -110),
+                }
+            if not entry:
+                continue
+
+            kick = ev.get("date", "")
+            games.append({
+                "id": f"{kick[:10].replace('-', '')}-{away}-{home}",
+                "kickoff": kick,
+                "away": away,
+                "home": home,
+                "books": {book: entry},
+                "prediction_markets": {},
+            })
+        except Exception:
+            continue
     return games or None
 
 
@@ -189,22 +268,36 @@ def fetch_kalshi():
 # -- Orchestration ------------------------------------------------------------------
 
 _cache = {"board": None, "ts": 0.0}
-CACHE_TTL = 120  # seconds; respect The Odds API's monthly quota
+CACHE_TTL = 120  # seconds; respects The Odds API's monthly quota
 
 
-def get_board(force_refresh=False):
-    """Build the unified odds board: sportsbooks + prediction markets."""
+def get_board(force_refresh=False, api_key=None, ratings=None, hfa=2.0):
+    """
+    The unified odds board. Tries every live source, falls back to pricing
+    the real schedule with the model, and tags where each layer came from.
+    """
     now = time.time()
     if not force_refresh and _cache["board"] and now - _cache["ts"] < CACHE_TTL:
         return _cache["board"]
 
-    games = fetch_sportsbook_odds()
-    source = "live" if games else "sample"
-    if games is None:
-        games = build_sample_board()
-        # sample board already includes synthetic prediction-market quotes
+    api_key = api_key or os.environ.get("ODDS_API_KEY", "")
+    src = {"sportsbooks": None, "polymarket": False, "kalshi": False,
+           "schedule": "live"}
+
+    games = fetch_odds_api(api_key)
+    if games:
+        src["sportsbooks"] = "the-odds-api"
     else:
+        games = fetch_espn()
+        if games:
+            src["sportsbooks"] = "espn"
+
+    nfl_games = ratings_mod.fetch_games()
+
+    if games:
+        live = True
         poly, kalshi = fetch_polymarket(), fetch_kalshi()
+        src["polymarket"], src["kalshi"] = bool(poly), bool(kalshi)
         for g in games:
             key = (g["away"], g["home"])
             pm = {}
@@ -213,7 +306,31 @@ def get_board(force_refresh=False):
             if key in kalshi:
                 pm["Kalshi"] = {"home_prob": round(kalshi[key], 3)}
             g["prediction_markets"] = pm
+    else:
+        live = False
+        from model import DEFAULT_RATINGS
+        ratings = ratings or DEFAULT_RATINGS
+        slate = ratings_mod.upcoming_slate(nfl_games) if nfl_games else None
+        if slate:
+            games = build_board_from_slate(slate, ratings, hfa=hfa)
+            src["sportsbooks"] = "model"
+            src["schedule"] = "nflverse"
+        else:
+            games = build_sample_board()
+            src["sportsbooks"] = "sample"
+            src["schedule"] = "builtin"
 
-    board = {"as_of": now, "source": source, "games": games}
+    # Rest-day situational flags from the real schedule, whatever the source.
+    if nfl_games:
+        situ = ratings_mod.situational_lookup(nfl_games)
+        for g in games:
+            g.setdefault("situational", situ.get((g["away"], g["home"]), {}))
+
+    board = {
+        "as_of": now,
+        "source": "live" if live else "sample",
+        "sources": src,
+        "games": games,
+    }
     _cache.update(board=board, ts=now)
     return board

@@ -56,6 +56,18 @@ body {
 .badge-sample { background: #fff3cd; color: #8a6d00; border: 1px solid #e6d28a; }
 .badge-live   { background: var(--good-bg); color: var(--good); border: 1px solid #9fd8b4; }
 
+.source-chips {
+  max-width: 1240px; margin: 0 auto; padding: 0 20px 8px;
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.chip {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.5px;
+  padding: 2px 8px; border: 1px solid var(--rule); color: var(--ink-faint);
+}
+.chip-on { border-color: #9fd8b4; color: var(--good); background: var(--good-bg); }
+.chip-on::before { content: "● "; }
+.chip-off::before { content: "○ "; }
+
 /* ---------- Tabs ---------- */
 
 .tabs { max-width: 1240px; margin: 0 auto; padding: 0 20px; display: flex; gap: 2px; }

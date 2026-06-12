@@ -12,6 +12,7 @@ env/
 finance.db
 finance.db-journal
 sharpline/sharpline.db
+sharpline/.cache/
 
 # IDEs
 .vscode/

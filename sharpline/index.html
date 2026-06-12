@@ -18,11 +18,12 @@
         <span class="brand-tag">NFL odds, prediction markets &amp; a Walters-style model</span>
       </div>
       <div class="masthead-meta">
-        <span id="source-badge" class="badge badge-sample">SAMPLE DATA</span>
+        <span id="source-badge" class="badge badge-sample">LOADING…</span>
         <span id="as-of" class="as-of"></span>
         <button id="refresh-btn" class="btn btn-primary">↻ Refresh odds</button>
       </div>
     </div>
+    <div class="source-chips" id="source-chips"></div>
     <nav class="tabs">
       <button class="tab active" data-tab="board">Odds Board</button>
       <button class="tab" data-tab="edges">Edges &amp; Picks</button>
@@ -64,10 +65,14 @@
       <div class="section-head">
         <h2>Power ratings</h2>
         <p class="section-sub">Points above or below a league-average team on a neutral
-           field. Edit any number and save — the whole board reprices instantly.</p>
+           field. Synced automatically from <b>nflverse</b> game data (margin-weighted
+           Elo, regressed ⅓ to the mean each season) — or edit any number yourself
+           and save; the whole board reprices instantly.</p>
         <div class="ratings-actions">
           <button id="save-ratings" class="btn btn-primary">Save ratings</button>
-          <button id="reset-ratings" class="btn">Reset to defaults</button>
+          <button id="sync-ratings" class="btn">⟳ Sync from nflverse</button>
+          <button id="reset-ratings" class="btn">Reset to seed</button>
+          <span id="ratings-meta" class="as-of"></span>
           <span id="ratings-status" class="status-msg"></span>
         </div>
       </div>
@@ -115,6 +120,8 @@
           <label>Max bet % of roll <input id="set-cap" type="number" step="0.005" min="0" max="0.1" /></label>
           <label>Edge threshold <input id="set-threshold" type="number" step="0.005" min="0" max="0.2" /></label>
           <label>Home-field adv (pts) <input id="set-hfa" type="number" step="0.25" min="0" max="5" /></label>
+          <label>The Odds API key (optional — adds DraftKings, FanDuel, BetMGM…)
+            <input id="set-apikey" type="text" placeholder="free at the-odds-api.com" style="width:280px" /></label>
         </div>
         <button id="save-settings" class="btn btn-primary">Save settings</button>
         <span id="settings-status" class="status-msg"></span>

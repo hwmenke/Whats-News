@@ -43,9 +43,7 @@ async function loadAll(refresh = false) {
   EDGES = edges;
   BOARD = await fetch(`${API}/api/board`).then((r) => r.json());
 
-  const badge = $("#source-badge");
-  badge.textContent = edges.source === "live" ? "LIVE ODDS" : "SAMPLE DATA";
-  badge.className = `badge ${edges.source === "live" ? "badge-live" : "badge-sample"}`;
+  renderSourceStatus(BOARD.sources || {});
   $("#as-of").textContent = `as of ${new Date(edges.as_of * 1000).toLocaleTimeString()}`;
   $("#cap-label").textContent = `${(settings.max_bet_pct * 100).toFixed(1)}%`;
 
@@ -58,6 +56,33 @@ async function loadAll(refresh = false) {
 }
 
 $("#refresh-btn").addEventListener("click", () => loadAll(true));
+setInterval(() => loadAll(false), 5 * 60 * 1000); // keep the board current
+
+/* ---------- Source status ---------- */
+
+function renderSourceStatus(src) {
+  const badge = $("#source-badge");
+  const labels = {
+    "the-odds-api": ["LIVE ODDS · MULTI-BOOK", "badge-live"],
+    "espn": ["LIVE ODDS · ESPN BET", "badge-live"],
+    "model": ["MODEL LINES · REAL SCHEDULE", "badge-sample"],
+    "sample": ["SAMPLE DATA", "badge-sample"],
+  };
+  const [text, cls] = labels[src.sportsbooks] || ["SAMPLE DATA", "badge-sample"];
+  badge.textContent = text;
+  badge.className = `badge ${cls}`;
+
+  const chip = (label, on, detail) =>
+    `<span class="chip ${on ? "chip-on" : "chip-off"}">${label}${detail ? ` · ${detail}` : ""}</span>`;
+  $("#source-chips").innerHTML = [
+    chip("Sportsbooks", src.sportsbooks === "the-odds-api" || src.sportsbooks === "espn",
+      { "the-odds-api": "The Odds API", "espn": "ESPN", "model": "model-priced", "sample": "sample" }[src.sportsbooks] || "—"),
+    chip("Polymarket", !!src.polymarket),
+    chip("Kalshi", !!src.kalshi),
+    chip("Schedule", src.schedule === "nflverse" || src.schedule === "live",
+      src.schedule === "nflverse" ? "nflverse" : src.schedule === "live" ? "from odds feed" : "built-in"),
+  ].join("");
+}
 
 /* ---------- Odds board ---------- */
 
@@ -224,7 +249,12 @@ function renderEdges() {
 /* ---------- Ratings ---------- */
 
 async function renderRatings() {
-  const ratings = await fetch(`${API}/api/ratings`).then((r) => r.json());
+  const data = await fetch(`${API}/api/ratings`).then((r) => r.json());
+  const ratings = data.teams;
+  const srcLabel = { nflverse: "synced from nflverse Elo", manual: "manually edited", seed: "seed defaults" }[data.source] || data.source;
+  $("#ratings-meta").textContent = data.synced_at
+    ? `${srcLabel} · ${new Date(data.synced_at * 1000).toLocaleString()}`
+    : srcLabel;
   const max = Math.max(...ratings.map((r) => Math.abs(r.rating)), 6);
   $("#ratings-container").innerHTML = `
     <table class="flat-table">
@@ -260,6 +290,17 @@ $("#save-ratings").addEventListener("click", async () => {
 $("#reset-ratings").addEventListener("click", async () => {
   await fetch(`${API}/api/ratings/reset`, { method: "POST" });
   await loadAll();
+});
+
+$("#sync-ratings").addEventListener("click", async () => {
+  $("#ratings-status").textContent = "Syncing from nflverse…";
+  const resp = await fetch(`${API}/api/ratings/sync`, { method: "POST" });
+  const body = await resp.json();
+  $("#ratings-status").textContent = resp.ok
+    ? `Recomputed from ${body.games_used.toLocaleString()} games through ${body.through_season}.`
+    : body.error || "Sync failed";
+  setTimeout(() => ($("#ratings-status").textContent = ""), 5000);
+  if (resp.ok) await loadAll();
 });
 
 /* ---------- Bets ---------- */
@@ -353,6 +394,7 @@ function fillSettings(s) {
   $("#set-cap").value = s.max_bet_pct;
   $("#set-threshold").value = s.edge_threshold;
   $("#set-hfa").value = s.hfa;
+  $("#set-apikey").value = s.odds_api_key || "";
 }
 
 $("#save-settings").addEventListener("click", async () => {
@@ -362,6 +404,7 @@ $("#save-settings").addEventListener("click", async () => {
     max_bet_pct: parseFloat($("#set-cap").value),
     edge_threshold: parseFloat($("#set-threshold").value),
     hfa: parseFloat($("#set-hfa").value),
+    odds_api_key: $("#set-apikey").value,
   };
   await fetch(`${API}/api/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   $("#settings-status").textContent = "Saved — edges recomputed.";
