@@ -45,4 +45,13 @@ Open your web browser and go to:
 - `scripts/charts.js`: Chart rendering logic.
 
 ---
+
+## 🏈 SharpLine (NFL betting dashboard)
+
+The `sharpline/` directory contains a separate app: a FiveThirtyEight-style NFL
+odds dashboard that aggregates sportsbook lines with Polymarket/Kalshi
+prediction markets and prices games with a Billy Walters-inspired power-rating
+model. See [`sharpline/README.md`](sharpline/README.md) — runs on port 8051.
+
+---
 *Built with ❤️ for financial analysis.*

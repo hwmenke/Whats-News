@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SharpLine — NFL Odds, Edges &amp; the Walters Model</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles/main.css" />
+</head>
+<body>
+
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="brand">
+        <span class="brand-mark">S/L</span>
+        <span class="brand-name">SharpLine</span>
+        <span class="brand-tag">NFL odds, prediction markets &amp; a Walters-style model</span>
+      </div>
+      <div class="masthead-meta">
+        <span id="source-badge" class="badge badge-sample">SAMPLE DATA</span>
+        <span id="as-of" class="as-of"></span>
+        <button id="refresh-btn" class="btn btn-primary">↻ Refresh odds</button>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab active" data-tab="board">Odds Board</button>
+      <button class="tab" data-tab="edges">Edges &amp; Picks</button>
+      <button class="tab" data-tab="ratings">Power Ratings</button>
+      <button class="tab" data-tab="bets">Bet Tracker</button>
+      <button class="tab" data-tab="method">Methodology</button>
+    </nav>
+  </header>
+
+  <main>
+
+    <!-- ============ ODDS BOARD ============ -->
+    <section id="tab-board" class="tab-panel active">
+      <div class="section-head">
+        <h2>The Board</h2>
+        <p class="section-sub">Every game, every book, plus Polymarket and Kalshi.
+           <span class="best-key">Best available price highlighted.</span></p>
+      </div>
+      <div id="board-container"></div>
+    </section>
+
+    <!-- ============ EDGES ============ -->
+    <section id="tab-edges" class="tab-panel">
+      <div class="section-head">
+        <h2>Where the model disagrees with the market</h2>
+        <p class="section-sub">Plays appear when the model's probability beats the
+           break-even price by the configured threshold. Stakes are quarter-Kelly,
+           capped at <span id="cap-label">3%</span> of bankroll.</p>
+      </div>
+      <div id="picks-container"></div>
+      <div class="section-head" style="margin-top:36px">
+        <h3>Full model vs. market comparison</h3>
+      </div>
+      <div id="edges-container"></div>
+    </section>
+
+    <!-- ============ RATINGS ============ -->
+    <section id="tab-ratings" class="tab-panel">
+      <div class="section-head">
+        <h2>Power ratings</h2>
+        <p class="section-sub">Points above or below a league-average team on a neutral
+           field. Edit any number and save — the whole board reprices instantly.</p>
+        <div class="ratings-actions">
+          <button id="save-ratings" class="btn btn-primary">Save ratings</button>
+          <button id="reset-ratings" class="btn">Reset to defaults</button>
+          <span id="ratings-status" class="status-msg"></span>
+        </div>
+      </div>
+      <div id="ratings-container"></div>
+    </section>
+
+    <!-- ============ BETS ============ -->
+    <section id="tab-bets" class="tab-panel">
+      <div class="section-head">
+        <h2>Bet tracker</h2>
+        <p class="section-sub">Log every bet. When you settle one, record the closing
+           price — beating the close (CLV) is the truest test of an edge.</p>
+      </div>
+
+      <div id="bet-summary" class="stat-cards"></div>
+
+      <form id="bet-form" class="bet-form">
+        <select id="bf-game"></select>
+        <select id="bf-market">
+          <option value="spread">Spread</option>
+          <option value="moneyline">Moneyline</option>
+          <option value="total">Total</option>
+        </select>
+        <select id="bf-side">
+          <option value="home">Home</option>
+          <option value="away">Away</option>
+          <option value="over">Over</option>
+          <option value="under">Under</option>
+        </select>
+        <input id="bf-line" type="number" step="0.5" placeholder="Line (e.g. -2.5)" />
+        <input id="bf-odds" type="number" step="1" placeholder="Odds (e.g. -110)" required />
+        <input id="bf-stake" type="number" step="0.01" placeholder="Stake $" required />
+        <input id="bf-book" type="text" placeholder="Book" list="book-list" />
+        <datalist id="book-list"></datalist>
+        <button type="submit" class="btn btn-primary">Log bet</button>
+      </form>
+
+      <div id="bets-container"></div>
+
+      <div class="settings-panel">
+        <h3>Bankroll &amp; model settings</h3>
+        <div class="settings-grid">
+          <label>Bankroll $ <input id="set-bankroll" type="number" step="100" /></label>
+          <label>Kelly fraction <input id="set-kelly" type="number" step="0.05" min="0" max="1" /></label>
+          <label>Max bet % of roll <input id="set-cap" type="number" step="0.005" min="0" max="0.1" /></label>
+          <label>Edge threshold <input id="set-threshold" type="number" step="0.005" min="0" max="0.2" /></label>
+          <label>Home-field adv (pts) <input id="set-hfa" type="number" step="0.25" min="0" max="5" /></label>
+        </div>
+        <button id="save-settings" class="btn btn-primary">Save settings</button>
+        <span id="settings-status" class="status-msg"></span>
+      </div>
+    </section>
+
+    <!-- ============ METHODOLOGY ============ -->
+    <section id="tab-method" class="tab-panel">
+      <div class="section-head"><h2>How SharpLine prices a game</h2></div>
+      <article class="method">
+        <h3>1 · Power ratings</h3>
+        <p>Every team carries a rating in points relative to a league-average club.
+           The difference between two ratings is the expected margin on a neutral field.
+           Billy Walters' operation lived and died by these numbers — his were rebuilt
+           weekly from play-by-play data and injury intel. Yours are editable on the
+           Power Ratings tab; the model is a tool you steer, not an oracle.</p>
+        <h3>2 · Home field &amp; situations</h3>
+        <p>A baseline home-field advantage (default 2.0 points, configurable) is added,
+           plus situational nudges Walters tracked obsessively: rest edges off a bye,
+           short-week penalties, and long cross-country trips for road teams.</p>
+        <h3>3 · Key numbers</h3>
+        <p>NFL margins cluster on 3 and 7. SharpLine converts its predicted margin into
+           probabilities using a margin distribution re-weighted at the key numbers, so
+           the move from −2.5 to −3 is priced as far more valuable than −7.5 to −8 —
+           exactly the half-points sharp bettors fight for.</p>
+        <h3>4 · De-vigged market consensus</h3>
+        <p>Sportsbook moneylines are stripped of vig with the power method (which puts
+           more of the juice on favourites), then blended with Polymarket and Kalshi
+           prices, which trade near fair probability. The result is the market's true
+           opinion — the number you must beat.</p>
+        <h3>5 · Bet only with an edge, size with Kelly</h3>
+        <p>A play is flagged only when the model's probability beats the break-even
+           price by your threshold (default 2%). Stakes are fractional Kelly (default
+           one-quarter), hard-capped at 3% of bankroll per game — Walters never bet
+           more than a low single-digit share of his roll on one outcome, no matter
+           how good the number looked.</p>
+        <h3>6 · Grade yourself on CLV</h3>
+        <p>Results over a season are mostly noise; closing-line value isn't. The bet
+           tracker records the price you got versus the close. If your average CLV is
+           positive, you are doing the one thing Walters said matters: consistently
+           beating the number the market settles on.</p>
+        <p class="disclaimer">SharpLine is an analytics tool, not betting advice.
+           Bet legally, bet what you can afford, and remember the market is very good.</p>
+      </article>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <span>SharpLine · live data via The Odds API, Polymarket &amp; Kalshi when configured · sample slate otherwise</span>
+  </footer>
+
+  <script src="scripts/app.js"></script>
+</body>
+</html>
