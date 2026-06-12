@@ -834,8 +834,8 @@ function renderStats(data) {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 10 } } },
-            x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } }
+            y: { grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { color: '#777777', font: { size: 10 } } },
+            x: { grid: { display: false }, ticks: { color: '#777777', font: { size: 10 } } }
         }
     };
     const distanceChartOptions = {
@@ -843,7 +843,7 @@ function renderStats(data) {
         plugins: {
             legend: {
                 display: true,
-                labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
+                labels: { color: '#777777', usePointStyle: true, boxWidth: 10 }
             }
         }
     };
@@ -852,7 +852,7 @@ function renderStats(data) {
         plugins: {
             legend: {
                 display: true,
-                labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
+                labels: { color: '#777777', usePointStyle: true, boxWidth: 10 }
             }
         }
     };
@@ -872,7 +872,6 @@ function renderStats(data) {
     });
 
     // 2b. Price vs KAMA distance deciles (1D)
-    destroy('kamaDist1d');
     statsCharts['kamaDist1d'] = updateOrCreate('stats.kamaDist1d', document.getElementById('chart-kama-dist-1d'), {
         type: 'line',
         data: {
@@ -893,7 +892,6 @@ function renderStats(data) {
     });
 
     // 2. RSI Deciles 5D
-    destroy('rsi5d');
     statsCharts['rsi5d'] = updateOrCreate('stats.rsi5d', document.getElementById('chart-rsi-5d'), {
         type: 'bar',
         data: {
@@ -908,7 +906,6 @@ function renderStats(data) {
     });
 
     // 2c. Price vs KAMA distance deciles (5D)
-    destroy('kamaDist5d');
     statsCharts['kamaDist5d'] = updateOrCreate('stats.kamaDist5d', document.getElementById('chart-kama-dist-5d'), {
         type: 'line',
         data: {
@@ -929,7 +926,6 @@ function renderStats(data) {
     });
 
     // 3. Returns Distribution
-    destroy('dist');
     statsCharts['dist'] = updateOrCreate('stats.dist', document.getElementById('chart-dist'), {
         type: 'bar',
         data: {
@@ -954,7 +950,6 @@ function renderStats(data) {
 
     // 4. Seasonality
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    destroy('season');
     statsCharts['season'] = updateOrCreate('stats.season', document.getElementById('chart-seasonality'), {
         type: 'bar',
         data: {
@@ -968,7 +963,6 @@ function renderStats(data) {
     });
 
     // 4b. KAMA cross forward returns
-    destroy('kamaCross');
     statsCharts['kamaCross'] = updateOrCreate('stats.kamaCross', document.getElementById('chart-kama-cross'), {
         type: 'bar',
         data: {
@@ -994,7 +988,6 @@ function renderStats(data) {
     });
 
     // 4c. KAMA cross event counts
-    destroy('kamaCrossCounts');
     statsCharts['kamaCrossCounts'] = updateOrCreate('stats.kamaCrossCounts', document.getElementById('chart-kama-cross-counts'), {
         type: 'bar',
         data: {

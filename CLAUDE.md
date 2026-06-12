@@ -25,7 +25,12 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # setup
 - `fair_value_lab.py` — trend / PCA divergence anchors with walk-forward OOS
   validation. PCA panels are sector-scoped via `group_tag` when ≥ 6 peers
   exist, else watchlist-wide; memoised per scope with a thread lock.
-  Tab: ⚖️ Fair Value (FiveThirtyEight-style light theme).
+  Tab: ⚖️ Fair Value.
+
+The whole UI is FiveThirtyEight-styled: light gray canvas (#f0f0f0), white
+cards with 4px black top rules, palette blue #30a2da / red #fc4f30 /
+green #6d904f / yellow #e5ae38 / orange #e5862e (defined in `:root` vars
+and `QL.colors` / `FVD.c`). Keep new panels on this palette.
 
 ## Conventions
 
@@ -40,6 +45,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # setup
   use `_fl` / `_fl_list` to round and None-ify non-finite values.
 - **Chart.js configs always need a top-level `type`** — even mixed charts
   (per-dataset types alone throw at runtime).
+- **Lightweight-charts needs `localization: { locale: 'en-US' }`** in every
+  chart config — environments with POSIX locales (`en-US@posix`) otherwise
+  throw on time-axis formatting and render blank charts.
 - **Async UI must respect the active tab**: never toggle areas
   (`showEmptyState()` etc.) after an `await` without checking
   `state.activeTab` — slow failures must not hide the tab the user is on.

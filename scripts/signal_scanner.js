@@ -231,8 +231,8 @@ function sgRenderTrack() {
 
     const pct = (x) => x === null || x === undefined ? '—' : (x * 100).toFixed(0) + '%';
     const ret = (x) => x === null || x === undefined ? '—' : (x >= 0 ? '+' : '') + (x * 100).toFixed(2) + '%';
-    const hitColor = (x) => x === null ? '#5a6472' : x >= 0.55 ? '#00d26a' : x <= 0.45 ? '#ff4d3d' : '#b8c0c8';
-    const retColor = (x) => x === null ? '#5a6472' : x > 0 ? '#00d26a' : '#ff4d3d';
+    const hitColor = (x) => x === null ? '#9b9b9b' : x >= 0.55 ? '#6d904f' : x <= 0.45 ? '#fc4f30' : '#3c3c3c';
+    const retColor = (x) => x === null ? '#9b9b9b' : x > 0 ? '#6d904f' : '#fc4f30';
 
     document.getElementById('sg-track-tbody').innerHTML = d.rows.map(r => {
         const h5 = r.hist.h5, h21 = r.hist.h21, lv = r.live;

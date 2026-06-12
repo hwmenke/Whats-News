@@ -347,10 +347,11 @@ function _stRenderPriceChart(data) {
     // Destroy old instance
     if (stState.priceChart) { try { stState.priceChart.remove(); } catch (_) {} }
 
-    const isDark = document.body.classList.contains('theme-light') === false;
+    const isDark = document.body.classList.contains('theme-dark');
     const chart = LightweightCharts.createChart(container, {
         width:  container.clientWidth || 700,
         height: 220,
+        localization: { locale: 'en-US' },
         layout:      { background: { color: isDark ? '#0f172a' : '#fff' }, textColor: isDark ? '#94a3b8' : '#334155' },
         grid:        { vertLines: { color: isDark ? '#1e293b' : '#e2e8f0' }, horzLines: { color: isDark ? '#1e293b' : '#e2e8f0' } },
         rightPriceScale: { borderColor: isDark ? '#1e293b' : '#e2e8f0' },
@@ -394,10 +395,11 @@ function _stRenderEquityChart(data) {
 
     if (stState.equityChart) { try { stState.equityChart.remove(); } catch (_) {} }
 
-    const isDark = document.body.classList.contains('theme-light') === false;
+    const isDark = document.body.classList.contains('theme-dark');
     const chart = LightweightCharts.createChart(container, {
         width:  container.clientWidth || 700,
         height: 180,
+        localization: { locale: 'en-US' },
         layout:      { background: { color: isDark ? '#0f172a' : '#fff' }, textColor: isDark ? '#94a3b8' : '#334155' },
         grid:        { vertLines: { color: isDark ? '#1e293b' : '#e2e8f0' }, horzLines: { color: isDark ? '#1e293b' : '#e2e8f0' } },
         rightPriceScale: { borderColor: isDark ? '#1e293b' : '#e2e8f0' },

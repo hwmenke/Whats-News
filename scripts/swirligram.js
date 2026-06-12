@@ -199,7 +199,7 @@ function _swRenderPhaseChart(canvasId, xArr, yArr, dates, signal, stateKey, opts
                 ctx.fillStyle = b.color;
                 ctx.fillRect(x1, ca.top, x2 - x1, ca.height);
                 if (b.label) {
-                    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+                    ctx.fillStyle = 'rgba(0,0,0,0.25)';
                     ctx.font = '8px Inter, sans-serif';
                     ctx.textAlign = 'center';
                     ctx.fillText(b.label, (x1 + x2) / 2, ca.top + 10);
@@ -304,13 +304,13 @@ function _swRenderPhaseChart(canvasId, xArr, yArr, dates, signal, stateKey, opts
                     max:   xMax,
                     title: { display: true, text: xLabel, color: '#475569', font: { size: 10 } },
                     ticks: { color: '#475569', font: { size: 9 }, stepSize: 10 },
-                    grid:  { color: 'rgba(255,255,255,0.04)' },
+                    grid:  { color: 'rgba(0,0,0,0.06)' },
                 },
                 y: {
                     type:  'linear',
                     title: { display: true, text: yLabel, color: '#475569', font: { size: 10 } },
                     ticks: { color: '#475569', font: { size: 9 } },
-                    grid:  { color: 'rgba(255,255,255,0.04)' },
+                    grid:  { color: 'rgba(0,0,0,0.06)' },
                 },
             },
             plugins: {
@@ -503,7 +503,7 @@ function _swRenderTimeline(canvasId, yArr, dates, stateKey, opts = {}) {
                     min:   yMin,
                     max:   yMax,
                     ticks: { color: '#475569', font: { size: 8 }, stepSize },
-                    grid:  { color: 'rgba(255,255,255,0.03)' },
+                    grid:  { color: 'rgba(0,0,0,0.05)' },
                 },
             },
             plugins: {

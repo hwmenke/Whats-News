@@ -12,14 +12,14 @@
 const QL = {
     charts: {},          // id → Chart instance
     loadedFor: null,     // symbol of currently rendered data
-    colors: {
-        amber:  '#fb8b1e',
-        green:  '#00d26a',
-        red:    '#ff4d3d',
-        cyan:   '#4dd0e1',
-        white:  '#e8e8e8',
-        gray:   '#5a6472',
-        grid:   'rgba(120,130,140,0.10)',
+    colors: {                       // FiveThirtyEight palette
+        amber:  '#e5862e',          // orange accent / highlights
+        green:  '#6d904f',
+        red:    '#fc4f30',
+        cyan:   '#30a2da',          // 538 blue
+        white:  '#2b2b2b',          // primary line ink on light bg
+        gray:   '#8b8b8b',
+        grid:   '#e6e6e6',
     },
 };
 
@@ -56,25 +56,25 @@ function qlBaseOpts(extra = {}) {
         plugins: {
             legend: { display: false },
             tooltip: {
-                backgroundColor: '#0a0a0a',
-                borderColor: '#3a3a3a',
+                backgroundColor: '#ffffff',
+                borderColor: '#c7c7c7',
                 borderWidth: 1,
-                titleColor: QL.colors.amber,
+                titleColor: '#111',
                 bodyColor: QL.colors.white,
-                titleFont: { family: "'JetBrains Mono', monospace", size: 10 },
-                bodyFont:  { family: "'JetBrains Mono', monospace", size: 10 },
+                titleFont: { family: "Helvetica, Arial, sans-serif", size: 10 },
+                bodyFont:  { family: "Helvetica, Arial, sans-serif", size: 10 },
             },
         },
         scales: {
             x: {
                 grid:  { color: QL.colors.grid },
-                ticks: { color: '#6a7480', maxTicksLimit: 8, maxRotation: 0,
-                         font: { family: "'JetBrains Mono', monospace", size: 9 } },
+                ticks: { color: '#777', maxTicksLimit: 8, maxRotation: 0,
+                         font: { family: "Helvetica, Arial, sans-serif", size: 9 } },
             },
             y: {
                 grid:  { color: QL.colors.grid },
-                ticks: { color: '#6a7480', maxTicksLimit: 6,
-                         font: { family: "'JetBrains Mono', monospace", size: 9 } },
+                ticks: { color: '#777', maxTicksLimit: 6,
+                         font: { family: "Helvetica, Arial, sans-serif", size: 9 } },
             },
         },
     }, extra);
@@ -222,12 +222,12 @@ function qlRenderFairValue(fv) {
             datasets: [
                 { data: s.up2, borderColor: 'transparent', pointRadius: 0, fill: false },
                 { data: s.dn2, borderColor: 'transparent', pointRadius: 0,
-                  fill: '-1', backgroundColor: 'rgba(251,139,30,0.05)' },
-                { data: s.up1, borderColor: 'rgba(251,139,30,0.35)', borderWidth: 1,
+                  fill: '-1', backgroundColor: 'rgba(229,134,46,0.06)' },
+                { data: s.up1, borderColor: 'rgba(229,134,46,0.45)', borderWidth: 1,
                   borderDash: [3, 3], pointRadius: 0, fill: false },
-                { data: s.dn1, borderColor: 'rgba(251,139,30,0.35)', borderWidth: 1,
+                { data: s.dn1, borderColor: 'rgba(229,134,46,0.45)', borderWidth: 1,
                   borderDash: [3, 3], pointRadius: 0,
-                  fill: '-1', backgroundColor: 'rgba(251,139,30,0.08)' },
+                  fill: '-1', backgroundColor: 'rgba(229,134,46,0.12)' },
                 { label: 'FAIR VALUE', data: s.fv, borderColor: QL.colors.amber,
                   borderWidth: 1.5, pointRadius: 0, fill: false },
                 { label: 'CLOSE', data: s.close, borderColor: QL.colors.white,
@@ -247,8 +247,8 @@ function qlRenderFairValue(fv) {
                 data: bins.map(b => b.mean === null ? null : b.mean * 100),
                 backgroundColor: bins.map(b =>
                     b.current ? QL.colors.amber
-                              : (b.mean > 0 ? 'rgba(0,210,106,0.55)' : 'rgba(255,77,61,0.55)')),
-                borderColor: bins.map(b => b.current ? '#fff' : 'transparent'),
+                              : (b.mean > 0 ? 'rgba(109,144,79,0.75)' : 'rgba(252,79,48,0.65)')),
+                borderColor: bins.map(b => b.current ? '#111' : 'transparent'),
                 borderWidth: bins.map(b => b.current ? 1 : 0),
             }],
         },
@@ -256,8 +256,8 @@ function qlRenderFairValue(fv) {
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: '#0a0a0a', borderColor: '#3a3a3a', borderWidth: 1,
-                    titleColor: QL.colors.amber, bodyColor: QL.colors.white,
+                    backgroundColor: '#ffffff', borderColor: '#c7c7c7', borderWidth: 1,
+                    titleColor: '#111', bodyColor: QL.colors.white,
                     callbacks: {
                         label: (c2) => {
                             const b = bins[c2.dataIndex];
@@ -306,13 +306,13 @@ function qlRenderKnn(knn) {
         borderColor: color, borderWidth: p === '50' ? 1.8 : 1,
         borderDash: p === '50' ? [] : [3, 3],
         pointRadius: 0, fill: fillTo, spanGaps: false,
-        backgroundColor: fillTo ? 'rgba(77,208,225,0.10)' : undefined,
+        backgroundColor: fillTo ? 'rgba(48,162,218,0.12)' : undefined,
         label: `P${p}`,
     });
 
     const spaghetti = knn.analogs.map(a => ({
         data: Array(nH - 1).fill(null).concat([last]).concat(a.path.map(r => last * (1 + r))),
-        borderColor: 'rgba(150,160,170,0.18)', borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.10)', borderWidth: 1,
         pointRadius: 0, fill: false, label: `≈ ${a.date}`,
     }));
 
@@ -322,10 +322,10 @@ function qlRenderKnn(knn) {
             labels,
             datasets: [
                 ...spaghetti,
-                fanDs('90', 'rgba(77,208,225,0.45)', false),
-                fanDs('10', 'rgba(77,208,225,0.45)', '-1'),
-                fanDs('75', 'rgba(77,208,225,0.7)', false),
-                fanDs('25', 'rgba(77,208,225,0.7)', '-1'),
+                fanDs('90', 'rgba(48,162,218,0.45)', false),
+                fanDs('10', 'rgba(48,162,218,0.45)', '-1'),
+                fanDs('75', 'rgba(48,162,218,0.7)', false),
+                fanDs('25', 'rgba(48,162,218,0.7)', '-1'),
                 fanDs('50', QL.colors.cyan, false),
                 { label: 'CLOSE',
                   data: hist.close.concat(Array(21).fill(null)),
@@ -368,10 +368,10 @@ function qlRenderCta(cta) {
         options: qlBaseOpts({
             plugins: {
                 legend: { display: true, position: 'top', align: 'end',
-                          labels: { color: '#8a94a0', boxWidth: 14, boxHeight: 2,
-                                    font: { family: "'JetBrains Mono', monospace", size: 9 } } },
-                tooltip: { backgroundColor: '#0a0a0a', borderColor: '#3a3a3a', borderWidth: 1,
-                           titleColor: QL.colors.amber, bodyColor: QL.colors.white },
+                          labels: { color: '#3c3c3c', boxWidth: 14, boxHeight: 2,
+                                    font: { family: "Helvetica, Arial, sans-serif", size: 9 } } },
+                tooltip: { backgroundColor: '#ffffff', borderColor: '#c7c7c7', borderWidth: 1,
+                           titleColor: '#111', bodyColor: QL.colors.white },
             },
         }),
     });
@@ -383,7 +383,7 @@ function qlRenderCta(cta) {
             datasets: [{
                 data: s.forecast,
                 backgroundColor: s.forecast.map(v =>
-                    v > 0 ? 'rgba(0,210,106,0.6)' : 'rgba(255,77,61,0.6)'),
+                    v > 0 ? 'rgba(109,144,79,0.8)' : 'rgba(252,79,48,0.7)'),
                 barPercentage: 1.0, categoryPercentage: 1.0,
             }],
         },
@@ -392,8 +392,8 @@ function qlRenderCta(cta) {
                 x: { display: false },
                 y: { min: -100, max: 100,
                      grid: { color: QL.colors.grid },
-                     ticks: { color: '#6a7480', stepSize: 100,
-                              font: { family: "'JetBrains Mono', monospace", size: 9 } } },
+                     ticks: { color: '#777', stepSize: 100,
+                              font: { family: "Helvetica, Arial, sans-serif", size: 9 } } },
             },
         }),
     });
@@ -451,10 +451,10 @@ function qlRenderExhaustion(exh) {
             datasets: [
                 { data: s.e, borderColor: QL.colors.cyan, borderWidth: 1.2,
                   pointRadius: 0, fill: { target: 'origin' },
-                  backgroundColor: 'rgba(77,208,225,0.07)' },
-                { data: Array(n).fill(70),  borderColor: 'rgba(255,77,61,0.4)',
+                  backgroundColor: 'rgba(48,162,218,0.10)' },
+                { data: Array(n).fill(70),  borderColor: 'rgba(252,79,48,0.5)',
                   borderWidth: 1, borderDash: [4, 4], pointRadius: 0 },
-                { data: Array(n).fill(-70), borderColor: 'rgba(0,210,106,0.4)',
+                { data: Array(n).fill(-70), borderColor: 'rgba(109,144,79,0.6)',
                   borderWidth: 1, borderDash: [4, 4], pointRadius: 0 },
             ],
         },
@@ -463,8 +463,8 @@ function qlRenderExhaustion(exh) {
                 x: { display: false },
                 y: { min: -100, max: 100,
                      grid: { color: QL.colors.grid },
-                     ticks: { color: '#6a7480', stepSize: 100,
-                              font: { family: "'JetBrains Mono', monospace", size: 9 } } },
+                     ticks: { color: '#777', stepSize: 100,
+                              font: { family: "Helvetica, Arial, sans-serif", size: 9 } } },
             },
         }),
     });
@@ -527,8 +527,8 @@ function qlRenderSqueeze(sqz) {
             datasets: [
                 { data: s.sq, borderColor: QL.colors.amber, borderWidth: 1.2,
                   pointRadius: 0, fill: { target: 'origin' },
-                  backgroundColor: 'rgba(251,139,30,0.08)' },
-                { data: Array(n).fill(85), borderColor: 'rgba(251,139,30,0.45)',
+                  backgroundColor: 'rgba(229,134,46,0.12)' },
+                { data: Array(n).fill(85), borderColor: 'rgba(229,134,46,0.55)',
                   borderWidth: 1, borderDash: [4, 4], pointRadius: 0 },
             ],
         },
@@ -537,8 +537,8 @@ function qlRenderSqueeze(sqz) {
                 x: { display: false },
                 y: { min: 0, max: 100,
                      grid: { color: QL.colors.grid },
-                     ticks: { color: '#6a7480', stepSize: 50,
-                              font: { family: "'JetBrains Mono', monospace", size: 9 } } },
+                     ticks: { color: '#777', stepSize: 50,
+                              font: { family: "Helvetica, Arial, sans-serif", size: 9 } } },
             },
         }),
     });
