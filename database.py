@@ -5,11 +5,13 @@ Tables:
   - ohlcv    : OHLCV bars (daily + weekly)
 """
 
+import json
 import logging
 import sqlite3
 import os
 import pandas as pd
 from datetime import datetime, timezone
+import indicator_cache as cache
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,8 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "finance.db")
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 
@@ -29,14 +33,19 @@ def init_db():
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS symbols (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol      TEXT    NOT NULL UNIQUE,
-            name        TEXT,
-            sector      TEXT,
-            added_at    TEXT    NOT NULL,
-            last_fetch  TEXT
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol         TEXT    NOT NULL UNIQUE,
+            name           TEXT,
+            sector         TEXT,
+            added_at       TEXT    NOT NULL,
+            last_fetch     TEXT,
+            quality_report TEXT
         )
     """)
+    # Migrate existing databases that lack the quality_report column
+    existing_cols = [r[1] for r in cur.execute("PRAGMA table_info(symbols)").fetchall()]
+    if "quality_report" not in existing_cols:
+        cur.execute("ALTER TABLE symbols ADD COLUMN quality_report TEXT")
 
     # Migrations — add new columns to existing DBs without data loss
     for col, defn in [
@@ -65,6 +74,21 @@ def init_db():
 
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_ohlcv ON ohlcv(symbol, freq, date)
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS signal_journal (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            date       TEXT NOT NULL,     -- bar date the signal fired on
+            symbol     TEXT NOT NULL,
+            routine    TEXT NOT NULL,
+            side       TEXT NOT NULL,     -- 'bull' | 'bear' | 'watch'
+            strength   REAL,
+            price      REAL,
+            detail     TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(date, symbol, routine)
+        )
     """)
 
     conn.commit()
@@ -110,11 +134,13 @@ def add_symbol(symbol: str, name: str = "", sector: str = ""):
 
 
 def remove_symbol(symbol: str):
+    sym = symbol.upper()
     conn = get_connection()
-    conn.execute("DELETE FROM symbols WHERE symbol = ?", (symbol.upper(),))
-    conn.execute("DELETE FROM ohlcv WHERE symbol = ?", (symbol.upper(),))
+    conn.execute("DELETE FROM symbols WHERE symbol = ?", (sym,))
+    conn.execute("DELETE FROM ohlcv WHERE symbol = ?", (sym,))
     conn.commit()
     conn.close()
+    cache.bump_version(sym)
 
 
 def update_last_fetch(symbol: str):
@@ -125,6 +151,31 @@ def update_last_fetch(symbol: str):
     )
     conn.commit()
     conn.close()
+
+
+def update_quality_report(symbol: str, report: dict):
+    conn = get_connection()
+    conn.execute(
+        "UPDATE symbols SET quality_report = ? WHERE symbol = ?",
+        (json.dumps(report), symbol.upper())
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_quality_report(symbol: str):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT quality_report FROM symbols WHERE symbol = ?",
+        (symbol.upper(),)
+    ).fetchone()
+    conn.close()
+    if row is None or row["quality_report"] is None:
+        return None
+    try:
+        return json.loads(row["quality_report"])
+    except Exception:
+        return None
 
 
 def update_symbol_info(symbol: str, name: str, sector: str):
@@ -235,3 +286,38 @@ def get_latest_ohlcv_date(symbol: str, freq: str = "daily"):
     ).fetchone()
     conn.close()
     return row["d"] if row and row["d"] else None
+
+
+# ── Signal journal ─────────────────────────────────────────────────────────────
+
+def record_signals(rows: list) -> int:
+    """Journal fired signals; idempotent on (date, symbol, routine).
+    Returns the number of NEW rows inserted."""
+    if not rows:
+        return 0
+    conn = get_connection()
+    cur = conn.cursor()
+    new = 0
+    for r in rows:
+        cur.execute(
+            """INSERT OR IGNORE INTO signal_journal
+               (date, symbol, routine, side, strength, price, detail)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (r["date"], r["symbol"], r["routine"], r["side"],
+             r.get("strength"), r.get("price"), r.get("detail", "")),
+        )
+        new += cur.rowcount
+    conn.commit()
+    conn.close()
+    return new
+
+
+def get_signal_journal(limit: int = 5000) -> list:
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT date, symbol, routine, side, strength, price, detail "
+        "FROM signal_journal ORDER BY date DESC, symbol LIMIT ?",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

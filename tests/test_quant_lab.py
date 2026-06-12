@@ -1,0 +1,192 @@
+"""Tests for quant_lab.py — feature engine, four models, composite dials."""
+
+import json
+
+import numpy as np
+import pandas as pd
+import pytest
+
+
+@pytest.fixture
+def long_ohlcv():
+    """~1000 bars of trending + mean-reverting synthetic OHLCV."""
+    rng = np.random.default_rng(11)
+    n = 1000
+    idx = pd.date_range("2021-06-01", periods=n, freq="B")
+    ret = rng.normal(0.0003, 0.014, n) + 0.0015 * np.sin(np.linspace(0, 10 * np.pi, n))
+    close = 100 * np.exp(np.cumsum(ret))
+    high = close * (1 + rng.uniform(0, 0.01, n))
+    low = close * (1 - rng.uniform(0, 0.01, n))
+    open_ = np.r_[close[0], close[:-1]] * (1 + rng.normal(0, 0.002, n))
+    return pd.DataFrame(
+        {"open": open_, "high": high, "low": low, "close": close,
+         "volume": rng.integers(1_000_000, 9_000_000, n).astype(float)},
+        index=idx,
+    )
+
+
+@pytest.fixture
+def ql_result(monkeypatch, long_ohlcv):
+    import database as db
+    import quant_lab
+    monkeypatch.setattr(db, "get_ohlcv_df",
+                        lambda symbol, freq="daily", limit=1000: long_ohlcv.tail(limit))
+    return quant_lab._compute_inner("TEST")
+
+
+def test_result_is_json_safe(ql_result):
+    assert "error" not in ql_result
+    json.dumps(ql_result, allow_nan=False)  # raises on NaN/inf
+
+
+def test_composite_scores_bounded(ql_result):
+    comp = ql_result["composite"]
+    assert -100 <= comp["valuation"] <= 100
+    assert -100 <= comp["direction"] <= 100
+    assert comp["conviction"] in ("LOW", "MED", "HIGH")
+    for key in ("cta", "knn", "exh_kick", "fv_edge_1w"):
+        assert key in comp["components"]
+
+
+def test_fair_value_sections(ql_result):
+    fv = ql_result["fair_value"]
+    assert len(fv["bins"]) == 7
+    assert sum(b["n"] for b in fv["bins"]) > 400
+    assert sum(b["current"] for b in fv["bins"]) <= 1
+    s = fv["series"]
+    n = len(s["dates"])
+    assert all(len(s[k]) == n for k in ("close", "fv", "up1", "dn1", "up2", "dn2"))
+    # bands ordered where defined
+    for i in range(n):
+        if s["up2"][i] is not None:
+            assert s["dn2"][i] < s["dn1"][i] < s["fv"][i] < s["up1"][i] < s["up2"][i]
+
+
+def test_knn_fan_monotone(ql_result):
+    knn = ql_result["knn"]
+    assert knn is not None and knn["k"] >= 10
+    fan = knn["fan"]
+    for i in range(21):
+        assert fan["10"][i] <= fan["25"][i] <= fan["50"][i] <= fan["75"][i] <= fan["90"][i]
+    assert all(len(a["path"]) == 21 for a in knn["analogs"])
+    for h in knn["horizons"]:
+        assert 0.0 <= h["p_up"] <= 1.0
+
+
+def test_knn_analogs_do_not_overlap(ql_result):
+    dates = sorted(pd.Timestamp(a["date"]) for a in ql_result["knn"]["analogs"])
+    gaps = [(b - a).days for a, b in zip(dates, dates[1:])]
+    assert all(g >= 6 for g in gaps)
+
+
+def test_cta_series_aligned(ql_result):
+    cta = ql_result["cta"]
+    s = cta["series"]
+    assert len(s["dates"]) == len(s["equity"]) == len(s["bh"]) == len(s["forecast"])
+    assert s["equity"][0] == 100.0
+    assert -100 <= cta["score"] <= 100
+    assert abs(cta["position"]) <= 2.0
+
+
+def test_exhaustion_events_and_stats(ql_result):
+    exh = ql_result["exhaustion"]
+    assert -100 <= exh["score"] <= 100
+    n = len(exh["series"]["close"])
+    assert len(exh["series"]["e"]) == n
+    for ev in exh["events"]:
+        assert 0 <= ev["i"] < n
+        assert ev["side"] in (1, -1)
+    assert exh["stats"]["base"]["fwd21"] is not None
+
+
+def test_squeeze_sections(ql_result):
+    sqz = ql_result["squeeze"]
+    assert 0 <= sqz["score"] <= 100
+    assert sqz["trend_side"] in ("LONG", "SHORT", "FLAT")
+    s = sqz["series"]
+    assert len(s["dates"]) == len(s["close"]) == len(s["sq"])
+    for ev in sqz["events"]:
+        assert 0 <= ev["i"] < len(s["close"])
+    if sqz["stats"]["n_events"]:
+        assert sqz["stats"]["base_abs_1m"] is not None
+
+
+def test_mean_reversion_sections(ql_result):
+    mr = ql_result["mean_reversion"]
+    assert mr is not None
+    assert mr["character"] in ("MEAN-REVERTING", "TRENDING", "MIXED")
+    assert -100 <= mr["score"] <= 100
+    if mr["half_life"] is not None:
+        assert mr["half_life"] > 0
+        # projection exists and starts near the current price
+        assert len(mr["series"]["proj"]) == 21
+        assert len(mr["series"]["fv_path"]) == 21
+    assert "mr" in ql_result["composite"]["components"]
+
+
+def test_zero_volume_keeps_models_alive(monkeypatch):
+    """FX-style data (volume = 0) must not kill the exhaustion/KNN models."""
+    import database as db
+    import quant_lab
+    rng = np.random.default_rng(1)
+    n = 900
+    idx = pd.date_range("2021-01-04", periods=n, freq="B")
+    close = 100 * np.exp(np.cumsum(rng.normal(0.0003, 0.012, n)))
+    df = pd.DataFrame({"open": np.r_[close[0], close[:-1]], "high": close * 1.005,
+                       "low": close * 0.995, "close": close, "volume": 0.0}, index=idx)
+    monkeypatch.setattr(db, "get_ohlcv_df", lambda s, freq="daily", limit=1000: df.tail(limit))
+    r = quant_lab._compute_inner("FX")
+    assert "error" not in r
+    json.dumps(r, allow_nan=False)
+    assert r["exhaustion"]["score"] is not None
+    assert r["knn"] is not None
+    assert r["exhaustion"]["components"]["vol_climax"] == 0.0
+
+
+def test_flat_price_does_not_crash(monkeypatch):
+    """A constant price series must degrade gracefully, not raise."""
+    import database as db
+    import quant_lab
+    idx = pd.date_range("2021-01-04", periods=900, freq="B")
+    df = pd.DataFrame({"open": 100.0, "high": 100.0, "low": 100.0,
+                       "close": 100.0, "volume": 1e6}, index=idx)
+    monkeypatch.setattr(db, "get_ohlcv_df", lambda s, freq="daily", limit=1000: df.tail(limit))
+    r = quant_lab._compute_inner("FLAT")
+    assert "error" not in r
+    json.dumps(r, allow_nan=False)
+    assert r["cta"]["score"] is None
+    assert r["cta"]["series"]["equity"] == []
+
+
+def test_insufficient_data_error(monkeypatch, long_ohlcv):
+    import database as db
+    import quant_lab
+    monkeypatch.setattr(db, "get_ohlcv_df",
+                        lambda symbol, freq="daily", limit=1000: long_ohlcv.head(100))
+    result = quant_lab._compute_inner("TEST")
+    assert "error" in result
+
+
+def test_composite_profile_and_weights(ql_result):
+    import quant_lab
+    comp = ql_result["composite"]
+    assert comp["profile"] in quant_lab.PROFILE_WEIGHTS
+    assert abs(sum(comp["weights"].values()) - 1.0) < 1e-6
+
+
+def test_quant_grid(monkeypatch, long_ohlcv):
+    import database as db
+    import quant_lab
+    frames = {"GRIDA": long_ohlcv, "GRIDB": long_ohlcv * 1.5, "GRIDTINY": long_ohlcv.head(50)}
+    monkeypatch.setattr(db, "get_ohlcv_df",
+                        lambda s, freq="daily", limit=1000: frames[s].tail(limit))
+    monkeypatch.setattr(db, "list_symbols", lambda: [{"symbol": s} for s in frames])
+    g = quant_lab.compute_quant_grid()
+    json.dumps(g, allow_nan=False)
+    assert g["n_symbols"] == 3
+    assert {r["symbol"] for r in g["rows"]} == {"GRIDA", "GRIDB"}
+    assert g["skipped"] == ["GRIDTINY"]
+    for r in g["rows"]:
+        assert -100 <= r["direction"] <= 100
+        assert r["profile"] in quant_lab.PROFILE_WEIGHTS
+        assert r["conviction"] in ("LOW", "MED", "HIGH")

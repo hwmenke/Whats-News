@@ -12,8 +12,8 @@ const kamaPeriods = {};
 
 // Colour pool for dynamically added KAMA lines
 const KAMA_COLORS = [
-    '#3b82f6', '#eab308', '#a855f7', '#06b6d4',
-    '#f97316', '#ec4899', '#14b8a6', '#f43f5e',
+    '#30a2da', '#eab308', '#8e6c8a', '#30a2da',
+    '#e5862e', '#ec4899', '#14b8a6', '#f43f5e',
 ];
 let kamaColorIdx = 0;
 function nextKamaColor() {
@@ -45,42 +45,43 @@ let series = {
 
 // ── Colours ──────────────────────────────────────────────────
 const C = {
-    bb_upper:      '#22c55e',
-    bb_middle:     '#22c55e',
-    bb_lower:      '#22c55e',
-    rsi7:          '#06b6d4',
-    rsi14:         '#f97316',
-    rsi21:         '#a855f7',
-    macd_line:     '#3b82f6',
-    macd_signal:   '#ef4444',
-    macd_hist_pos: '#22c55e',
-    macd_hist_neg: '#ef4444',
-    trend_pos:     '#22c55e',
-    trend_neg:     '#ef4444',
-    trend_zero:    '#4a5568',
+    bb_upper:      '#6d904f',
+    bb_middle:     '#6d904f',
+    bb_lower:      '#6d904f',
+    rsi7:          '#30a2da',
+    rsi14:         '#e5862e',
+    rsi21:         '#8e6c8a',
+    macd_line:     '#30a2da',
+    macd_signal:   '#fc4f30',
+    macd_hist_pos: '#6d904f',
+    macd_hist_neg: '#fc4f30',
+    trend_pos:     '#6d904f',
+    trend_neg:     '#fc4f30',
+    trend_zero:    '#b5b5b5',
 };
 
 // ── Base chart options ────────────────────────────────────────
 function baseOpts() {
     return {
+        localization: { locale: 'en-US' },
         layout: {
-            background: { color: '#0d1117' },
-            textColor: '#8b949e',
+            background: { color: '#ffffff' },
+            textColor: '#7a7a7a',
             fontFamily: "'JetBrains Mono', monospace",
             fontSize: 10,
         },
         grid: {
-            vertLines: { color: '#1c2230' },
-            horzLines: { color: '#1c2230' },
+            vertLines: { color: '#e9e9e9' },
+            horzLines: { color: '#e9e9e9' },
         },
         crosshair: {
             mode: LWC.CrosshairMode.Normal,
-            vertLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
-            horzLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
+            vertLine: { color: '#b5b5b5', labelBackgroundColor: '#3c3c3c' },
+            horzLine: { color: '#b5b5b5', labelBackgroundColor: '#3c3c3c' },
         },
-        rightPriceScale: { borderColor: '#30363d' },
+        rightPriceScale: { borderColor: '#cfcfcf' },
         timeScale: {
-            borderColor: '#30363d',
+            borderColor: '#cfcfcf',
             timeVisible: true,
             secondsVisible: false,
             rightOffset: 6,
@@ -121,9 +122,9 @@ function buildPanel(freq) {
         ...baseOpts(), width: mainEl.clientWidth, height: mainEl.clientHeight,
     });
     series[freq].candle = charts[freq].main.addCandlestickSeries({
-        upColor: '#22c55e', downColor: '#ef4444',
-        borderUpColor: '#22c55e', borderDownColor: '#ef4444',
-        wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+        upColor: '#6d904f', downColor: '#fc4f30',
+        borderUpColor: '#6d904f', borderDownColor: '#fc4f30',
+        wickUpColor: '#6d904f', wickDownColor: '#fc4f30',
     });
 
     // BB overlay series
@@ -142,16 +143,16 @@ function buildPanel(freq) {
     // RSI chart
     charts[freq].rsi = LWC.createChart(rsiEl, {
         ...baseOpts(), width: rsiEl.clientWidth, height: rsiEl.clientHeight,
-        rightPriceScale: { borderColor: '#30363d', autoScale: false, scaleMargins: { top: 0.05, bottom: 0.05 } },
+        rightPriceScale: { borderColor: '#cfcfcf', autoScale: false, scaleMargins: { top: 0.05, bottom: 0.05 } },
     });
     charts[freq].rsi.priceScale('right').applyOptions({ autoScale: false });
 
     series[freq].rsi[7]  = charts[freq].rsi.addLineSeries({ color: C.rsi7,  lineWidth: 1,   lineStyle: 2, priceLineVisible: false, lastValueVisible: true });
     series[freq].rsi[14] = charts[freq].rsi.addLineSeries({ color: C.rsi14, lineWidth: 1.5, lineStyle: 0, priceLineVisible: false, lastValueVisible: true });
     series[freq].rsi[21] = charts[freq].rsi.addLineSeries({ color: C.rsi21, lineWidth: 1,   lineStyle: 2, priceLineVisible: false, lastValueVisible: true });
-    series[freq].rsi[14].createPriceLine({ price: 80, color: '#ef444488', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OB' });
+    series[freq].rsi[14].createPriceLine({ price: 80, color: '#fc4f3088', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OB' });
     series[freq].rsi[14].createPriceLine({ price: 50, color: '#4a556888', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
-    series[freq].rsi[14].createPriceLine({ price: 20, color: '#22c55e88', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OS' });
+    series[freq].rsi[14].createPriceLine({ price: 20, color: '#6d904f88', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OS' });
 
     // MACD chart
     charts[freq].macd = LWC.createChart(macdEl, {
@@ -164,7 +165,7 @@ function buildPanel(freq) {
     // Trend score chart
     charts[freq].trend = LWC.createChart(trendEl, {
         ...baseOpts(), width: trendEl.clientWidth, height: trendEl.clientHeight,
-        rightPriceScale: { borderColor: '#30363d', autoScale: false, scaleMargins: { top: 0.1, bottom: 0.1 } },
+        rightPriceScale: { borderColor: '#cfcfcf', autoScale: false, scaleMargins: { top: 0.1, bottom: 0.1 } },
     });
     charts[freq].trend.priceScale('right').applyOptions({ autoScale: false });
 
@@ -172,7 +173,7 @@ function buildPanel(freq) {
         priceLineVisible: false, lastValueVisible: true,
     });
     // Reference line at 0
-    series[freq].trend.createPriceLine({ price: 0, color: '#30363d', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
+    series[freq].trend.createPriceLine({ price: 0, color: '#cfcfcf', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
 
     // Sync sub-charts to main
     syncTo(charts[freq].main, charts[freq].rsi, charts[freq].macd, charts[freq].trend);

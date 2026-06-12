@@ -176,6 +176,23 @@ async function dmStartBatch() {
     const delay     = parseFloat(document.getElementById("dm-delay")?.value || "1.5");
     const addWl     = document.getElementById("dm-add-watchlist")?.checked ?? true;
 
+    // Validate start date format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+        _dmLogLine("⚠ Invalid start date — use YYYY-MM-DD format.", "err");
+        return;
+    }
+    const [year, month, day] = startDate.split("-").map(Number);
+    if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1990 || year > 2100) {
+        _dmLogLine("⚠ Start date out of valid range.", "err");
+        return;
+    }
+
+    // Validate delay
+    if (isNaN(delay) || delay < 0.3 || delay > 10) {
+        _dmLogLine("⚠ Delay must be between 0.3 and 10 seconds.", "err");
+        return;
+    }
+
     _dmSetRunning(true);
     _dmClearLog();
     _dmShowProgress(true);
