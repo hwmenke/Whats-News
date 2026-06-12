@@ -39,49 +39,49 @@ const trendState = {
 // ── Line metadata (descriptions + colors) ─────────────────────
 const LINE_META = {
     sb:  {
-        color: '#3b82f6',
+        color: '#029FD5',
         label: 'SB — Short Baseline',
         params: 'KAMA · ER=10 · fast=2 · slow=15 · source=HLC/3',
         desc:  'Fast-adapting baseline. Tracks near-term momentum and is the primary input for the short-horizon regime. Turns quickly in trending markets, stays flat in chop.',
     },
     mb:  {
-        color: '#ef4444',
+        color: '#E05252',
         label: 'MB — Medium Baseline',
         params: 'KAMA · ER=20 · fast=2 · slow=30 · source=HLC/3',
         desc:  'Master trend line. Drives the medium-horizon regime that governs all trade management bands (MRT, MDB). When SB crosses above MB, a long regime entry fires.',
     },
     lb:  {
-        color: '#f97316',
+        color: '#F68B42',
         label: 'LB — Long Baseline',
         params: 'KAMA · ER=40 · fast=2 · slow=60 · source=HLC/3',
         desc:  'Macro structure line. Very slow to react — only flips on sustained multi-month directional moves. Provides the long-horizon regime context for LRT / LDB bands.',
     },
     sdb: {
-        color: '#22c55e',
+        color: '#4DAF88',
         label: 'SDB — Short Deviation Band  (TP1)',
         params: 'Center=SB · +2.0 × ATR(20) · ratchets UP in long regime',
         desc:  'First take-profit target. Ratcheting band anchored to SB — moves only in the direction of the trade and never pulls back. Reset on regime flip.',
     },
     mrt: {
-        color: '#475569',
+        color: '#4A5A6E',
         label: 'MRT — Medium Retracement  (Stop)',
         params: 'Center=MB · −2.25 × ATR(20) · ratchets UP in long regime',
         desc:  'Trailing stop level. Sits 2.25 ATR on the loss side of MB and tightens as MB advances. Exit here on an adverse move. Never retreats against the trade.',
     },
     mdb: {
-        color: '#16a34a',
+        color: '#3A9E6E',
         label: 'MDB — Medium Deviation Band  (TP2)',
         params: 'Center=MB · +4.5 × ATR(20) · ratchets UP in long regime',
         desc:  'Main take-profit target. Exactly 2× the stop distance, giving a built-in 2:1 R:R. Ratchets in the direction of the trade; resets on medium-regime flip.',
     },
     lrt: {
-        color: '#6b7280',
+        color: '#5B6B7E',
         label: 'LRT — Long Retracement  (Wide Stop)',
         params: 'Center=LB · −2.25 × ATR(20) · ratchets in long-horizon regime',
         desc:  'Wide trailing stop for long-horizon positions. Based on LB so it only tightens on sustained macro trends. Use for position-level sizing against macro structure.',
     },
     ldb: {
-        color: '#06b6d4',
+        color: '#56B4E9',
         label: 'LDB — Long Deviation Band  (Extended Target)',
         params: 'Center=LB · +4.5 × ATR(20) · ratchets in long-horizon regime',
         desc:  'Extended target for multi-month positions. Only meaningful in confirmed long-horizon regimes. Gives a sense of how far macro momentum can carry the move.',
@@ -112,42 +112,43 @@ let _trendObservers = [];   // ResizeObserver instances — cleaned up on destro
 let _regSyncing     = false;
 let _regSyncingW    = false;
 
-// ── Colors ───────────────────────────────────────────────────
+// ── Colors — 538-inspired ─────────────────────────────────────
 const TC = {
-    sb:     '#3b82f6',   // blue    — fast baseline
-    mb:     '#ef4444',   // red     — medium baseline
-    lb:     '#f97316',   // orange  — long baseline
-    sdb:    '#22c55e',   // bright-green — short TP
-    mdb:    '#16a34a',   // dark-green   — medium TP
-    ldb:    '#06b6d4',   // cyan         — long TP
-    mrt:    '#475569',   // slate        — medium stop
-    lrt:    '#6b7280',   // gray         — long stop
-    bull:   '#22c55e',
-    bear:   '#ef4444',
-    neut:   '#4a5568',
+    sb:     '#029FD5',   // 538 blue     — fast baseline
+    mb:     '#E05252',   // coral-red    — medium baseline (master)
+    lb:     '#F68B42',   // 538 orange   — long baseline
+    sdb:    '#4DAF88',   // teal-green   — short TP
+    mdb:    '#3A9E6E',   // dark teal    — medium TP
+    ldb:    '#56B4E9',   // sky blue     — long TP
+    mrt:    '#4A5A6E',   // slate        — medium stop
+    lrt:    '#5B6B7E',   // light slate  — long stop
+    bull:   '#4DAF88',
+    bear:   '#E05252',
+    neut:   '#5A6A80',
 };
 
-// ── Base chart options ────────────────────────────────────────
+// ── Base chart options — 538 style ───────────────────────────
 function _trendBaseOpts() {
+    const CT = window._CT || {};
     return {
         layout: {
-            background:  { color: '#0a0e16' },
-            textColor:   '#8b949e',
-            fontFamily:  "'JetBrains Mono', monospace",
-            fontSize:    10,
+            background:  { color: CT.bg   || '#0b101a' },
+            textColor:   CT.text || '#9aafc4',
+            fontFamily:  CT.font || "'Inter', -apple-system, 'Helvetica Neue', sans-serif",
+            fontSize:    11,
         },
         grid: {
-            vertLines: { color: '#151c2b' },
-            horzLines: { color: '#151c2b' },
+            vertLines: { visible: false },
+            horzLines: { color: CT.grid || '#1c2638' },
         },
         crosshair: {
             mode: LightweightCharts.CrosshairMode.Normal,
-            vertLine: { color: '#3d4965', labelBackgroundColor: '#151c2b' },
-            horzLine: { color: '#3d4965', labelBackgroundColor: '#151c2b' },
+            vertLine: { color: CT.cross || '#4d6080', labelBackgroundColor: CT.grid || '#1c2638' },
+            horzLine: { color: CT.cross || '#4d6080', labelBackgroundColor: CT.grid || '#1c2638' },
         },
-        rightPriceScale: { borderColor: '#30363d' },
+        rightPriceScale: { borderColor: CT.grid || '#1c2638' },
         timeScale: {
-            borderColor:    '#30363d',
+            borderColor:    CT.grid || '#1c2638',
             timeVisible:    true,
             secondsVisible: false,
             rightOffset:    6,
@@ -230,14 +231,14 @@ function buildTrendCharts() {
     // Neutral      → value equals base (zero-height, invisible)
     trendSeries.bgLong = trendCharts.price.addHistogramSeries({
         priceScaleId:     'left',
-        color:            'rgba(34,197,94,0.07)',
+        color:            'rgba(77,175,136,0.08)',
         base:             -1,
         priceLineVisible: false,
         lastValueVisible: false,
     });
     trendSeries.bgShort = trendCharts.price.addHistogramSeries({
         priceScaleId:     'left',
-        color:            'rgba(239,68,68,0.07)',
+        color:            'rgba(224,82,82,0.08)',
         base:             1,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -245,9 +246,9 @@ function buildTrendCharts() {
 
     // Candlesticks
     trendSeries.candle = trendCharts.price.addCandlestickSeries({
-        upColor:       '#22c55e', downColor:       '#ef4444',
-        borderUpColor: '#22c55e', borderDownColor: '#ef4444',
-        wickUpColor:   '#22c55e', wickDownColor:   '#ef4444',
+        upColor:       '#4DAF88', downColor:       '#E05252',
+        borderUpColor: '#4DAF88', borderDownColor: '#E05252',
+        wickUpColor:   '#4DAF88', wickDownColor:   '#E05252',
     });
 
     const _line = (color, lw, ls, title, lastVal = false) =>
@@ -279,7 +280,7 @@ function buildTrendCharts() {
         width:  regimeEl.clientWidth  || 600,
         height: regimeEl.clientHeight || 130,
         rightPriceScale: {
-            borderColor:  '#30363d',
+            borderColor:  (window._CT || {}).grid || '#1c2638',
             scaleMargins: { top: 0.08, bottom: 0.08 },
         },
     });
@@ -342,17 +343,17 @@ function buildWeeklyTrendCharts() {
     });
 
     trendSeriesW.bgLong = trendChartsW.price.addHistogramSeries({
-        priceScaleId: 'left', color: 'rgba(34,197,94,0.07)',
+        priceScaleId: 'left', color: 'rgba(77,175,136,0.08)',
         base: -1, priceLineVisible: false, lastValueVisible: false,
     });
     trendSeriesW.bgShort = trendChartsW.price.addHistogramSeries({
-        priceScaleId: 'left', color: 'rgba(239,68,68,0.07)',
+        priceScaleId: 'left', color: 'rgba(224,82,82,0.08)',
         base: 1, priceLineVisible: false, lastValueVisible: false,
     });
     trendSeriesW.candle = trendChartsW.price.addCandlestickSeries({
-        upColor: '#22c55e', downColor: '#ef4444',
-        borderUpColor: '#22c55e', borderDownColor: '#ef4444',
-        wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+        upColor: '#4DAF88', downColor: '#E05252',
+        borderUpColor: '#4DAF88', borderDownColor: '#E05252',
+        wickUpColor: '#4DAF88', wickDownColor: '#E05252',
     });
 
     const _lineW = (color, lw, ls, title, lastVal = false) =>

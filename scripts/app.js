@@ -967,12 +967,12 @@ function renderStats(data) {
         return pct ? (v * 100).toFixed(2) + '%' : v.toFixed(2);
     };
     const pctValue = v => (v !== null && Number.isFinite(v)) ? v * 100 : null;
-    const pctColor = v => (v !== null && Number.isFinite(v) && v >= 0) ? '#22c55e' : '#ef4444';
+    const pctColor = v => (v !== null && Number.isFinite(v) && v >= 0) ? '#4DAF88' : '#E05252';
 
     const kamaColors = {
-        '10': '#3b82f6',
-        '20': '#f97316',
-        '50': '#a855f7',
+        '10': '#029FD5',
+        '20': '#F68B42',
+        '50': '#9B89C4',
     };
     const alignedDeciles = series => {
         const values = Array(10).fill(null);
@@ -989,14 +989,14 @@ function renderStats(data) {
     document.getElementById('stat-drawdown').textContent = fmt(m.max_drawdown, true);
     document.getElementById('stat-winrate').textContent  = fmt(m.win_rate, true);
 
-    // Common Chart.js options
+    // Common Chart.js options — 538 style (font defaults set globally in chart_helpers.js)
     const baseChartOpts = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 10 } } },
-            x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } }
+            y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#9aafc4' } },
+            x: { grid: { display: false }, ticks: { color: '#9aafc4' } }
         }
     };
     const distanceChartOptions = {
@@ -1004,7 +1004,7 @@ function renderStats(data) {
         plugins: {
             legend: {
                 display: true,
-                labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
+                labels: { usePointStyle: true, boxWidth: 10 }
             }
         }
     };
@@ -1013,7 +1013,7 @@ function renderStats(data) {
         plugins: {
             legend: {
                 display: true,
-                labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
+                labels: { usePointStyle: true, boxWidth: 10 }
             }
         }
     };
@@ -1040,8 +1040,8 @@ function renderStats(data) {
             datasets: Object.entries(data.kama_distance_analysis?.fwd_1d || {}).map(([period, points]) => ({
                 label: `KAMA ${period}`,
                 data: alignedDeciles(points),
-                borderColor: kamaColors[period] || '#4facfe',
-                backgroundColor: kamaColors[period] || '#4facfe',
+                borderColor: kamaColors[period] || '#029FD5',
+                backgroundColor: kamaColors[period] || '#029FD5',
                 spanGaps: true,
                 pointRadius: 3,
                 pointHoverRadius: 5,
@@ -1074,8 +1074,8 @@ function renderStats(data) {
             datasets: Object.entries(data.kama_distance_analysis?.fwd_5d || {}).map(([period, points]) => ({
                 label: `KAMA ${period}`,
                 data: alignedDeciles(points),
-                borderColor: kamaColors[period] || '#4facfe',
-                backgroundColor: kamaColors[period] || '#4facfe',
+                borderColor: kamaColors[period] || '#029FD5',
+                backgroundColor: kamaColors[period] || '#029FD5',
                 spanGaps: true,
                 pointRadius: 3,
                 pointHoverRadius: 5,
@@ -1093,8 +1093,8 @@ function renderStats(data) {
             labels: data.distribution.map(d => (d.bin * 100).toFixed(1) + '%'),
             datasets: [{
                 data: data.distribution.map(d => d.count),
-                backgroundColor: 'rgba(79, 172, 254, 0.6)',
-                borderColor: '#4facfe',
+                backgroundColor: 'rgba(2,159,213,0.55)',
+                borderColor: '#029FD5',
                 borderWidth: 1,
                 categoryPercentage: 1.0,
                 barPercentage: 1.0
@@ -1117,7 +1117,7 @@ function renderStats(data) {
             labels: data.seasonality.map(d => monthNames[d.month-1]),
             datasets: [{
                 data: data.seasonality.map(d => pctValue(d.value)),
-                backgroundColor: data.seasonality.map(d => Number.isFinite(d.value) && d.value >= 0 ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'),
+                backgroundColor: data.seasonality.map(d => Number.isFinite(d.value) && d.value >= 0 ? 'rgba(77,175,136,0.65)' : 'rgba(224,82,82,0.65)'),
             }]
         },
         options: baseChartOpts
@@ -1132,15 +1132,15 @@ function renderStats(data) {
                 {
                     label: '1D Fwd Return',
                     data: (data.kama_cross_analysis || []).map(d => pctValue(d.fwd_1d)),
-                    backgroundColor: 'rgba(79, 172, 254, 0.65)',
-                    borderColor: '#4facfe',
+                    backgroundColor: 'rgba(2,159,213,0.60)',
+                    borderColor: '#029FD5',
                     borderWidth: 1,
                 },
                 {
                     label: '5D Fwd Return',
                     data: (data.kama_cross_analysis || []).map(d => pctValue(d.fwd_5d)),
-                    backgroundColor: 'rgba(249, 115, 22, 0.65)',
-                    borderColor: '#f97316',
+                    backgroundColor: 'rgba(246,139,66,0.60)',
+                    borderColor: '#F68B42',
                     borderWidth: 1,
                 }
             ]
@@ -1156,8 +1156,8 @@ function renderStats(data) {
             datasets: [{
                 label: '1D Event Count',
                 data: (data.kama_cross_analysis || []).map(d => d.count_1d),
-                backgroundColor: (data.kama_cross_analysis || []).map(d => d.direction === 'bull' ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'),
-                borderColor: (data.kama_cross_analysis || []).map(d => d.direction === 'bull' ? '#22c55e' : '#ef4444'),
+                backgroundColor: (data.kama_cross_analysis || []).map(d => d.direction === 'bull' ? 'rgba(77,175,136,0.65)' : 'rgba(224,82,82,0.65)'),
+                borderColor: (data.kama_cross_analysis || []).map(d => d.direction === 'bull' ? '#4DAF88' : '#E05252'),
                 borderWidth: 1,
             }]
         },

@@ -2,7 +2,7 @@
  * compare.js — Normalized multi-symbol comparison chart (LightweightCharts)
  */
 let _cmpChart = null;
-const _CMP_COLORS = ['#3b82f6','#f97316','#22c55e','#a855f7','#ef4444','#06b6d4','#eab308','#ec4899'];
+const _CMP_COLORS = ['#029FD5','#F68B42','#4DAF88','#9B89C4','#E05252','#56B4E9','#E8C44A','#6CC3D5'];
 
 function initCompare() {
     const input = document.getElementById('cmp-symbols-input');
@@ -38,15 +38,15 @@ async function runCompare() {
             width:  chartEl.clientWidth,
             height: chartEl.clientHeight || 400,
             layout: {
-                background: { color: '#0a0e16' },
-                textColor: '#8b949e',
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 10,
+                background: { color: (window._CT||{}).bg||'#0b101a' },
+                textColor:  (window._CT||{}).text||'#9aafc4',
+                fontFamily: (window._CT||{}).font||"'Inter', -apple-system, 'Helvetica Neue', sans-serif",
+                fontSize: 11,
             },
-            grid: { vertLines: { color: '#151c2b' }, horzLines: { color: '#151c2b' } },
+            grid: { vertLines: { visible: false }, horzLines: { color: (window._CT||{}).grid||'#1c2638' } },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-            rightPriceScale: { borderColor: '#30363d' },
-            timeScale: { borderColor: '#30363d', timeVisible: true },
+            rightPriceScale: { borderColor: (window._CT||{}).grid||'#1c2638' },
+            timeScale: { borderColor: (window._CT||{}).grid||'#1c2638', timeVisible: true },
         });
 
         const legendItems = [];
@@ -69,7 +69,7 @@ async function runCompare() {
             legend.innerHTML = legendItems.map(l =>
                 `<span class="cmp-legend-item" style="border-left:3px solid ${l.color};">
                     <span style="color:${l.color}; font-weight:700;">${l.sym}</span>
-                    <span style="color:${l.chg >= 0 ? '#22c55e' : '#ef4444'}">${l.chg >= 0 ? '+' : ''}${l.chg.toFixed(2)}%</span>
+                    <span style="color:${l.chg >= 0 ? '#4DAF88' : '#E05252'}">${l.chg >= 0 ? '+' : ''}${l.chg.toFixed(2)}%</span>
                 </span>`
             ).join('');
         }

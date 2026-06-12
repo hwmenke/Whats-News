@@ -55,22 +55,27 @@ async function loadMultiTF(symbol) {
             const chart = LightweightCharts.createChart(el, {
                 width:  el.clientWidth,
                 height: 200,
-                layout: { background: { color: '#0a0e16' }, textColor: '#8b949e', fontSize: 9 },
-                grid:   { vertLines: { color: '#151c2b' }, horzLines: { color: '#151c2b' } },
-                rightPriceScale: { borderColor: '#30363d' },
-                timeScale: { borderColor: '#30363d', visible: true },
+                layout: {
+                    background: { color: (window._CT||{}).bg||'#0b101a' },
+                    textColor:  (window._CT||{}).text||'#9aafc4',
+                    fontFamily: (window._CT||{}).font||"'Inter', -apple-system, 'Helvetica Neue', sans-serif",
+                    fontSize: 10,
+                },
+                grid:   { vertLines: { visible: false }, horzLines: { color: (window._CT||{}).grid||'#1c2638' } },
+                rightPriceScale: { borderColor: (window._CT||{}).grid||'#1c2638' },
+                timeScale: { borderColor: (window._CT||{}).grid||'#1c2638', visible: true },
                 crosshair: { mode: 1 },
                 handleScroll: true,
                 handleScale:  true,
             });
 
             const candle = chart.addCandlestickSeries({
-                upColor:        '#22c55e',
-                downColor:      '#ef4444',
-                borderUpColor:  '#22c55e',
-                borderDownColor:'#ef4444',
-                wickUpColor:    '#22c55e',
-                wickDownColor:  '#ef4444',
+                upColor:        '#4DAF88',
+                downColor:      '#E05252',
+                borderUpColor:  '#4DAF88',
+                borderDownColor:'#E05252',
+                wickUpColor:    '#4DAF88',
+                wickDownColor:  '#E05252',
             });
             candle.setData(rows.map(r => ({
                 time: r.date, open: r.open, high: r.high, low: r.low, close: r.close,

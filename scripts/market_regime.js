@@ -114,10 +114,15 @@ function _regimeRenderHistory(data) {
     if (!rows.length) return;
 
     regimeState.chart = LightweightCharts.createChart(canvas, {
-        layout: { background: { color: '#0a0e16' }, textColor: '#8b949e', fontFamily: "'JetBrains Mono',monospace", fontSize: 10 },
-        grid:   { vertLines: { color: '#151c2b' }, horzLines: { color: '#151c2b' } },
-        rightPriceScale: { borderColor: '#30363d' },
-        timeScale: { borderColor: '#30363d', timeVisible: true, secondsVisible: false },
+        layout: {
+            background: { color: (window._CT||{}).bg||'#0b101a' },
+            textColor:  (window._CT||{}).text||'#9aafc4',
+            fontFamily: (window._CT||{}).font||"'Inter', -apple-system, 'Helvetica Neue', sans-serif",
+            fontSize: 11,
+        },
+        grid:   { vertLines: { visible: false }, horzLines: { color: (window._CT||{}).grid||'#1c2638' } },
+        rightPriceScale: { borderColor: (window._CT||{}).grid||'#1c2638' },
+        timeScale: { borderColor: (window._CT||{}).grid||'#1c2638', timeVisible: true, secondsVisible: false },
         crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
         width:  canvas.clientWidth  || 800,
         height: canvas.clientHeight || 220,
@@ -140,7 +145,7 @@ function _regimeRenderHistory(data) {
 
     // Price line
     const priceSeries = regimeState.chart.addLineSeries({
-        color: '#60a5fa', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true,
+        color: '#029FD5', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true,
     });
     priceSeries.setData(rows.filter(r => r.close).map(r => ({ time: r.date, value: r.close })));
 

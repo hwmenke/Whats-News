@@ -44,9 +44,9 @@ function _initHoverPopover() {
             }
         );
         _hoverSeries = _hoverChart.addAreaSeries({
-            lineColor: '#3b82f6',
-            topColor: 'rgba(59,130,246,0.25)',
-            bottomColor: 'rgba(59,130,246,0)',
+            lineColor: '#029FD5',
+            topColor: 'rgba(2,159,213,0.22)',
+            bottomColor: 'rgba(2,159,213,0)',
             lineWidth: 1.5,
             priceLineVisible: false,
             lastValueVisible: false,

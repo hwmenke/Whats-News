@@ -79,8 +79,8 @@ function _seasRenderMonthBars(monthly) {
     const updateOrCreate = window.updateOrCreate;
     const labels = monthly.map(m => m.name);
     const means  = monthly.map(m => m.mean != null ? +(m.mean * 100).toFixed(2) : 0);
-    const colors = means.map(v => v >= 0 ? 'rgba(34,197,94,0.75)' : 'rgba(239,68,68,0.75)');
-    const borders= means.map(v => v >= 0 ? '#22c55e' : '#ef4444');
+    const colors = means.map(v => v >= 0 ? 'rgba(77,175,136,0.70)' : 'rgba(224,82,82,0.70)');
+    const borders= means.map(v => v >= 0 ? '#4DAF88' : '#E05252');
 
     seasState.charts['month'] = (updateOrCreate || _chartCreate)(
         'seas.month', canvas, {
@@ -98,7 +98,7 @@ function _seasRenderDowBars(dow) {
     const updateOrCreate = window.updateOrCreate;
     const labels = dow.map(d => d.name);
     const means  = dow.map(d => d.mean != null ? +(d.mean * 100).toFixed(3) : 0);
-    const colors = means.map(v => v >= 0 ? 'rgba(96,165,250,0.75)' : 'rgba(239,68,68,0.75)');
+    const colors = means.map(v => v >= 0 ? 'rgba(2,159,213,0.65)' : 'rgba(224,82,82,0.70)');
 
     seasState.charts['dow'] = (updateOrCreate || _chartCreate)(
         'seas.dow', canvas, {
@@ -117,7 +117,7 @@ function _seasRenderQuarterBars(quarterly) {
     const labels = quarterly.map(q => q.name);
     const means  = quarterly.map(q => q.mean != null ? +(q.mean * 100).toFixed(2) : 0);
     const hit    = quarterly.map(q => q.hit_rate != null ? +(q.hit_rate * 100).toFixed(1) : 0);
-    const colors = means.map(v => v >= 0 ? 'rgba(168,85,247,0.65)' : 'rgba(239,68,68,0.65)');
+    const colors = means.map(v => v >= 0 ? 'rgba(155,137,196,0.65)' : 'rgba(224,82,82,0.65)');
 
     seasState.charts['quarter'] = (updateOrCreate || _chartCreate)(
         'seas.quarter', canvas, {
@@ -126,13 +126,13 @@ function _seasRenderQuarterBars(quarterly) {
                 labels,
                 datasets: [
                     { label: 'Avg Return', data: means, backgroundColor: colors, borderWidth: 1, yAxisID: 'y' },
-                    { label: 'Hit Rate',   data: hit,   backgroundColor: 'rgba(250,204,21,0.3)', borderColor: '#fbbf24', borderWidth: 1, type: 'line', yAxisID: 'y2', pointRadius: 4 },
+                    { label: 'Hit Rate',   data: hit,   backgroundColor: 'rgba(232,196,74,0.3)', borderColor: '#E8C44A', borderWidth: 1, type: 'line', yAxisID: 'y2', pointRadius: 4 },
                 ],
             },
             options: { ..._seasBarOpts('Quarterly (%)', true), scales: {
-                x:  { ticks: { color: '#94a3b8' }, grid: { display: false } },
-                y:  { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#1e293b' }, title: { display: true, text: 'Ret %', color: '#94a3b8', font: { size: 9 } } },
-                y2: { position: 'right', ticks: { color: '#fbbf24', font: { size: 10 } }, grid: { display: false }, title: { display: true, text: 'Hit%', color: '#fbbf24', font: { size: 9 } } },
+                x:  { ticks: { color: '#9aafc4' }, grid: { display: false } },
+                y:  { ticks: { color: '#9aafc4' }, grid: { color: '#1c2638' }, title: { display: true, text: 'Ret %', color: '#9aafc4' } },
+                y2: { position: 'right', ticks: { color: '#E8C44A' }, grid: { display: false }, title: { display: true, text: 'Hit%', color: '#E8C44A' } },
             }},
         }
     );
@@ -146,12 +146,12 @@ function _seasBarOpts(title, legend) {
     return {
         responsive: true, maintainAspectRatio: false, animation: false,
         plugins: {
-            legend: { display: legend, labels: { color: '#94a3b8', font: { size: 10 } } },
+            legend: { display: legend, labels: {} },
             tooltip: { callbacks: { label: ctx => ` ${ctx.raw > 0 ? '+' : ''}${ctx.raw}%` } },
         },
         scales: {
-            x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { display: false } },
-            y: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#1e293b' } },
+            x: { ticks: { color: '#9aafc4' }, grid: { display: false } },
+            y: { ticks: { color: '#9aafc4' }, grid: { color: '#1c2638' } },
         },
     };
 }

@@ -822,12 +822,13 @@ kbd {
   top: 8px;
   left: 12px;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.7px;
-  color: var(--text-dim);
+  letter-spacing: 0.9px;
+  color: var(--text-muted);
   z-index: 10;
   pointer-events: none;
+  font-family: var(--font-main);
 }
 
 .chart-divider {
