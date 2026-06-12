@@ -77,26 +77,32 @@ def _trend_anchor(logp: np.ndarray):
     return fit, sig, {"anchor": "126-bar log-linear trend channel"}
 
 
-# PCA panel of watchlist log prices, memoised for 10 minutes.
+# PCA panels of watchlist log prices, memoised for 10 minutes per scope.
+# Scopes: the whole watchlist, or a sector (symbols sharing a group_tag) —
+# sector panels give sharper residuals when enough peers exist.
 # The lock matters: the signal scanner calls pca_divergence() from a thread
 # pool, and without it every worker would rebuild the panel simultaneously.
-_PANEL_MEMO: dict = {"ts": 0.0, "panel": None}
+_PANEL_MEMO: dict = {}            # scope key → {"ts", "panel"}
 _PANEL_LOCK = threading.Lock()
+PCA_MIN_SECTOR = 6                # sector panels may be smaller than watchlist
 
 
-def _build_pca_panel() -> pd.DataFrame | None:
+def _build_pca_panel(symbols: list[str] | None = None, key: str = "__ALL__",
+                     min_symbols: int = PCA_MIN_SYMBOLS) -> pd.DataFrame | None:
     with _PANEL_LOCK:
-        return _build_pca_panel_locked()
+        return _build_pca_panel_locked(symbols, key, min_symbols)
 
 
-def _build_pca_panel_locked() -> pd.DataFrame | None:
+def _build_pca_panel_locked(symbols, key, min_symbols) -> pd.DataFrame | None:
     now = time.time()
-    if _PANEL_MEMO["panel"] is not None and now - _PANEL_MEMO["ts"] < 600:
-        return _PANEL_MEMO["panel"]
+    memo = _PANEL_MEMO.get(key)
+    if memo is not None and now - memo["ts"] < 600:
+        return memo["panel"]
 
+    universe = symbols if symbols is not None else \
+        [row["symbol"] for row in db.list_symbols()]
     series = {}
-    for row in db.list_symbols()[:60]:
-        sym = row["symbol"]
+    for sym in universe[:60]:
         df = db.get_ohlcv_df(sym, "daily", limit=1300)
         if len(df) >= PCA_MIN_OVERLAP:
             series[sym] = np.log(df["close"].clip(lower=1e-9))
@@ -110,13 +116,30 @@ def _build_pca_panel_locked() -> pd.DataFrame | None:
         max_d = max(last.values())
         fresh = [c for c in joined.columns if (max_d - last[c]).days <= 7]
         panel = joined[fresh].dropna()
-        if panel.shape[0] < PCA_MIN_OVERLAP or panel.shape[1] < PCA_MIN_SYMBOLS:
+        if panel.shape[0] < PCA_MIN_OVERLAP or panel.shape[1] < min_symbols:
             panel = None
         elif panel.shape[1] > 40:
             panel = panel.iloc[:, :40]
 
-    _PANEL_MEMO.update(ts=now, panel=panel)
+    _PANEL_MEMO[key] = {"ts": now, "panel": panel}
     return panel
+
+
+def _panel_for(symbol: str):
+    """Pick the tightest valid panel for `symbol`: its sector (group_tag)
+    when ≥ PCA_MIN_SECTOR fresh peers exist, else the whole watchlist.
+    Returns (panel | None, scope_label)."""
+    groups = {row["symbol"]: (row.get("group_tag") or "")
+              for row in db.list_symbols()}
+    tag = groups.get(symbol, "")
+    if tag:
+        peers = [s for s, t in groups.items() if t == tag]
+        if len(peers) >= PCA_MIN_SECTOR:
+            panel = _build_pca_panel(peers, key=f"grp:{tag}",
+                                     min_symbols=PCA_MIN_SECTOR)
+            if panel is not None and symbol in panel.columns:
+                return panel, f"sector:{tag}"
+    return _build_pca_panel(), "watchlist"
 
 
 def _pca_residuals(panel: pd.DataFrame, symbol: str) -> np.ndarray | None:
@@ -157,7 +180,7 @@ def _pca_residuals(panel: pd.DataFrame, symbol: str) -> np.ndarray | None:
 
 
 def _pca_anchor(symbol: str, df: pd.DataFrame):
-    panel = _build_pca_panel()
+    panel, scope = _panel_for(symbol)
     if panel is None:
         return None, None, {"error": f"PCA needs ≥ {PCA_MIN_SYMBOLS} watchlist symbols "
                                      f"with ≥ {PCA_MIN_OVERLAP} shared daily bars"}
@@ -182,6 +205,7 @@ def _pca_anchor(symbol: str, df: pd.DataFrame):
     logp   = np.log(df["close"].clip(lower=1e-9)).values
     fv_log = logp - d_ser.values
     meta = {"anchor": f"PCA({PCA_K}) eigenportfolio factor anchor",
+            "panel_scope": scope,
             "universe": list(panel.columns), "n_universe": panel.shape[1]}
     return fv_log, s_ser.values, meta
 
@@ -367,7 +391,7 @@ def _compute_inner(symbol: str, model: str) -> dict:
 
 def pca_divergence(symbol: str) -> dict | None:
     """Current PCA divergence z for `symbol`, or None if unavailable."""
-    panel = _build_pca_panel()
+    panel, _scope = _panel_for(symbol)
     if panel is None or symbol not in panel.columns:
         return None
     resid = _pca_residuals(panel, symbol)

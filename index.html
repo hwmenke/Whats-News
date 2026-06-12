@@ -1188,6 +1188,25 @@
 
       <div id="ql-error" class="ql-error" style="display:none;"></div>
 
+      <!-- ── watchlist grid (shown when no symbol selected, or via ⊞ GRID) ── -->
+      <div id="ql-grid-view" class="ql-gridview" style="display:none;">
+        <div class="ql-strip ql-grid-strip">
+          <div class="ql-strip-id">
+            <span class="ql-sym">WATCHLIST</span>
+            <span id="ql-grid-meta" class="ql-asof">—</span>
+          </div>
+          <div class="ql-strip-actions">
+            <button class="ql-btn ql-btn-ghost" onclick="qlShowGrid(true)" title="Recompute">⟳</button>
+          </div>
+        </div>
+        <div class="sg-results ql-grid-table-wrap">
+          <table class="sg-table">
+            <thead><tr id="ql-grid-head"></tr></thead>
+            <tbody id="ql-grid-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div id="ql-results" class="ql-results" style="display:none;">
 
         <!-- ── terminal header strip ── -->
@@ -1225,6 +1244,7 @@
           </div>
 
           <div class="ql-strip-actions">
+            <button class="ql-btn ql-btn-ghost" onclick="qlShowGrid()" title="Watchlist overview grid">⊞ GRID</button>
             <button id="ql-automl-btn" class="ql-btn" onclick="qlRunAutoML()">AUTOML ▸ RUN</button>
             <button class="ql-btn ql-btn-ghost" onclick="initQuantLab(true)" title="Recompute">⟳</button>
           </div>
@@ -1313,6 +1333,7 @@
 
       <div class="sg-controls">
         <button id="btn-sg-scan" class="ql-btn" onclick="sgRunScan()">SCAN ▸ WATCHLIST</button>
+        <button class="ql-btn ql-btn-ghost" onclick="sgToggleTrack()" title="Per-routine historical + live performance">📊 TRACK RECORD</button>
         <span id="sg-meta" class="sg-meta"></span>
         <div class="sg-filters">
           <button class="sg-filter-btn sg-f-active" data-f="all"     onclick="sgSetFilter('all')">ALL</button>
@@ -1328,10 +1349,31 @@
         <div id="sg-routine-pills" class="sg-routine-pills"></div>
       </div>
 
+      <!-- ── per-routine track record (hidden until requested) ── -->
+      <div id="sg-track" class="sg-track" style="display:none;">
+        <div class="sg-track-head">
+          ROUTINE TRACK RECORD
+          <span id="sg-track-meta" class="sg-meta"></span>
+        </div>
+        <div class="sg-results" style="flex:none;max-height:340px;">
+          <table class="sg-table">
+            <thead><tr>
+              <th>ROUTINE</th>
+              <th title="Vectorised replay of the routine's rule over full history (direction-adjusted)">HIST EVENTS</th>
+              <th>HIT 1W</th><th>AVG 1W</th><th>HIT 1M</th><th>AVG 1M</th>
+              <th title="Signals journaled by your actual scans">LIVE SIGNALS</th>
+              <th>LIVE HIT 1M</th><th>LIVE AVG 1M</th>
+            </tr></thead>
+            <tbody id="sg-track-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div id="sg-empty" class="empty-state">
         <div class="empty-icon">🚨</div>
         <p>Toggle the routines you care about, then <b>SCAN ▸ WATCHLIST</b>.<br>
-           Star a signal to keep it on your ★ FLAGGED list across scans.</p>
+           Star a signal to keep it on your ★ FLAGGED list across scans.<br>
+           Every scan journals its signals — <b>📊 TRACK RECORD</b> shows which routines actually work.</p>
       </div>
 
       <div id="sg-results" class="sg-results" style="display:none;">

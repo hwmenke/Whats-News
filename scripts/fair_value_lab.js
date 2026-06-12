@@ -145,7 +145,7 @@ function fvdRenderHeader(d) {
         `(z = ${z >= 0 ? '+' : ''}${z.toFixed(1)}σ, ${stateWord}). ` +
         `All forecasts are walk-forward: coefficients only ever see data that was available at the time.`;
     document.getElementById('fvd-universe').textContent =
-        d.universe ? `PANEL: ${d.universe.length} ASSETS` : '';
+        d.universe ? `PANEL: ${d.universe.length} ASSETS · ${(d.meta.panel_scope || 'WATCHLIST').toUpperCase()}` : '';
 
     const pctColor = (cur.pct_emp >= 0.95 || cur.pct_emp <= 0.05) ? FVD.c.red
                    : (cur.pct_emp >= 0.84 || cur.pct_emp <= 0.16) ? FVD.c.yellow : FVD.c.dark;

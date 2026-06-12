@@ -42,9 +42,9 @@ def _factor_universe(n_assets=12, n=1300, seed=42):
 @pytest.fixture(autouse=True)
 def fresh_panel_memo():
     import fair_value_lab as fvl
-    fvl._PANEL_MEMO.update(ts=0.0, panel=None)
+    fvl._PANEL_MEMO.clear()
     yield
-    fvl._PANEL_MEMO.update(ts=0.0, panel=None)
+    fvl._PANEL_MEMO.clear()
 
 
 def test_trend_model_detects_ou_reversion(monkeypatch):
@@ -146,3 +146,28 @@ def test_td_routines_split():
     assert td9(ctx_with_td(13)) is None and td13(ctx_with_td(13)) is not None
     assert td13(ctx_with_td(-13))["side"] == "bull"
     assert td9(ctx_with_td(5)) is None and td13(ctx_with_td(5)) is None
+
+
+def test_sector_panel_preferred(monkeypatch):
+    """Symbols with ≥ PCA_MIN_SECTOR tagged peers get a sector panel;
+    untagged symbols fall back to the watchlist panel."""
+    import database as db
+    import fair_value_lab as fvl
+    frames = _factor_universe()
+    tags = {s: ("tech" if i < 6 else "") for i, s in enumerate(frames)}
+    monkeypatch.setattr(db, "get_ohlcv_df",
+                        lambda s, freq="daily", limit=1000: frames[s].tail(limit))
+    monkeypatch.setattr(db, "list_symbols",
+                        lambda: [{"symbol": s, "group_tag": tags[s]} for s in frames])
+
+    panel, scope = fvl._panel_for("SYM00")
+    assert scope == "sector:tech"
+    assert panel.shape[1] == 6 and "SYM00" in panel.columns
+
+    panel2, scope2 = fvl._panel_for("SYM08")          # untagged
+    assert scope2 == "watchlist"
+    assert panel2.shape[1] == 12
+
+    r = fvl._compute_inner("SYM00", "pca")
+    assert "error" not in r
+    assert r["meta"]["panel_scope"] == "sector:tech"

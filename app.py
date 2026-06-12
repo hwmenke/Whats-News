@@ -592,12 +592,28 @@ def fair_value_route(symbol: str):
     return jsonify(result)
 
 
+# -- Quant Grid -------------------------------------------------------------------
+
+@app.route("/api/quant-grid", methods=["GET"])
+def quant_grid_route():
+    """Watchlist-wide composite dials: one row per symbol with VALUATION /
+    DIRECTION scores, character profile, and per-model sub-scores."""
+    return jsonify(ql.compute_quant_grid())
+
+
 # -- Signal Scanner ---------------------------------------------------------------
 
 @app.route("/api/signals/routines", methods=["GET"])
 def signal_routines_route():
     """Catalog of available signal routines (id, label, description)."""
     return jsonify(sigscan.routine_catalog())
+
+
+@app.route("/api/signals/track-record", methods=["GET"])
+def signal_track_record_route():
+    """Per-routine report card: vectorised historical event study across the
+    watchlist + realised returns of signals journaled by past scans."""
+    return jsonify(sigscan.track_record())
 
 
 @app.route("/api/signals", methods=["GET"])

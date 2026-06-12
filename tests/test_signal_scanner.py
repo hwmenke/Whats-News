@@ -24,11 +24,16 @@ def _make_df(seed: int, n: int = 900) -> pd.DataFrame:
 def scan_env(monkeypatch):
     import database as db
     frames = {"AAA": _make_df(1), "BBB": _make_df(2), "TINY": _make_df(3, n=100)}
+    journal = []
     monkeypatch.setattr(db, "get_ohlcv_df",
                         lambda s, freq="daily", limit=1000: frames[s].tail(limit))
     monkeypatch.setattr(db, "list_symbols",
                         lambda: [{"symbol": s} for s in frames])
-    return frames
+    # keep the journal in memory so tests never touch the real finance.db
+    monkeypatch.setattr(db, "record_signals",
+                        lambda rows: journal.extend(rows) or len(rows))
+    monkeypatch.setattr(db, "get_signal_journal", lambda limit=5000: list(journal))
+    return {"frames": frames, "journal": journal}
 
 
 def test_routine_catalog():
@@ -76,3 +81,43 @@ def test_broken_routine_does_not_kill_scan(scan_env, monkeypatch):
     result = sc._scan_one_inner("AAA")
     errs = [s for s in result["signals"] if s.get("error")]
     assert len(errs) == 1 and "kaput" in errs[0]["detail"]
+
+
+def test_scan_journals_signals(scan_env):
+    import signal_scanner as sc
+    result = sc.scan_symbols()
+    clean = [s for s in result["signals"] if not s.get("error")]
+    assert result["journaled_new"] == len(clean)
+    assert len(scan_env["journal"]) == len(clean)
+    # re-scan: idempotency is the DB's job (INSERT OR IGNORE); the API
+    # simply reports whatever record_signals returns
+    result2 = sc.scan_symbols()
+    assert "journaled_new" in result2
+
+
+def test_track_record_structure(scan_env):
+    import json
+    import signal_scanner as sc
+    # seed one live journal entry 30 bars before the end so forward
+    # 5/21-bar returns are computable
+    df = scan_env["frames"]["AAA"]
+    d30 = df.index[-30].strftime("%Y-%m-%d")
+    scan_env["journal"].append({"date": d30, "symbol": "AAA", "routine": "td9",
+                                "side": "bull", "strength": 70.0,
+                                "price": float(df["close"].iloc[-30]), "detail": ""})
+    tr = sc.track_record()
+    json.dumps(tr, allow_nan=False)
+    assert tr["n_journal"] >= 1
+    by_id = {r["routine"]: r for r in tr["rows"]}
+    assert set(by_id) == {r["id"] for r in sc.routine_catalog()}
+    # model-based routines are live-only
+    assert by_id["knn_skew"]["hist"]["available"] is False
+    assert by_id["pca_divergence"]["hist"]["available"] is False
+    # the seeded td9 entry was evaluated
+    assert by_id["td9"]["live"]["n"] >= 1
+    assert by_id["td9"]["live"]["h21"]["n"] >= 1
+    # historical replay produced events with sane stats
+    for r in tr["rows"]:
+        h21 = r["hist"]["h21"]
+        if h21["n"]:
+            assert 0.0 <= h21["hit"] <= 1.0

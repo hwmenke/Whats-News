@@ -76,6 +76,21 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_ohlcv ON ohlcv(symbol, freq, date)
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS signal_journal (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            date       TEXT NOT NULL,     -- bar date the signal fired on
+            symbol     TEXT NOT NULL,
+            routine    TEXT NOT NULL,
+            side       TEXT NOT NULL,     -- 'bull' | 'bear' | 'watch'
+            strength   REAL,
+            price      REAL,
+            detail     TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(date, symbol, routine)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -271,3 +286,38 @@ def get_latest_ohlcv_date(symbol: str, freq: str = "daily"):
     ).fetchone()
     conn.close()
     return row["d"] if row and row["d"] else None
+
+
+# ── Signal journal ─────────────────────────────────────────────────────────────
+
+def record_signals(rows: list) -> int:
+    """Journal fired signals; idempotent on (date, symbol, routine).
+    Returns the number of NEW rows inserted."""
+    if not rows:
+        return 0
+    conn = get_connection()
+    cur = conn.cursor()
+    new = 0
+    for r in rows:
+        cur.execute(
+            """INSERT OR IGNORE INTO signal_journal
+               (date, symbol, routine, side, strength, price, detail)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (r["date"], r["symbol"], r["routine"], r["side"],
+             r.get("strength"), r.get("price"), r.get("detail", "")),
+        )
+        new += cur.rowcount
+    conn.commit()
+    conn.close()
+    return new
+
+
+def get_signal_journal(limit: int = 5000) -> list:
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT date, symbol, routine, side, strength, price, detail "
+        "FROM signal_journal ORDER BY date DESC, symbol LIMIT ?",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

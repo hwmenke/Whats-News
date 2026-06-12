@@ -668,6 +668,40 @@ def _mean_reversion(st: pd.DataFrame) -> dict | None:
 
 
 
+# ── composite dials ───────────────────────────────────────────────────────────
+
+# DIRECTION weights conditioned on the symbol's own character (from the
+# mean-reversion model's Hurst / half-life read): trend-following earns more
+# weight on trending names, reversal models on mean-reverting ones.
+PROFILE_WEIGHTS = {
+    "TRENDING":       {"cta": 0.60, "knn": 0.25, "exh": 0.05, "mr": 0.10},
+    "MEAN-REVERTING": {"cta": 0.25, "knn": 0.25, "exh": 0.25, "mr": 0.25},
+    "MIXED":          {"cta": 0.45, "knn": 0.25, "exh": 0.15, "mr": 0.15},
+}
+
+
+def _blend(cta_s: float, knn_s: float, exh_score: float, mr_s: float,
+           profile: str):
+    """Profile-weighted DIRECTION blend. Returns (direction, exh_kick, weights)."""
+    w = PROFILE_WEIGHTS.get(profile, PROFILE_WEIGHTS["MIXED"])
+    exh_kick  = -exh_score * (abs(exh_score) / 100.0) ** 2   # contrarian at extremes
+    direction = float(np.clip(w["cta"] * cta_s + w["knn"] * knn_s
+                              + w["exh"] * exh_kick + w["mr"] * mr_s, -100, 100))
+    return direction, exh_kick, w
+
+
+def _conviction(direction: float, votes_in: list) -> str:
+    votes, agree = 0, 0
+    for sig in votes_in:
+        if sig is None or abs(sig) < 1e-9:
+            continue
+        votes += 1
+        if np.sign(sig) == np.sign(direction or 1):
+            agree += 1
+    return ("HIGH" if votes >= 2 and agree == votes else
+            "MED" if votes >= 2 and agree >= votes - 1 else "LOW")
+
+
 def _composite(st: pd.DataFrame, fv: dict, knn: dict | None,
                cta: dict, exh: dict, mr: dict | None) -> dict:
     val = fv.get("score")
@@ -675,30 +709,22 @@ def _composite(st: pd.DataFrame, fv: dict, knn: dict | None,
     knn_s = (knn or {}).get("score") or 0.0
     e     = exh.get("score") or 0.0
     mr_s  = (mr or {}).get("score") or 0.0
+    profile = (mr or {}).get("character") or "MIXED"
 
-    # exhaustion kicker: contrarian, only meaningful at extremes
-    exh_kick = -e * (abs(e) / 100.0) ** 2
+    direction, exh_kick, w = _blend(cta_s, knn_s, e, mr_s, profile)
 
-    direction = float(np.clip(0.45 * cta_s + 0.25 * knn_s
-                              + 0.15 * exh_kick + 0.15 * mr_s, -100, 100))
-
-    # conviction: how many of {CTA, KNN, MR, valuation-edge} agree with the call
-    votes, agree = 0, 0
     edge = fv.get("edge_1w")
-    for sig in (cta_s, knn_s, mr_s,
-                (edge or 0.0) * 1e4 if edge is not None else None):
-        if sig is None or abs(sig) < 1e-9:
-            continue
-        votes += 1
-        if np.sign(sig) == np.sign(direction or 1):
-            agree += 1
-    conviction = ("HIGH" if votes >= 2 and agree == votes else
-                  "MED" if votes >= 2 and agree >= votes - 1 else "LOW")
+    conviction = _conviction(direction, [
+        cta_s, knn_s, mr_s,
+        (edge or 0.0) * 1e4 if edge is not None else None,
+    ])
 
     return {
         "valuation":  _fl(val, 1),
         "direction":  _fl(direction, 1),
         "conviction": conviction,
+        "profile":    profile,
+        "weights":    {k: _fl(v, 2) for k, v in w.items()},
         "components": {
             "cta":      _fl(cta_s, 1),
             "knn":      _fl(knn_s, 1),
@@ -707,6 +733,63 @@ def _composite(st: pd.DataFrame, fv: dict, knn: dict | None,
             "fv_edge_1w": _fl(edge),
         },
     }
+
+
+# ── watchlist grid ────────────────────────────────────────────────────────────
+
+def _grid_row_inner(symbol: str) -> dict | None:
+    df = db.get_ohlcv_df(symbol, "daily", limit=800)
+    if df.empty or len(df) < MIN_BARS:
+        return None
+    st  = _state_frame(df)
+    knn = _knn(st)
+    mr  = _mean_reversion(st)
+
+    def _lv(col):
+        v = st[col].iloc[-1]
+        return float(v) if np.isfinite(v) else None
+
+    cta_s = _lv("cta_score") or 0.0
+    knn_s = (knn or {}).get("score") or 0.0
+    e     = _lv("exh_score") or 0.0
+    mr_s  = (mr or {}).get("score") or 0.0
+    profile = (mr or {}).get("character") or "MIXED"
+    direction, _, _ = _blend(cta_s, knn_s, e, mr_s, profile)
+
+    close = st["close"]
+    ret1d = (close.iloc[-1] / close.iloc[-2] - 1.0) if len(close) > 1 else np.nan
+    return {
+        "symbol":    symbol,
+        "close":     _fl(close.iloc[-1], 4),
+        "ret1d":     _fl(ret1d),
+        "valuation": _fl(_lv("val_score"), 1),
+        "direction": _fl(direction, 1),
+        "conviction": _conviction(direction, [cta_s, knn_s, mr_s]),
+        "profile":   profile,
+        "cta":       _fl(cta_s, 1),
+        "knn":       _fl(knn_s, 1),
+        "mr":        _fl(mr_s, 1),
+        "exh":       _fl(e, 1),
+        "squeeze":   _fl(_lv("squeeze"), 1),
+    }
+
+
+def _grid_row(symbol: str) -> dict | None:
+    return cache.get_or_compute("quant_grid", symbol, "daily",
+                                lambda: _grid_row_inner(symbol))
+
+
+def compute_quant_grid() -> dict:
+    from concurrent.futures import ThreadPoolExecutor
+    symbols = [s["symbol"] for s in db.list_symbols()]
+    if not symbols:
+        return {"rows": [], "skipped": [], "n_symbols": 0}
+    rows, skipped = [], []
+    with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as pool:
+        for sym, row in zip(symbols, pool.map(_grid_row, symbols)):
+            (rows.append(row) if row else skipped.append(sym))
+    rows.sort(key=lambda r: -(abs(r["direction"] or 0)))
+    return {"rows": rows, "skipped": skipped, "n_symbols": len(symbols)}
 
 
 # ── public entry point ────────────────────────────────────────────────────────

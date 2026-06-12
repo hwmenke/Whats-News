@@ -80,9 +80,11 @@ async function sgRunScan() {
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
         SG.data = data;
+        SG.track = null;   // journal grew — stale track record
         const fired = data.signals.length;
         document.getElementById('sg-meta').textContent =
             `${data.n_symbols} SYMBOLS · ${fired} SIGNAL${fired === 1 ? '' : 'S'}`
+            + (data.journaled_new ? ` · ${data.journaled_new} JOURNALED` : '')
             + (data.skipped.length ? ` · ${data.skipped.length} SKIPPED (NOT ENOUGH DATA)` : '');
         sgRenderPills();
         sgRender();
@@ -192,4 +194,67 @@ function sgToggleFlag(key) {
 function sgOpenSymbol(symbol) {
     selectSymbol(symbol);
     switchTab('quant');
+}
+
+// ── routine track record ─────────────────────────────────────
+
+SG.track = null;
+
+async function sgToggleTrack() {
+    const box = document.getElementById('sg-track');
+    if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    if (SG.track) { sgRenderTrack(); return; }
+
+    const loading = document.getElementById('sg-loading');
+    loading.style.display = 'flex';
+    try {
+        const res  = await fetch('/api/signals/track-record');
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+        SG.track = data;
+        sgRenderTrack();
+    } catch (e) {
+        box.style.display = 'none';
+        toast(`Track record failed: ${e.message}`, 'error');
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function sgRenderTrack() {
+    const d = SG.track;
+    if (!d) return;
+    document.getElementById('sg-track-meta').textContent =
+        `HIST = RULE REPLAYED OVER ${d.n_symbols} SYMBOLS' FULL HISTORY · ` +
+        `LIVE = ${d.n_journal} JOURNALED SIGNAL${d.n_journal === 1 ? '' : 'S'} FROM YOUR SCANS`;
+
+    const pct = (x) => x === null || x === undefined ? '—' : (x * 100).toFixed(0) + '%';
+    const ret = (x) => x === null || x === undefined ? '—' : (x >= 0 ? '+' : '') + (x * 100).toFixed(2) + '%';
+    const hitColor = (x) => x === null ? '#5a6472' : x >= 0.55 ? '#00d26a' : x <= 0.45 ? '#ff4d3d' : '#b8c0c8';
+    const retColor = (x) => x === null ? '#5a6472' : x > 0 ? '#00d26a' : '#ff4d3d';
+
+    document.getElementById('sg-track-tbody').innerHTML = d.rows.map(r => {
+        const h5 = r.hist.h5, h21 = r.hist.h21, lv = r.live;
+        if (!r.hist.available) {
+            return `<tr>
+                <td class="sg-label">${r.label}</td>
+                <td class="sg-detail" colspan="5">live-only (model-based routine, no vectorised replay)</td>
+                <td>${lv.n}</td>
+                <td style="color:${hitColor(lv.h21.hit)}">${pct(lv.h21.hit)}</td>
+                <td style="color:${retColor(lv.h21.avg)}">${ret(lv.h21.avg)}</td>
+            </tr>`;
+        }
+        return `<tr>
+            <td class="sg-label">${r.label}</td>
+            <td>${h21.n}</td>
+            <td style="color:${hitColor(h5.hit)}">${pct(h5.hit)}</td>
+            <td style="color:${retColor(h5.avg)}">${ret(h5.avg)}</td>
+            <td style="color:${hitColor(h21.hit)}">${pct(h21.hit)}</td>
+            <td style="color:${retColor(h21.avg)}">${ret(h21.avg)}</td>
+            <td>${lv.n}</td>
+            <td style="color:${hitColor(lv.h21.hit)}">${pct(lv.h21.hit)}</td>
+            <td style="color:${retColor(lv.h21.avg)}">${ret(lv.h21.avg)}</td>
+        </tr>`;
+    }).join('');
 }

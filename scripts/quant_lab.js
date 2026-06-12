@@ -108,13 +108,17 @@ async function initQuantLab(force = false) {
     const results = document.getElementById('ql-results');
     const errBox  = document.getElementById('ql-error');
     const loading = document.getElementById('ql-loading');
+    const grid    = document.getElementById('ql-grid-view');
 
     if (!sym) {
-        empty.style.display = 'flex';
+        // no symbol selected → show the watchlist overview grid instead
         results.style.display = 'none';
         errBox.style.display = 'none';
+        empty.style.display = 'none';
+        qlShowGrid();
         return;
     }
+    grid.style.display = 'none';
     if (!force && QL.loadedFor === sym && results.style.display !== 'none') return;
 
     empty.style.display = 'none';
@@ -176,7 +180,10 @@ function qlRenderHeader(d) {
     qlSetDial('ql-dir-marker', 'ql-dir-read', c.direction, 'HIGHER', 'LOWER');
 
     const conv = document.getElementById('ql-conv');
-    conv.textContent = c.conviction || '—';
+    const profile = c.profile || 'MIXED';
+    conv.textContent = `${c.conviction || '—'} · ${profile}`;
+    conv.title = `Direction weights conditioned on character: ` +
+        Object.entries(c.weights || {}).map(([k, v]) => `${k.toUpperCase()} ${Math.round(v * 100)}%`).join(' · ');
     conv.style.color = c.conviction === 'HIGH' ? QL.colors.green
                      : c.conviction === 'MED'  ? QL.colors.amber : QL.colors.gray;
 
@@ -671,4 +678,98 @@ async function qlRunAutoML() {
         btn.disabled = false;
         btn.textContent = 'AUTOML ▸ RUN';
     }
+}
+
+// ── watchlist grid ───────────────────────────────────────────
+
+QL.grid = { data: null, sortCol: 'direction', sortDir: -1 };
+
+const QL_GRID_COLS = [
+    ['symbol', 'SYMBOL'], ['close', 'CLOSE'], ['ret1d', '1D'],
+    ['valuation', 'VALUATION'], ['direction', 'DIRECTION'],
+    ['conviction', 'CONV'], ['profile', 'PROFILE'],
+    ['cta', 'CTA'], ['knn', 'KNN'], ['mr', 'MR'],
+    ['exh', 'EXH'], ['squeeze', 'SQZ'],
+];
+
+async function qlShowGrid(force = false) {
+    const grid    = document.getElementById('ql-grid-view');
+    const results = document.getElementById('ql-results');
+    const empty   = document.getElementById('ql-empty');
+    const errBox  = document.getElementById('ql-error');
+    const loading = document.getElementById('ql-loading');
+    results.style.display = 'none';
+    empty.style.display = 'none';
+    errBox.style.display = 'none';
+    grid.style.display = 'flex';
+
+    if (QL.grid.data && !force) { qlRenderGrid(); return; }
+    loading.style.display = 'flex';
+    try {
+        const res  = await fetch('/api/quant-grid');
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+        QL.grid.data = data;
+        qlRenderGrid();
+    } catch (e) {
+        grid.style.display = 'none';
+        errBox.style.display = 'flex';
+        errBox.innerHTML = `<span class="ql-err-code">ERR</span> ${e.message}`;
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function qlGridSort(col) {
+    if (QL.grid.sortCol === col) QL.grid.sortDir *= -1;
+    else { QL.grid.sortCol = col; QL.grid.sortDir = col === 'symbol' || col === 'profile' ? 1 : -1; }
+    qlRenderGrid();
+}
+
+function qlRenderGrid() {
+    const d = QL.grid.data;
+    if (!d) return;
+    document.getElementById('ql-grid-meta').textContent =
+        `${d.rows.length} SYMBOLS SCORED` +
+        (d.skipped.length ? ` · ${d.skipped.length} SKIPPED (NOT ENOUGH DATA)` : '');
+
+    document.getElementById('ql-grid-head').innerHTML = QL_GRID_COLS.map(([col, lbl]) =>
+        `<th class="ql-grid-th${QL.grid.sortCol === col ? ' ql-grid-th-on' : ''}"
+             onclick="qlGridSort('${col}')">${lbl}${QL.grid.sortCol === col ? (QL.grid.sortDir > 0 ? ' ▲' : ' ▼') : ''}</th>`
+    ).join('');
+
+    const { sortCol, sortDir } = QL.grid;
+    const rows = [...d.rows].sort((a, b) => {
+        const av = a[sortCol], bv = b[sortCol];
+        if (av === null || av === undefined) return 1;
+        if (bv === null || bv === undefined) return -1;
+        return (typeof av === 'string' ? av.localeCompare(bv) : av - bv) * sortDir;
+    });
+
+    const dial = (v) => {
+        if (v === null || v === undefined) return '<span class="sg-detail">—</span>';
+        const pct  = (v + 100) / 2;
+        const color = v > 15 ? QL.colors.green : v < -15 ? QL.colors.red : QL.colors.gray;
+        return `<div class="ql-grid-dial" title="${v.toFixed(0)}">
+            <div class="ql-grid-dial-track"><div class="ql-grid-dial-marker" style="left:${pct}%;background:${color}"></div></div>
+            <span style="color:${color}">${v > 0 ? '+' : ''}${v.toFixed(0)}</span></div>`;
+    };
+    const num = (v, fmt) => v === null || v === undefined
+        ? '—' : `<span style="color:${qlSignColor(v)}">${fmt(v)}</span>`;
+
+    document.getElementById('ql-grid-tbody').innerHTML = rows.map(r => `
+        <tr>
+            <td><span class="sg-symbol" onclick="selectSymbol('${r.symbol}')">${r.symbol}</span></td>
+            <td class="sg-price">${r.close ?? '—'}</td>
+            <td>${num(r.ret1d, v => qlPct(v))}</td>
+            <td>${dial(r.valuation)}</td>
+            <td>${dial(r.direction)}</td>
+            <td><span style="color:${r.conviction === 'HIGH' ? QL.colors.green : r.conviction === 'MED' ? QL.colors.amber : QL.colors.gray}">${r.conviction}</span></td>
+            <td class="sg-detail">${r.profile}</td>
+            <td>${num(r.cta, v => (v > 0 ? '+' : '') + v.toFixed(0))}</td>
+            <td>${num(r.knn, v => (v > 0 ? '+' : '') + v.toFixed(0))}</td>
+            <td>${num(r.mr, v => (v > 0 ? '+' : '') + v.toFixed(0))}</td>
+            <td>${num(r.exh, v => (v > 0 ? '+' : '') + v.toFixed(0))}</td>
+            <td><span style="color:${(r.squeeze ?? 0) >= 85 ? QL.colors.amber : QL.colors.white}">${r.squeeze === null ? '—' : r.squeeze.toFixed(0)}</span></td>
+        </tr>`).join('');
 }

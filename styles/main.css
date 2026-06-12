@@ -2927,6 +2927,35 @@ html, body {
 .sg-detail { color: #8a94a0; font-size: 10px; }
 .sg-date, .sg-price { color: #5a6472; font-size: 10px; white-space: nowrap; }
 
+/* ── track record section ───────────────────────────────── */
+.sg-track { margin-bottom: 8px; }
+.sg-track-head {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: #101216; border: 1px solid #23262b; border-bottom: none;
+  padding: 8px 16px;
+  font-size: 10px; font-weight: 700; color: #fb8b1e; letter-spacing: 2px;
+}
+
+/* ── quant watchlist grid ───────────────────────────────── */
+.ql-gridview { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.ql-grid-strip { padding: 8px 16px; }
+.ql-grid-table-wrap { flex: 1; min-height: 0; }
+.ql-grid-th { cursor: pointer; user-select: none; white-space: nowrap; }
+.ql-grid-th:hover { color: #ffa64d; }
+.ql-grid-th-on { color: #fff !important; }
+.ql-grid-dial { display: flex; align-items: center; gap: 8px; min-width: 110px; }
+.ql-grid-dial span { font-size: 11px; font-weight: 700; min-width: 30px; text-align: right; }
+.ql-grid-dial-track {
+  position: relative; flex: 1; height: 6px;
+  background: linear-gradient(90deg, rgba(255,77,61,0.25), rgba(90,100,114,0.2) 45%,
+                              rgba(90,100,114,0.2) 55%, rgba(0,210,106,0.25));
+  border: 1px solid #23262b;
+}
+.ql-grid-dial-marker {
+  position: absolute; top: -3px; width: 3px; height: 10px;
+  transform: translateX(-50%);
+}
+
 /* ═══════════════════════ FAIR VALUE LAB (538 style) ═══════════════════════ */
 
 .fvd-container {

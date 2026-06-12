@@ -165,3 +165,28 @@ def test_insufficient_data_error(monkeypatch, long_ohlcv):
                         lambda symbol, freq="daily", limit=1000: long_ohlcv.head(100))
     result = quant_lab._compute_inner("TEST")
     assert "error" in result
+
+
+def test_composite_profile_and_weights(ql_result):
+    import quant_lab
+    comp = ql_result["composite"]
+    assert comp["profile"] in quant_lab.PROFILE_WEIGHTS
+    assert abs(sum(comp["weights"].values()) - 1.0) < 1e-6
+
+
+def test_quant_grid(monkeypatch, long_ohlcv):
+    import database as db
+    import quant_lab
+    frames = {"GRIDA": long_ohlcv, "GRIDB": long_ohlcv * 1.5, "GRIDTINY": long_ohlcv.head(50)}
+    monkeypatch.setattr(db, "get_ohlcv_df",
+                        lambda s, freq="daily", limit=1000: frames[s].tail(limit))
+    monkeypatch.setattr(db, "list_symbols", lambda: [{"symbol": s} for s in frames])
+    g = quant_lab.compute_quant_grid()
+    json.dumps(g, allow_nan=False)
+    assert g["n_symbols"] == 3
+    assert {r["symbol"] for r in g["rows"]} == {"GRIDA", "GRIDB"}
+    assert g["skipped"] == ["GRIDTINY"]
+    for r in g["rows"]:
+        assert -100 <= r["direction"] <= 100
+        assert r["profile"] in quant_lab.PROFILE_WEIGHTS
+        assert r["conviction"] in ("LOW", "MED", "HIGH")

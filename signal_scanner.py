@@ -19,6 +19,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
+import pandas as pd
 
 import database as db
 import fair_value_lab as fvl
@@ -279,8 +280,14 @@ def scan_symbols(symbols: list[str] | None = None,
         for res in pool.map(_scan_one, symbols):
             results.append(res)
 
+    all_signals = [sig for r in results for sig in r.get("signals", [])]
+    try:  # journal every clean fire so routines build a live track record
+        journaled = db.record_signals([s2 for s2 in all_signals if not s2.get("error")])
+    except Exception:
+        journaled = 0
+
     wanted  = set(routines) if routines else None
-    signals = [sig for r in results for sig in r.get("signals", [])
+    signals = [sig for sig in all_signals
                if wanted is None or sig["routine"] in wanted]
     signals.sort(key=lambda s2: -s2["strength"])
 
@@ -294,6 +301,171 @@ def scan_symbols(symbols: list[str] | None = None,
         "signals":   signals,
         "routines":  catalog,
         "n_symbols": len(symbols),
+        "journaled_new": journaled,
         "skipped":   [{"symbol": r["symbol"], "reason": r["skipped"]}
                       for r in results if r.get("skipped")],
     }
+
+
+# ── track record: historical event study + live journal ──────────────────────
+#
+# Two views of "does this routine work?":
+#   hist  Each routine's firing rule is re-evaluated over a symbol's full
+#         history (vectorised, 10-bar cool-off) and forward 1W/1M returns
+#         measured, direction-adjusted (bull +ret, bear −ret).  KNN / PCA
+#         routines are live-only (too heavy to replay bar by bar).
+#   live  Forward returns of the signals actually journaled by past scans.
+
+TRACK_H = (5, 21)
+
+
+def _crossed_series(s, lookback: int = 3):
+    """+1/-1 where sign flipped to that side within `lookback` bars, else 0."""
+    sg = np.sign(s)
+    changed = pd.Series(False, index=s.index)
+    for k in range(1, lookback + 1):
+        changed |= sg.shift(k).ne(sg)
+    return (sg * changed).fillna(0.0)
+
+
+def _hist_events(st, mr) -> dict:
+    """{routine_id: (fire_mask, side_series)} on st.index. side: +1/-1."""
+    out = {}
+    v   = st["val_score"]
+    out["val_extreme"] = (v.abs() >= 60, -np.sign(v))
+
+    x8 = _crossed_series(st["ewmac_8"], 3)
+    out["cheap_reversal"] = (((v <= -30) & (x8 > 0)) | ((v >= 30) & (x8 < 0)),
+                             np.sign(x8))
+
+    xf = _crossed_series(st["cta_fc"], 2)
+    out["cta_flip"] = ((xf != 0) & (st["cta_score"].abs() >= 20), np.sign(xf))
+
+    e = st["exh_score"]
+    out["exh_event"] = (e.abs() >= 70, -np.sign(e))
+
+    # squeeze is direction-agnostic; trade it with the trend filter's side
+    sq = st["squeeze"]
+    out["squeeze_alert"] = ((sq >= 85) & (sq.shift(1) < 85),
+                            np.sign(st["ewmac_16"]).fillna(0.0))
+
+    close = st["close"]
+    hi = close.rolling(252, min_periods=252).max()
+    lo = close.rolling(252, min_periods=252).min()
+    vz = st["volume_z"]
+    brk = ((close >= hi) & (vz > 0.5)) | ((close <= lo) & (vz > 0.5))
+    out["hi_lo_break"] = (brk, np.where(close >= hi, 1.0, -1.0))
+
+    vc = st["vol_climax"]
+    out["vol_climax"] = (vc.abs() >= 2.5, -np.sign(vc))   # contrarian read
+
+    td = st["td"] * 6.5
+    out["td9"]  = ((td.abs() >= 9) & (td.abs() < 13), -np.sign(td))
+    out["td13"] = (td.abs() >= 13, -np.sign(td))
+
+    if mr and mr.get("character") == "MEAN-REVERTING":
+        rz = st["resid_z"]
+        out["mr_stretch"] = (rz.abs() >= 2.0, -np.sign(rz))
+    return out
+
+
+def _track_one_inner(symbol: str) -> dict:
+    df = db.get_ohlcv_df(symbol, "daily", limit=SCAN_BARS)
+    if df.empty or len(df) < MIN_BARS:
+        return {}
+    st = ql._state_frame(df)
+    mr = ql._mean_reversion(st)
+    close = st["close"].values
+    n = len(close)
+    fwd = {h: np.r_[close[h:] / close[:-h] - 1.0, [np.nan] * h] for h in TRACK_H}
+
+    stats: dict = {}
+    for rid, (fire, side) in _hist_events(st, mr).items():
+        f = np.asarray(fire.values if hasattr(fire, "values") else fire, dtype=bool)
+        s = np.asarray(side.values if hasattr(side, "values") else side, dtype=float)
+        rets = {h: [] for h in TRACK_H}
+        last = -10_000
+        for i in range(n):
+            if not f[i] or not np.isfinite(s[i]) or s[i] == 0 or i - last < 10:
+                continue
+            last = i
+            for h in TRACK_H:
+                r = fwd[h][i]
+                if np.isfinite(r):
+                    rets[h].append(s[i] * r)              # direction-adjusted
+        stats[rid] = {h: rets[h] for h in TRACK_H}
+    return stats
+
+
+def _track_one(symbol: str) -> dict:
+    return cache.get_or_compute("track_record", symbol, "daily",
+                                lambda: _track_one_inner(symbol))
+
+
+def _journal_stats() -> dict:
+    """Realised forward returns of journaled signals, by routine."""
+    rows = db.get_signal_journal()
+    by_routine: dict = {}
+    closes: dict = {}
+    for row in rows:
+        sym = row["symbol"]
+        if sym not in closes:
+            df = db.get_ohlcv_df(sym, "daily", limit=2500)
+            closes[sym] = df["close"] if not df.empty else None
+        ser = closes[sym]
+        rec = by_routine.setdefault(row["routine"], {"n": 0, "adj5": [], "adj21": []})
+        rec["n"] += 1
+        if ser is None or row["side"] not in ("bull", "bear"):
+            continue
+        try:
+            pos = ser.index.get_loc(pd.Timestamp(row["date"]))
+        except KeyError:
+            continue
+        sgn = 1.0 if row["side"] == "bull" else -1.0
+        for h, key in ((5, "adj5"), (21, "adj21")):
+            if pos + h < len(ser) and ser.iloc[pos] > 0:
+                rec[key].append(sgn * (float(ser.iloc[pos + h] / ser.iloc[pos]) - 1.0))
+    return by_routine
+
+
+def track_record(symbols: list[str] | None = None) -> dict:
+    """Per-routine report card: historical event study + live journal."""
+    if symbols is None:
+        symbols = [s["symbol"] for s in db.list_symbols()]
+    symbols = [s.upper() for s in symbols]
+
+    agg: dict = {}
+    if symbols:
+        with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as pool:
+            for res in pool.map(_track_one, symbols):
+                for rid, per_h in res.items():
+                    rec = agg.setdefault(rid, {h: [] for h in TRACK_H})
+                    for h in TRACK_H:
+                        rec[h].extend(per_h[h])
+
+    live = _journal_stats()
+
+    def _agg_stats(vals):
+        a = np.asarray(vals, dtype=float)
+        if len(a) == 0:
+            return {"n": 0, "hit": None, "avg": None}
+        return {"n": int(len(a)), "hit": round(float((a > 0).mean()), 3),
+                "avg": round(float(a.mean()), 4)}
+
+    rows = []
+    for r in ROUTINES:
+        rid = r["id"]
+        h5  = _agg_stats(agg.get(rid, {}).get(5, []))
+        h21 = _agg_stats(agg.get(rid, {}).get(21, []))
+        lv  = live.get(rid, {"n": 0, "adj5": [], "adj21": []})
+        rows.append({
+            "routine": rid, "label": r["label"],
+            "hist": {"h5": h5, "h21": h21,
+                     "available": rid not in ("knn_skew", "pca_divergence")},
+            "live": {"n": lv["n"],
+                     "h5":  _agg_stats(lv["adj5"]),
+                     "h21": _agg_stats(lv["adj21"])},
+        })
+    rows.sort(key=lambda r2: -(r2["hist"]["h21"]["hit"] or 0))
+    return {"rows": rows, "n_symbols": len(symbols),
+            "n_journal": int(sum(v["n"] for v in live.values()))}

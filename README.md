@@ -76,6 +76,12 @@ conviction read from cross-model agreement:
   (TRENDING / MEAN-REVERTING / MIXED) and project a 21-bar expected reversion path
 - **AutoML**: on-demand PyCaret classifier comparison (leaderboard, prediction,
   feature importance) straight from the header strip
+- **Character-conditioned weights**: the DIRECTION blend adapts to each symbol's
+  own character — CTA weighted up on TRENDING names, reversal models on
+  MEAN-REVERTING ones (from the Hurst / half-life read)
+- **Watchlist grid**: ⊞ GRID (or simply no symbol selected) shows every watchlist
+  symbol's VALUATION/DIRECTION dials, profile and per-model sub-scores in one
+  sortable table — click through to any symbol's full screen
 
 ### Fair Value Lab (538-style)
 Fair-value divergence models that forecast 1-week / 1-month returns and prove —
@@ -84,7 +90,8 @@ chasing price):
 
 - **Anchors**: `trend` (126-bar rolling log-linear channel) and `pca`
   (Avellaneda-Lee eigenportfolio factor anchor built from the watchlist — the
-  target is excluded from factor construction so the anchor cannot follow it)
+  target is excluded from factor construction so the anchor cannot follow it;
+  panels are sector-scoped via symbol group tags when ≥ 6 peers share a tag)
 - **Walk-forward forecasts**: expanding-window regression of forward returns on the
   divergence z-score, refit every 21 bars, predictions strictly causal
 - **OOS report card**: hit rate after ±2σ events, IC, mean return after cheap/rich
@@ -103,6 +110,11 @@ per routine in `signal_scanner.py`, picked up automatically by the API and UI:
 Toggle routines on/off, filter by side (bull / bear / watch), and **★ flag** any
 signal to keep it on a persistent flagged list across scans and sessions. Clicking
 a symbol jumps straight into its Quant Lab screen.
+
+Every scan **journals** its signals to SQLite, and **📊 TRACK RECORD** shows each
+routine's report card: a vectorised historical replay of its rule across the
+watchlist (direction-adjusted forward 1W/1M hit rates and returns) side by side
+with the realised performance of the signals your scans actually fired.
 
 ### Charts & Analysis
 - **Main Chart**: Candlestick with SMA, EMA, Bollinger Bands, RSI, MACD, Volume overlays
@@ -201,6 +213,8 @@ symbol) and returns fired signals sorted by strength, plus per-routine counts.
 ```bash
 curl "http://localhost:8050/api/signals"
 curl "http://localhost:8050/api/signals?routines=squeeze_alert,exh_event"
+curl "http://localhost:8050/api/signals/track-record"   # per-routine report card
+curl "http://localhost:8050/api/quant-grid"             # watchlist composite dials
 ```
 
 ---
@@ -235,7 +249,7 @@ Response includes: `prediction` (UP/DOWN), `confidence`, model `leaderboard`, `f
 pytest
 ```
 
-58 tests covering TA primitives, API validation, error taxonomy, backtest engine, the Quant Lab models, the Fair Value Lab, and the signal scanner.
+65 tests covering TA primitives, API validation, error taxonomy, backtest engine, the Quant Lab models, the Fair Value Lab, the signal scanner, and the signal journal / track record.
 
 ---
 
