@@ -656,6 +656,28 @@ def _compute_risk_pedal() -> dict:
             pedal = "yellow"
             reasons.append(f"SPY up {spy_up_streak} days in a row — late to the move, be cautious")
 
+    # VIX term structure: backwardation (VIX3M < spot) is a half-size signal
+    vix_structure = None
+    try:
+        vix_df   = db.get_ohlcv_df("VIX",   "daily", limit=3)
+        vix3m_df = db.get_ohlcv_df("VIX3M", "daily", limit=3)
+        if not vix_df.empty and not vix3m_df.empty:
+            spot  = float(vix_df["close"].iloc[-1])
+            vix3m = float(vix3m_df["close"].iloc[-1])
+            if spot > 0:
+                ratio = round(vix3m / spot - 1, 4)
+                state = "contango" if ratio > 0.05 else "backwardation" if ratio < -0.05 else "flat"
+                vix_structure = {"vix_spot": round(spot, 2), "vix3m": round(vix3m, 2),
+                                 "ratio": ratio, "state": state}
+                if state == "backwardation" and pedal == "green":
+                    pedal = "yellow"
+                    reasons.append(
+                        f"VIX backwardation — VIX3M {vix3m:.1f} < spot {spot:.1f} "
+                        "(fear rising near-term), prefer half-size entries"
+                    )
+    except Exception:
+        pass
+
     if pedal == "green":
         reasons.append("Regime and breadth supportive — take A setups at normal risk")
     elif pedal == "yellow":
@@ -672,6 +694,7 @@ def _compute_risk_pedal() -> dict:
         "new_lows":      snap.get("new_lows"),
         "spy_ext":       spy_ext,
         "spy_up_streak": spy_up_streak,
+        "vix_structure": vix_structure,
         "reasons":       reasons,
     }
 
@@ -726,3 +749,147 @@ def save_diary_route():
 def delete_diary_route(date):
     db.delete_diary_entry(date[:10])
     return jsonify({"message": "deleted"})
+
+
+# ── Correlation check ─────────────────────────────────────────────────────────
+
+@market_bp.route("/api/correlation-check", methods=["GET"])
+def correlation_check():
+    """60-day daily return correlation between a candidate symbol and open journal positions.
+
+    Returns all open-position correlations plus a has_risk flag when any exceed 0.60.
+    """
+    symbol = (request.args.get("symbol") or "").strip().upper()
+    if not symbol:
+        raise errors.validation("symbol required")
+
+    import numpy as np
+
+    open_syms = list({e["symbol"] for e in db.list_journal()
+                      if e.get("exit_price") is None and e.get("symbol") != symbol})
+    if not open_syms:
+        return jsonify({"symbol": symbol, "correlations": [], "has_risk": False})
+
+    sym_df = db.get_ohlcv_df(symbol, "daily", limit=65)
+    if sym_df.empty or len(sym_df) < 20:
+        return jsonify({"symbol": symbol, "correlations": [], "has_risk": False})
+
+    target_rets = sym_df["close"].pct_change().dropna().tail(60)
+
+    correlations = []
+    for os_sym in open_syms:
+        try:
+            os_df = db.get_ohlcv_df(os_sym, "daily", limit=65)
+            if os_df.empty or len(os_df) < 20:
+                continue
+            os_rets = os_df["close"].pct_change().dropna().tail(60)
+            common  = target_rets.index.intersection(os_rets.index)
+            if len(common) < 20:
+                continue
+            corr = float(np.corrcoef(
+                target_rets.loc[common].values,
+                os_rets.loc[common].values,
+            )[0, 1])
+            if not np.isnan(corr):
+                correlations.append({"symbol": os_sym, "correlation": round(corr, 2)})
+        except Exception:
+            pass
+
+    correlations.sort(key=lambda c: abs(c["correlation"]), reverse=True)
+    high = [c for c in correlations if abs(c["correlation"]) >= 0.60]
+
+    return jsonify({
+        "symbol":                   symbol,
+        "correlations":             correlations[:10],
+        "has_risk":                 bool(high),
+        "high_correlation_symbols": [c["symbol"] for c in high],
+    })
+
+
+# ── Sector rotation snapshots ─────────────────────────────────────────────────
+
+@market_bp.route("/api/sector-rotation", methods=["GET"])
+def get_sector_rotation():
+    """Current sector rankings plus rank-change vs 4 weeks ago.
+
+    Also auto-saves today's snapshot so history accumulates over time.
+    """
+    import datetime as _dt
+    import numpy as np
+
+    symbols = db.list_symbols()
+    if not symbols:
+        return jsonify({"current": [], "history_dates": []})
+
+    today = _dt.date.today().isoformat()
+
+    # ── compute current sector 5d / 20d averages ──────────────────────────────
+    sector_data: dict = {}
+    for sym in symbols:
+        sector = (sym.get("sector") or "Unknown").strip() or "Unknown"
+        df = db.get_ohlcv_df(sym["symbol"], "daily", limit=25)
+        if df.empty or len(df) < 6:
+            continue
+        close = df["close"]
+        def _ret(n):
+            return float(close.iloc[-1] / close.iloc[-n] - 1) if len(close) >= n else None
+        r5  = _ret(6)
+        r20 = _ret(21)
+        if r5 is not None or r20 is not None:
+            sector_data.setdefault(sector, []).append({"ret_5d": r5, "ret_20d": r20})
+
+    current_sectors = []
+    for sector, rows in sorted(sector_data.items()):
+        v5  = [r["ret_5d"]  for r in rows if r["ret_5d"]  is not None]
+        v20 = [r["ret_20d"] for r in rows if r["ret_20d"] is not None]
+        current_sectors.append({
+            "sector": sector,
+            "avg_5d":  round(float(np.mean(v5)),  4) if v5  else None,
+            "avg_20d": round(float(np.mean(v20)), 4) if v20 else None,
+        })
+
+    # Rank by 20d return (1 = worst, N = best)
+    ranked = sorted(
+        [s for s in current_sectors if s["avg_20d"] is not None],
+        key=lambda s: s["avg_20d"]
+    )
+    for i, s in enumerate(ranked):
+        s["rs_rank"] = i + 1
+    for s in current_sectors:
+        if "rs_rank" not in s:
+            s["rs_rank"] = None
+
+    # Auto-save today's snapshot
+    try:
+        db.save_sector_snapshot(today, current_sectors)
+    except Exception:
+        pass
+
+    # ── pull history for rank-change comparison ──────────────────────────────
+    history = db.get_sector_history(days=35)
+    dates   = sorted({r["date"] for r in history}, reverse=True)
+    # Remove today (just saved) — compare vs oldest available snapshot
+    older_dates = [d for d in dates if d < today]
+    old_map: dict = {}
+    if older_dates:
+        old_date = older_dates[-1]          # oldest snapshot in window
+        for r in history:
+            if r["date"] == old_date:
+                old_map[r["sector"]] = r["rs_rank"]
+
+    # Attach rank change
+    n_sectors = len([s for s in current_sectors if s["rs_rank"] is not None])
+    for s in current_sectors:
+        old_rank = old_map.get(s["sector"])
+        if s["rs_rank"] is not None and old_rank is not None and n_sectors > 1:
+            s["rank_change"] = old_rank - s["rs_rank"]   # positive = gaining
+        else:
+            s["rank_change"] = None
+
+    current_sectors.sort(key=lambda s: s["rs_rank"] or 999, reverse=True)
+
+    return jsonify({
+        "current":       current_sectors,
+        "history_dates": dates[:8],
+        "compare_date":  older_dates[-1] if older_dates else None,
+    })

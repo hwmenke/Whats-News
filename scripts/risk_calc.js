@@ -84,9 +84,34 @@ async function _calcPositionSize() {
         _lastRiskCalcResult = { ...d, entry, stop };
         _renderPositionResults(d);
         _render3Stop(entry, stop, d.shares, d.dollar_risk);
+        // Non-blocking correlation check — shows warning if open positions are correlated
+        if (symbol) _checkCorrelation(symbol);
     } catch (e) {
         document.getElementById('rc-results').innerHTML =
             `<div style="color:var(--red);">${e.message}</div>`;
+    }
+}
+
+async function _checkCorrelation(symbol) {
+    const el = document.getElementById('rc-corr-warn');
+    if (!el) return;
+    try {
+        const d = await apiFetch(`${API}/correlation-check?symbol=${encodeURIComponent(symbol)}`);
+        if (!d.has_risk || !d.high_correlation_symbols?.length) {
+            el.innerHTML = '';
+            return;
+        }
+        const pairs = d.correlations
+            .filter(c => Math.abs(c.correlation) >= 0.60)
+            .map(c => `<span class="rc-corr-sym">${c.symbol} <span class="rc-corr-val">${(c.correlation * 100).toFixed(0)}%</span></span>`)
+            .join('');
+        el.innerHTML = `<div class="rc-corr-banner">
+            ⚠ Correlated with open position${d.high_correlation_symbols.length > 1 ? 's' : ''}:
+            ${pairs}
+            <span class="rc-corr-note">≥60% 60-day r — consider combined exposure</span>
+        </div>`;
+    } catch (_) {
+        if (el) el.innerHTML = '';
     }
 }
 

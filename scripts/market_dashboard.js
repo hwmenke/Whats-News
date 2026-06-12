@@ -16,6 +16,7 @@ function initMarketDashboard() {
     _initDailyChecklists();
     _loadDiary();
     _initScreens();
+    _loadSectorRotation();
     if (typeof initSector   === 'function') initSector();
     if (typeof initProcess  === 'function') initProcess();
 }
@@ -146,6 +147,15 @@ async function _loadRiskPedal() {
             yellow: { icon: '🟡', label: 'YELLOW — Reduced Risk' },
             red:    { icon: '🔴', label: 'RED — Minimal Risk' },
         }[d.pedal] || { icon: '⚪', label: d.pedal };
+
+        const vix = d.vix_structure;
+        const vixHtml = vix
+            ? `<span class="rp-vix rp-vix-${vix.state}" title="VIX term structure: ${vix.state}">
+                VIX ${vix.vix_spot} / 3M ${vix.vix3m}
+                <span class="rp-vix-state">${vix.state}</span>
+               </span>`
+            : '';
+
         const facts = [
             d.regime_state ? `Regime: ${d.regime_state}` : '',
             d.breadth_pct20 != null ? `${d.breadth_pct20}% > 20-MA` : '',
@@ -157,6 +167,7 @@ async function _loadRiskPedal() {
             <span class="rp-light">${meta.icon}</span>
             <span class="rp-label">${meta.label}</span>
             <span class="rp-facts">${facts}</span>
+            ${vixHtml}
             <span class="rp-reason" title="${(d.reasons || []).join('\n')}">${(d.reasons || [])[0] || ''}</span>`;
     } catch (_) {
         banner.style.display = 'none';
@@ -221,6 +232,69 @@ async function _deleteDiary(date) {
     } catch (e) {
         toastFromError(e, 'Diary');
     }
+}
+
+// ── Sector Rotation ────────────────────────────────────────────────────────────
+
+async function _loadSectorRotation() {
+    const el = document.getElementById('dash-sector-rotation');
+    if (!el) return;
+    el.innerHTML = '<div class="feat-loading"><span class="spinner"></span></div>';
+    try {
+        const d = await apiFetch(`${API}/sector-rotation`);
+        _renderSectorRotation(d, el);
+    } catch (e) {
+        el.innerHTML = `<div class="feat-empty" style="color:var(--red);">${e.message}</div>`;
+    }
+}
+
+function _renderSectorRotation(d, el) {
+    const sectors = d.current || [];
+    if (!sectors.length) {
+        el.innerHTML = '<div class="feat-empty">No sector data — fetch OHLCV first.</div>';
+        return;
+    }
+    const compareDate = d.compare_date
+        ? `vs ${d.compare_date}`
+        : 'first session (no history yet)';
+
+    const rows = sectors.map(s => {
+        const ret20   = s.avg_20d != null ? (s.avg_20d * 100).toFixed(1) + '%' : '—';
+        const ret5    = s.avg_5d  != null ? (s.avg_5d  * 100).toFixed(1) + '%' : '—';
+        const rCls20  = s.avg_20d == null ? '' : s.avg_20d >= 0 ? 'sr-pos' : 'sr-neg';
+        const rCls5   = s.avg_5d  == null ? '' : s.avg_5d  >= 0 ? 'sr-pos' : 'sr-neg';
+        const rank    = s.rs_rank ?? '—';
+
+        let changeHtml = '<td class="sr-chg">—</td>';
+        if (s.rank_change != null) {
+            const arrow = s.rank_change > 0 ? '▲' : s.rank_change < 0 ? '▼' : '·';
+            const cls   = s.rank_change > 0 ? 'sr-gain' : s.rank_change < 0 ? 'sr-lose' : 'sr-flat';
+            changeHtml = `<td class="sr-chg ${cls}">${arrow} ${Math.abs(s.rank_change)}</td>`;
+        }
+
+        return `<tr class="${s.rank_change > 0 ? 'sr-row-gain' : s.rank_change < 0 ? 'sr-row-lose' : ''}">
+            <td class="sr-sector">${s.sector}</td>
+            <td class="sr-rank">${rank}</td>
+            ${changeHtml}
+            <td class="${rCls20}">${ret20}</td>
+            <td class="${rCls5}">${ret5}</td>
+        </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+        <div class="sr-compare-note">Rank change ${compareDate}</div>
+        <div class="feat-table-wrap">
+        <table class="feat-table sr-table">
+            <thead><tr>
+                <th>Sector</th>
+                <th title="Current RS rank (highest 20d return = best)">Rank</th>
+                <th title="Change vs comparison date">Δ</th>
+                <th title="Average 20-day return">20d</th>
+                <th title="Average 5-day return">5d</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+        </div>`;
 }
 
 function _mdEsc(s) {

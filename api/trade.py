@@ -662,6 +662,43 @@ def get_open_risk():
     })
 
 
+# ── Earnings Reaction History ────────────────────────────────────────────────
+
+@trade_bp.route("/api/earnings-reactions/<string:symbol>", methods=["GET"])
+def get_earnings_reactions(symbol):
+    """Last 8 largest overnight gap events as an earnings-reaction proxy.
+
+    Looks for gaps ≥ 3.5% open-vs-prev-close in the last 2 years of OHLCV.
+    These reliably capture earnings surprises — non-earnings large gaps are rare.
+    """
+    sym = symbol.strip().upper()
+    df  = db.get_ohlcv_df(sym, "daily", limit=504)
+    if df.empty or len(df) < 10:
+        return jsonify([])
+
+    closes = df["close"].values
+    opens  = df["open"].values
+    dates  = [str(d)[:10] for d in df.index.tolist()]
+
+    gaps = []
+    for i in range(1, len(df)):
+        prev_close = float(closes[i - 1])
+        cur_open   = float(opens[i])
+        cur_close  = float(closes[i])
+        if prev_close < 1e-6 or cur_open < 1e-6:
+            continue
+        gap_pct = round((cur_open / prev_close - 1) * 100, 2)
+        if abs(gap_pct) >= 3.5:
+            gaps.append({
+                "date":    dates[i],
+                "gap_pct": gap_pct,
+                "close":   round(cur_close, 2),
+            })
+
+    gaps.sort(key=lambda g: abs(g["gap_pct"]), reverse=True)
+    return jsonify(gaps[:8])
+
+
 # ── Strategies ─────────────────────────────────────────────────────────────────
 
 @trade_bp.route("/api/strategies", methods=["GET"])

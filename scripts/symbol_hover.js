@@ -47,9 +47,10 @@
         _card.addEventListener('mouseleave', _hide);
 
         try {
-            const [grade, journal] = await Promise.all([
+            const [grade, journal, reactions] = await Promise.all([
                 (typeof apiFetch === 'function' ? apiFetch(`${API}/setup-grade/${sym}`) : fetch(`/api/setup-grade/${sym}`).then(r => r.json())).catch(() => null),
                 (typeof apiFetch === 'function' ? apiFetch(`${API}/journal?symbol=${sym}`) : fetch(`/api/journal?symbol=${sym}`).then(r => r.json())).catch(() => []),
+                (typeof apiFetch === 'function' ? apiFetch(`${API}/earnings-reactions/${sym}`) : fetch(`/api/earnings-reactions/${sym}`).then(r => r.json())).catch(() => []),
             ]);
             if (!_card) return;  // closed while loading
 
@@ -91,6 +92,16 @@
                 }).join('')
                 : '<div class="shc-no-trades">No trades logged</div>';
 
+            // Earnings reactions strip (up to 6 most recent events by abs gap)
+            const rxList = Array.isArray(reactions) ? reactions.slice(0, 6) : [];
+            const rxHtml = rxList.length
+                ? rxList.map(rx => {
+                    const cls  = rx.gap_pct >= 0 ? 'shc-rx-up' : 'shc-rx-dn';
+                    const sign = rx.gap_pct >= 0 ? '+' : '';
+                    return `<span class="shc-rx ${cls}" title="${rx.date}">${sign}${rx.gap_pct.toFixed(1)}%</span>`;
+                }).join('')
+                : '<span class="shc-rx shc-rx-none">—</span>';
+
             _card.innerHTML = `
                 <div class="shc-header">
                     <span class="shc-sym">${_esc(sym)}</span>
@@ -107,6 +118,9 @@
                     <span class="shc-metric"><span class="shc-ml">Ext</span>${ext}</span>
                 </div>
                 ${factors ? `<div class="shc-factors">${factors}</div>` : ''}
+                <div class="shc-rx-row">
+                    <span class="shc-section-label" style="margin-right:6px;">Earnings gaps</span>${rxHtml}
+                </div>
                 <div class="shc-divider"></div>
                 <div class="shc-trades-section">
                     <div class="shc-section-label">Trade History</div>

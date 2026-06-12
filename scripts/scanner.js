@@ -595,6 +595,17 @@ function _renderJeffBanner(breadth, rstats) {
     const warn = p50 < 30
         ? `<span class="jf-banner-warn">⚠ Broad downtrend — be selective with new longs</span>` : '';
 
+    // Macro event proximity (same for all rows — read from first non-error row)
+    const mr = (scannerState.jeff || []).find(r => !r.error)?.macro_risk ?? null;
+    let macroWarn = '';
+    if (mr) {
+        const dLabel = mr.days === 0 ? 'today' : mr.days > 0 ? `in ${mr.days}d` : `${Math.abs(mr.days)}d ago`;
+        const hot    = Math.abs(mr.days) <= 1;
+        macroWarn = `<span class="jf-macro-warn ${hot ? 'jf-macro-hot' : ''}" title="${mr.label} ${dLabel}">
+            ⚡ ${mr.type} ${dLabel}
+        </span>`;
+    }
+
     el.className = `jf-banner ${regimeCls}`;
     el.innerHTML = `
         <div class="jf-banner-main">
@@ -603,7 +614,7 @@ function _renderJeffBanner(breadth, rstats) {
             <span class="jf-stat"><b>${p50}%</b> &gt;50MA</span>
             <span class="jf-stat jf-pos"><b>${breadth.new_highs ?? 0}</b> NH</span>
             <span class="jf-stat jf-neg"><b>${breadth.new_lows ?? 0}</b> NL</span>
-            ${warn}
+            ${warn}${macroWarn}
         </div>
         ${edgeHtml}`;
 }
@@ -1142,7 +1153,11 @@ function _scanActivateFocused() {
     if (sym) { if (typeof selectSymbol === 'function') selectSymbol(sym); switchTab('charts'); }
 }
 
+let _scanKeyNavInited = false;
+
 function initScannerKeyNav() {
+    if (_scanKeyNavInited) return;
+    _scanKeyNavInited = true;
     registerShortcut({ key: 'j', handler: () => { if (state.activeTab === 'scanner') _scanMoveFocus(+1); }, description: 'Scanner: next row' });
     registerShortcut({ key: 'k', handler: () => { if (state.activeTab === 'scanner') _scanMoveFocus(-1); }, description: 'Scanner: prev row' });
     registerShortcut({ key: 'Enter', handler: () => { if (state.activeTab === 'scanner') _scanActivateFocused(); }, description: 'Scanner: open focused symbol' });

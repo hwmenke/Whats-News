@@ -5458,3 +5458,71 @@ body.ui-compact .cal-event         { padding: 3px 6px; }
 .sc-fred-status { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
 .sc-fred-ok     { color: var(--green); }
 .sc-section-desc a { color: var(--accent-bright); }
+
+/* ── Macro risk warning in scanner banner ────────────────────────────────── */
+.jf-macro-warn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  font-family: var(--font-mono); letter-spacing: 0.02em;
+  background: rgba(234,179,8,0.15); color: var(--yellow);
+  border: 1px solid rgba(234,179,8,0.3);
+}
+.jf-macro-hot {
+  background: rgba(239,68,68,0.15); color: var(--red);
+  border-color: rgba(239,68,68,0.4);
+  animation: jf-pulse 1.4s ease-in-out infinite;
+}
+@keyframes jf-pulse { 0%,100%{opacity:1} 50%{opacity:0.65} }
+
+/* ── Earnings reaction strip in symbol hover card ─────────────────────────── */
+.shc-rx-row {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+  padding: 4px 0 2px;
+}
+.shc-rx {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-size: 10.5px; font-family: var(--font-mono); font-weight: 600;
+}
+.shc-rx-up   { background: rgba(34,197,94,0.15); color: var(--green); }
+.shc-rx-dn   { background: rgba(239,68,68,0.15); color: var(--red); }
+.shc-rx-none { color: var(--text-muted); font-size: 10px; }
+
+/* ── Correlation warning in risk calc ─────────────────────────────────────── */
+.rc-corr-banner {
+  margin: 8px 0 0; padding: 8px 12px; border-radius: 6px;
+  background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.3);
+  font-size: 12px; color: var(--yellow); display: flex;
+  align-items: center; flex-wrap: wrap; gap: 6px;
+}
+.rc-corr-sym {
+  background: rgba(255,255,255,0.07); border-radius: 3px;
+  padding: 1px 7px; font-family: var(--font-mono); font-size: 11.5px;
+  font-weight: 600; color: var(--text-primary);
+}
+.rc-corr-val  { color: var(--yellow); font-size: 10.5px; }
+.rc-corr-note { font-size: 10.5px; color: var(--text-muted); margin-left: auto; }
+
+/* ── VIX term structure on risk pedal ─────────────────────────────────────── */
+.rp-vix {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-family: var(--font-mono); padding: 2px 8px;
+  border-radius: 4px; border: 1px solid transparent;
+}
+.rp-vix-contango    { color: var(--green); border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.08); }
+.rp-vix-backwardation{ color: var(--red);  border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); }
+.rp-vix-flat        { color: var(--text-muted); border-color: var(--border); background: var(--bg-card); }
+.rp-vix-state       { font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
+
+/* ── Sector rotation table ────────────────────────────────────────────────── */
+.sr-table    { width: 100%; }
+.sr-compare-note { font-size: 10.5px; color: var(--text-muted); margin-bottom: 6px; font-family: var(--font-mono); }
+.sr-sector   { font-weight: 600; }
+.sr-rank     { text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+.sr-chg      { text-align: center; font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
+.sr-gain     { color: var(--green); }
+.sr-lose     { color: var(--red); }
+.sr-flat     { color: var(--text-muted); }
+.sr-pos      { color: var(--green); font-family: var(--font-mono); font-size: 11.5px; }
+.sr-neg      { color: var(--red);   font-family: var(--font-mono); font-size: 11.5px; }
+.sr-row-gain { background: rgba(34,197,94,0.04); }
+.sr-row-lose { background: rgba(239,68,68,0.04); }

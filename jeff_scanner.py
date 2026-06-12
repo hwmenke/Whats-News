@@ -14,9 +14,10 @@ import logging
 import numpy as np
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import database as db
+import econ_calendar as ec
 import indicator_cache as cache
 import swing_core
 
@@ -55,6 +56,29 @@ def _days_to_earnings(s):
         d = date.fromisoformat(raw)
         delta = (d - date.today()).days
         return delta if 0 <= delta <= 30 else None
+    except Exception:
+        return None
+
+
+def _nearest_macro_risk(today: date) -> dict | None:
+    """Nearest importance-3 macro event (FOMC/CPI/NFP/GDP) within ±2 calendar days.
+
+    Returns {"type": ..., "label": ..., "days": int} where days < 0 = already past.
+    """
+    start = today - timedelta(days=2)
+    end   = today + timedelta(days=2)
+    try:
+        events = ec.builtin_events(start, end)
+        hi = [e for e in events
+              if e["importance"] >= 3 and e["type"] not in ("OPEX", "QUAD-WITCH")]
+        if not hi:
+            return None
+        best = min(hi, key=lambda e: abs((date.fromisoformat(e["date"]) - today).days))
+        return {
+            "type":  best["type"],
+            "label": best["label"],
+            "days":  (date.fromisoformat(best["date"]) - today).days,
+        }
     except Exception:
         return None
 
@@ -320,6 +344,11 @@ def _compute_jeff_inner(symbols: list) -> list:
                     "has_alert":         bool(active_alert_syms.get(sym)),
                     "alert_thresholds":  active_alert_syms.get(sym) or [],
                 })
+
+    # Macro-event proximity warning (same value for all rows on a given day)
+    macro_risk = _nearest_macro_risk(date.today())
+    for r in rows:
+        r["macro_risk"] = macro_risk
 
     # Intra-list RS rank by 60-day return (percentile, 1=weakest … 100=strongest)
     ranked = [r for r in rows if not r.get("error") and r.get("ret_60d") is not None]

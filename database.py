@@ -200,6 +200,19 @@ def init_db():
         )
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS sector_history (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            date       TEXT NOT NULL,
+            sector     TEXT NOT NULL,
+            avg_5d     REAL,
+            avg_20d    REAL,
+            rs_rank    INTEGER,
+            created_at TEXT NOT NULL,
+            UNIQUE(date, sector)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -219,6 +232,44 @@ def set_setting(key: str, value: str):
         (key, value))
     conn.commit()
     conn.close()
+
+
+# ── Sector History ────────────────────────────────────────────────────────────
+
+def save_sector_snapshot(snapshot_date: str, sectors: list) -> None:
+    """Persist sector performance snapshot for rotation analysis.
+
+    sectors = [{"sector": str, "avg_5d": float, "avg_20d": float, "rs_rank": int}]
+    """
+    conn = get_connection()
+    now  = datetime.now(timezone.utc).isoformat()
+    for s in sectors:
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO sector_history "
+                "(date, sector, avg_5d, avg_20d, rs_rank, created_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (snapshot_date, s["sector"],
+                 s.get("avg_5d"), s.get("avg_20d"), s.get("rs_rank"), now)
+            )
+        except Exception:
+            pass
+    conn.commit()
+    conn.close()
+
+
+def get_sector_history(days: int = 30) -> list:
+    """Return sector_history rows from the last N days, newest first."""
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc).date() - timedelta(days=days)).isoformat()
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT date, sector, avg_5d, avg_20d, rs_rank "
+        "FROM sector_history WHERE date >= ? ORDER BY date DESC, sector",
+        (cutoff,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # ── Symbol CRUD ────────────────────────────────────────────────────────────────

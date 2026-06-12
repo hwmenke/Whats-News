@@ -1401,6 +1401,7 @@
 
       <!-- Results -->
       <div id="rc-results" class="rc-results"></div>
+      <div id="rc-corr-warn"></div>
 
       <!-- 3-Stop Strategy -->
       <div class="process-section" style="margin-top:24px;">
@@ -1484,6 +1485,15 @@
       <div class="dash-section" style="margin-top:24px;">
         <div class="dash-section-title">🗺️ Sector Heatmap</div>
         <div class="feat-table-wrap" style="margin-top:8px;"><table id="sector-table" class="feat-table heat-table"></table></div>
+      </div>
+
+      <!-- Sector Rotation -->
+      <div class="dash-section" style="margin-top:16px;">
+        <div class="dash-section-title">🔄 Sector Rotation
+          <button class="btn btn-ghost btn-sm" style="float:right;" onclick="_loadSectorRotation()">↻ Refresh</button>
+        </div>
+        <div class="process-section-note" style="margin:4px 0 8px;">Weekly rank changes — gaining sectors rising, losing sectors falling. Snapshots saved automatically each session.</div>
+        <div id="dash-sector-rotation"></div>
       </div>
 
       <!-- Focus Pipeline -->
