@@ -92,8 +92,16 @@ function baseOpts() {
     };
 }
 
+// ── Resize observers (tracked so they can be torn down on rebuild) ──
+let _chartObservers = [];
+
 // ── Destroy all charts ────────────────────────────────────────
 function destroyCharts() {
+    // Disconnect stale resize observers first — otherwise they keep firing
+    // chart.resize() on charts that are about to be removed (throws + leaks).
+    _chartObservers.forEach(obs => obs.disconnect());
+    _chartObservers = [];
+
     ['daily', 'weekly'].forEach(freq => {
         Object.values(charts[freq]).forEach(c => { if (c) c.remove(); });
         charts[freq] = { main: null, rsi: null, macd: null, trend: null };
@@ -237,12 +245,16 @@ function setupResizeObserver() {
     pairs.forEach(([id, chart]) => {
         const el = document.getElementById(id);
         if (!el || !chart) return;
-        new ResizeObserver(entries => {
+        const obs = new ResizeObserver(entries => {
             for (const e of entries) {
                 const { width, height } = e.contentRect;
-                chart.resize(width, height);
+                if (width > 0 && height > 0) {
+                    try { chart.resize(width, height); } catch (_) {}
+                }
             }
-        }).observe(el);
+        });
+        obs.observe(el);
+        _chartObservers.push(obs);
     });
 }
 

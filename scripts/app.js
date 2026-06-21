@@ -19,7 +19,6 @@ let state = {
 
 let statsCharts = {};
 let backtestEquityChart = null;
-let scannerPollTimer = null;
 
 // ── Toast system ─────────────────────────────────────────────
 function toast(message, type = 'info', duration = 3500) {
@@ -621,14 +620,11 @@ function showEmptyState() {
     document.getElementById('empty-state').style.display       = 'flex';
     document.getElementById('chart-area').style.display        = 'none';
     document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
-}
-
-function showChartArea() {
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('chart-area').style.display  = 'flex';
 }
 
 function showLoadingOverlay(show) {
@@ -1170,79 +1166,10 @@ function renderBacktest(data) {
     }
 }
 
-// ── Scanner Functions ─────────────────────────────────────────
-async function fetchSP500() {
-    const btn      = document.getElementById('btn-fetch-sp500');
-    const statusEl = document.getElementById('scanner-fetch-status');
-    if (btn) btn.disabled = true;
-    if (statusEl) statusEl.textContent = 'Starting fetch…';
-
-    try {
-        await apiFetch(`${API}/scanner/fetch`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ force: false }),
-        });
-        if (statusEl) statusEl.textContent = 'Fetching… 0%';
-        pollScannerStatus();
-    } catch (e) {
-        toast('Fetch failed: ' + e.message, 'error');
-        if (statusEl) statusEl.textContent = 'Error: ' + e.message;
-        if (btn) btn.disabled = false;
-    }
-}
-
-function pollScannerStatus() {
-    if (scannerPollTimer) clearInterval(scannerPollTimer);
-    scannerPollTimer = setInterval(async () => {
-        try {
-            const s      = await apiFetch(`${API}/scanner/status`);
-            const btn    = document.getElementById('btn-fetch-sp500');
-            const statusEl = document.getElementById('scanner-fetch-status');
-            if (s.running) {
-                if (statusEl) statusEl.textContent = `Fetching… ${s.progress}% (${s.done}/${s.total})`;
-            } else {
-                clearInterval(scannerPollTimer);
-                scannerPollTimer = null;
-                if (btn) btn.disabled = false;
-                const sum = s.summary || {};
-                if (statusEl) {
-                    statusEl.textContent = sum.error
-                        ? 'Error: ' + sum.error
-                        : `Done — ${sum.success || 0} ok, ${sum.skipped || 0} skipped, ${sum.failed || 0} failed`;
-                }
-                toast('S&P 500 fetch complete', 'success');
-            }
-        } catch (e) {
-            clearInterval(scannerPollTimer);
-            scannerPollTimer = null;
-        }
-    }, 3000);
-}
-
-async function runScanner() {
-    const btn       = document.getElementById('btn-run-scanner');
-    const countEl   = document.getElementById('scanner-count');
-    const filterSel = document.getElementById('scanner-signal-filter');
-    const signal    = filterSel ? filterSel.value : '';
-
-    if (btn) { btn.disabled = true; btn.textContent = 'Scanning…'; }
-    if (countEl) countEl.textContent = '';
-
-    try {
-        let url = `${API}/scanner/run`;
-        if (signal) url += `?signal=${encodeURIComponent(signal)}`;
-        const results = await apiFetch(url);
-        renderScannerTable(results);
-        if (countEl) countEl.textContent = `${results.length} results`;
-    } catch (e) {
-        toast('Scanner failed: ' + e.message, 'error');
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = 'Run Scanner'; }
-    }
-}
-
-// renderScannerTable is defined in scanner.js (multi-timeframe version)
+// renderScannerTable is defined in scanner.js (multi-timeframe version).
+// The legacy signal-based scanner UI (S&P 500 bulk fetch + Run Scanner) was
+// removed; its driver functions lived here and referenced DOM that no longer
+// exists, so they have been deleted along with their boot wiring.
 
 // ── Boot ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -1267,11 +1194,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('new-symbol-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') addSymbol();
     });
-
-    // Scanner buttons (optional — only present in legacy scanner UI)
-    document.getElementById('btn-fetch-sp500')?.addEventListener('click', fetchSP500);
-    document.getElementById('btn-run-scanner')?.addEventListener('click', runScanner);
-    document.getElementById('scanner-signal-filter')?.addEventListener('change', runScanner);
 
     // Backtest button
     document.getElementById('btn-run-backtest').addEventListener('click', () => {
