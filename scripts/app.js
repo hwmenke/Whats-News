@@ -33,6 +33,24 @@ function toast(message, type = 'info', duration = 3500) {
     }, duration);
 }
 
+// ── UI state persistence (active tab + symbol survive reloads) ──
+const UI_STATE_KEY = 'findash.ui';
+function persistUiState() {
+    try {
+        localStorage.setItem(UI_STATE_KEY, JSON.stringify({
+            tab:    state.activeTab,
+            symbol: state.activeSymbol,
+        }));
+    } catch (_) { /* storage unavailable (private mode) — ignore */ }
+}
+function loadUiState() {
+    try {
+        return JSON.parse(localStorage.getItem(UI_STATE_KEY)) || {};
+    } catch (_) {
+        return {};
+    }
+}
+
 // ── Connection status indicator ──────────────────────────────
 function setConnection(online) {
     const dot   = document.getElementById('status-dot');
@@ -483,6 +501,7 @@ async function refreshAll() {
 // ── Symbol selection & chart loading ─────────────────────────
 async function selectSymbol(symbol) {
     state.activeSymbol = symbol;
+    persistUiState();
     renderSymbolList();
     if (state.activeTab === 'charts') {
         await loadChartData(symbol);
@@ -674,6 +693,16 @@ async function switchTab(tabId) {
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
+
+    persistUiState();
+
+    // Symbol-dependent tabs: show the guidance empty-state instead of a blank
+    // panel when nothing is selected yet.
+    const NEEDS_SYMBOL = ['charts', 'stats', 'knn', 'backtest', 'trend'];
+    if (NEEDS_SYMBOL.includes(tabId) && !state.activeSymbol) {
+        showEmptyState();
+        return;
+    }
 
     if (tabId === 'charts') {
         showChartArea();
@@ -1232,7 +1261,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadSymbols();
 
-    if (state.symbols.length && state.symbols[0].last_fetch) {
+    // Restore the last-used tab + symbol when possible.
+    const saved     = loadUiState();
+    const savedSym  = saved.symbol && state.symbols.find(s => s.symbol === saved.symbol)
+                        ? saved.symbol : null;
+
+    if (saved.tab && ['scanner', 'data-manager'].includes(saved.tab)) {
+        switchTab(saved.tab);                       // symbol-independent tabs
+    } else if (savedSym) {
+        // Set the symbol first so switchTab reveals + loads the saved tab
+        // (some loaders only show their area when reached via switchTab).
+        state.activeSymbol = savedSym;
+        renderSymbolList();
+        switchTab(saved.tab || 'charts');
+    } else if (state.symbols.length && state.symbols[0].last_fetch) {
         selectSymbol(state.symbols[0].symbol);
     } else {
         showEmptyState();
