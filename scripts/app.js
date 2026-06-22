@@ -33,10 +33,34 @@ function toast(message, type = 'info', duration = 3500) {
     }, duration);
 }
 
+// ── Connection status indicator ──────────────────────────────
+function setConnection(online) {
+    const dot   = document.getElementById('status-dot');
+    const label = document.getElementById('conn-label');
+    if (dot) {
+        dot.classList.toggle('offline', !online);
+        dot.title = online ? 'Connected to server' : 'Cannot reach server';
+    }
+    if (label) {
+        label.classList.toggle('offline', !online);
+        label.textContent = online ? 'Live' : 'Offline';
+    }
+}
+
 // ── API helpers ──────────────────────────────────────────────
 async function apiFetch(url, opts = {}) {
     console.log(`>> API Fetch: ${url}`, opts.method || 'GET');
-    const res  = await fetch(url, opts);
+    let res;
+    try {
+        res = await fetch(url, opts);
+    } catch (netErr) {
+        // fetch only throws on a network-level failure → server unreachable
+        setConnection(false);
+        console.error('!! Network error:', netErr.message);
+        throw new Error('Cannot reach server — check that the backend is running');
+    }
+    // Any HTTP response means the server is reachable, even if it's a 4xx/5xx
+    setConnection(true);
     console.log(`<< API Response: ${res.status} ${res.statusText}`);
     const data = await res.json();
     if (!res.ok) {
