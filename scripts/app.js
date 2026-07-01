@@ -635,6 +635,55 @@ function showLoadingOverlay(show) {
     document.getElementById('chart-loading').style.display = show ? 'flex' : 'none';
 }
 
+// ── Phase Plane ───────────────────────────────────────────────
+let _ppLoaded = false;
+
+async function loadPhasePlane(forceRefresh = false) {
+    if (_ppLoaded && !forceRefresh) return;
+
+    const status  = document.getElementById('phase-plane-status');
+    const loading = document.getElementById('phase-plane-loading');
+    const imgWrap = document.getElementById('phase-plane-img-wrap');
+    const img     = document.getElementById('phase-plane-img');
+
+    status.textContent  = 'Loading…';
+    loading.style.display  = 'flex';
+    imgWrap.style.display  = 'none';
+
+    // Fetch meta (KPI cards)
+    try {
+        const qs   = forceRefresh ? '?refresh=1' : '';
+        const meta = await fetch(`/api/phase-plane/meta${qs}`).then(r => r.json());
+        if (!meta.error) {
+            document.getElementById('pp-vix').textContent  = meta.vix  ?? '--';
+            document.getElementById('pp-nu').textContent   = meta.nu   ?? '--';
+            document.getElementById('pp-rho').textContent  = meta.rho  ?? '--';
+            document.getElementById('pp-nobs').textContent = meta.n_obs ?? '--';
+            document.getElementById('pp-date').textContent = meta.date  ?? '--';
+        }
+    } catch (_) {}
+
+    // Fetch image (slow — matplotlib render)
+    try {
+        const qs  = forceRefresh ? '?refresh=1' : '';
+        const url = `/api/phase-plane/image${qs}&_=${Date.now()}`;
+        img.onload = () => {
+            loading.style.display = 'none';
+            imgWrap.style.display = 'block';
+            status.textContent    = `Last generated: ${new Date().toLocaleTimeString()}`;
+            _ppLoaded = true;
+        };
+        img.onerror = () => {
+            loading.style.display = 'none';
+            status.textContent    = 'Error generating diagram.';
+        };
+        img.src = url;
+    } catch (e) {
+        loading.style.display = 'none';
+        status.textContent    = `Error: ${e.message}`;
+    }
+}
+
 // ── Tab Switching ─────────────────────────────────────────────
 async function switchTab(tabId) {
     state.activeTab = tabId;
@@ -645,15 +694,16 @@ async function switchTab(tabId) {
     });
 
     // Hide all content areas first
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('knn-area').style.display          = 'none';
-    document.getElementById('backtest-area').style.display     = 'none';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'none';
-    document.querySelector('.tab-bar').style.display           = 'none';
+    document.getElementById('empty-state').style.display        = 'none';
+    document.getElementById('chart-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display         = 'none';
+    document.getElementById('knn-area').style.display           = 'none';
+    document.getElementById('backtest-area').style.display      = 'none';
+    document.getElementById('trend-area').style.display         = 'none';
+    document.getElementById('scanner-area').style.display       = 'none';
+    document.getElementById('data-manager-area').style.display  = 'none';
+    document.getElementById('phase-plane-area').style.display   = 'none';
+    document.querySelector('.tab-bar').style.display            = 'none';
 
     if (tabId === 'charts') {
         showChartArea();
@@ -679,6 +729,10 @@ async function switchTab(tabId) {
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
+    } else if (tabId === 'phase-plane') {
+        document.getElementById('phase-plane-area').style.display = 'flex';
+        document.getElementById('phase-plane-area').style.flexDirection = 'column';
+        loadPhasePlane(false);
     }
 }
 

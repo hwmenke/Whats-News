@@ -21,12 +21,16 @@ import scanner
 import adaptive_trend as adaptive
 from utils import kama as kama_fn, rsi as rsi_fn
 import ticker_lists as tl
+import spy_vix_phase_plane as phase_plane
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 
 # Initialise the database on startup
 db.init_db()
+
+# In-memory cache for the phase-plane image (rebuilt at most once per hour)
+_pp_cache: dict = {"png": None, "meta": None, "ts": 0.0}
 
 
 # -- Helpers --------------------------------------------------------------------
@@ -458,6 +462,41 @@ def fetch_batch():
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# -- Phase Plane ----------------------------------------------------------------
+
+@app.route("/api/phase-plane/meta", methods=["GET"])
+def phase_plane_meta():
+    """Return current state scalars (VIX, nu, rho, date) as JSON."""
+    refresh = request.args.get("refresh", "0") == "1"
+    if refresh or _pp_cache["meta"] is None or time.time() - _pp_cache["ts"] > 3600:
+        try:
+            _pp_cache["meta"] = phase_plane.generate_meta()
+            _pp_cache["ts"]   = time.time()
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    return jsonify(_pp_cache["meta"])
+
+
+@app.route("/api/phase-plane/image", methods=["GET"])
+def phase_plane_image():
+    """Render the phase-plane diagram and return it as a PNG image."""
+    refresh = request.args.get("refresh", "0") == "1"
+    if refresh or _pp_cache["png"] is None or time.time() - _pp_cache["ts"] > 3600:
+        try:
+            png, synthetic        = phase_plane.generate_figure_bytes()
+            _pp_cache["png"]      = png
+            _pp_cache["ts"]       = time.time()
+            if _pp_cache["meta"] is None:
+                _pp_cache["meta"] = phase_plane.generate_meta()
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    from flask import make_response
+    resp = make_response(_pp_cache["png"])
+    resp.headers["Content-Type"]  = "image/png"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 # -- Entry point ----------------------------------------------------------------
