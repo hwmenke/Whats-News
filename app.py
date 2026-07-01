@@ -22,6 +22,7 @@ import adaptive_trend as adaptive
 from utils import kama as kama_fn, rsi as rsi_fn
 import ticker_lists as tl
 import spy_vix_phase_plane as phase_plane
+import newsletter_engine
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -262,11 +263,9 @@ def trend_scan():
             if price <= 0:
                 return {"symbol": sym, "error": "Zero price"}
 
-            # RSI with configurable period
             rsi_s   = rsi_fn(close, rsi_period)
             rsi_val = round(float(rsi_s.dropna().iloc[-1]), 2) if len(rsi_s.dropna()) else None
 
-            # KAMA distances (price vs KAMA, expressed as %)
             def _kd(k):
                 s  = kama_fn(close, window=k)
                 v  = s.dropna()
@@ -275,7 +274,6 @@ def trend_scan():
                 kv = float(v.iloc[-1])
                 return round((price / kv - 1.0) * 100, 2) if kv > 0 else None
 
-            # Adaptive trend levels (with same config params as chart)
             trend = adaptive.compute_adaptive_trend(sym, freq, method, **at_config)
 
             def _tlast(key):
@@ -295,7 +293,6 @@ def trend_scan():
                 ls     = _tlast("long_state")
                 signal = int((ss or 0) + (ms or 0) + (ls or 0))
 
-            # Derived ratios
             tp2_price  = round(mdb / price, 4) if mdb and price else None
             price_stop = round(price / mrt, 4) if mrt and price else None
             if mrt and mdb and price:
@@ -391,14 +388,10 @@ def fetch_batch():
     SSE streaming endpoint.
     POST body: {
         "tickers":      ["AAPL", ...],
-        "start_date":   "2000-01-01",   // optional, default 2000-01-01
-        "delay":        1.5,            // seconds between requests
-        "add_watchlist": true           // whether to add each ticker to watchlist
+        "start_date":   "2000-01-01",
+        "delay":        1.5,
+        "add_watchlist": true
     }
-    Streams SSE events:
-        data: {"type":"start",  "total": N}
-        data: {"type":"result", "index": i, "symbol": "...", "ok": bool, "msg": "..."}
-        data: {"type":"done",   "ok": N, "failed": N}
     """
     body        = request.get_json(force=True) or {}
     tickers     = [t.strip().upper() for t in body.get("tickers", []) if t.strip()]
@@ -409,7 +402,6 @@ def fetch_batch():
     if not tickers:
         return jsonify({"error": "tickers list is empty"}), 400
 
-    # Clamp delay to reasonable range
     delay = max(0.3, min(delay, 10.0))
 
     def generate():
@@ -445,7 +437,6 @@ def fetch_batch():
                     fail_count += 1
                     yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': False, 'msg': str(exc)})}\n\n"
 
-                # Rate-limiting pause (skip after last ticker)
                 if i < total - 1:
                     time.sleep(delay)
 
@@ -497,6 +488,21 @@ def phase_plane_image():
     resp.headers["Content-Type"]  = "image/png"
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+# -- Newsletter -----------------------------------------------------------------
+
+@app.route("/api/newsletter/data", methods=["GET"])
+def get_newsletter_data():
+    try:
+        n_charts = min(int(request.args.get("n", 20)), 50)
+    except (TypeError, ValueError):
+        n_charts = 20
+    try:
+        data = newsletter_engine.compute_newsletter_data(n_charts=n_charts)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # -- Entry point ----------------------------------------------------------------
