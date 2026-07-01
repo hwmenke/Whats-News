@@ -5,10 +5,20 @@ stats.py - Compute statistical analysis and factor quintiles for a symbol.
 import numpy as np
 import pandas as pd
 import database as db
-from utils import kama as _kama, rsi as _rsi, safe as _safe
+import indicator_cache as cache
+from ta_core import _kama, _rsi
 
 KAMA_PERIODS = [10, 20, 50]
 
+
+def _safe(val):
+    if val is None: return None
+    try:
+        if np.isnan(val): return None
+    except: pass
+    if isinstance(val, (np.integer,)): return int(val)
+    if isinstance(val, (np.floating,)): return float(val)
+    return val
 
 def _finite_or_none(val):
     try:
@@ -20,6 +30,13 @@ def _finite_or_none(val):
 
 
 def compute_stats(symbol: str) -> dict:
+    return cache.get_or_compute(
+        "compute_stats", symbol, "daily",
+        lambda: _compute_stats_inner(symbol),
+    )
+
+
+def _compute_stats_inner(symbol: str) -> dict:
     # Use 5000 bars (~20 years) for deep statistical context
     df = db.get_ohlcv_df(symbol, "daily", limit=5000)
     if df.empty:

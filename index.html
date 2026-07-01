@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FinDash – Financial Dashboard</title>
   <meta name="description" content="Professional financial dashboard with Yahoo Finance data, SQLite storage, and technical analysis charts." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233b82f6'/%3E%3Cpath d='M7 21l6-7 4 4 8-10' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="styles/main.css" />
   <link rel="stylesheet" href="styles/newsletter.css" />
   <!-- PWA: install on phone home screen + offline shell -->
@@ -12,17 +13,17 @@
   <meta name="theme-color" content="#0d1117">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <!-- TradingView Lightweight Charts -->
-  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-  <!-- Chart.js for statistics -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Chart.js annotation plugin (for newsletter charts) -->
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
   <script>
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => null));
     }
   </script>
+  <!-- TradingView Lightweight Charts -->
+  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+  <!-- Chart.js for statistics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Chart.js annotation plugin (for Daily Edge newsletter charts) -->
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
 </head>
 <body>
 
@@ -30,20 +31,37 @@
 
   <!-- ═══════════════════ TOP BAR ═══════════════════ -->
   <header class="topbar">
-    <button id="btn-sidebar-toggle" class="btn-sidebar-toggle" onclick="toggleSidebar()" title="Toggle watchlist">☰</button>
+    <div class="topbar-logo">
+      <span class="logo-mark">FIN<span class="logo-mark-accent">DASH</span></span>
+      <span class="logo-tag">TERMINAL</span>
+    </div>
 
     <!-- Always-visible social top-movers strip (populated by social_trends.js) -->
     <div id="topmovers" class="topmovers" style="display:none;"></div>
 
     <div class="topbar-spacer"></div>
 
-    <div id="status-dot" class="status-dot" title="Connected to server"></div>
-    <span id="conn-label" class="conn-label">Live</span>
-    <span id="market-time" class="market-time">--</span>
+    <button class="cmdk-hint" onclick="if(typeof openCommandPalette==='function')openCommandPalette()" title="Command palette (Ctrl+K)" aria-label="Open command palette">
+      <span class="cmdk-hint-icon">⌕</span> Search / Command <kbd>Ctrl</kbd><kbd>K</kbd>
+    </button>
+    <button id="btn-alerts" class="btn btn-ghost btn-icon topbar-icon" title="Alerts" aria-label="Manage alerts" onclick="toggleAlertsPanel(); _syncAlertSymbol();">
+      🔔<span id="alert-badge" class="alert-badge" style="display:none;">0</span>
+    </button>
+    <button id="btn-theme-toggle" class="btn btn-ghost btn-icon topbar-icon" title="Switch to light mode" aria-label="Toggle color theme" onclick="toggleTheme()">☀️</button>
+    <button id="btn-focus-mode"   class="btn btn-ghost btn-icon topbar-icon" title="Focus mode (F)" aria-label="Toggle focus mode" onclick="toggleFocusMode()">⛶</button>
   </header>
+
+  <!-- ═══════════════════ TICKER TAPE ═══════════════════ -->
+  <div id="ticker-tape" class="tape" aria-label="Watchlist ticker tape">
+    <div id="tape-track" class="tape-track">
+      <span class="tape-empty">— loading tape —</span>
+    </div>
+  </div>
 
   <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
   <aside class="sidebar">
+    <button class="sidebar-collapse-btn" id="sidebar-collapse-btn"
+            onclick="toggleSidebar()" title="Hide/show watchlist (Ctrl+B)">‹</button>
     <div class="sidebar-header">
       <div class="sidebar-title">Watchlist</div>
       <div class="add-symbol-form">
@@ -55,13 +73,39 @@
           autocomplete="off"
           spellcheck="false"
         />
-        <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add symbol (or type comma-separated)">+</button>
-        <button id="btn-bulk-add"   class="btn btn-ghost   btn-icon" title="Bulk import a list of tickers">≡</button>
+        <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add symbol (or type comma-separated)" aria-label="Add symbol">+</button>
+        <button id="btn-bulk-add"   class="btn btn-ghost   btn-icon" title="Bulk import a list of tickers" aria-label="Bulk import tickers">≡</button>
+        <button id="btn-add-ratio"  class="btn btn-ghost   btn-icon" title="Add price ratio  A/B" aria-label="Add price ratio" onclick="toggleRatioForm()">÷</button>
+      </div>
+
+      <!-- Ratio form — hidden until ÷ button clicked -->
+      <div id="ratio-form" class="ratio-form" style="display:none;">
+        <input id="ratio-sym-a" type="text" class="ratio-input" placeholder="AAPL"
+               maxlength="12" autocomplete="off" spellcheck="false"
+               onkeydown="if(event.key==='Enter')document.getElementById('ratio-sym-b').focus()" />
+        <span class="ratio-slash">/</span>
+        <input id="ratio-sym-b" type="text" class="ratio-input" placeholder="MSFT"
+               maxlength="12" autocomplete="off" spellcheck="false"
+               onkeydown="if(event.key==='Enter')addRatioSymbol()" />
+        <button id="btn-ratio-add" class="btn btn-primary btn-icon" title="Compute ratio" onclick="addRatioSymbol()">+</button>
       </div>
     </div>
 
+    <div class="watchlist-filter">
+      <input id="watchlist-search" type="text" placeholder="Filter…" autocomplete="off" spellcheck="false">
+      <span id="watchlist-count"></span>
+    </div>
+
     <div id="symbol-list" class="symbol-list">
-      <!-- Rendered by app.js -->
+      <!-- Skeleton placeholder shown until app.js renders the watchlist -->
+      <div class="skel-row"><span class="skel skel-ticker"></span><span class="skel skel-spark"></span><span class="skel skel-px"></span></div>
+      <div class="skel-row"><span class="skel skel-ticker"></span><span class="skel skel-spark"></span><span class="skel skel-px"></span></div>
+      <div class="skel-row"><span class="skel skel-ticker"></span><span class="skel skel-spark"></span><span class="skel skel-px"></span></div>
+      <div class="skel-row"><span class="skel skel-ticker"></span><span class="skel skel-spark"></span><span class="skel skel-px"></span></div>
+      <div class="skel-row"><span class="skel skel-ticker"></span><span class="skel skel-spark"></span><span class="skel skel-px"></span></div>
+      <div class="skel-row"><span class="skel skel-ticker"></span><span class="skel skel-spark"></span><span class="skel skel-px"></span></div>
+      <div class="skel-row"><span class="skel skel-ticker"></span><span class="skel skel-spark"></span><span class="skel skel-px"></span></div>
+      <div class="skel-row"><span class="skel skel-ticker"></span><span class="skel skel-spark"></span><span class="skel skel-px"></span></div>
     </div>
 
     <div class="sidebar-actions">
@@ -77,7 +121,6 @@
       <div class="symbol-header-name">
         <span id="sym-title" class="sym-title">--</span>
         <span id="sym-subtitle" class="sym-subtitle"></span>
-        <span id="sym-themes" class="sym-themes" title="Social-trend themes this ticker plays into"></span>
       </div>
 
       <div class="sym-price-block">
@@ -108,41 +151,113 @@
         </div>
       </div>
 
+      <div id="range-52w" class="range-52w" style="display:none;">
+        <span class="r52-label">52W</span>
+        <span id="r52-lo" class="r52-val">--</span>
+        <div class="r52-bar"><div id="r52-marker" class="r52-marker"></div></div>
+        <span id="r52-hi" class="r52-val">--</span>
+      </div>
+
       <div class="header-spacer"></div>
     </div>
 
     <!-- ═══════════════════ MAIN TABS ═══════════════════ -->
     <nav class="main-nav-tabs">
-      <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')">
+
+      <span class="tab-group-label">Chart</span>
+      <button id="tab-charts" data-key="1" class="tab-btn active" onclick="switchTab('charts')" title="Charts (1)">
         <span class="tab-icon">📈</span> Charts
       </button>
-      <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">
+      <button id="tab-mtf" class="tab-btn" onclick="switchTab('mtf')" title="Multi-timeframe grid">
+        <span class="tab-icon">🔢</span> Multi-TF
+      </button>
+      <button id="tab-compare" class="tab-btn" onclick="switchTab('compare')" title="Compare symbols">
+        <span class="tab-icon">⚖️</span> Compare
+      </button>
+
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">Analyze</span>
+      <button id="tab-stats" data-key="2" class="tab-btn" onclick="switchTab('stats')" title="Statistics (2)">
         <span class="tab-icon">📊</span> Statistics
       </button>
-      <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">
-        <span class="tab-icon">🤖</span> KNN Lookalike
-      </button>
-      <button id="tab-backtest" class="tab-btn" onclick="switchTab('backtest')">
-        <span class="tab-icon">⚙️</span> Backtest
-      </button>
-      <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">
+      <button id="tab-trend" data-key="3" class="tab-btn" onclick="switchTab('trend')" title="Adaptive Trend (3)">
         <span class="tab-icon">🎯</span> Adaptive Trend
       </button>
-      <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">
-        <span class="tab-icon">📡</span> Scanner
+      <button id="tab-swirl" class="tab-btn" onclick="switchTab('swirl')" title="RSI phase-space charts">
+        <span class="tab-icon">🌀</span> Swirligram
       </button>
-      <button id="tab-social" class="tab-btn" onclick="switchTab('social')">
-        <span class="tab-icon">🔥</span> Social Trends
+      <button id="tab-seasonality" class="tab-btn" onclick="switchTab('seasonality')" title="Seasonality patterns">
+        <span class="tab-icon">📅</span> Seasonality
       </button>
-      <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
-        <span class="tab-icon">🗄️</span> Data Manager
+      <button id="tab-momentum" data-key="7" class="tab-btn" onclick="switchTab('momentum')" title="Momentum ranker (7)">
+        <span class="tab-icon">🏆</span> Momentum
       </button>
-      <button id="tab-phase-plane" class="tab-btn" onclick="switchTab('phase-plane')">
+      <button id="tab-regime" data-key="8" class="tab-btn" onclick="switchTab('regime')" title="Market regime (8)">
+        <span class="tab-icon">🌡</span> Regime
+      </button>
+      <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')" title="KNN lookalike pattern matching">
+        <span class="tab-icon">🤖</span> KNN Lookalike
+      </button>
+      <button id="tab-phase-plane" class="tab-btn" onclick="switchTab('phase-plane')" title="SPY/VIX phase-plane diagram">
         <span class="tab-icon">🌀</span> Phase Plane
       </button>
-      <button id="tab-newsletter" class="tab-btn" onclick="switchTab('newsletter')">
-        <span class="tab-icon">📰</span> Daily Edge
+
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">Social</span>
+      <button id="tab-social" class="tab-btn" onclick="switchTab('social')" title="Social trends radar">
+        <span class="tab-icon">🔥</span> Social Trends
       </button>
+
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">Scan</span>
+      <button id="tab-scanner" data-key="4" class="tab-btn" onclick="switchTab('scanner')" title="Scanner (4)">
+        <span class="tab-icon">📡</span> Scanner
+      </button>
+      <button id="tab-dashboard" data-key="5" class="tab-btn" onclick="switchTab('dashboard')" title="Market dashboard (5)">
+        <span class="tab-icon">📊</span> Dashboard
+      </button>
+
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">Trade</span>
+      <button id="tab-journal" data-key="6" class="tab-btn" onclick="switchTab('journal')" title="Trade journal (6)">
+        <span class="tab-icon">📝</span> Journal
+      </button>
+      <button id="tab-portfolio" data-key="9" class="tab-btn" onclick="switchTab('portfolio')" title="Portfolio backtest (9)">
+        <span class="tab-icon">📂</span> Portfolio
+      </button>
+      <button id="tab-backtest" class="tab-btn" onclick="switchTab('backtest')" title="Single-symbol backtest">
+        <span class="tab-icon">⚙️</span> Backtest
+      </button>
+      <button id="tab-risk-calc" class="tab-btn" onclick="switchTab('risk-calc')" title="Position size calculator">
+        <span class="tab-icon">🧮</span> Risk Calc
+      </button>
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">News</span>
+      <button id="tab-news" class="tab-btn" onclick="switchTab('news')" title="News & sentiment">
+        <span class="tab-icon">📰</span> News
+      </button>
+      <button id="tab-calendar" class="tab-btn" onclick="switchTab('calendar')" title="Macro & earnings calendar">
+        <span class="tab-icon">🗓️</span> Calendar
+      </button>
+      <button id="tab-newsletter" class="tab-btn" onclick="switchTab('newsletter')" title="Daily Edge newsletter">
+        <span class="tab-icon">☀️</span> Daily Edge
+      </button>
+
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">Data</span>
+      <button id="tab-data-manager" data-key="0" class="tab-btn" onclick="switchTab('data-manager')" title="Data manager (0)">
+        <span class="tab-icon">🗄️</span> Data Manager
+      </button>
+
+      <span class="tab-group-sep"></span>
+      <span class="tab-group-label">Workflow</span>
+      <button id="tab-routine" class="tab-btn" onclick="switchTab('routine')" title="Morning Routine — run daily workflow components">
+        <span class="tab-icon">☀</span> Routine
+      </button>
+      <button id="tab-settings" class="tab-btn" onclick="switchTab('settings')" title="App Settings">
+        <span class="tab-icon">⚙</span> Settings
+      </button>
+
     </nav>
     <div class="tab-bar">
       <div class="indicator-toggles">
@@ -157,6 +272,31 @@
       <div class="indicator-toggles">
         <span class="overlay-section-label">Overlays</span>
         <button id="pill-bb" class="ind-pill active-bb">Bol. Bands</button>
+        <button id="btn-vol-profile" class="ind-pill" onclick="toggleVolProfile()" title="Volume Profile">Vol Profile</button>
+      </div>
+      <div class="tab-spacer"></div>
+      <!-- Drawing tools -->
+      <div class="indicator-toggles drawing-tools-bar">
+        <span class="overlay-section-label">Levels</span>
+        <input id="drawing-price-input" type="number" step="0.01" placeholder="Price" class="kama-input" style="width:74px;" />
+        <input id="drawing-label-input" type="text" placeholder="Label" class="kama-input" style="width:64px;" maxlength="20" />
+        <input id="drawing-color-input" type="color" value="#f97316" class="drawing-color-picker" title="Level color" />
+        <button class="btn btn-primary btn-icon" onclick="addDrawingLevel()" title="Add price level">+</button>
+        <div id="drawings-list" class="drawings-list"></div>
+      </div>
+      <div class="tab-spacer"></div>
+      <!-- Replay controls -->
+      <div class="indicator-toggles">
+        <span class="overlay-section-label">Replay</span>
+        <input id="replay-start-date" type="date" class="kama-input" style="width:120px;" />
+        <button id="btn-replay-start" class="btn btn-ghost btn-icon" onclick="startReplay()" title="Start replay">▶</button>
+        <div id="replay-controls" class="hidden" style="display:contents;">
+          <button class="btn btn-ghost btn-icon" onclick="replayPrev()" title="Previous bar">◀</button>
+          <span id="replay-bar-label" style="font-size:11px; color:var(--text-muted); white-space:nowrap;"></span>
+          <button class="btn btn-ghost btn-icon" onclick="replayNext(1)" title="Next bar">▶</button>
+          <button class="btn btn-ghost btn-icon" onclick="replayNext(5)" title="+5 bars">▶▶</button>
+          <button class="btn btn-ghost btn-icon" onclick="stopReplay()" title="Stop replay" style="color:var(--red);">■</button>
+        </div>
       </div>
     </div>
 
@@ -170,11 +310,17 @@
     <!-- ── Chart Area ── -->
     <div id="chart-area" class="charts-container" style="display:none; position:relative;">
 
+      <!-- Crosshair OHLC tooltip -->
+      <div id="crosshair-tooltip" class="crosshair-tooltip" style="display:none; position:absolute; z-index:10; pointer-events:none;"></div>
+
       <!-- Loading overlay -->
       <div id="chart-loading" class="chart-loading" style="display:none;">
         <span class="spinner"></span>
         Loading chart data…
       </div>
+
+      <!-- Volume Profile panel (right side overlay) -->
+      <div id="vol-profile-panel" class="vp-panel" style="display:none;"></div>
 
       <!-- ── Daily Panel ── -->
       <div class="chart-panel">
@@ -306,7 +452,1131 @@
 
     </div><!-- #stats-area -->
 
-    <!-- ── KNN Area ── -->
+    <!-- ── Adaptive Trend Area ── -->
+    <div id="trend-area" class="trend-container" style="display:none;">
+
+      <!-- Full-area loading overlay -->
+      <div id="trend-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span>
+        Computing adaptive trend…
+      </div>
+
+      <!-- Controls bar -->
+      <div class="trend-controls">
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Method</span>
+          <button class="ind-pill trend-active trend-method-btn" data-val="kama" onclick="setTrendMethod('kama')">KAMA</button>
+          <button class="ind-pill trend-method-btn"              data-val="adma" onclick="setTrendMethod('adma')">ADMA</button>
+        </div>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Freq</span>
+          <button class="ind-pill trend-active trend-freq-btn" data-val="daily"  onclick="setTrendFreq('daily')">Daily</button>
+          <button class="ind-pill trend-freq-btn"              data-val="weekly" onclick="setTrendFreq('weekly')">Weekly</button>
+          <button class="ind-pill trend-freq-btn trend-both-btn" data-val="both" onclick="setTrendFreq('both')">
+            <span class="trend-both-icon">⊞</span> Both
+          </button>
+        </div>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Baselines</span>
+          <button id="trend-toggle-sb"  class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('sb')"
+                  onmouseenter="showLineDesc('sb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot" style="--dot:#3b82f6"></span>SB
+          </button>
+          <button id="trend-toggle-mb"  class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('mb')"
+                  onmouseenter="showLineDesc('mb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot" style="--dot:#ef4444"></span>MB
+          </button>
+          <button id="trend-toggle-lb"  class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('lb')"
+                  onmouseenter="showLineDesc('lb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#f97316"></span>LB
+          </button>
+        </div>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Bands</span>
+          <button id="trend-toggle-sdb" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('sdb')"
+                  onmouseenter="showLineDesc('sdb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#22c55e"></span>SDB
+          </button>
+          <button id="trend-toggle-mrt" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('mrt')"
+                  onmouseenter="showLineDesc('mrt')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#475569"></span>MRT
+          </button>
+          <button id="trend-toggle-mdb" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('mdb')"
+                  onmouseenter="showLineDesc('mdb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#16a34a"></span>MDB
+          </button>
+          <button id="trend-toggle-lrt" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('lrt')"
+                  onmouseenter="showLineDesc('lrt')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#6b7280"></span>LRT
+          </button>
+          <button id="trend-toggle-ldb" class="ind-pill trend-line-btn trend-toggle-on"
+                  onclick="toggleTrendLine('ldb')"
+                  onmouseenter="showLineDesc('ldb')" onmouseleave="clearLineDesc()">
+            <span class="trend-dot trend-dot-dash" style="--dot:#06b6d4"></span>LDB
+          </button>
+        </div>
+        <div class="trend-controls-group">
+          <span class="overlay-section-label">Parameters</span>
+          <button id="btn-trend-optimize" class="ind-pill trend-opt-btn" onclick="runTrendOptimize()">
+            ⚡ Optimize
+          </button>
+          <button id="btn-trend-reset-params" class="ind-pill trend-reset-btn" style="display:none;" onclick="resetTrendParams()">
+            ↺ Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Description strip -->
+      <div id="trend-line-desc" class="trend-line-desc"></div>
+
+      <!-- Optimize result panel -->
+      <div id="trend-opt-panel" class="trend-opt-panel" style="display:none;"></div>
+
+      <!-- Main panels row -->
+      <div class="trend-panels" id="trend-panels">
+
+        <!-- Charts stack (daily + optionally weekly) -->
+        <div class="trend-charts-stack">
+
+          <!-- Daily chart panel -->
+          <div class="trend-panel-main" id="trend-panel-daily">
+            <div class="trend-panel-header">
+              <span class="trend-panel-header-label" id="trend-daily-label">Price · Adaptive Bands</span>
+            </div>
+            <div class="trend-price-wrap">
+              <div id="trend-chart-price" style="width:100%;height:100%;"></div>
+            </div>
+            <div class="chart-divider"></div>
+            <div class="trend-regime-wrap">
+              <div class="chart-label">S / M / L REGIME</div>
+              <div id="trend-chart-regime" style="width:100%;height:100%;"></div>
+            </div>
+          </div>
+
+          <!-- Weekly chart panel (shown only in Both mode) -->
+          <div class="trend-panel-main trend-panel-weekly" id="trend-panel-weekly" style="display:none;">
+            <div class="trend-panel-header trend-panel-header-w">
+              <span class="trend-panel-header-label">Weekly · Adaptive Bands</span>
+              <span class="trend-freq-badge">W</span>
+            </div>
+            <div class="trend-price-wrap">
+              <div id="trend-chart-price-w" style="width:100%;height:100%;"></div>
+            </div>
+            <div class="chart-divider"></div>
+            <div class="trend-regime-wrap">
+              <div class="chart-label">S / M / L REGIME (Weekly)</div>
+              <div id="trend-chart-regime-w" style="width:100%;height:100%;"></div>
+            </div>
+          </div>
+
+        </div><!-- .trend-charts-stack -->
+
+        <div class="panel-divider"></div>
+
+        <!-- Signal panel -->
+        <div class="trend-panel-signal" id="trend-panel-signal">
+
+          <!-- Header with collapse button -->
+          <div class="trend-sig-header">
+            <span class="trend-sig-title">Signal Summary</span>
+            <button class="trend-sig-collapse-btn" id="trend-sig-collapse-btn"
+                    onclick="toggleTrendSignalPanel()" title="Hide panel">‹</button>
+          </div>
+
+          <!-- Composite badge -->
+          <div class="trend-composite-wrap">
+            <div class="trend-composite-cols" id="trend-composite-cols">
+              <div class="trend-composite-col">
+                <div class="trend-composite-freq-label" id="trend-comp-label-d">Daily</div>
+                <div id="trend-composite" class="trend-composite-badge neutral">—</div>
+                <div id="trend-strength" class="trend-strength-bar neutral">○ ○ ○</div>
+              </div>
+              <div class="trend-composite-col trend-composite-col-w" id="trend-composite-col-w" style="display:none;">
+                <div class="trend-composite-freq-label">Weekly</div>
+                <div id="trend-composite-w" class="trend-composite-badge neutral">—</div>
+                <div id="trend-strength-w" class="trend-strength-bar neutral">○ ○ ○</div>
+              </div>
+            </div>
+          </div>
+          <div id="trend-align" class="trend-align-row">—</div>
+
+          <!-- Vertical signal rows -->
+          <div class="trend-sig-list">
+
+            <div class="trend-sig-section-label">Regime</div>
+
+            <div class="trend-sig-row" data-sig-key="short">
+              <div class="trend-sig-icon-wrap" style="background:rgba(59,130,246,0.15);color:#3b82f6">S</div>
+              <span class="trend-sig-label">Short</span>
+              <span id="trend-sig-short" class="trend-sig-val neutral">—</span>
+              <span id="trend-sig-short-w" class="trend-sig-val-w neutral" style="display:none;">—</span>
+              <button class="trend-sig-info-btn" data-info-key="short">?</button>
+            </div>
+
+            <div class="trend-sig-row" data-sig-key="medium">
+              <div class="trend-sig-icon-wrap" style="background:rgba(239,68,68,0.15);color:#ef4444">M</div>
+              <span class="trend-sig-label">Medium</span>
+              <span id="trend-sig-medium" class="trend-sig-val neutral">—</span>
+              <span id="trend-sig-medium-w" class="trend-sig-val-w neutral" style="display:none;">—</span>
+              <button class="trend-sig-info-btn" data-info-key="medium">?</button>
+            </div>
+
+            <div class="trend-sig-row" data-sig-key="long">
+              <div class="trend-sig-icon-wrap" style="background:rgba(249,115,22,0.15);color:#f97316">L</div>
+              <span class="trend-sig-label">Long</span>
+              <span id="trend-sig-long" class="trend-sig-val neutral">—</span>
+              <span id="trend-sig-long-w" class="trend-sig-val-w neutral" style="display:none;">—</span>
+              <button class="trend-sig-info-btn" data-info-key="long">?</button>
+            </div>
+
+            <div class="trend-sig-section-label" style="margin-top:4px;">Trade Levels</div>
+
+            <div class="trend-sig-row" data-sig-key="entry">
+              <div class="trend-sig-icon-wrap" style="background:rgba(168,85,247,0.15);color:#a855f7">↵</div>
+              <span class="trend-sig-label">Last Entry</span>
+              <span id="trend-sig-entry" class="trend-sig-val neutral">—</span>
+              <button class="trend-sig-info-btn" data-info-key="entry">?</button>
+            </div>
+
+            <div class="trend-sig-row" data-sig-key="mrt">
+              <div class="trend-sig-icon-wrap" style="background:rgba(71,85,105,0.25);color:#64748b">✕</div>
+              <span class="trend-sig-label">Stop · MRT</span>
+              <span id="trend-sig-mrt" class="trend-sig-val neutral">—</span>
+              <button class="trend-sig-info-btn" data-info-key="mrt">?</button>
+            </div>
+
+            <div class="trend-sig-row" data-sig-key="sdb">
+              <div class="trend-sig-icon-wrap" style="background:rgba(34,197,94,0.15);color:#22c55e">T1</div>
+              <span class="trend-sig-label">Target 1 · SDB</span>
+              <span id="trend-sig-sdb" class="trend-sig-val neutral">—</span>
+              <button class="trend-sig-info-btn" data-info-key="sdb">?</button>
+            </div>
+
+            <div class="trend-sig-row" data-sig-key="mdb">
+              <div class="trend-sig-icon-wrap" style="background:rgba(22,163,74,0.15);color:#16a34a">T2</div>
+              <span class="trend-sig-label">Target 2 · MDB</span>
+              <span id="trend-sig-mdb" class="trend-sig-val neutral">—</span>
+              <button class="trend-sig-info-btn" data-info-key="mdb">?</button>
+            </div>
+
+            <div class="trend-sig-row" data-sig-key="rr">
+              <div class="trend-sig-icon-wrap" style="background:rgba(6,182,212,0.15);color:#06b6d4">R:R</div>
+              <span class="trend-sig-label">Risk · Reward</span>
+              <span id="trend-sig-rr" class="trend-sig-val neutral">—</span>
+              <button class="trend-sig-info-btn" data-info-key="rr">?</button>
+            </div>
+
+          </div><!-- .trend-sig-list -->
+
+        </div><!-- .trend-panel-signal -->
+
+        <!-- Collapsed tab (expand handle) -->
+        <div class="trend-sig-tab" id="trend-sig-tab" onclick="toggleTrendSignalPanel()" title="Show signals">›</div>
+
+      </div><!-- .trend-panels -->
+
+      <!-- Floating tooltip (shared, moved by JS) -->
+      <div class="trend-sig-tooltip" id="trend-sig-tooltip"></div>
+
+      <!-- ── Adaptive Trend Swing Widget ── -->
+      <div id="swing-widget-panel" class="sw-panel">
+        <div class="sw-loading"><span class="spinner"></span></div>
+      </div>
+
+    </div><!-- #trend-area -->
+
+    <!-- ── Scanner Area ── -->
+    <div id="scanner-area" class="scanner-container" style="display:none;">
+
+      <!-- Loading overlay -->
+      <div id="scanner-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span>
+        Scanning watchlist…
+      </div>
+
+      <!-- Controls bar -->
+      <div class="scanner-controls">
+        <div class="scanner-controls-left">
+          <div class="scan-mode-switch">
+            <button class="scan-mode-btn scan-mode-on" data-mode="technical" onclick="setScanMode('technical')">⚙ Multi-TF</button>
+            <button class="scan-mode-btn" data-mode="jeff" onclick="setScanMode('jeff')">🎯 Jeff Setups</button>
+            <button class="scan-mode-btn" data-mode="pipeline" onclick="setScanMode('pipeline')">🗂 Pipeline</button>
+            <button class="scan-mode-btn" data-mode="guru" onclick="setScanMode('guru')">🧠 Guru</button>
+          </div>
+          <button id="btn-scan" class="btn btn-primary" onclick="runScan()">⟳ Scan All</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportTableToCSV('scanner-table','scanner.csv')" title="Export scanner to CSV">⤓ CSV</button>
+          <span id="scanner-ts" class="scanner-ts"></span>
+        </div>
+        <div class="scanner-controls-right" id="scan-tech-groups">
+          <span class="overlay-section-label">Groups</span>
+          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="rsi"  onclick="toggleScanGroup('rsi')">RSI</button>
+          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="kama" onclick="toggleScanGroup('kama')">KAMA Ratios</button>
+          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="mom"  onclick="toggleScanGroup('mom')">Momentum</button>
+          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="vol"  onclick="toggleScanGroup('vol')">Volatility</button>
+        </div>
+      </div>
+
+      <!-- Data freshness banner -->
+      <div id="scanner-freshness" class="data-freshness-banner" style="display:none;"></div>
+
+      <!-- Jeff: market context banner -->
+      <div id="jeff-banner" class="jf-banner" style="display:none;"></div>
+
+      <!-- Jeff: filter chips -->
+      <div id="scan-jeff-filters" class="jf-filters" style="display:none;"></div>
+
+      <!-- Jeff: stats summary bar -->
+      <div id="jf-stats-bar" class="jf-stats-bar" style="display:none;"></div>
+
+      <!-- Guru: strategy tabs + stage distribution -->
+      <div id="guru-strategy-tabs" class="guru-tabs" style="display:none;"></div>
+      <div id="guru-stage-dist"   class="guru-stage-dist" style="display:none;"></div>
+
+      <!-- Scrollable table -->
+      <div class="scanner-table-wrap">
+        <table id="scanner-table" class="scanner-table">
+          <thead id="scanner-thead"></thead>
+          <tbody id="scanner-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Empty state -->
+      <div id="scanner-empty" class="scanner-empty" style="display:none;">
+        <div class="empty-icon">📡</div>
+        <p>No symbols in watchlist, or data not yet fetched.<br>Add tickers, then click <strong>⟳ Scan All</strong>.</p>
+      </div>
+
+    </div><!-- #scanner-area -->
+
+    <!-- ── Data Manager Area ── -->
+    <div id="data-manager-area" class="dm-container" style="display:none;">
+
+      <!-- ── Left panel: category browser ── -->
+      <div class="dm-left">
+        <div class="dm-panel-header">Ticker Library</div>
+
+        <!-- Search / filter -->
+        <div class="dm-search-wrap">
+          <input id="dm-search" type="text" class="dm-search" placeholder="Search tickers…" oninput="dmFilterTickers()" />
+        </div>
+
+        <!-- Category grid -->
+        <div id="dm-categories" class="dm-categories">
+          <!-- Rendered by data_manager.js -->
+        </div>
+
+        <!-- Select / deselect controls -->
+        <div class="dm-select-controls">
+          <button class="btn btn-ghost btn-sm" onclick="dmSelectAll()">Select All</button>
+          <button class="btn btn-ghost btn-sm" onclick="dmSelectNone()">Deselect All</button>
+          <span id="dm-selected-count" class="dm-sel-count">0 selected</span>
+        </div>
+      </div>
+
+      <!-- ── Right panel: settings + progress ── -->
+      <div class="dm-right">
+
+        <!-- Coverage table -->
+        <div class="dm-panel-header">Data Coverage</div>
+        <div id="dm-coverage-table" class="dm-coverage">
+          <!-- Rendered by data_manager.js -->
+        </div>
+
+        <div class="dm-panel-header dm-panel-header-sub">Finviz Import</div>
+        <div class="dm-settings">
+          <div class="dm-field">
+            <label class="dm-label" for="fv-url">Screener URL</label>
+            <input id="fv-url" type="text" class="dm-input" placeholder="https://finviz.com/screener.ashx?v=111&f=cap_midover,ta_perf_4w30o…" />
+          </div>
+          <div class="dm-field">
+            <label class="dm-label" for="fv-auth">Elite auth token <span class="dm-hint-inline">(optional — uses official CSV export)</span></label>
+            <input id="fv-auth" type="password" class="dm-input" placeholder="leave empty to scrape the public page" autocomplete="off" />
+          </div>
+          <div class="dm-field dm-field-row" style="gap:12px;">
+            <label class="dm-label dm-label-inline" for="fv-pages">Pages
+              <select id="fv-pages" class="dm-select" style="width:70px;margin-left:6px;">
+                <option value="1" selected>1</option><option value="2">2</option>
+                <option value="3">3</option><option value="5">5</option>
+              </select>
+            </label>
+            <label class="dm-label dm-label-inline" for="fv-group">Group tag
+              <input id="fv-group" type="text" class="dm-input" style="width:110px;margin-left:6px;" value="finviz" />
+            </label>
+          </div>
+          <div class="dm-actions" style="margin-top:4px;">
+            <button class="btn btn-ghost" onclick="fvPreview()">👁 Preview</button>
+            <button class="btn btn-primary" onclick="fvImport()">⤵ Import to Watchlist</button>
+          </div>
+          <div id="fv-result" class="fv-result"></div>
+        </div>
+
+        <div class="dm-panel-header dm-panel-header-sub">Batch Fetch Settings</div>
+
+        <div class="dm-settings">
+
+          <div class="dm-field">
+            <label class="dm-label" for="dm-start-date">Start Date</label>
+            <input id="dm-start-date" type="date" class="dm-input" value="2000-01-01" />
+          </div>
+
+          <div class="dm-field">
+            <label class="dm-label" for="dm-delay">Delay Between Requests</label>
+            <select id="dm-delay" class="dm-select">
+              <option value="0.5">0.5 s — fastest (may hit rate limits)</option>
+              <option value="1.5">1.5 s — recommended</option>
+              <option value="3.0" selected>3.0 s — if rate limited</option>
+              <option value="5.0">5.0 s — very safe</option>
+              <option value="10.0">10.0 s — aggressive rate limit bypass</option>
+            </select>
+          </div>
+
+          <div class="dm-field dm-field-row">
+            <label class="dm-label dm-label-inline">
+              <input id="dm-add-watchlist" type="checkbox" checked />
+              Also add to watchlist
+            </label>
+          </div>
+
+        </div>
+
+        <!-- Action buttons -->
+        <div class="dm-actions">
+          <button id="btn-dm-fetch" class="btn btn-primary" onclick="dmStartBatch()">
+            ▶ Fetch Selected
+          </button>
+          <button id="btn-dm-abort" class="btn btn-danger" style="display:none;" onclick="dmAbortBatch()">
+            ■ Abort
+          </button>
+        </div>
+
+        <!-- Progress section -->
+        <div id="dm-progress-section" class="dm-progress-section" style="display:none;">
+          <div class="dm-progress-header">
+            <span id="dm-progress-label">Starting…</span>
+            <span id="dm-progress-pct" class="dm-pct">0%</span>
+          </div>
+          <div class="dm-progress-bar">
+            <div id="dm-progress-fill" class="dm-progress-fill"></div>
+          </div>
+          <div id="dm-summary" class="dm-summary"></div>
+        </div>
+
+        <!-- Log -->
+        <div class="dm-log-header">Log</div>
+        <div id="dm-log" class="dm-log">
+          <div class="dm-log-hint">Select tickers and click <strong>Fetch Selected</strong> to begin.</div>
+        </div>
+
+      </div><!-- .dm-right -->
+
+    </div><!-- #data-manager-area -->
+
+    <!-- ══ Swirligram ═══════════════════════════════════════════ -->
+    <div id="swirl-area" class="sw-container" style="display:none;">
+
+      <!-- Top bar: combined signal + stats + controls -->
+      <div class="sw-topbar">
+        <div id="sw-combined-badge" class="sw-combined-badge sw-badge-gray">
+          <span id="sw-combined-label">Select a symbol</span>
+          <span id="sw-combined-score" class="sw-combined-score"></span>
+        </div>
+
+        <div class="sw-header-stats">
+          <div class="sw-hstat">
+            <span class="sw-hstat-lbl">Daily RSI</span>
+            <span id="sw-daily-rsi-val" class="sw-hstat-val">—</span>
+            <span id="sw-daily-drsi-val" class="sw-hstat-dir">—</span>
+          </div>
+          <div class="sw-hstat">
+            <span class="sw-hstat-lbl">Weekly RSI</span>
+            <span id="sw-weekly-rsi-val" class="sw-hstat-val">—</span>
+            <span id="sw-weekly-drsi-val" class="sw-hstat-dir">—</span>
+          </div>
+          <div class="sw-hstat">
+            <span class="sw-hstat-lbl">KAMA Fast Pct</span>
+            <span id="sw-kama-fast-val" class="sw-hstat-val">—</span>
+            <span id="sw-kama-fast-dir" class="sw-hstat-dir">—</span>
+          </div>
+          <div class="sw-hstat">
+            <span class="sw-hstat-lbl">KAMA Trend Pct</span>
+            <span id="sw-kama-trend-val" class="sw-hstat-val">—</span>
+            <span id="sw-kama-trend-dir" class="sw-hstat-dir">—</span>
+          </div>
+        </div>
+
+        <div class="sw-controls">
+          <label>Trail
+            <input type="number" id="sw-trail" value="90" min="20" max="252" style="width:52px">
+          </label>
+          <label>RSI Period
+            <input type="number" id="sw-period" value="14" min="5" max="30" style="width:44px">
+          </label>
+          <button id="btn-sw-run" class="sw-run-btn" onclick="swLoad()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div id="sw-loading" class="sw-loading" style="display:none;">⏳ Computing…</div>
+
+      <!-- How to read — the process in one line -->
+      <div class="sw-howto">
+        <span class="sw-howto-step"><b>1 · Anchor</b> weekly RSI holding 50–65</span>
+        <span class="sw-howto-sep">→</span>
+        <span class="sw-howto-step"><b>2 · Trigger</b> daily dot hooks up (Δ&gt;0) inside 30–50</span>
+        <span class="sw-howto-sep">→</span>
+        <span class="sw-howto-step"><b>3 · Confirm</b> extension not stretched, trend rank ≥ 50</span>
+        <span class="sw-howto-sep">·</span>
+        <span class="sw-howto-step sw-howto-warn">avoid chasing dots in the red &gt;70 band</span>
+      </div>
+
+      <!-- Charts grid: process order — anchor, trigger, extension, trend -->
+      <div class="sw-grid">
+
+        <!-- 1 · Weekly anchor -->
+        <div class="sw-panel">
+          <div class="sw-panel-title"><span class="sw-step-badge">1</span> Weekly RSI — Trend Anchor
+            <span class="sw-panel-hint">Ideal anchor 50–62 · ● = this week · the worm should live in the green band</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-weekly-phase"></canvas>
+          </div>
+          <div id="sw-weekly-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">Weekly RSI Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-weekly-timeline"></canvas>
+          </div>
+        </div>
+
+        <!-- 2 · Daily trigger -->
+        <div class="sw-panel">
+          <div class="sw-panel-title"><span class="sw-step-badge">2</span> Daily RSI — Entry Trigger
+            <span class="sw-panel-hint">X = RSI · Y = Δ RSI/bar · buy = hook up from the 30–50 pullback zone</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-daily-phase"></canvas>
+          </div>
+          <div id="sw-daily-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">Daily RSI Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-daily-timeline"></canvas>
+          </div>
+        </div>
+
+        <!-- 3 · Extension -->
+        <div class="sw-panel">
+          <div class="sw-panel-title"><span class="sw-step-badge">3</span> Extension — Close vs KAMA₁₀ Rank
+            <span class="sw-panel-hint">How stretched price is vs its adaptive average · &gt;75 = chase risk · 30–60 turning up = reset entry</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-kama-fast-phase"></canvas>
+          </div>
+          <div id="sw-kama-fast-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">Extension Rank Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-kama-fast-tl"></canvas>
+          </div>
+        </div>
+
+        <!-- 4 · Trend persistence -->
+        <div class="sw-panel">
+          <div class="sw-panel-title"><span class="sw-step-badge">4</span> Trend Persistence — KAMA₁₀/KAMA₂₀ Rank
+            <span class="sw-panel-hint">Fast vs slow adaptive MA · ≥50 and rising = trend intact · &lt;25 = broken</span>
+          </div>
+          <div class="sw-chart-wrap">
+            <canvas id="sw-kama-trend-phase"></canvas>
+          </div>
+          <div id="sw-kama-trend-signal" class="sw-signal-box"></div>
+          <div class="sw-panel-title sw-mini-title">Trend Rank Timeline</div>
+          <div class="sw-timeline-wrap">
+            <canvas id="sw-kama-trend-tl"></canvas>
+          </div>
+        </div>
+
+      </div><!-- .sw-grid -->
+
+    </div><!-- #swirl-area -->
+
+    <!-- ── Portfolio Backtest ──────────────────────────────────────── -->
+    <div id="portfolio-area" class="st-container" style="display:none;">
+
+      <!-- Left: symbol selection + settings -->
+      <div class="st-left">
+        <div class="st-section-label">Symbols</div>
+        <div id="pt-symbol-list" class="pt-symbol-list"></div>
+
+        <div class="st-section-label" style="margin-top:12px;">Sizing Mode</div>
+        <div class="st-setting-row">
+          <label><input type="radio" name="pt-sizing" value="vol_target" checked> Vol Target (10%)</label>
+        </div>
+        <div class="st-setting-row">
+          <label><input type="radio" name="pt-sizing" value="risk_parity"> Risk Parity</label>
+        </div>
+        <div class="st-setting-row">
+          <label><input type="radio" name="pt-sizing" value="equal"> Equal Weight</label>
+        </div>
+
+        <div class="st-section-label" style="margin-top:12px;">Frequency</div>
+        <div class="st-freq-row">
+          <button class="st-freq-btn st-active" data-val="daily"  onclick="ptSetFreq('daily')">Daily</button>
+          <button class="st-freq-btn"           data-val="weekly" onclick="ptSetFreq('weekly')">Weekly</button>
+        </div>
+
+        <div class="st-section-label" style="margin-top:12px;">Entry Condition (applied to all symbols)</div>
+        <div id="pt-entry-long-rows" class="st-conditions-wrap"></div>
+        <button class="st-add-cond-btn" onclick="ptAddConditionRow('pt-entry-long-rows')">+ Entry Long</button>
+
+        <div style="margin-top:8px;">
+          <label style="font-size:11px;color:var(--text-dim);">Exit Long</label>
+          <div id="pt-exit-long-rows" class="st-conditions-wrap"></div>
+          <button class="st-add-cond-btn" onclick="ptAddConditionRow('pt-exit-long-rows')">+ Exit Long</button>
+        </div>
+
+        <div class="st-setting-row" style="margin-top:10px;">
+          <label>Commission %&nbsp;<input type="number" id="pt-commission" value="0.05" step="0.01" min="0" max="5"></label>
+          <label>Slippage %&nbsp;<input type="number" id="pt-slippage" value="0.05" step="0.01" min="0" max="5"></label>
+        </div>
+
+        <div class="st-action-row">
+          <button id="btn-pt-run" class="st-run-btn" onclick="ptRunBacktest()">▶ Run Portfolio</button>
+        </div>
+      </div><!-- .st-left -->
+
+      <!-- Right: results -->
+      <div class="st-right">
+        <div id="pt-loading" class="st-loading" style="display:none;">
+          <span class="st-spinner">⏳</span> Running portfolio backtest…
+        </div>
+        <div id="pt-empty" class="st-empty">
+          <div class="empty-icon">📂</div>
+          <p>Select symbols from the watchlist, choose a sizing mode, then click Run Portfolio.</p>
+        </div>
+        <div id="pt-results" style="display:none;">
+          <div id="pt-metrics-row" class="st-kpi-row"></div>
+          <div class="st-chart-label">Portfolio Equity vs Benchmark</div>
+          <div class="st-chart st-chart-sm"><canvas id="pt-equity-chart"></canvas></div>
+          <div class="st-chart-label" style="margin-top:8px;">Per-Leg Equity</div>
+          <div class="st-chart st-chart-sm"><canvas id="pt-leg-chart"></canvas></div>
+          <div class="st-chart-label" style="margin-top:8px;">Position Weights</div>
+          <div class="st-chart st-chart-sm"><canvas id="pt-weight-chart"></canvas></div>
+          <div id="pt-contribution-table" class="st-fold-table-wrap" style="margin-top:10px;"></div>
+        </div>
+      </div><!-- .st-right -->
+
+    </div><!-- #portfolio-area -->
+
+    <!-- ── Market Regime Area ── -->
+    <div id="regime-area" class="rg-container" style="display:none;">
+      <div id="regime-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Computing regime…</div>
+      <div id="regime-freshness" class="data-freshness-banner" style="display:none;"></div>
+      <div class="rg-controls">
+        <span class="rg-ctrl-label">Regime Symbol</span>
+        <input id="regime-symbol-input" type="text" class="rg-sym-input" value="SPY" placeholder="SPY" maxlength="10" />
+        <button class="btn btn-primary btn-sm" onclick="loadRegimeFull(document.getElementById('regime-symbol-input').value)">▶ Load</button>
+        <span style="font-size:10px;color:var(--text-dim);margin-left:8px">Use SPY for market-wide regime, or any symbol for that asset's trend state</span>
+      </div>
+      <div id="regime-empty" class="empty-state">
+        <div class="empty-icon">🌡</div>
+        <p>Click <b>Load</b> to compute the market regime for SPY (or any symbol).</p>
+      </div>
+      <div id="regime-results" style="display:none;" class="rg-results">
+        <div id="regime-hero" class="rg-hero"></div>
+        <div class="rg-chart-wrap">
+          <div class="rg-chart-label">Price History · Regime Overlay</div>
+          <div id="regime-price-chart" style="width:100%;height:220px;"></div>
+        </div>
+        <div class="rg-bottom">
+          <div id="regime-stats-table" class="rg-stats-section"></div>
+          <div id="regime-transitions" class="rg-trans-section"></div>
+        </div>
+      </div>
+    </div><!-- #regime-area -->
+
+    <!-- ── Momentum Ranker Area ── -->
+    <div id="momentum-area" class="mom-container" style="display:none;">
+      <div id="mom-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Ranking symbols…</div>
+      <div id="momentum-freshness" class="data-freshness-banner" style="display:none;"></div>
+      <div class="mom-controls">
+        <button id="btn-mom-load" class="btn btn-primary btn-sm" onclick="loadMomentumRanks()">↻ Refresh</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportTableToCSV('mom-tbl','momentum.csv')" title="Export momentum to CSV">⤓ CSV</button>
+        <span style="font-size:10px;color:var(--text-dim);margin-left:8px">Rankings use 3M / 6M / 12M-1M composite score · Jegadeesh-Titman construction</span>
+      </div>
+      <div id="mom-empty" class="empty-state">
+        <div class="empty-icon">🏆</div>
+        <p>Cross-sectional momentum ranking across your watchlist.</p>
+      </div>
+      <div id="mom-results" style="display:none;" class="mom-results">
+        <div id="mom-summary" class="mom-summary"></div>
+        <div class="mom-body">
+          <div class="mom-table-wrap">
+            <table id="mom-tbl" class="mom-tbl">
+              <thead><tr>
+                <th class="mom-th">#</th>
+                <th class="mom-th">Symbol</th>
+                <th class="mom-th">Tier</th>
+                <th class="mom-th" style="min-width:140px">Composite Score</th>
+                <th class="mom-th">1M</th>
+                <th class="mom-th">3M</th>
+                <th class="mom-th">6M</th>
+                <th class="mom-th">12M-1M</th>
+                <th class="mom-th">Price</th>
+                <th class="mom-th">1D Chg</th>
+              </tr></thead>
+              <tbody id="mom-table-body"></tbody>
+            </table>
+          </div>
+          <div class="mom-chart-wrap">
+            <div class="mom-chart-label">Momentum Portfolio vs Equal-Weight</div>
+            <div class="mom-canvas-box"><canvas id="mom-portfolio-chart"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- #momentum-area -->
+
+    <!-- ── Seasonality Area ── -->
+    <div id="seasonality-area" class="seas-container" style="display:none;">
+      <div id="seas-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Computing seasonality…</div>
+      <div class="seas-controls">
+        <span class="seas-ctrl-label">Symbol</span>
+        <input id="seas-symbol-input" type="text" class="seas-sym-input" placeholder="AAPL" maxlength="10" />
+        <button class="btn btn-primary btn-sm" onclick="loadSeasonality(document.getElementById('seas-symbol-input').value||undefined)">▶ Analyse</button>
+        <span id="seas-symbol-label" style="font-size:10px;color:var(--text-dim);margin-left:10px"></span>
+      </div>
+      <div id="seas-highlights" class="seas-highlights"></div>
+      <div id="seas-empty" class="empty-state">
+        <div class="empty-icon">📅</div>
+        <p>Select a symbol and click <b>Analyse</b> to see historical seasonality patterns.</p>
+      </div>
+      <div id="seas-results" style="display:none;" class="seas-results">
+        <div class="seas-charts-row">
+          <div class="seas-chart-card">
+            <div class="seas-chart-title">Average Monthly Return</div>
+            <div class="seas-canvas-box"><canvas id="seas-month-chart"></canvas></div>
+          </div>
+          <div class="seas-chart-card">
+            <div class="seas-chart-title">Day-of-Week Effect</div>
+            <div class="seas-canvas-box"><canvas id="seas-dow-chart"></canvas></div>
+          </div>
+          <div class="seas-chart-card">
+            <div class="seas-chart-title">Quarterly Returns + Hit Rate</div>
+            <div class="seas-canvas-box"><canvas id="seas-quarter-chart"></canvas></div>
+          </div>
+        </div>
+        <div id="seas-heatmap" class="seas-heatmap-wrap"></div>
+      </div>
+    </div><!-- #seasonality-area -->
+
+
+    <!-- ── Trade Journal + Analytics ── -->
+    <div id="journal-area" class="feat-container" style="display:none;">
+      <div class="feat-header">
+        <h2>📝 Trade Journal</h2>
+        <div class="jnl-sub-tabs">
+          <button class="jnl-sub-tab active" id="jnl-tab-log" onclick="_switchJournalTab('log')">📝 Log</button>
+          <button class="jnl-sub-tab" id="jnl-tab-analytics" onclick="_switchJournalTab('analytics')">📊 Analytics</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportTableToCSV('journal-table','journal.csv')" title="Export journal to CSV">⤓ CSV</button>
+        </div>
+      </div>
+
+      <!-- Log panel -->
+      <div id="jnl-log-panel">
+        <div id="jnl-manage-panel" class="jm-panel" style="display:none;"></div>
+        <div class="jnl-form">
+          <div class="jnl-field">
+            <label for="jnl-symbol">Symbol</label>
+            <input id="jnl-symbol" class="feat-input" placeholder="AAPL" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-direction">Direction</label>
+            <select id="jnl-direction" class="feat-input">
+              <option value="long">Long</option><option value="short">Short</option>
+            </select>
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-entry-date">Entry Date</label>
+            <input id="jnl-entry-date" class="feat-input" type="date" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-entry-price">Entry $</label>
+            <input id="jnl-entry-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="100.00" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-stop-loss">Stop $</label>
+            <input id="jnl-stop-loss" class="feat-input feat-input-sm" type="number" step="any" placeholder="97.50" title="Planned stop price (used for R calculations)" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-exit-price">Exit $</label>
+            <input id="jnl-exit-price" class="feat-input feat-input-sm" type="number" step="any" placeholder="open" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-qty">Qty</label>
+            <input id="jnl-qty" class="feat-input feat-input-sm" type="number" step="any" placeholder="1" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-setup">Setup</label>
+            <input id="jnl-setup" class="feat-input" placeholder="breakout / EP / burst" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-tags">Tags</label>
+            <input id="jnl-tags" class="feat-input" placeholder="earnings, gap…" />
+          </div>
+          <div class="jnl-field jnl-field-grow">
+            <label for="jnl-thesis">Thesis / Notes</label>
+            <input id="jnl-thesis" class="feat-input" placeholder="Why this trade?" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-exit-date">Exit Date</label>
+            <input id="jnl-exit-date" class="feat-input" type="date" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-review-grade">Review Grade</label>
+            <select id="jnl-review-grade" class="feat-input feat-input-sm">
+              <option value="">—</option>
+              <option value="A+">A+</option>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+              <option value="F">F</option>
+            </select>
+          </div>
+          <div class="jnl-field jnl-field-grow">
+            <label for="jnl-review-mistakes">Mistakes</label>
+            <input id="jnl-review-mistakes" class="feat-input" placeholder="early exit, oversized, chased…" title="Comma-separated mistake tags" />
+          </div>
+          <div class="jnl-field jnl-field-grow">
+            <label for="jnl-review-lesson">Lesson</label>
+            <input id="jnl-review-lesson" class="feat-input" placeholder="What to do differently next time?" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-mfe" title="Max Favorable Excursion — best open profit in R during the trade">MFE (R)</label>
+            <input id="jnl-mfe" class="feat-input feat-input-sm" type="number" step="any" placeholder="+2.5" />
+          </div>
+          <div class="jnl-field">
+            <label for="jnl-mae" title="Max Adverse Excursion — worst open loss in R during the trade">MAE (R)</label>
+            <input id="jnl-mae" class="feat-input feat-input-sm" type="number" step="any" placeholder="-0.4" />
+          </div>
+          <div class="jnl-field">
+            <label>&nbsp;</label>
+            <button class="btn btn-primary" onclick="submitJournalEntry()">Add Entry</button>
+          </div>
+        </div>
+        <div class="feat-table-wrap">
+          <table id="journal-table" class="feat-table">
+            <thead><tr><th>Symbol</th><th>Dir</th><th>Entry Date</th><th title="Trading days since entry (T+3 rule) / holding period">Day</th><th>Entry</th><th>Stop</th><th>Exit</th><th>R</th><th title="MFE / MAE in R">MFE/MAE</th><th>P&L</th><th title="Review Grade">Rev.</th><th></th></tr></thead>
+            <tbody id="journal-body"></tbody>
+          </table>
+        </div>
+      </div><!-- #jnl-log-panel -->
+
+      <!-- Analytics panel (hidden by default) -->
+      <div id="jnl-analytics-panel" style="display:none;">
+        <div class="an-section-header">Closed Position P&amp;L</div>
+        <div id="analytics-kpis" class="an-kpi-grid"></div>
+        <div class="feat-chart-wrap"><canvas id="analytics-equity"></canvas></div>
+        <div class="feat-table-wrap">
+          <table class="feat-table">
+            <thead><tr><th>Symbol</th><th>Closed</th><th>P&amp;L</th><th>Return</th></tr></thead>
+            <tbody id="analytics-trades"></tbody>
+          </table>
+        </div>
+        <div id="r-analytics-panel" class="rh-panel"></div>
+      </div><!-- #jnl-analytics-panel -->
+    </div><!-- #journal-area -->
+
+    <!-- ── News & Sentiment ── -->
+    <div id="news-area" class="feat-container" style="display:none;">
+      <div class="feat-header"><h2>📰 News <span id="news-symbol" class="feat-accent"></span></h2>
+        <span class="feat-sub">Recent headlines with naive sentiment tagging.</span></div>
+      <div id="news-list" class="news-list"></div>
+    </div><!-- #news-area -->
+
+    <!-- ── Macro Calendar ── -->
+    <div id="calendar-area" class="feat-container" style="display:none;">
+      <div class="feat-header"><h2>🗓️ Macro &amp; Earnings Calendar</h2>
+        <span class="feat-sub">FOMC, CPI, jobs reports, and watchlist earnings dates.</span></div>
+      <div id="calendar-list" class="cal-list"></div>
+    </div><!-- #calendar-area -->
+
+    <!-- ── Daily Edge Newsletter ── -->
+    <div id="newsletter-area" class="newsletter-container" style="display:none;">
+      <div id="newsletter-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span> Loading Daily Edge…
+      </div>
+      <div class="nl-header">
+        <div class="nl-header-left">
+          <div class="nl-title">The Daily Edge</div>
+          <div id="nl-edition" class="nl-edition"></div>
+        </div>
+        <div class="nl-header-right">
+          <div id="nl-universe-count" class="nl-stat">-- symbols</div>
+          <button id="btn-nl-refresh" class="btn btn-primary" onclick="loadNewsletterData()">⟳ Refresh</button>
+        </div>
+      </div>
+
+      <!-- ── Morning Brief ── -->
+      <div class="nl-morning-brief" id="nl-morning-brief">
+        <div class="nl-section-title">Morning Brief</div>
+        <div class="nl-brief-grid" id="nl-brief-grid">
+          <div class="nl-brief-tile" id="nl-brief-regime">
+            <div class="nl-brief-label">Market Regime</div>
+            <div class="nl-brief-value" id="nl-brief-regime-val">—</div>
+          </div>
+          <div class="nl-brief-tile" id="nl-brief-breadth">
+            <div class="nl-brief-label">% Above 20-MA</div>
+            <div class="nl-brief-value" id="nl-brief-20ma">—</div>
+          </div>
+          <div class="nl-brief-tile">
+            <div class="nl-brief-label">% Above 50-MA</div>
+            <div class="nl-brief-value" id="nl-brief-50ma">—</div>
+          </div>
+          <div class="nl-brief-tile">
+            <div class="nl-brief-label">52W Highs / Lows</div>
+            <div class="nl-brief-value" id="nl-brief-hl">—</div>
+          </div>
+          <div class="nl-brief-tile">
+            <div class="nl-brief-label">A/D Ratio</div>
+            <div class="nl-brief-value" id="nl-brief-ad">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Best Setups ── -->
+      <div class="nl-setups-section" id="nl-setups-section">
+        <div class="nl-section-title">Best Setups Today
+          <span class="nl-section-sub">Jeff process — top graded, by readiness</span>
+        </div>
+        <div id="nl-setups-grid" class="nl-setups-grid"></div>
+      </div>
+
+      <!-- ── Breakout Board ── -->
+      <div class="nl-bb-section" id="nl-bb-section" style="display:none;">
+        <div class="nl-section-title">Breakout Watch
+          <span class="nl-section-sub">Pipeline candidates near trigger</span>
+        </div>
+        <div id="nl-bb-grid" class="nl-setups-grid"></div>
+      </div>
+
+      <!-- ── Lead Stories ── -->
+      <div class="nl-lead-section">
+        <div class="nl-section-title">Lead Stories</div>
+        <div id="nl-lead-stories" class="nl-lead-grid"></div>
+      </div>
+      <div id="nl-chart-grid" class="nl-chart-grid"></div>
+      <div id="nl-error" class="nl-empty-state" style="display:none;">
+        <div class="empty-icon">⚠️</div>
+        <p id="nl-error-msg">Failed to load newsletter data.</p>
+      </div>
+      <div id="nl-empty" class="nl-empty-state" style="display:none;">
+        <div class="empty-icon">📰</div>
+        <p>No data available. Add symbols to your watchlist and fetch data first.</p>
+      </div>
+    </div><!-- #newsletter-area -->
+
+    <!-- ── Compare Area ── -->
+    <div id="compare-area" class="feat-container" style="display:none;">
+      <div class="feat-header">
+        <h2 class="feat-title">Symbol Compare</h2>
+        <div class="feat-controls">
+          <input id="cmp-symbols-input" type="text" class="feat-input" placeholder="SPY, QQQ, IWM, DIA" style="width:260px;" autocomplete="off" spellcheck="false" />
+          <select id="cmp-freq" class="feat-select">
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+          <button class="btn btn-primary" onclick="runCompare()">Compare</button>
+        </div>
+      </div>
+      <div id="cmp-legend" class="cmp-legend"></div>
+      <div id="cmp-chart" class="cmp-chart-wrap"></div>
+    </div><!-- #compare-area -->
+
+    <!-- ── Multi-TF Area ── -->
+    <div id="mtf-area" class="feat-container" style="display:none;">
+      <div class="feat-header">
+        <h2 class="feat-title">Multi-Timeframe</h2>
+      </div>
+      <div id="mtf-grid"></div>
+    </div><!-- #mtf-area -->
+
+
+    <!-- ── Risk Calc Tab ── -->
+    <div id="risk-calc-area" class="feat-container" style="display:none;">
+      <div class="feat-header">
+        <h2 class="feat-title">Risk Calculator</h2>
+        <span id="rc-sym-label" class="feat-sym-label"></span>
+      </div>
+
+      <!-- Position Sizer inputs -->
+      <div class="rc-inputs-row">
+        <div class="rc-input-group">
+          <label>Account Equity ($)</label>
+          <input id="rc-account"  type="number" class="feat-input" value="100000" oninput="_calcPositionSize()" />
+        </div>
+        <div class="rc-input-group">
+          <label>Risk Per Trade (%)</label>
+          <input id="rc-risk-pct" type="number" class="feat-input" value="0.5" step="0.1" min="0.1" max="5" oninput="_calcPositionSize()" />
+        </div>
+        <div class="rc-input-group">
+          <label>Entry Price ($)</label>
+          <input id="rc-entry"    type="number" class="feat-input" placeholder="e.g. 100.00" step="0.01" oninput="_calcPositionSize()" />
+        </div>
+        <div class="rc-input-group">
+          <label>Stop Price ($)</label>
+          <input id="rc-stop"     type="number" class="feat-input" placeholder="e.g. 97.50"  step="0.01" oninput="_calcPositionSize()" />
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div id="rc-results" class="rc-results"></div>
+      <div id="rc-corr-warn"></div>
+
+      <!-- 3-Stop Strategy -->
+      <div class="process-section" style="margin-top:24px;">
+        <div class="process-section-title">3-Stop Strategy</div>
+        <div class="process-section-note">Split position into thirds to target avg loss of ~−0.67R instead of −1R</div>
+        <div id="rc-3stop-results"></div>
+      </div>
+    </div><!-- #risk-calc-area -->
+
+    <!-- ── Market Dashboard Tab ── -->
+    <div id="dashboard-area" class="feat-container" style="display:none;">
+      <div class="feat-header">
+        <h2 class="feat-title">Market Dashboard</h2>
+        <button class="btn btn-ghost" onclick="initMarketDashboard()">↻ Refresh</button>
+      </div>
+      <div id="dashboard-freshness" class="data-freshness-banner" style="display:none;"></div>
+
+      <!-- Risk Pedal -->
+      <div id="dash-risk-pedal" class="risk-pedal-banner" style="display:none;"></div>
+
+      <!-- Breakout Board — process candidates vs their pivots -->
+      <div class="dash-section" style="margin-top:4px;">
+        <div class="dash-section-title">🚀 Breakout Board
+          <span id="bb-summary" class="bb-summary"></span>
+          <button class="btn btn-ghost btn-sm" style="float:right;" onclick="_loadBreakoutBoard()">↻ Refresh</button>
+        </div>
+        <div class="process-section-note" style="margin:4px 0 8px;">
+          Stalk / Focus / Active candidates vs their breakout pivot (saved plan trigger, or auto = 20-day high).
+          Triggered and at-pivot names float to the top — check RVOL and the gates before acting.
+        </div>
+        <div id="bb-tier-chips" class="scan-mode-switch" style="margin:0 0 8px;"></div>
+        <div id="breakout-board"></div>
+      </div>
+
+      <div class="dash-grid">
+        <!-- Breadth -->
+        <div class="dash-panel">
+          <div class="dash-panel-title">Watchlist Breadth</div>
+          <div id="dash-breadth-panel"></div>
+        </div>
+
+        <!-- Strength Table -->
+        <div class="dash-panel dash-panel-wide">
+          <div class="dash-panel-title">Symbol Strength Ranking</div>
+          <div id="dash-strength-table"></div>
+        </div>
+      </div>
+
+      <!-- Daily Process Checklists -->
+      <div class="process-checklists-row" style="margin-top:20px;">
+        <div class="dash-panel process-section-half">
+          <div class="dash-panel-title">Post-Market Checklist
+            <button class="btn btn-ghost btn-icon" style="float:right;font-size:11px;" onclick="_clearDash('post',10)">Clear</button>
+          </div>
+          <div id="dash-post-mkt-checklist"></div>
+        </div>
+        <div class="dash-panel process-section-half">
+          <div class="dash-panel-title">Pre-Market Checklist
+            <button class="btn btn-ghost btn-icon" style="float:right;font-size:11px;" onclick="_clearDash('pre',10)">Clear</button>
+          </div>
+          <div id="dash-pre-mkt-checklist"></div>
+        </div>
+        <div class="dash-panel process-section-half">
+          <div class="dash-panel-title">Weekly Review
+            <button class="btn btn-ghost btn-icon" style="float:right;font-size:11px;" onclick="_clearDash('weekly',10)">Clear</button>
+          </div>
+          <div id="dash-weekly-checklist"></div>
+        </div>
+      </div>
+
+      <!-- EOD Screens -->
+      <div class="dash-section" style="margin-top:24px;">
+        <div class="dash-section-title">📡 Screens
+          <button class="btn btn-ghost btn-sm" style="float:right;" onclick="_runScreen(_activeScreen)">↻ Refresh</button>
+        </div>
+        <div id="screens-chips" class="scan-mode-switch" style="margin:8px 0;"></div>
+        <div id="screens-results"></div>
+      </div>
+
+      <!-- Sector Heatmap -->
+      <div class="dash-section" style="margin-top:24px;">
+        <div class="dash-section-title">🗺️ Sector Heatmap</div>
+        <div class="feat-table-wrap" style="margin-top:8px;"><table id="sector-table" class="feat-table heat-table"></table></div>
+      </div>
+
+      <!-- Sector Rotation -->
+      <div class="dash-section" style="margin-top:16px;">
+        <div class="dash-section-title">🔄 Sector Rotation
+          <button class="btn btn-ghost btn-sm" style="float:right;" onclick="_loadSectorRotation()">↻ Refresh</button>
+        </div>
+        <div class="process-section-note" style="margin:4px 0 8px;">Weekly rank changes — gaining sectors rising, losing sectors falling. Snapshots saved automatically each session.</div>
+        <div id="dash-sector-rotation"></div>
+      </div>
+
+      <!-- Focus Pipeline -->
+      <div class="dash-section" style="margin-top:24px;">
+        <div class="dash-section-title">🎯 Focus Pipeline
+          <button class="btn btn-ghost btn-sm" style="float:right;" onclick="_loadPipeline()">↻ Refresh</button>
+        </div>
+        <div class="process-section-note" style="margin:4px 0 10px;">Move symbols through stages: Back Burner → Watchlist → Stalk → Focus → Active</div>
+        <div id="process-pipeline"></div>
+      </div>
+
+      <!-- Entry Planner -->
+      <div class="dash-section" style="margin-top:24px;">
+        <div class="dash-section-title">📋 Entry Planner
+          <button class="btn btn-ghost btn-sm" style="float:right;" onclick="_loadEntryPlanner()">↻ Refresh</button>
+        </div>
+        <div class="process-section-note" style="margin:4px 0 10px;">Pre-market action sheet for Focus/Active names — trigger, stop, R-per-share, hard-rule flags</div>
+        <div id="entry-planner"></div>
+      </div>
+
+      <!-- Market Diary -->
+      <div class="dash-section" style="margin-top:24px;">
+        <div class="dash-section-title">📓 Market Diary</div>
+        <div class="process-section-note" style="margin:4px 0 10px;">One entry per day — regime, breadth and risk pedal are snapshotted automatically when you save</div>
+        <div class="diary-form">
+          <input id="diary-notes" class="feat-input" style="flex:1;" placeholder="Market notes — leadership, themes, what changed…" />
+          <button class="btn btn-primary" onclick="_saveDiary()">Save Today</button>
+        </div>
+        <div id="diary-history" style="margin-top:12px;"></div>
+      </div>
+
+      <!-- Pre-Entry + No-Trade Checklists -->
+      <div class="process-checklists-row" style="margin-top:24px;">
+        <div class="dash-panel process-section-half">
+          <div class="dash-panel-title">Pre-Entry Checklist</div>
+          <div id="process-entry-checklist"></div>
+        </div>
+        <div class="dash-panel process-section-half">
+          <div class="dash-panel-title">No-Trade Disqualifier</div>
+          <div id="process-notrade-checklist"></div>
+        </div>
+      </div>
+    </div><!-- #dashboard-area -->
+
+    <!-- ── Morning Routine ─────────────────────────────────── -->
+    <div id="routine-area" class="feat-container" style="display:none;"></div>
+
+    <!-- ── Settings ────────────────────────────────────────── -->
+    <div id="settings-area" class="feat-container" style="display:none;"></div>
+
     <div id="knn-area" class="stats-container" style="display:none;">
 
       <div id="knn-loading" style="display:none; align-items:center; justify-content:center; gap:10px; padding:40px; color:var(--text-muted);">
@@ -407,221 +1677,6 @@
       </div>
 
     </div><!-- #backtest-area -->
-
-    <!-- ── Adaptive Trend Area ── -->
-    <div id="trend-area" class="trend-container" style="display:none;">
-
-      <div id="trend-loading" class="chart-loading" style="display:none;">
-        <span class="spinner"></span>
-        Computing adaptive trend…
-      </div>
-
-      <div class="trend-subtabs">
-        <button class="trend-stab trend-stab-active" id="trend-stab-chart" onclick="switchTrendTab('chart')">📈 Chart</button>
-        <button class="trend-stab" id="trend-stab-scan" onclick="switchTrendTab('scan')">📡 Scan Watchlist</button>
-        <div class="trend-controls-group" style="margin-left:auto; padding:0 8px; display:flex; align-items:center; gap:6px;">
-          <span class="overlay-section-label">Method</span>
-          <button class="ind-pill trend-active trend-method-btn" data-val="kama" onclick="setTrendMethod('kama')">KAMA</button>
-          <button class="ind-pill trend-method-btn"              data-val="adma" onclick="setTrendMethod('adma')">ADMA</button>
-        </div>
-      </div>
-
-      <div id="trend-config-panel" class="trend-config-row"></div>
-
-      <div id="trend-chart-panel">
-
-      <div class="trend-controls">
-        <div class="trend-controls-group">
-          <span class="overlay-section-label">Freq</span>
-          <button class="ind-pill trend-active trend-freq-btn" data-val="daily"  onclick="setTrendFreq('daily')">Daily</button>
-          <button class="ind-pill trend-freq-btn"              data-val="weekly" onclick="setTrendFreq('weekly')">Weekly</button>
-        </div>
-        <div class="trend-controls-group">
-          <span class="overlay-section-label">Baselines</span>
-          <button id="trend-toggle-sb"  class="ind-pill trend-line-btn trend-toggle-on"
-                  onclick="toggleTrendLine('sb')"
-                  onmouseenter="showLineDesc('sb')" onmouseleave="clearLineDesc()">
-            <span class="trend-dot" style="--dot:#3b82f6"></span>SB
-          </button>
-          <button id="trend-toggle-mb"  class="ind-pill trend-line-btn trend-toggle-on"
-                  onclick="toggleTrendLine('mb')"
-                  onmouseenter="showLineDesc('mb')" onmouseleave="clearLineDesc()">
-            <span class="trend-dot" style="--dot:#ef4444"></span>MB
-          </button>
-          <button id="trend-toggle-lb"  class="ind-pill trend-line-btn trend-toggle-on"
-                  onclick="toggleTrendLine('lb')"
-                  onmouseenter="showLineDesc('lb')" onmouseleave="clearLineDesc()">
-            <span class="trend-dot" style="--dot:#eab308"></span>LB
-          </button>
-        </div>
-        <div class="trend-controls-group">
-          <span class="overlay-section-label">Bands</span>
-          <button id="trend-toggle-sdb" class="ind-pill trend-line-btn trend-toggle-on"
-                  onclick="toggleTrendLine('sdb')"
-                  onmouseenter="showLineDesc('sdb')" onmouseleave="clearLineDesc()">
-            <span class="trend-dot trend-dot-dash" style="--dot:#22c55e"></span>SDB
-          </button>
-          <button id="trend-toggle-mrt" class="ind-pill trend-line-btn trend-toggle-on"
-                  onclick="toggleTrendLine('mrt')"
-                  onmouseenter="showLineDesc('mrt')" onmouseleave="clearLineDesc()">
-            <span class="trend-dot trend-dot-dash" style="--dot:#475569"></span>MRT
-          </button>
-          <button id="trend-toggle-mdb" class="ind-pill trend-line-btn trend-toggle-on"
-                  onclick="toggleTrendLine('mdb')"
-                  onmouseenter="showLineDesc('mdb')" onmouseleave="clearLineDesc()">
-            <span class="trend-dot trend-dot-dash" style="--dot:#16a34a"></span>MDB
-          </button>
-          <button id="trend-toggle-lrt" class="ind-pill trend-line-btn trend-toggle-on"
-                  onclick="toggleTrendLine('lrt')"
-                  onmouseenter="showLineDesc('lrt')" onmouseleave="clearLineDesc()">
-            <span class="trend-dot trend-dot-dash" style="--dot:#6b7280"></span>LRT
-          </button>
-          <button id="trend-toggle-ldb" class="ind-pill trend-line-btn trend-toggle-on"
-                  onclick="toggleTrendLine('ldb')"
-                  onmouseenter="showLineDesc('ldb')" onmouseleave="clearLineDesc()">
-            <span class="trend-dot trend-dot-dash" style="--dot:#06b6d4"></span>LDB
-          </button>
-        </div>
-      </div>
-
-      <div id="trend-line-desc" class="trend-line-desc"></div>
-
-      <div class="trend-panels">
-
-        <div class="trend-panel-main">
-          <div class="panel-header">Price · Adaptive Bands</div>
-          <div class="trend-price-wrap">
-            <div id="trend-chart-price" style="width:100%;height:100%;"></div>
-          </div>
-          <div class="chart-divider"></div>
-          <div class="trend-regime-wrap">
-            <div class="chart-label">S / M / L REGIME</div>
-            <div id="trend-chart-regime" style="width:100%;height:100%;"></div>
-          </div>
-        </div>
-
-        <div class="panel-divider"></div>
-
-        <div class="trend-panel-signal">
-          <div class="panel-header">Signal Summary</div>
-
-          <div class="trend-composite-wrap">
-            <div class="trend-composite-label">Composite Signal</div>
-            <div id="trend-composite" class="trend-composite-badge neutral">—</div>
-            <div id="trend-strength"  class="trend-strength-bar neutral">○ ○ ○</div>
-            <div id="trend-align"     class="trend-align-detail">—</div>
-          </div>
-
-          <div class="trend-signal-grid">
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">Short Horizon</div>
-              <div id="trend-sig-short" class="trend-signal-value neutral">—</div>
-            </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">Medium Horizon</div>
-              <div id="trend-sig-medium" class="trend-signal-value neutral">—</div>
-            </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">Long Horizon</div>
-              <div id="trend-sig-long" class="trend-signal-value neutral">—</div>
-            </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">Last Entry</div>
-              <div id="trend-sig-entry" class="trend-signal-value neutral">—</div>
-            </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">Stop · MRT</div>
-              <div id="trend-sig-mrt" class="trend-signal-value neutral">—</div>
-            </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">TP1 · SDB</div>
-              <div id="trend-sig-sdb" class="trend-signal-value neutral">—</div>
-            </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">TP2 · MDB</div>
-              <div id="trend-sig-mdb" class="trend-signal-value neutral">—</div>
-            </div>
-            <div class="trend-signal-card">
-              <div class="trend-signal-label">R : R  ·  ATR</div>
-              <div id="trend-sig-rr" class="trend-signal-value neutral">—</div>
-            </div>
-          </div>
-
-        </div><!-- .trend-panel-signal -->
-
-      </div><!-- .trend-panels -->
-
-      </div><!-- #trend-chart-panel -->
-
-      <div id="trend-scan-panel" style="display:none; flex-direction:column; height:100%; overflow:hidden;">
-
-        <div class="trend-scan-controls">
-          <button class="btn btn-primary" id="btn-trend-scan" onclick="loadTrendScan()">⟳ Scan Watchlist</button>
-          <div class="trend-controls-group">
-            <span class="overlay-section-label">Freq</span>
-            <button class="ind-pill trend-active trend-scan-freq-btn" data-val="daily"  onclick="setTrendScanFreq('daily')">Daily</button>
-            <button class="ind-pill trend-scan-freq-btn"              data-val="weekly" onclick="setTrendScanFreq('weekly')">Weekly</button>
-          </div>
-          <span id="trend-scan-ts" style="color:var(--text-muted); font-size:11px;"></span>
-          <div id="trend-scan-loading" style="display:none;">
-            <span class="spinner"></span> Scanning…
-          </div>
-        </div>
-
-        <div class="scanner-table-wrap" style="flex:1; overflow-y:auto;">
-          <table id="trend-scan-table" class="scanner-table" style="width:100%;">
-            <thead id="trend-scan-thead"></thead>
-            <tbody id="trend-scan-tbody"></tbody>
-          </table>
-        </div>
-
-        <div id="trend-scan-empty" class="scanner-empty" style="display:none;">
-          <div class="empty-icon">📡</div>
-          <p>No symbols — add tickers to your watchlist first.</p>
-        </div>
-
-      </div><!-- #trend-scan-panel -->
-
-    </div><!-- #trend-area -->
-
-    <!-- ── Scanner Area ── -->
-    <div id="scanner-area" class="scanner-container" style="display:none;">
-
-      <div id="scanner-loading" class="chart-loading" style="display:none;">
-        <span class="spinner"></span>
-        Scanning watchlist…
-      </div>
-
-      <div class="scanner-controls">
-        <div class="scanner-controls-left">
-          <button id="btn-scan" class="btn btn-primary" onclick="loadScannerData()">⟳ Scan All</button>
-          <span id="scanner-ts" class="scanner-ts"></span>
-        </div>
-        <div class="scanner-controls-right">
-          <span class="overlay-section-label">Groups</span>
-          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="rsi"   onclick="toggleScanGroup('rsi')">RSI</button>
-          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="kama"  onclick="toggleScanGroup('kama')">KAMA Ratios</button>
-          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="mom"   onclick="toggleScanGroup('mom')">Momentum</button>
-          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="vol"   onclick="toggleScanGroup('vol')">Volatility</button>
-          <button class="ind-pill scan-grp-btn scanner-toggle-on" data-grp="trend" onclick="toggleScanGroup('trend')">Trend</button>
-        </div>
-      </div>
-
-      <div class="scanner-table-wrap">
-        <table id="scanner-table" class="scanner-table">
-          <thead id="scanner-thead"></thead>
-          <tbody id="scanner-tbody"></tbody>
-        </table>
-      </div>
-
-      <div id="scanner-empty" class="scanner-empty" style="display:none;">
-        <div class="empty-icon">📡</div>
-        <p>No symbols in watchlist, or data not yet fetched.<br>Add tickers, then click <strong>⟳ Scan All</strong>.</p>
-      </div>
-
-    </div><!-- #scanner-area -->
-
-    <!-- ── Social Trends Area ── -->
     <div id="social-area" class="social-container" style="display:none;">
 
       <!-- Loading overlay -->
@@ -789,69 +1844,6 @@
       </div><!-- .social-panels -->
 
     </div><!-- #social-area -->
-
-    <!-- ── Data Manager Area ── -->
-    <div id="data-manager-area" class="dm-container" style="display:none;">
-
-      <div class="dm-left">
-        <div class="dm-panel-header">Ticker Library</div>
-        <div class="dm-search-wrap">
-          <input id="dm-search" type="text" class="dm-search" placeholder="Search tickers…" oninput="dmFilterTickers()" />
-        </div>
-        <div id="dm-categories" class="dm-categories"></div>
-        <div class="dm-select-controls">
-          <button class="btn btn-ghost btn-sm" onclick="dmSelectAll()">Select All</button>
-          <button class="btn btn-ghost btn-sm" onclick="dmSelectNone()">Deselect All</button>
-          <span id="dm-selected-count" class="dm-sel-count">0 selected</span>
-        </div>
-      </div>
-
-      <div class="dm-right">
-        <div class="dm-panel-header">Batch Fetch Settings</div>
-        <div class="dm-settings">
-          <div class="dm-field">
-            <label class="dm-label" for="dm-start-date">Start Date</label>
-            <input id="dm-start-date" type="date" class="dm-input" value="2000-01-01" />
-          </div>
-          <div class="dm-field">
-            <label class="dm-label" for="dm-delay">Delay Between Requests</label>
-            <select id="dm-delay" class="dm-select">
-              <option value="0.5">0.5 s — fastest (may hit rate limits)</option>
-              <option value="1.5" selected>1.5 s — recommended</option>
-              <option value="3.0">3.0 s — conservative</option>
-              <option value="5.0">5.0 s — very safe</option>
-            </select>
-          </div>
-          <div class="dm-field dm-field-row">
-            <label class="dm-label dm-label-inline">
-              <input id="dm-add-watchlist" type="checkbox" checked />
-              Also add to watchlist
-            </label>
-          </div>
-        </div>
-        <div class="dm-actions">
-          <button id="btn-dm-fetch" class="btn btn-primary" onclick="dmStartBatch()">▶ Fetch Selected</button>
-          <button id="btn-dm-abort" class="btn btn-danger" style="display:none;" onclick="dmAbortBatch()">■ Abort</button>
-        </div>
-        <div id="dm-progress-section" class="dm-progress-section" style="display:none;">
-          <div class="dm-progress-header">
-            <span id="dm-progress-label">Starting…</span>
-            <span id="dm-progress-pct" class="dm-pct">0%</span>
-          </div>
-          <div class="dm-progress-bar">
-            <div id="dm-progress-fill" class="dm-progress-fill"></div>
-          </div>
-          <div id="dm-summary" class="dm-summary"></div>
-        </div>
-        <div class="dm-log-header">Log</div>
-        <div id="dm-log" class="dm-log">
-          <div class="dm-log-hint">Select tickers and click <strong>Fetch Selected</strong> to begin.</div>
-        </div>
-      </div>
-
-    </div><!-- #data-manager-area -->
-
-    <!-- ── Phase Plane Area ── -->
     <div id="phase-plane-area" class="stats-container" style="display:none;">
 
       <!-- Controls row -->
@@ -904,58 +1896,88 @@
 
     </div><!-- #phase-plane-area -->
 
-    <!-- ── Newsletter Area ── -->
-    <div id="newsletter-area" class="newsletter-container" style="display:none;">
-
-      <!-- Loading overlay -->
-      <div id="newsletter-loading" class="chart-loading" style="display:none;">
-        <span class="spinner"></span>
-        Loading Daily Edge…
-      </div>
-
-      <!-- Header -->
-      <div class="nl-header">
-        <div class="nl-header-left">
-          <div class="nl-title">The Daily Edge</div>
-          <div id="nl-edition" class="nl-edition"></div>
-        </div>
-        <div class="nl-header-right">
-          <div id="nl-universe-count" class="nl-stat">-- symbols</div>
-          <button id="btn-nl-refresh" class="btn btn-primary" onclick="loadNewsletterData()">⟳ Refresh</button>
-        </div>
-      </div>
-
-      <!-- Lead Stories -->
-      <div class="nl-lead-section">
-        <div class="nl-section-title">Lead Stories</div>
-        <div id="nl-lead-stories" class="nl-lead-grid"></div>
-      </div>
-
-      <!-- Chart grid (grouped by section, rendered by newsletter.js) -->
-      <div id="nl-chart-grid" class="nl-chart-grid"></div>
-
-      <!-- Error state -->
-      <div id="nl-error" class="nl-empty-state" style="display:none;">
-        <div class="empty-icon">⚠️</div>
-        <p id="nl-error-msg">Failed to load newsletter data.</p>
-      </div>
-
-      <!-- Empty state -->
-      <div id="nl-empty" class="nl-empty-state" style="display:none;">
-        <div class="empty-icon">📰</div>
-        <p>No data available. Add symbols to your watchlist and fetch data first.</p>
-      </div>
-
-    </div><!-- #newsletter-area -->
-
   </main>
 
+  <!-- ═══════════════════ STATUS BAR ═══════════════════ -->
+  <footer class="statusbar">
+    <div class="status-dot" title="Connected"></div>
+    <span id="sb-conn" class="sb-item sb-strong">LIVE</span>
+    <span class="sb-sep"></span>
+
+    <span class="sb-label">NY</span>
+    <span id="sb-et-clock" class="sb-item">--:--:--</span>
+    <span id="sb-session" class="sb-session">—</span>
+    <span class="sb-sep"></span>
+
+    <span class="sb-label">LOCAL</span>
+    <span id="market-time" class="sb-item">--</span>
+    <span class="sb-sep"></span>
+
+    <div id="regime-badge" class="regime-badge" title="Market Regime" onclick="switchTab('regime')" style="cursor:pointer;">
+      <span id="regime-badge-icon">○</span>
+      <span id="regime-badge-label">—</span>
+    </div>
+    <span id="sb-pedal" class="sb-pedal" onclick="switchTab('dashboard')" title="Risk pedal"></span>
+    <span id="sb-macro" class="sb-macro" onclick="switchTab('calendar')" style="display:none;cursor:pointer;"></span>
+
+    <span class="sb-spacer"></span>
+
+    <span id="sb-open-risk" style="display:none;"></span>
+    <span class="sb-sep" id="sb-risk-sep" style="display:none;"></span>
+
+    <span class="sb-label">SYMBOLS</span>
+    <span id="sb-watch-count" class="sb-item">0</span>
+    <span class="sb-sep"></span>
+
+    <span class="sb-label">DATA</span>
+    <span id="sb-freshness" class="sb-item">—</span>
+    <span class="sb-sep"></span>
+
+    <span class="sb-hint"><kbd>Ctrl</kbd><kbd>K</kbd> commands · <kbd>?</kbd> shortcuts</span>
+  </footer>
+
 </div><!-- .app -->
+
+<!-- ══ Alerts Panel ════════════════════════════════════════════ -->
+<div id="alerts-panel" class="alerts-panel" aria-label="Alerts panel">
+  <div class="alp-header">
+    <span class="alp-title">🔔 Alerts</span>
+    <button class="btn btn-ghost btn-icon" onclick="toggleAlertsPanel()" title="Close">✕</button>
+  </div>
+
+  <!-- Create form -->
+  <div class="alp-create">
+    <div class="alp-create-row">
+      <input id="alert-symbol" class="alp-input" placeholder="Symbol" maxlength="12"
+             autocomplete="off" spellcheck="false"
+             onkeydown="if(event.key==='Enter')createAlert()" />
+      <select id="alert-field" class="alp-select">
+        <option value="price">Price ($)</option>
+        <option value="rsi_14">RSI 14</option>
+        <option value="kama10_pct">KAMA 10 (%)</option>
+        <option value="kama20_pct">KAMA 20 (%)</option>
+        <option value="kama50_pct">KAMA 50 (%)</option>
+      </select>
+    </div>
+    <div class="alp-create-row">
+      <select id="alert-condition" class="alp-select">
+        <option value="above">Crosses Above</option>
+        <option value="below">Crosses Below</option>
+      </select>
+      <input id="alert-threshold" class="alp-input" type="number" step="any" placeholder="Threshold"
+             onkeydown="if(event.key==='Enter')createAlert()" />
+      <button class="btn btn-primary btn-sm" onclick="createAlert()">+ Add</button>
+    </div>
+  </div>
+
+  <!-- List -->
+  <div id="alerts-list" class="alp-list"></div>
+</div>
 
 <!-- Toast container -->
 <div id="toast-container" class="toast-container"></div>
 
-<!-- ══ Bulk Add Modal ══════════════════════════════════════════════ -->
+<!-- ══ Bulk Add Modal ══════════════════════════════════════════ -->
 <div id="bulk-modal" class="bulk-modal-overlay" style="display:none;"
      onclick="if(event.target===this)closeBulkModal()">
   <div class="bulk-modal-card" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title">
@@ -975,6 +1997,7 @@
       ></textarea>
       <p class="bulk-hint">Duplicates and already-tracked symbols are skipped automatically.</p>
 
+      <!-- Progress (hidden until import starts) -->
       <div id="bulk-progress" class="bulk-progress" style="display:none;">
         <div class="bulk-progress-bar">
           <div id="bulk-progress-fill" class="bulk-progress-fill"></div>
@@ -992,14 +2015,42 @@
 </div>
 
 <!-- Scripts -->
+<script src="scripts/chart_helpers.js"></script>
+<script src="scripts/persistence.js"></script>
+<script src="scripts/shortcuts.js"></script>
 <script src="scripts/charts.js"></script>
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
+<script src="scripts/guru_scanner.js"></script>
+<script src="scripts/data_manager.js"></script>
+<script src="scripts/swirligram.js"></script>
+<script src="scripts/portfolio.js"></script>
+<script src="scripts/market_regime.js"></script>
+<script src="scripts/momentum_ranker.js"></script>
+<script src="scripts/seasonality.js"></script>
+<script src="scripts/sector.js"></script>
 <script src="scripts/social_trends.js"></script>
 <script src="scripts/social_insights.js"></script>
-<script src="scripts/data_manager.js"></script>
-<script src="scripts/app.js"></script>
+<script src="scripts/analytics.js"></script>
+<script src="scripts/journal.js"></script>
+<script src="scripts/news.js"></script>
+<script src="scripts/calendar.js"></script>
 <script src="scripts/newsletter.js"></script>
+<script src="scripts/compare.js"></script>
+<script src="scripts/mtf.js"></script>
+<script src="scripts/chart_extras.js"></script>
+<script src="scripts/swing_widget.js"></script>
+<script src="scripts/process_tools.js"></script>
+<script src="scripts/risk_calc.js"></script>
+<script src="scripts/market_dashboard.js"></script>
+<script src="scripts/command_palette.js"></script>
+<script src="scripts/symbol_hover.js"></script>
+<script src="scripts/routine.js"></script>
+<script src="scripts/settings_app.js"></script>
+<script src="scripts/alerts_panel.js"></script>
+<script src="scripts/hover_preview.js"></script>
+<script src="scripts/terminal_chrome.js"></script>
+<script src="scripts/app.js"></script>
 
 </body>
 </html>

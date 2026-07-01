@@ -12,8 +12,8 @@ const kamaPeriods = {};
 
 // Colour pool for dynamically added KAMA lines
 const KAMA_COLORS = [
-    '#3b82f6', '#eab308', '#a855f7', '#06b6d4',
-    '#f97316', '#ec4899', '#14b8a6', '#f43f5e',
+    '#029FD5', '#F68B42', '#9B89C4', '#56B4E9',
+    '#4DAF88', '#E8C44A', '#E05252', '#6CC3D5',
 ];
 let kamaColorIdx = 0;
 function nextKamaColor() {
@@ -43,52 +43,53 @@ let series = {
     },
 };
 
-// ── Colours ──────────────────────────────────────────────────
+// ── Colours — 538-inspired muted palette ─────────────────────
 const C = {
-    bb_upper:      '#22c55e',
-    bb_middle:     '#22c55e',
-    bb_lower:      '#22c55e',
-    rsi7:          '#06b6d4',
-    rsi14:         '#f97316',
-    rsi21:         '#a855f7',
-    macd_line:     '#3b82f6',
-    macd_signal:   '#ef4444',
-    macd_hist_pos: '#22c55e',
-    macd_hist_neg: '#ef4444',
-    trend_pos:     '#22c55e',
-    trend_neg:     '#ef4444',
+    bb_upper:      '#4DAF88',
+    bb_middle:     '#4DAF88',
+    bb_lower:      '#4DAF88',
+    rsi7:          '#56B4E9',
+    rsi14:         '#029FD5',
+    rsi21:         '#9B89C4',
+    macd_line:     '#029FD5',
+    macd_signal:   '#F68B42',
+    macd_hist_pos: '#4DAF88',
+    macd_hist_neg: '#E05252',
+    trend_pos:     '#4DAF88',
+    trend_neg:     '#E05252',
     trend_zero:    '#4a5568',
 };
 
-// ── Base chart options ────────────────────────────────────────
+// ── Base chart options — 538 style ───────────────────────────
 function baseOpts() {
+    const CT = window._CT || {};
     return {
         layout: {
-            background: { color: '#0d1117' },
-            textColor: '#8b949e',
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 10,
+            background: { color: CT.bg    || '#0b101a' },
+            textColor:  CT.text  || '#9aafc4',
+            fontFamily: CT.font  || "'Inter', -apple-system, 'Helvetica Neue', sans-serif",
+            fontSize: 11,
         },
         grid: {
-            vertLines: { color: '#1c2230' },
-            horzLines: { color: '#1c2230' },
+            vertLines: { visible: false },
+            horzLines: { color: CT.grid || '#1c2638' },
         },
         crosshair: {
             mode: LWC.CrosshairMode.Normal,
-            vertLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
-            horzLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
+            vertLine: { color: CT.cross || '#4d6080', labelBackgroundColor: CT.grid || '#1c2638' },
+            horzLine: { color: CT.cross || '#4d6080', labelBackgroundColor: CT.grid || '#1c2638' },
         },
-        rightPriceScale: { borderColor: '#30363d' },
+        rightPriceScale: { borderColor: CT.grid || '#1c2638' },
         timeScale: {
-            borderColor: '#30363d',
-            timeVisible: true,
+            borderColor:    CT.grid || '#1c2638',
+            timeVisible:    true,
             secondsVisible: false,
-            rightOffset: 6,
-            barSpacing: 6,
-            fixLeftEdge: true,
+            rightOffset:    6,
+            barSpacing:     6,
+            fixLeftEdge:    true,
         },
         handleScroll: true,
-        handleScale: true,
+        handleScale:  true,
     };
 }
 
@@ -129,9 +130,9 @@ function buildPanel(freq) {
         ...baseOpts(), width: mainEl.clientWidth, height: mainEl.clientHeight,
     });
     series[freq].candle = charts[freq].main.addCandlestickSeries({
-        upColor: '#22c55e', downColor: '#ef4444',
-        borderUpColor: '#22c55e', borderDownColor: '#ef4444',
-        wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+        upColor: '#4DAF88', downColor: '#E05252',
+        borderUpColor: '#4DAF88', borderDownColor: '#E05252',
+        wickUpColor:   '#4DAF88', wickDownColor:   '#E05252',
     });
 
     // BB overlay series
@@ -157,9 +158,9 @@ function buildPanel(freq) {
     series[freq].rsi[7]  = charts[freq].rsi.addLineSeries({ color: C.rsi7,  lineWidth: 1,   lineStyle: 2, priceLineVisible: false, lastValueVisible: true });
     series[freq].rsi[14] = charts[freq].rsi.addLineSeries({ color: C.rsi14, lineWidth: 1.5, lineStyle: 0, priceLineVisible: false, lastValueVisible: true });
     series[freq].rsi[21] = charts[freq].rsi.addLineSeries({ color: C.rsi21, lineWidth: 1,   lineStyle: 2, priceLineVisible: false, lastValueVisible: true });
-    series[freq].rsi[14].createPriceLine({ price: 80, color: '#ef444488', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OB' });
-    series[freq].rsi[14].createPriceLine({ price: 50, color: '#4a556888', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
-    series[freq].rsi[14].createPriceLine({ price: 20, color: '#22c55e88', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OS' });
+    series[freq].rsi[14].createPriceLine({ price: 80, color: '#E0525288', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OB' });
+    series[freq].rsi[14].createPriceLine({ price: 50, color: '#4d608080', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
+    series[freq].rsi[14].createPriceLine({ price: 20, color: '#4DAF8888', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OS' });
 
     // MACD chart
     charts[freq].macd = LWC.createChart(macdEl, {

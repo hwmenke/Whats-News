@@ -7,40 +7,41 @@ Returns a dict ready to be JSON-serialised.
 import numpy as np
 import pandas as pd
 import database as db
-from utils import kama as _kama, rsi as _rsi, safe as _safe, series_to_list as _series_to_list
+import indicator_cache as cache
+from ta_core import _kama, _rsi, _bollinger, _macd, _cci
 
 
-def _bollinger(close: pd.Series, window: int = 20, num_std: float = 2.0):
-    """Returns (upper, middle, lower) Bollinger Band series."""
-    mid   = close.rolling(window).mean()
-    std   = close.rolling(window).std(ddof=0)
-    upper = mid + num_std * std
-    lower = mid - num_std * std
-    return upper, mid, lower
+def _safe(val):
+    """Convert NaN / numpy types to Python-native for JSON."""
+    if val is None:
+        return None
+    try:
+        if np.isnan(val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(val, (np.integer,)):
+        return int(val)
+    if isinstance(val, (np.floating,)):
+        return float(val)
+    return val
 
 
-def _macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
-    """Returns (macd_line, signal_line, histogram) series."""
-    ema_fast    = close.ewm(span=fast,   adjust=False).mean()
-    ema_slow    = close.ewm(span=slow,   adjust=False).mean()
-    macd_line   = ema_fast - ema_slow
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    hist        = macd_line - signal_line
-    return macd_line, signal_line, hist
-
-
-def _cci(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 20) -> pd.Series:
-    """Commodity Channel Index."""
-    tp = (high + low + close) / 3.0
-    ma = tp.rolling(window).mean()
-    md = tp.rolling(window).apply(lambda x: np.abs(x - x.mean()).mean(), raw=True)
-    return (tp - ma) / (0.015 * md.replace(0, np.nan))
+def _series_to_list(s: pd.Series) -> list:
+    return [{"date": d.strftime("%Y-%m-%d"), "value": _safe(v)}
+            for d, v in zip(s.index, s.values)]
 
 
 def compute_indicators(symbol: str, freq: str = "daily", kama_periods: list = None) -> dict:
-    if kama_periods is None:
-        kama_periods = [10, 20, 50]
+    kama_periods = kama_periods or [10, 20, 50]
+    return cache.get_or_compute(
+        "compute_indicators", symbol, freq,
+        lambda: _compute_indicators_inner(symbol, freq, kama_periods),
+        kama_periods=tuple(kama_periods),
+    )
 
+
+def _compute_indicators_inner(symbol: str, freq: str, kama_periods: list) -> dict:
     df = db.get_ohlcv_df(symbol, freq, limit=1000)
     if df.empty:
         return {"error": "No OHLCV data found"}

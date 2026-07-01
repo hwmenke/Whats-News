@@ -6,20 +6,24 @@ Supports incremental fetching: only downloads bars newer than what's in the DB.
 import datetime
 import time
 import yfinance as yf
+import numpy as np
 import pandas as pd
 import database as db
+import indicator_cache as cache
+import data_quality as dq
 
 
 def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     """Normalize yfinance output to lowercase columns and drop NaN rows."""
     print(f"-- Fetcher: Normalizing {len(raw)} rows of raw data")
     df = raw.copy()
-    df.columns = [c.lower() for c in df.columns]
 
-    # yfinance sometimes returns MultiIndex columns
+    # yfinance sometimes returns MultiIndex columns — must check before lowercasing
     if isinstance(df.columns, pd.MultiIndex):
         print("-- Fetcher: Detected MultiIndex columns, flattening...")
         df.columns = [c[0].lower() for c in df.columns]
+    else:
+        df.columns = [c.lower() for c in df.columns]
 
     # Ensure required columns exist
     required = ["open", "high", "low", "close", "volume"]
@@ -33,6 +37,9 @@ def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     # Final filter
     available = [c for c in required if c in df.columns]
     df = df[available]
+    # Indices (e.g. ^VIX) often have volume=0/NaN — fill rather than drop
+    if "volume" in df.columns:
+        df["volume"] = df["volume"].fillna(0.0)
     df.dropna(inplace=True)
     df.index = pd.to_datetime(df.index)
     df.index = df.index.tz_localize(None)
@@ -79,8 +86,11 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     }).dropna()
     print(f"++ Fetcher: Resampled to {len(weekly_df)} weekly bars")
 
-    daily_count  = db.upsert_ohlcv(sym, "daily",  daily_df)
-    weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
+    quality = dq.validate(daily_df, "daily")
+    db.upsert_ohlcv(sym, "daily",  daily_df)
+    db.upsert_ohlcv(sym, "weekly", weekly_df)
+    daily_count  = len(daily_df)
+    weekly_count = len(weekly_df)
     print(f"++ Fetcher: Database updated ({daily_count}d, {weekly_count}w)")
 
     # Pull meta info (name, sector) - try/except as this can be slow/fail
@@ -96,26 +106,29 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
 
     db.update_symbol_info(sym, name, sector)
     db.update_last_fetch(sym)
+    db.update_quality_report(sym, quality)
+    cache.bump_version(sym)
 
     return {
-        "symbol":       sym,
-        "name":         name,
-        "sector":       sector,
-        "daily_rows":   daily_count,
-        "weekly_rows":  weekly_count,
+        "symbol":        sym,
+        "name":          name,
+        "sector":        sector,
+        "daily_rows":    daily_count,
+        "weekly_rows":   weekly_count,
+        "data_quality":  quality,
     }
 
 
 def fetch_full_history(symbol: str, start: str = "2000-01-01",
-                       max_retries: int = 3) -> dict:
+                       max_retries: int = 5) -> dict:
     """
     Download full daily history from `start` date to today.
     Resamples to weekly (W-FRI) and monthly (ME).
-    Retries with exponential back-off (5s, 10s, 20s) on failure.
+    Retries with exponential back-off on failure; longer pause on 429.
     Returns a result dict with keys: symbol, daily_rows, weekly_rows, error (on failure).
     """
     sym   = symbol.upper()
-    delay = 5  # initial retry delay seconds
+    delay = 8  # initial retry delay seconds
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -139,8 +152,11 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
                 "volume": "sum",
             }).dropna()
 
-            daily_count  = db.upsert_ohlcv(sym, "daily",  daily_df)
-            weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
+            quality = dq.validate(daily_df, "daily")
+            db.upsert_ohlcv(sym, "daily",  daily_df)
+            db.upsert_ohlcv(sym, "weekly", weekly_df)
+            daily_count  = len(daily_df)
+            weekly_count = len(weekly_df)
             print(f"++ Fetcher: Stored {daily_count}d / {weekly_count}w for {sym}")
 
             # Metadata (best-effort)
@@ -154,7 +170,8 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
 
             db.update_symbol_info(sym, name, sector)
             db.update_last_fetch(sym)
-
+            db.update_quality_report(sym, quality)
+            cache.bump_version(sym)
             return {
                 "symbol":      sym,
                 "name":        name,
@@ -164,10 +181,92 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
             }
 
         except Exception as exc:
-            print(f"!! Fetcher: Attempt {attempt} failed for {sym}: {exc}")
+            msg = str(exc)
+            print(f"!! Fetcher: Attempt {attempt} failed for {sym}: {msg}")
             if attempt < max_retries:
-                print(f"   Retrying in {delay}s …")
-                time.sleep(delay)
+                # Rate-limited: wait much longer before retrying
+                if "429" in msg or "Too Many Requests" in msg or "rate limit" in msg.lower():
+                    wait = delay * 4
+                    print(f"   Rate limited — waiting {wait}s before retry …")
+                else:
+                    wait = delay
+                    print(f"   Retrying in {wait}s …")
+                time.sleep(wait)
                 delay *= 2
             else:
                 return {"symbol": sym, "error": str(exc)}
+
+
+def fetch_ratio_and_store(sym_a: str, sym_b: str) -> dict:
+    """
+    Compute a synthetic OHLCV ratio series for A/B using existing DB data.
+
+    OHLCV construction:
+      open  = open_A  / open_B
+      close = close_A / close_B
+      high  = high_A  / low_B    (conservative upper bound of intraday ratio)
+      low   = low_A   / high_B   (conservative lower bound of intraday ratio)
+      volume = 0
+
+    Stores the result as symbol "A~B" in the ohlcv table (daily + weekly).
+    The tilde separator avoids URL-routing issues with slash characters.
+    """
+    sym_a     = sym_a.upper()
+    sym_b     = sym_b.upper()
+    ratio_sym = f"{sym_a}~{sym_b}"
+
+    print(f"++ Ratio: Computing {ratio_sym}")
+
+    df_a = db.get_ohlcv_df(sym_a, "daily", limit=5000)
+    df_b = db.get_ohlcv_df(sym_b, "daily", limit=5000)
+
+    if df_a.empty:
+        return {"symbol": ratio_sym, "error": f"No data for {sym_a}. Fetch it first."}
+    if df_b.empty:
+        return {"symbol": ratio_sym, "error": f"No data for {sym_b}. Fetch it first."}
+
+    # Align on common trading dates
+    common = df_a.index.intersection(df_b.index)
+    if len(common) < 10:
+        return {"symbol": ratio_sym,
+                "error": f"Only {len(common)} common dates between {sym_a} and {sym_b}."}
+
+    a = df_a.reindex(common)
+    b = df_b.reindex(common)
+
+    # Replace zeros in denominator to avoid inf
+    b_open  = b["open"].replace(0, np.nan)
+    b_high  = b["high"].replace(0, np.nan)
+    b_low   = b["low"].replace(0, np.nan)
+    b_close = b["close"].replace(0, np.nan)
+
+    ratio_df = pd.DataFrame({
+        "open":   a["open"]  / b_open,
+        "high":   a["high"]  / b_low,    # conservative upper bound
+        "low":    a["low"]   / b_high,   # conservative lower bound
+        "close":  a["close"] / b_close,
+        "volume": 0.0,
+    }, index=common)
+    ratio_df.dropna(inplace=True)
+
+    if ratio_df.empty:
+        return {"symbol": ratio_sym, "error": "Ratio series is empty after alignment."}
+
+    # Weekly resample
+    weekly_df = ratio_df.resample("W-FRI").agg({
+        "open":   "first", "high": "max",
+        "low":    "min",   "close": "last",
+        "volume": "sum",
+    }).dropna()
+
+    daily_count  = db.upsert_ohlcv(ratio_sym, "daily",  ratio_df)
+    weekly_count = db.upsert_ohlcv(ratio_sym, "weekly", weekly_df)
+    cache.bump_version(ratio_sym)
+
+    print(f"++ Ratio: Stored {daily_count}d / {weekly_count}w for {ratio_sym}")
+    return {
+        "symbol":      ratio_sym,
+        "display":     f"{sym_a}/{sym_b}",
+        "daily_rows":  daily_count,
+        "weekly_rows": weekly_count,
+    }

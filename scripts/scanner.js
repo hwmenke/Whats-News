@@ -18,11 +18,21 @@
 
 // ── State ─────────────────────────────────────────────────────────────
 const scannerState = {
-    data:    null,
+    mode:    'technical',          // 'technical' | 'jeff' | 'pipeline'
+    data:    null,                 // technical scan rows
+    jeff:    null,                 // jeff scan rows (raw, unfiltered)
+    jeffSortKey: null,
+    jeffSortDir: -1,
+    filters: { grade: 'all', trigger: 'all', rvol: 'all', tier: 'all',
+               notExt: false, above50: false, noEarnings: false },
     sortKey: null,
     sortDir: 1,
     visible: { rsi: true, kama: true, mom: true, vol: true, trend: true },
+    focusIdx: -1,   // keyboard-focused row index (-1 = none)
 };
+
+// Cache of the last rendered jeff rows for keyboard actions + log-trade context
+const _jeffRowCache = {};  // symbol → jeff row data
 
 // ── Column definitions ─────────────────────────────────────────────────
 // groups → metrics → timeframes → cells
@@ -262,10 +272,11 @@ function _buildRow(row) {
     tr.className = 'scan-row';
     if (row.error) tr.classList.add('scan-row-error');
 
-    // Symbol — click to load
+    // Symbol — click to load, hover for mini-chart
     const tdSym = _td('scan-td scan-td-sym');
     tdSym.textContent = row.symbol;
     tdSym.title = row.error ? `Error: ${row.error}` : `Load ${row.symbol}`;
+    tdSym.dataset.hoverSymbol = row.symbol;
     tdSym.addEventListener('click', () => {
         if (typeof selectSymbol === 'function') selectSymbol(row.symbol);
     });
@@ -335,6 +346,9 @@ function _td(cls) {
 function sortScanner(key) {
     scannerState.sortDir = scannerState.sortKey === key ? scannerState.sortDir * -1 : 1;
     scannerState.sortKey = key;
+    if (typeof persistence !== 'undefined') {
+        _persistScanner();
+    }
     if (scannerState.data) renderScannerTable(scannerState.data);
 }
 
@@ -368,6 +382,15 @@ function renderScannerTable(data) {
     const empty = document.getElementById('scanner-empty');
     if (!thead || !tbody) return;
 
+    // Drop Jeff-mode styling/markup if we just came from that mode
+    const table = document.getElementById('scanner-table');
+    const wrap  = document.querySelector('.scanner-table-wrap');
+    if (table) table.classList.remove('jf-table');
+    if (wrap)  wrap.classList.remove('jf-table-wrap');
+    if (empty) empty.innerHTML =
+        '<div class="empty-icon">📡</div><p>No symbols in watchlist, or data not yet fetched.<br>' +
+        'Add tickers, then click <strong>⟳ Scan All</strong>.</p>';
+
     // Header
     thead.innerHTML = '';
     const [tr1, tr2, tr3] = _buildHeader();
@@ -396,6 +419,14 @@ function toggleScanGroup(id) {
 
 // ── Data loading ───────────────────────────────────────────────────────
 async function loadScannerData() {
+    if (typeof persistence !== 'undefined') {
+        const saved = persistence.loadTab('scanner');
+        if (saved?.sortKey) {
+            scannerState.sortKey = saved.sortKey;
+            scannerState.sortDir = saved.sortDir ?? 1;
+        }
+    }
+
     const loadEl  = document.getElementById('scanner-loading');
     const btnScan = document.getElementById('btn-scan');
     const tsEl    = document.getElementById('scanner-ts');
@@ -414,4 +445,767 @@ async function loadScannerData() {
         if (loadEl)   loadEl.style.display = 'none';
         if (btnScan)  { btnScan.disabled = false; btnScan.innerHTML = '⟳ Scan All'; }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  JEFF SETUP SCANNER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// saveTab overwrites the whole tab object, so always persist the full state.
+function _persistScanner() {
+    if (typeof persistence === 'undefined') return;
+    persistence.saveTab('scanner', {
+        mode:        scannerState.mode,
+        filters:     scannerState.filters,
+        sortKey:     scannerState.sortKey,
+        sortDir:     scannerState.sortDir,
+        jeffSortKey: scannerState.jeffSortKey,
+        jeffSortDir: scannerState.jeffSortDir,
+    });
+}
+
+// ── Entry point + mode dispatch ────────────────────────────────────────────────
+
+function initScanner() {
+    if (typeof persistence !== 'undefined') {
+        const saved = persistence.loadTab('scanner');
+        if (saved?.mode)    scannerState.mode    = saved.mode;
+        if (saved?.filters) scannerState.filters = { ...scannerState.filters, ...saved.filters };
+        if (saved?.sortKey) { scannerState.sortKey = saved.sortKey; scannerState.sortDir = saved.sortDir ?? 1; }
+        if (saved?.jeffSortKey) { scannerState.jeffSortKey = saved.jeffSortKey; scannerState.jeffSortDir = saved.jeffSortDir ?? -1; }
+    }
+    _syncScanModeUI();
+    runScan();
+    if (typeof initScannerKeyNav === 'function') initScannerKeyNav();
+}
+
+function runScan() {
+    if      (scannerState.mode === 'jeff')  loadJeffScan();
+    else if (scannerState.mode === 'guru')  { if (typeof loadGuruScan === 'function') loadGuruScan(_guruState?.strategy || 'qullamaggie'); }
+    else                                    loadScannerData();
+}
+
+function setScanMode(mode) {
+    if (scannerState.mode === mode) return;
+    scannerState.mode = mode;
+    _persistScanner();
+    _syncScanModeUI();
+    if (mode === 'pipeline') {
+        _hideGuruMode();
+        if (scannerState.jeff) _renderPipelineBoard();
+        else                   loadJeffScan();
+    } else if (mode === 'jeff') {
+        _hidePipelineBoard();
+        _hideGuruMode();
+        if (scannerState.jeff) _renderJeffScan();
+        else                   loadJeffScan();
+    } else if (mode === 'guru') {
+        _hidePipelineBoard();
+        _showGuruMode();
+    } else {
+        _hidePipelineBoard();
+        _hideGuruMode();
+        if (scannerState.data) renderScannerTable(scannerState.data);
+        else                   loadScannerData();
+    }
+}
+
+function _showGuruMode() {
+    const tabs  = document.getElementById('guru-strategy-tabs');
+    const dist  = document.getElementById('guru-stage-dist');
+    const filt  = document.getElementById('scan-jeff-filters');
+    const bann  = document.getElementById('jeff-banner');
+    const stats = document.getElementById('jf-stats-bar');
+    if (tabs)  tabs.style.display  = '';
+    if (dist)  dist.style.display  = '';
+    if (filt)  filt.style.display  = 'none';
+    if (bann)  bann.style.display  = 'none';
+    if (stats) stats.style.display = 'none';
+    // Show scanner-table-wrap (may have been hidden by pipeline board)
+    const wrap = document.querySelector('.scanner-table-wrap');
+    if (wrap) wrap.style.display = '';
+    // Init or re-init guru
+    if (typeof initGuruScanner === 'function') initGuruScanner();
+    if (typeof loadStageDistribution === 'function') loadStageDistribution();
+}
+
+function _hideGuruMode() {
+    const tabs = document.getElementById('guru-strategy-tabs');
+    const dist = document.getElementById('guru-stage-dist');
+    if (tabs) tabs.style.display = 'none';
+    if (dist) dist.style.display = 'none';
+}
+
+function _hidePipelineBoard() {
+    const board = document.getElementById('jf-pipeline-board');
+    if (board) board.style.display = 'none';
+    const table = document.getElementById('scanner-table');
+    if (table) table.style.display = '';
+    const wrap = document.querySelector('.scanner-table-wrap');
+    if (wrap) wrap.classList.remove('jf-pipeline-wrap');
+}
+
+function _syncScanModeUI() {
+    const isJeff     = scannerState.mode === 'jeff';
+    const isPipeline = scannerState.mode === 'pipeline';
+    const isGuru     = scannerState.mode === 'guru';
+    document.querySelectorAll('.scan-mode-btn').forEach(b =>
+        b.classList.toggle('scan-mode-on', b.dataset.mode === scannerState.mode));
+    const tech  = document.getElementById('scan-tech-groups');
+    const filt  = document.getElementById('scan-jeff-filters');
+    const bann  = document.getElementById('jeff-banner');
+    const stats = document.getElementById('jf-stats-bar');
+    if (tech)  tech.style.display  = (isJeff || isPipeline || isGuru) ? 'none' : '';
+    if (filt)  filt.style.display  = isJeff ? 'flex' : 'none';
+    if (bann)  bann.style.display  = (isJeff || isPipeline) ? '' : 'none';
+    if (stats) stats.style.display = isJeff ? 'flex' : 'none';
+}
+
+// ── Data loading ───────────────────────────────────────────────────────────────
+
+async function loadJeffScan() {
+    const loadEl  = document.getElementById('scanner-loading');
+    const btnScan = document.getElementById('btn-scan');
+    const tsEl    = document.getElementById('scanner-ts');
+
+    if (loadEl)  loadEl.style.display = 'flex';
+    if (btnScan) { btnScan.disabled = true; btnScan.innerHTML = '<span class="spinner"></span> Scanning…'; }
+
+    try {
+        // Fetch scan + market context together; context failures are non-fatal
+        const [scan, breadth, rstats] = await Promise.all([
+            apiFetch(`${API}/jeff-scan`),
+            apiFetch(`${API}/breadth`).catch(() => null),
+            apiFetch(`${API}/r-analytics`).catch(() => null),
+        ]);
+        scannerState.jeff       = scan.rows || [];
+        scannerState.jeffHasSpy = !!scan.spy_available;
+        _renderJeffBanner(breadth, rstats);
+        _renderJeffFilters();
+        if (scannerState.mode === 'pipeline') _renderPipelineBoard();
+        else _renderJeffScan();
+        if (tsEl) tsEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    } catch (e) {
+        toast('Jeff scan error: ' + e.message, 'error');
+    } finally {
+        if (loadEl)  loadEl.style.display = 'none';
+        if (btnScan) { btnScan.disabled = false; btnScan.innerHTML = '⟳ Scan All'; }
+    }
+}
+
+// ── Market context banner ────────────────────────────────────────────────────────
+
+function _renderJeffBanner(breadth, rstats) {
+    const el = document.getElementById('jeff-banner');
+    if (!el) return;
+    if (!breadth || breadth.error) { el.innerHTML = ''; return; }
+
+    const p50 = breadth.pct_above_50ma ?? 0;
+    let regimeTxt, regimeCls;
+    if      (p50 >= 70) { regimeTxt = 'Broad Uptrend';  regimeCls = 'jf-regime-bull'; }
+    else if (p50 >= 50) { regimeTxt = 'Mixed Market';   regimeCls = 'jf-regime-mix';  }
+    else if (p50 >= 30) { regimeTxt = 'Under Pressure'; regimeCls = 'jf-regime-warn'; }
+    else                { regimeTxt = 'Broad Downtrend';regimeCls = 'jf-regime-bear'; }
+
+    // Edge feedback: pull A-grade expectancy from r-analytics if present
+    let edgeHtml = '';
+    const gA = rstats?.grade_stats?.A;
+    if (gA && gA.count) {
+        const cls = gA.expectancy > 0 ? 'jf-pos' : 'jf-neg';
+        edgeHtml = `<div class="jf-banner-edge">
+            <span class="jf-edge-label">Your A setups</span>
+            <span class="jf-edge-val ${cls}">${gA.expectancy > 0 ? '+' : ''}${gA.expectancy.toFixed(2)}R</span>
+            <span class="jf-edge-sub">${gA.count} trade${gA.count === 1 ? '' : 's'}</span>
+        </div>`;
+    } else if (rstats && rstats.count) {
+        const cls = rstats.expectancy > 0 ? 'jf-pos' : 'jf-neg';
+        edgeHtml = `<div class="jf-banner-edge">
+            <span class="jf-edge-label">Your edge</span>
+            <span class="jf-edge-val ${cls}">${rstats.expectancy > 0 ? '+' : ''}${rstats.expectancy.toFixed(2)}R</span>
+            <span class="jf-edge-sub">${rstats.count} trades</span>
+        </div>`;
+    }
+
+    const warn = p50 < 30
+        ? `<span class="jf-banner-warn">⚠ Broad downtrend — be selective with new longs</span>` : '';
+
+    // Macro event proximity (same for all rows — read from first non-error row)
+    const mr = (scannerState.jeff || []).find(r => !r.error)?.macro_risk ?? null;
+    let macroWarn = '';
+    if (mr) {
+        const dLabel = mr.days === 0 ? 'today' : mr.days > 0 ? `in ${mr.days}d` : `${Math.abs(mr.days)}d ago`;
+        const hot    = Math.abs(mr.days) <= 1;
+        macroWarn = `<span class="jf-macro-warn ${hot ? 'jf-macro-hot' : ''}" title="${mr.label} ${dLabel}">
+            ⚡ ${mr.type} ${dLabel}
+        </span>`;
+    }
+
+    el.className = `jf-banner ${regimeCls}`;
+    el.innerHTML = `
+        <div class="jf-banner-main">
+            <span class="jf-regime-pill">🌡 ${regimeTxt}</span>
+            <span class="jf-stat"><b>${breadth.ad_ratio?.toFixed?.(2) ?? '—'}</b> A/D</span>
+            <span class="jf-stat"><b>${p50}%</b> &gt;50MA</span>
+            <span class="jf-stat jf-pos"><b>${breadth.new_highs ?? 0}</b> NH</span>
+            <span class="jf-stat jf-neg"><b>${breadth.new_lows ?? 0}</b> NL</span>
+            ${warn}${macroWarn}
+        </div>
+        ${edgeHtml}`;
+}
+
+// ── Filter bar ─────────────────────────────────────────────────────────────────
+
+function _renderJeffFilters() {
+    const el = document.getElementById('scan-jeff-filters');
+    if (!el) return;
+    const f = scannerState.filters;
+    const chip = (group, val, label) =>
+        `<button class="jf-chip ${f[group] === val ? 'jf-chip-on' : ''}" onclick="setJeffFilter('${group}','${val}')">${label}</button>`;
+    const toggle = (key, label) =>
+        `<button class="jf-chip jf-chip-toggle ${f[key] ? 'jf-chip-on' : ''}" onclick="toggleJeffFilter('${key}')">${label}</button>`;
+
+    el.innerHTML = `
+        <div class="jf-fgrp"><span class="jf-flabel">Grade</span>
+            ${chip('grade','all','All')}${chip('grade','A','A')}${chip('grade','AB','A+B')}</div>
+        <div class="jf-fgrp"><span class="jf-flabel">Trigger</span>
+            ${chip('trigger','all','All')}${chip('trigger','AT','At')}${chip('trigger','NEAR','Near')}</div>
+        <div class="jf-fgrp"><span class="jf-flabel">RVOL</span>
+            ${chip('rvol','all','All')}${chip('rvol','1','≥1')}${chip('rvol','1.5','≥1.5')}</div>
+        <div class="jf-fgrp"><span class="jf-flabel">Tier</span>
+            ${chip('tier','all','All')}${chip('tier','focus','🔥')}${chip('tier','stalk','🎯')}</div>
+        <div class="jf-fgrp jf-fgrp-toggles">
+            ${toggle('notExt','Not extended')}${toggle('above50','&gt;50MA')}${toggle('noEarnings','No earnings ≤7d')}</div>`;
+}
+
+function setJeffFilter(group, val) {
+    scannerState.filters[group] = val;
+    _persistScanner();
+    _renderJeffFilters();
+    _renderJeffScan();
+}
+
+function toggleJeffFilter(key) {
+    scannerState.filters[key] = !scannerState.filters[key];
+    _persistScanner();
+    _renderJeffFilters();
+    _renderJeffScan();
+}
+
+function _anyJeffFilter() {
+    const f = scannerState.filters;
+    return f.grade !== 'all' || f.trigger !== 'all' || f.rvol !== 'all' ||
+           f.tier !== 'all' || f.notExt || f.above50 || f.noEarnings;
+}
+
+function _filteredJeff() {
+    const f = scannerState.filters;
+    const anyActive = _anyJeffFilter();
+    return (scannerState.jeff || []).filter(r => {
+        if (r.error) return !anyActive;
+        if (f.grade === 'A'  && r.grade !== 'A') return false;
+        if (f.grade === 'AB' && r.grade !== 'A' && r.grade !== 'B') return false;
+        if (f.trigger === 'AT'   && r.trigger_status !== 'AT') return false;
+        if (f.trigger === 'NEAR' && r.trigger_status !== 'AT' && r.trigger_status !== 'NEAR') return false;
+        if (f.rvol === '1'   && !(r.rvol >= 1.0)) return false;
+        if (f.rvol === '1.5' && !(r.rvol >= 1.5)) return false;
+        if (f.tier !== 'all' && r.tier !== f.tier) return false;
+        if (f.notExt    && !(r.checks && r.checks.ext)) return false;
+        if (f.above50   && !r.above_50ma) return false;
+        if (f.noEarnings && r.days_to_earnings != null && r.days_to_earnings <= 7) return false;
+        return true;
+    });
+}
+
+// ── Sorting ────────────────────────────────────────────────────────────────────
+
+function sortJeff(key) {
+    if (scannerState.jeffSortKey === key) scannerState.jeffSortDir *= -1;
+    else { scannerState.jeffSortKey = key; scannerState.jeffSortDir = -1; }
+    _persistScanner();
+    _renderJeffScan();
+}
+
+function _sortedJeff(rows) {
+    const key = scannerState.jeffSortKey;
+    if (!key) return rows;               // keep server ranking
+    const dir = scannerState.jeffSortDir;
+    const gradeRank = { A: 0, B: 1, C: 2 };
+    return [...rows].sort((a, b) => {
+        if (a.error) return 1;
+        if (b.error) return -1;
+        let va, vb;
+        if (key === 'symbol')       { va = a.symbol; vb = b.symbol; return va.localeCompare(vb) * dir; }
+        else if (key === 'grade')   { va = gradeRank[a.grade] ?? 3; vb = gradeRank[b.grade] ?? 3; }
+        else if (key === 'trigger') { va = a.trigger_dist_pct ?? 999; vb = b.trigger_dist_pct ?? 999; }
+        else { va = a[key]; vb = b[key]; }
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        return (va - vb) * dir;
+    });
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────────
+
+const _JF_CRIT = [
+    ['rvol', 'R', 'RVOL ≥ 1.0×'],
+    ['ext',  'E', 'Not extended (<4× ATR from 50-MA)'],
+    ['lod',  'L', 'Low-of-day tight (<0.6 ATR)'],
+    ['vcp',  'V', 'Volatility contraction'],
+    ['high', 'H', 'Near 52-week high (≥60th %ile)'],
+    ['kama', 'K', 'KAMA aligned (≥2 of 3)'],
+    ['rsi',  'M', 'RSI momentum (50–80)'],
+];
+
+function _jfReadyDots(n, total = 5) {
+    let s = '';
+    for (let i = 0; i < total; i++) s += `<span class="jf-dot ${i < n ? 'jf-dot-on' : 'jf-dot-off'}"></span>`;
+    return s;
+}
+
+function _jfCritPills(checks) {
+    if (!checks) return '';
+    return _JF_CRIT.map(([k, l, t]) =>
+        `<span class="jf-cdot ${checks[k] ? 'jf-c-on' : 'jf-c-off'}" title="${t}">${l}</span>`).join('');
+}
+
+const _JF_TIER_ICON = { focus: '🔥', stalk: '🎯', active: '⚡', watchlist: '' };
+
+function _jfOppBadge(score) {
+    if (score == null) return '<td></td>';
+    const cls = score >= 65 ? 'jf-opp-hot' : score >= 40 ? 'jf-opp-warm' : 'jf-opp-cold';
+    return `<td class="jf-opp-cell"><span class="jf-opp ${cls}" title="Opportunity score: grade + readiness + RS + trigger proximity (0–100)">${score}</span></td>`;
+}
+
+function _jfRow(r, rowIdx = -1) {
+    const focusCls = (rowIdx >= 0 && rowIdx === scannerState.focusIdx) ? ' jf-row-focus' : '';
+    if (r.error) {
+        return `<tr class="jf-row jf-row-err${focusCls}" data-row-idx="${rowIdx}" data-symbol="${r.symbol}">
+            <td></td>
+            <td></td>
+            <td class="jf-sym-cell"><strong data-hover-symbol="${r.symbol}">${r.symbol}</strong></td>
+            <td colspan="9" class="jf-err-msg">${r.error}
+                <button class="jf-act jf-act-fetch" title="Open Data Manager"
+                        onclick="event.stopPropagation(); switchTab('data-manager')">Fetch</button></td>
+            <td></td>
+        </tr>`;
+    }
+
+    const g       = (r.grade || 'C').toLowerCase();
+    const tierIco = _JF_TIER_ICON[r.tier] || '';
+    const chg     = r.ret_20d;
+    const chgCls  = chg == null ? '' : chg >= 0 ? 'jf-pos' : 'jf-neg';
+
+    // Earnings warning
+    const dte = r.days_to_earnings;
+    const earnBadge = dte != null
+        ? `<span class="jf-earn ${dte <= 3 ? 'jf-earn-hot' : 'jf-earn-warn'}" title="Earnings in ${dte} day${dte === 1 ? '' : 's'}">⚠ ${dte}d</span>`
+        : '';
+
+    // Staleness badge (warn if >2 days stale)
+    const stale = r.days_stale ?? 0;
+    const staleBadge = stale > 2
+        ? `<span class="jf-stale ${stale > 5 ? 'jf-stale-old' : 'jf-stale-warn'}" title="Data last fetched ${stale} days ago">⏱ ${stale}d</span>`
+        : '';
+
+    // Open position badge
+    const posBadge = r.in_position
+        ? `<span class="jf-pos-badge" title="You have an open position in ${r.symbol}">● IN</span>`
+        : '';
+
+    // Sector chip with performance coloring
+    const srp = r.sector_rank_pct;
+    const sectorCls = srp == null ? '' : srp >= 60 ? 'jf-sector-lead' : srp <= 40 ? 'jf-sector-lag' : '';
+    const sectorTitle = srp != null ? `Sector: ${r.sector} (${srp}th %ile 20-day perf)` : `Sector: ${r.sector}`;
+    const sectorChip = r.sector
+        ? `<span class="jf-sector ${sectorCls}" title="${sectorTitle}">${r.sector}</span>`
+        : '';
+
+    // Notes tooltip on symbol name
+    const notesAttr = r.notes ? ` title="${r.notes.replace(/"/g, '&quot;')}"` : '';
+
+    // RVOL color
+    const rvolCls = r.rvol >= 1.5 ? 'jf-rvol-hi' : r.rvol >= 1.0 ? 'jf-rvol-ok' : 'jf-rvol-lo';
+    // Extension color
+    const extCls  = r.atr_mult_50ma >= 4 ? 'jf-ext-bad' : r.atr_mult_50ma >= 2.5 ? 'jf-ext-warn' : 'jf-ext-ok';
+    // ATR percentile sub-label
+    const atrPct  = r.atr_pct;
+    const atrPctLabel = atrPct != null
+        ? `<div class="jf-atr-pct" title="ATR at ${atrPct}th percentile of its 252-day range">ATR ${atrPct}%ile</div>`
+        : '';
+    // Daily KAMA
+    const kAlign  = r.kama_alignment ?? 0;
+    const kCls    = kAlign === 3 ? 'jf-kama-3' : kAlign === 2 ? 'jf-kama-2' : kAlign === 1 ? 'jf-kama-1' : 'jf-kama-0';
+    // Weekly KAMA sub-label
+    const wk = r.w_kama_alignment;
+    const wkLabel = wk != null
+        ? `<div class="jf-wkama" title="Weekly KAMA alignment: ${wk}/3">W:${wk}/3</div>`
+        : '';
+    // Pattern color
+    const patKey  = (r.pattern || '').toLowerCase().replace(/\s+/g, '-');
+    // Trigger status
+    const tStat   = (r.trigger_status || '').toLowerCase();
+    const tDist   = r.trigger_dist_pct;
+    // RS rank
+    const rank    = r.rs_rank;
+    const rankCls = rank == null ? '' : rank >= 70 ? 'jf-rs-hi' : rank >= 40 ? 'jf-rs-mid' : 'jf-rs-lo';
+    const rsTitle = r.rs_vs_spy != null ? `${r.rs_vs_spy > 0 ? '+' : ''}${r.rs_vs_spy}% vs SPY (20d)` : 'Intra-list 60-day momentum rank';
+
+    // Journal quick-entry button (active tier only)
+    const logBtn = r.tier === 'active'
+        ? `<button class="jf-act jf-act-log" title="Log trade entry to journal"
+                   onclick="event.stopPropagation(); jeffLogTrade('${r.symbol}', ${r.trigger ?? 'null'}, ${r.last_close ?? 'null'}, ${r.atr_14 ?? 'null'}, '${r.grade}')">📝</button>`
+        : '';
+
+    return `<tr class="jf-row jf-row-${g}${dte != null && dte <= 7 ? ' jf-row-earn' : ''}${r.in_position ? ' jf-row-inpos' : ''}${focusCls}" data-row-idx="${rowIdx}" data-symbol="${r.symbol}" onclick="selectSymbol('${r.symbol}'); switchTab('charts')">
+        <td><span class="jf-grade jf-grade-${g}">${r.grade}</span></td>
+        ${_jfOppBadge(r.opp_score)}
+
+        <td class="jf-sym-cell">
+            ${tierIco ? `<span class="jf-tier" title="${r.tier}">${tierIco}</span>` : ''}
+            <strong${notesAttr} data-hover-symbol="${r.symbol}">${r.symbol}</strong>
+            <div class="jf-sym-badges">${posBadge}${earnBadge}${staleBadge}</div>
+            ${sectorChip}
+        </td>
+
+        <td class="jf-price">
+            <div class="jf-price-main">${r.last_close?.toFixed(2) ?? '—'}</div>
+            ${chg != null ? `<div class="jf-price-sub ${chgCls}">${chg >= 0 ? '+' : ''}${chg.toFixed(1)}% <span class="jf-dim">20D</span></div>` : ''}
+        </td>
+
+        <td class="jf-ready">
+            <div class="jf-ready-num">${r.readiness}<span class="jf-ready-denom">/5</span></div>
+            <div class="jf-dots">${_jfReadyDots(r.readiness)}</div>
+        </td>
+
+        <td><span class="jf-pat jf-pat-${patKey}">${r.pattern || '—'}</span></td>
+
+        <td class="jf-trig">
+            <div class="jf-trig-price">${r.trigger?.toFixed(2) ?? '—'}</div>
+            <span class="jf-trig-status jf-trig-${tStat}">${r.trigger_status}${tDist != null ? ` +${tDist}%` : ''}</span>
+        </td>
+
+        <td class="jf-num ${rvolCls}">${r.rvol != null ? r.rvol.toFixed(1) + '×' : '—'}</td>
+        <td class="jf-num ${extCls}">
+            ${r.atr_mult_50ma != null ? r.atr_mult_50ma.toFixed(1) + '×' : '—'}
+            ${atrPctLabel}
+        </td>
+        <td>
+            <span class="jf-kama ${kCls}">${kAlign}/3</span>
+            ${wkLabel}
+        </td>
+
+        <td class="jf-rs" title="${rsTitle}">
+            ${rank != null ? `<div class="jf-rs-bar"><div class="jf-rs-fill ${rankCls}" style="width:${rank}%"></div></div><span class="jf-rs-num">${rank}</span>` : '—'}
+        </td>
+
+        <td class="jf-crit">${_jfCritPills(r.checks)}</td>
+
+        <td class="jf-actions">
+            <button class="jf-act" title="Move to Focus tier"
+                    onclick="event.stopPropagation(); jeffSetTier('${r.symbol}','focus',this)">▲</button>
+            <button class="jf-act ${r.has_alert ? 'jf-act-alert-on' : ''}"
+                    title="${r.has_alert ? `Alert already set at $${(r.alert_thresholds||[])[0]?.toFixed(2) ?? '?'}` : 'Set price alert at trigger'}"
+                    onclick="event.stopPropagation(); jeffSetAlert('${r.symbol}', ${r.trigger ?? 'null'})">🔔</button>
+            <button class="jf-act" title="Size position (Risk Calc)"
+                    onclick="event.stopPropagation(); jeffSizeIt('${r.symbol}', ${r.trigger ?? 'null'}, ${r.last_close ?? 'null'}, ${r.atr_14 ?? 'null'})">⚖</button>
+            ${logBtn}
+            <button class="jf-act" title="Open chart"
+                    onclick="event.stopPropagation(); selectSymbol('${r.symbol}'); switchTab('charts')">→</button>
+        </td>
+    </tr>`;
+}
+
+function _jfTh(key, label, title) {
+    const active = scannerState.jeffSortKey === key;
+    const arrow  = active ? (scannerState.jeffSortDir === -1 ? ' ▾' : ' ▴') : '';
+    return `<th class="jf-th ${key ? 'jf-th-sort' : ''} ${active ? 'jf-th-active' : ''}"
+                ${key ? `onclick="sortJeff('${key}')"` : ''} ${title ? `title="${title}"` : ''}>${label}${arrow}</th>`;
+}
+
+function _renderJeffScan() {
+    const thead = document.getElementById('scanner-thead');
+    const tbody = document.getElementById('scanner-tbody');
+    const empty = document.getElementById('scanner-empty');
+    const table = document.getElementById('scanner-table');
+    const wrap  = document.querySelector('.scanner-table-wrap');
+    if (!thead || !tbody) return;
+
+    _hidePipelineBoard();
+    if (table) { table.style.display = ''; table.classList.add('jf-table'); }
+    if (wrap)  wrap.classList.add('jf-table-wrap');
+
+    const rows = _sortedJeff(_filteredJeff());
+
+    thead.innerHTML = `<tr>
+        ${_jfTh('grade',      'Grade')}
+        ${_jfTh('opp_score',  'Score', 'Opportunity score (0–100): grade quality + timing readiness + relative strength + trigger proximity')}
+        ${_jfTh('symbol',     'Symbol')}
+        ${_jfTh(null,        'Price')}
+        ${_jfTh('readiness', 'Ready', 'Timing readiness: how many of the 5 entry criteria pass right now')}
+        ${_jfTh(null,        'Pattern')}
+        ${_jfTh('trigger',   'Trigger', 'Pivot resistance and distance to it')}
+        ${_jfTh('rvol',      'RVOL')}
+        ${_jfTh('atr_mult_50ma', 'ATR×50', 'ATR multiples above the 50-MA (>4 = too extended)')}
+        ${_jfTh('kama_alignment', 'KAMA', 'Price above how many of KAMA-10/20/50')}
+        ${_jfTh('rs_rank',   'RS', 'Relative strength rank (60-day momentum percentile)')}
+        ${_jfTh(null,        'Criteria', 'R=RVOL · E=not Extended · L=LoD tight · V=VCP · H=near High · K=KAMA · M=Momentum/RSI')}
+        ${_jfTh(null,        '')}
+    </tr>`;
+
+    if (!rows.length) {
+        tbody.innerHTML = '';
+        if (empty) {
+            empty.style.display = 'flex';
+            empty.innerHTML = _anyJeffFilter()
+                ? '<div class="empty-icon">🔍</div><p>No setups match your filters.<br>Loosen the filters above.</p>'
+                : '<div class="empty-icon">📡</div><p>No symbols scanned yet.<br>Add tickers, then click <strong>⟳ Scan All</strong>.</p>';
+        }
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    // Stats summary bar
+    const all = scannerState.jeff || [];
+    const nA   = all.filter(r => r.grade === 'A').length;
+    const nB   = all.filter(r => r.grade === 'B').length;
+    const nC   = all.filter(r => r.grade === 'C').length;
+    const nErr = all.filter(r => r.error).length;
+    const nPos = all.filter(r => r.in_position).length;
+    const nAlt = all.filter(r => r.has_alert).length;
+    const shown = rows.length;
+    const total = all.filter(r => !r.error).length;
+    const statsEl = document.getElementById('jf-stats-bar');
+    if (statsEl) {
+        const filterNote = shown < total ? ` · showing ${shown}` : '';
+        statsEl.innerHTML =
+            `<span class="jf-stat-count">${total} symbols${filterNote}</span>` +
+            `<span class="jf-stat-a">&#9632; ${nA}A</span>` +
+            `<span class="jf-stat-b">&#9632; ${nB}B</span>` +
+            `<span class="jf-stat-c">&#9632; ${nC}C</span>` +
+            (nErr ? `<span class="jf-stat-err">&#9632; ${nErr} no data</span>` : '') +
+            (nPos ? `<span class="jf-stat-pos">&#9679; ${nPos} in position</span>` : '') +
+            (nAlt ? `<span class="jf-stat-alt">&#128276; ${nAlt} alerted</span>` : '');
+    }
+
+    rows.forEach(r => { if (!r.error) _jeffRowCache[r.symbol] = r; });
+    tbody.innerHTML = rows.map((r, i) => _jfRow(r, i)).join('');
+}
+
+// ── Row actions ──────────────────────────────────────────────────────────────────
+
+async function jeffSetTier(symbol, tier, btn) {
+    const prevLabel = btn ? btn.textContent : null;
+    if (btn) { btn.textContent = '…'; btn.disabled = true; }
+    try {
+        await apiFetch(`${API}/symbols/${encodeURIComponent(symbol)}/tier`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tier }),
+        });
+        // Optimistic local update so the tier icon + filter reflect immediately
+        const row = (scannerState.jeff || []).find(r => r.symbol === symbol);
+        if (row) row.tier = tier;
+        toast(`${symbol} → ${tier}`, 'success');
+        _renderJeffScan();
+    } catch (e) {
+        toast(`Could not move ${symbol}: ${e.message}`, 'error');
+        if (btn) { btn.textContent = prevLabel; btn.disabled = false; }
+    }
+}
+
+function jeffSizeIt(symbol, trigger, lastClose, atr14) {
+    window._jeffSizePrefill = {
+        symbol,
+        entry: trigger || lastClose || null,
+        stop:  (lastClose != null && atr14 != null) ? +(lastClose - atr14 * 1.5).toFixed(2) : null,
+    };
+    if (typeof selectSymbol === 'function') selectSymbol(symbol);
+    switchTab('risk-calc');
+}
+
+async function jeffSetAlert(symbol, trigger) {
+    if (!trigger) { toast('No trigger price available', 'error'); return; }
+    try {
+        await apiFetch(`${API}/alerts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol, field: 'close', condition: 'above', threshold: trigger }),
+        });
+        toast(`Alert set: ${symbol} above $${trigger.toFixed(2)}`, 'success');
+    } catch (e) {
+        toast(`Alert failed: ${e.message}`, 'error');
+    }
+}
+
+function jeffLogTrade(symbol, trigger, lastClose, atr14, grade) {
+    if (typeof selectSymbol === 'function') selectSymbol(symbol);
+    const r = _jeffRowCache[symbol] || {};
+    window._jeffJournalPrefill = {
+        symbol,
+        entry_price:    trigger || lastClose || '',
+        stop_loss:      (lastClose != null && atr14 != null) ? +(lastClose - atr14 * 1.5).toFixed(2) : '',
+        setup_grade:    grade || r.grade || '',
+        direction:      'long',
+        // Setup context snapshot — stored in journal for edge attribution
+        pattern:        r.pattern        || '',
+        trigger_status: r.trigger_status || '',
+        readiness:      r.readiness      ?? null,
+        rs_rank:        r.rs_rank        ?? null,
+    };
+    switchTab('journal');
+}
+
+// ── Pipeline Board ────────────────────────────────────────────────────────────
+
+function _renderPipelineBoard() {
+    const tbody  = document.getElementById('scanner-tbody');
+    const thead  = document.getElementById('scanner-thead');
+    const empty  = document.getElementById('scanner-empty');
+    const table  = document.getElementById('scanner-table');
+    const wrap   = document.querySelector('.scanner-table-wrap');
+    if (!tbody) return;
+
+    // Hide the regular table structure, use wrap as a board container
+    if (table)  { table.classList.remove('jf-table'); table.style.display = 'none'; }
+    if (thead)  thead.innerHTML = '';
+    if (empty)  empty.style.display = 'none';
+
+    const rows  = scannerState.jeff || [];
+    const tiers = ['focus', 'stalk', 'active', 'watchlist'];
+    const tierLabel = { focus: '🔥 Focus', stalk: '🎯 Stalk', active: '⚡ Active', watchlist: '👁 Watchlist' };
+
+    const gradeRank = { A: 0, B: 1, C: 2 };
+    const grouped = {};
+    tiers.forEach(t => grouped[t] = []);
+    rows.forEach(r => {
+        const t = r.tier || 'watchlist';
+        if (grouped[t]) grouped[t].push(r);
+        else grouped['watchlist'].push(r);
+    });
+    tiers.forEach(t => grouped[t].sort((a, b) =>
+        (b.opp_score ?? 0) - (a.opp_score ?? 0)
+    ));
+
+    if (wrap) wrap.classList.add('jf-pipeline-wrap');
+
+    const board = document.getElementById('jf-pipeline-board') || (() => {
+        const d = document.createElement('div');
+        d.id = 'jf-pipeline-board';
+        d.className = 'jf-pipeline-board';
+        wrap.insertBefore(d, table);
+        return d;
+    })();
+
+    board.style.display = 'grid';
+    board.innerHTML = tiers.map(tier => {
+        const cards = grouped[tier];
+        const cardsHtml = cards.length
+            ? cards.map(r => {
+                if (r.error) return `<div class="jf-pcard jf-pcard-err">
+                    <span class="jf-pcard-sym">${r.symbol}</span>
+                    <span class="jf-pcard-err-msg">${r.error}</span>
+                </div>`;
+                const g   = (r.grade || 'C').toLowerCase();
+                const tStat = (r.trigger_status || '').toLowerCase();
+                const dte  = r.days_to_earnings;
+                const earnWarn = dte != null && dte <= 7
+                    ? `<span class="jf-earn jf-earn-hot" title="Earnings in ${dte}d">⚠${dte}d</span>` : '';
+                return `<div class="jf-pcard jf-pcard-${g}" onclick="selectSymbol('${r.symbol}'); switchTab('charts')">
+                    <div class="jf-pcard-top">
+                        <span class="jf-grade jf-grade-${g}">${r.grade}</span>
+                        <strong class="jf-pcard-sym">${r.symbol}</strong>
+                        ${earnWarn}
+                        <span class="jf-opp jf-opp-${r.opp_score >= 65 ? 'hot' : r.opp_score >= 40 ? 'warm' : 'cold'}">${r.opp_score ?? '—'}</span>
+                    </div>
+                    <div class="jf-pcard-mid">
+                        <span class="jf-trig-status jf-trig-${tStat}">${r.trigger_status || '—'}</span>
+                        ${r.trigger_dist_pct != null ? `<span class="jf-pcard-dist">+${r.trigger_dist_pct}%</span>` : ''}
+                        <span class="jf-pat jf-pat-${(r.pattern||'').toLowerCase().replace(/\s+/g,'-')}">${r.pattern || '—'}</span>
+                    </div>
+                    <div class="jf-pcard-bot">
+                        <div class="jf-dots">${_jfReadyDots(r.readiness)}</div>
+                        <span class="jf-pcard-price">$${r.last_close?.toFixed(2) ?? '—'}</span>
+                    </div>
+                    <div class="jf-pcard-acts">
+                        <button class="jf-act" title="Set trigger alert"
+                                onclick="event.stopPropagation(); jeffSetAlert('${r.symbol}', ${r.trigger ?? 'null'})">🔔</button>
+                        <button class="jf-act" title="Size it"
+                                onclick="event.stopPropagation(); jeffSizeIt('${r.symbol}', ${r.trigger ?? 'null'}, ${r.last_close ?? 'null'}, ${r.atr_14 ?? 'null'})">⚖</button>
+                        <button class="jf-act jf-act-mv" title="Move to next tier"
+                                onclick="event.stopPropagation(); jeffCycleTier('${r.symbol}', '${tier}', this)">→tier</button>
+                    </div>
+                </div>`;
+            }).join('')
+            : `<div class="jf-pcard-empty">Empty</div>`;
+
+        return `<div class="jf-pipeline-col">
+            <div class="jf-pipeline-col-header">${tierLabel[tier]}<span class="jf-pipeline-count">${cards.filter(r => !r.error).length}</span></div>
+            ${cardsHtml}
+        </div>`;
+    }).join('');
+}
+
+async function jeffCycleTier(symbol, currentTier, btn) {
+    const order = ['watchlist', 'stalk', 'focus', 'active'];
+    const next  = order[(order.indexOf(currentTier) + 1) % order.length];
+    await jeffSetTier(symbol, next, btn);
+    _renderPipelineBoard();
+}
+
+// ── Keyboard row navigation (j/k in jeff mode) ────────────────────────────────
+
+function _scanFocusedRow() {
+    return document.querySelector('#scanner-tbody .jf-row[data-row-idx]');
+}
+
+function _scanFocusedSym() {
+    const tbody = document.getElementById('scanner-tbody');
+    if (!tbody) return null;
+    const rows = tbody.querySelectorAll('.jf-row[data-row-idx]');
+    const idx  = scannerState.focusIdx;
+    return rows[idx]?.dataset?.symbol ?? null;
+}
+
+function _scanMoveFocus(delta) {
+    if (scannerState.mode === 'jeff') {
+        const tbody = document.getElementById('scanner-tbody');
+        if (!tbody) return;
+        const rows  = tbody.querySelectorAll('.jf-row[data-row-idx]');
+        const count = rows.length;
+        if (!count) return;
+        scannerState.focusIdx = Math.max(0, Math.min(
+            scannerState.focusIdx < 0 ? (delta > 0 ? 0 : count - 1) : scannerState.focusIdx + delta,
+            count - 1,
+        ));
+        rows.forEach((r, i) => r.classList.toggle('jf-row-focus', i === scannerState.focusIdx));
+        rows[scannerState.focusIdx]?.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+function _scanActivateFocused() {
+    const sym = _scanFocusedSym();
+    if (sym) { if (typeof selectSymbol === 'function') selectSymbol(sym); switchTab('charts'); }
+}
+
+let _scanKeyNavInited = false;
+
+function initScannerKeyNav() {
+    if (_scanKeyNavInited) return;
+    _scanKeyNavInited = true;
+    registerShortcut({ key: 'j', handler: () => { if (state.activeTab === 'scanner') _scanMoveFocus(+1); }, description: 'Scanner: next row' });
+    registerShortcut({ key: 'k', handler: () => { if (state.activeTab === 'scanner') _scanMoveFocus(-1); }, description: 'Scanner: prev row' });
+    registerShortcut({ key: 'Enter', handler: () => { if (state.activeTab === 'scanner') _scanActivateFocused(); }, description: 'Scanner: open focused symbol' });
+    registerShortcut({ key: 'a', handler: () => {
+        if (state.activeTab !== 'scanner') return;
+        const sym = _scanFocusedSym();
+        const r   = sym && _jeffRowCache[sym];
+        if (r) jeffSetAlert(sym, r.trigger);
+        else if (sym) { if (typeof selectSymbol === 'function') selectSymbol(sym); if (typeof toggleAlertsPanel === 'function') toggleAlertsPanel(); }
+    }, description: 'Scanner: alert focused row' });
+    registerShortcut({ key: 's', handler: () => {
+        if (state.activeTab !== 'scanner') return;
+        const sym = _scanFocusedSym();
+        const r   = sym && _jeffRowCache[sym];
+        if (r) jeffSizeIt(sym, r.trigger, r.last_close, r.atr_14);
+    }, description: 'Scanner: size focused row' });
 }

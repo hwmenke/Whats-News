@@ -10,15 +10,36 @@ const DEFAULT_KAMA_PERIODS = [10, 20, 50];
 
 // App state
 let state = {
-    symbols:      [],
-    activeSymbol: null,
-    loading:      false,
-    activeTab:    'charts',
-    statsData:    null,
+    symbols:         [],
+    activeSymbol:    null,
+    loading:         false,
+    activeTab:       'charts',
+    statsData:       null,
+    watchlistFilter: '',
 };
 
 let statsCharts = {};
 let backtestEquityChart = null;
+let _ppLoaded = false;
+
+// ── Data freshness banner ─────────────────────────────────────
+function showFreshnessBanner(bannerId, latestDateStr, refreshCall) {
+    const el = document.getElementById(bannerId);
+    if (!el) return;
+    if (!latestDateStr) { el.style.display = 'none'; return; }
+    const latest   = new Date(latestDateStr);
+    const today    = new Date(); today.setHours(0,0,0,0);
+    const diffDays = Math.floor((today - latest) / 86400000);
+    const dow      = today.getDay();
+    const stale    = !(dow === 0 || dow === 6) && diffDays > 1;
+    const label    = stale
+        ? `<span class="dfb-stale">⚠ Data as of ${latestDateStr} — ${diffDays}d old</span>`
+        : `<span class="dfb-fresh">✓ Data current as of ${latestDateStr}</span>`;
+    el.innerHTML   = `<span class="dfb-label">${label}</span>` +
+        (refreshCall ? `<button class="dfb-refresh" onclick="${refreshCall}">⟳ Refresh Data</button>` : '');
+    el.style.display = 'flex';
+    el.classList.toggle('fresh', !stale);
+}
 
 // ── Toast system ─────────────────────────────────────────────
 function toast(message, type = 'info', duration = 3500) {
@@ -33,59 +54,129 @@ function toast(message, type = 'info', duration = 3500) {
     }, duration);
 }
 
-// ── UI state persistence (active tab + symbol survive reloads) ──
-const UI_STATE_KEY = 'findash.ui';
-function persistUiState() {
-    try {
-        localStorage.setItem(UI_STATE_KEY, JSON.stringify({
-            tab:    state.activeTab,
-            symbol: state.activeSymbol,
-        }));
-    } catch (_) { /* storage unavailable (private mode) — ignore */ }
-}
-function loadUiState() {
-    try {
-        return JSON.parse(localStorage.getItem(UI_STATE_KEY)) || {};
-    } catch (_) {
-        return {};
-    }
-}
-
-// ── Connection status indicator ──────────────────────────────
-function setConnection(online) {
-    const dot   = document.getElementById('status-dot');
-    const label = document.getElementById('conn-label');
-    if (dot) {
-        dot.classList.toggle('offline', !online);
-        dot.title = online ? 'Connected to server' : 'Cannot reach server';
-    }
-    if (label) {
-        label.classList.toggle('offline', !online);
-        label.textContent = online ? 'Live' : 'Offline';
-    }
-}
-
 // ── API helpers ──────────────────────────────────────────────
+// ── UI preferences (accent / density / scale / tab visibility) ───────────────
+
+const UI_PREFS_KEY = 'ui_prefs_v1';
+
+function loadUiPrefs() {
+    try { return JSON.parse(localStorage.getItem(UI_PREFS_KEY) || '{}'); }
+    catch (_) { return {}; }
+}
+
+function saveUiPrefs(prefs) {
+    try { localStorage.setItem(UI_PREFS_KEY, JSON.stringify(prefs)); } catch (_) {}
+    applyUiPrefs();
+}
+
+function applyUiPrefs() {
+    const p    = loadUiPrefs();
+    const body = document.body;
+
+    // Accent color — overrides the amber design tokens app-wide
+    body.classList.remove('accent-blue', 'accent-green', 'accent-purple', 'accent-cyan');
+    if (p.accent && p.accent !== 'amber') body.classList.add(`accent-${p.accent}`);
+
+    // Density
+    body.classList.toggle('ui-compact', p.density === 'compact');
+
+    // UI scale (zoom is supported by all modern browsers incl. Firefox 126+)
+    body.style.zoom = (p.scale && p.scale !== 100) ? String(p.scale / 100) : '';
+
+    // Tab visibility
+    const hidden = new Set(p.hiddenTabs || []);
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        const id = (btn.id || '').replace(/^tab-/, '');
+        if (!id || id === 'charts' || id === 'settings') return;  // never hideable
+        btn.style.display = hidden.has(id) ? 'none' : '';
+    });
+}
+
+// ── Macro event proximity chip (status bar) ───────────────────────────────────
+
+async function _loadMacroChip() {
+    const el = document.getElementById('sb-macro');
+    if (!el) return;
+    try {
+        const events = await apiFetch(`${API}/calendar?days_past=0&days_fwd=10`);
+        const today  = new Date().toISOString().slice(0, 10);
+        const next   = (events || []).find(e =>
+            e.date >= today && e.importance >= 3 && e.category !== 'earnings');
+        if (!next) { el.style.display = 'none'; return; }
+        const days = Math.round((new Date(next.date) - new Date(today)) / 86400000);
+        const txt  = days === 0 ? 'today' : `${days}d`;
+        el.style.display = '';
+        el.className = `sb-macro ${days <= 1 ? 'sb-macro-hot' : days <= 3 ? 'sb-macro-warn' : ''}`;
+        el.innerHTML = `⚡ ${next.type} ${txt}`;
+        el.title = `${next.label} — ${next.date}${next.approx ? ' (estimated)' : ''}. Click for calendar.`;
+    } catch (_) {
+        el.style.display = 'none';
+    }
+}
+
+async function _loadOpenRiskBadge() {
+    const el = document.getElementById('sb-open-risk');
+    if (!el) return;
+    try {
+        const d = await apiFetch(`${API}/open-risk`);
+        if (!d.open_count) { el.style.display = 'none'; return; }
+        const fr   = d.total_float_r;
+        const sign = fr >= 0 ? '+' : '';
+        const cls  = fr >= 0 ? 'sb-risk-pos' : 'sb-risk-neg';
+        el.style.display = '';
+        el.innerHTML = `<span class="sb-label">OPEN</span>
+            <span class="sb-item">${d.open_count}</span>
+            <span class="sb-sep"></span>
+            <span class="sb-label">ΣR</span>
+            <span class="sb-item ${cls}" title="Floating R across ${d.open_count} open trade${d.open_count === 1 ? '' : 's'}">${sign}${fr.toFixed(1)}</span>`;
+    } catch (_) {
+        if (el) el.style.display = 'none';
+    }
+}
+
+function setConnStatus(ok) {
+    const dot = document.querySelector('.status-dot');
+    if (dot) {
+        dot.classList.toggle('offline', !ok);
+        dot.title = ok ? 'Connected' : 'Server unreachable';
+    }
+    const conn = document.getElementById('sb-conn');
+    if (conn) {
+        conn.textContent = ok ? 'LIVE' : 'OFFLINE';
+        conn.classList.toggle('sb-offline', !ok);
+    }
+}
+
 async function apiFetch(url, opts = {}) {
-    console.log(`>> API Fetch: ${url}`, opts.method || 'GET');
     let res;
     try {
         res = await fetch(url, opts);
-    } catch (netErr) {
-        // fetch only throws on a network-level failure → server unreachable
-        setConnection(false);
-        console.error('!! Network error:', netErr.message);
-        throw new Error('Cannot reach server — check that the backend is running');
+    } catch (e) {
+        setConnStatus(false);
+        const err  = new Error('Server unreachable');
+        err.code   = 'NETWORK';
+        err.hint   = 'Is the dashboard server running?';
+        err.status = 0;
+        throw err;
     }
-    // Any HTTP response means the server is reachable, even if it's a 4xx/5xx
-    setConnection(true);
-    console.log(`<< API Response: ${res.status} ${res.statusText}`);
-    const data = await res.json();
+    setConnStatus(true);
+    let data;
+    try { data = await res.json(); } catch (_) { data = null; }
     if (!res.ok) {
-        console.error('!! API Error:', data.error || `HTTP ${res.status}`);
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const err    = new Error(data?.message || data?.error || `HTTP ${res.status}`);
+        err.code     = data?.code   || 'HTTP_' + res.status;
+        err.hint     = data?.hint   || null;
+        err.status   = res.status;
+        console.error('!! API Error:', err.code, err.message);
+        throw err;
     }
     return data;
+}
+
+function toastFromError(err, prefix = '') {
+    const base = prefix ? `${prefix}: ${err.message}` : err.message;
+    const msg  = err.hint ? `${base} — ${err.hint}` : base;
+    toast(msg, 'error');
 }
 
 // ── Clock ────────────────────────────────────────────────────
@@ -176,7 +267,7 @@ function setupKamaAddForm() {
                 loadIndicatorsToPanel('daily',  dailyInd);
                 loadIndicatorsToPanel('weekly', weeklyInd);
             } catch (e) {
-                toast('Failed to load new KAMA: ' + e.message, 'error');
+                toastFromError(e, 'KAMA');
             }
         }
     };
@@ -185,67 +276,134 @@ function setupKamaAddForm() {
     input.addEventListener('keydown', e => { if (e.key === 'Enter') addPeriod(); });
 }
 
-// ── Sidebar toggle ────────────────────────────────────────────
-function toggleSidebar() {
-    const app = document.querySelector('.app');
-    const btn = document.getElementById('btn-sidebar-toggle');
-    if (!app) return;
-    const collapsed = app.classList.toggle('sidebar-collapsed');
-    if (btn) btn.textContent = collapsed ? '▶' : '☰';
-}
-
 // ── Symbol Watchlist ─────────────────────────────────────────
 async function loadSymbols() {
     try {
-        state.symbols = await apiFetch(`${API}/symbols`);
+        const [syms, stats] = await Promise.all([
+            apiFetch(`${API}/symbols`),
+            apiFetch(`${API}/symbols/quick-stats`).catch(() => []),
+        ]);
+        const statsMap = Object.fromEntries((stats || []).map(s => [s.symbol, s]));
+        state.symbols = syms.map(s => ({ ...s, ...(statsMap[s.symbol] || {}) }));
+        state.symbolsLoaded = true;
         renderSymbolList();
+        _refreshFreshnessBanners();
+        if (typeof updateTickerTape  === 'function') updateTickerTape();
+        if (typeof _sbSetSymbolCount === 'function') _sbSetSymbolCount(state.symbols.length);
     } catch (e) {
-        toast('Failed to load symbols: ' + e.message, 'error');
+        toastFromError(e, 'Symbols');
     }
+}
+
+function _refreshFreshnessBanners() {
+    const dates = state.symbols.map(s => s.last_fetch).filter(Boolean).sort();
+    const latest = dates.length ? dates[dates.length - 1].slice(0, 10) : null;
+    const rc = "document.getElementById('btn-refresh-all')?.click()";
+    ['scanner-freshness','momentum-freshness','regime-freshness','dashboard-freshness']
+        .forEach(id => showFreshnessBanner(id, latest, rc));
+    if (typeof _sbSetFreshness === 'function') _sbSetFreshness(latest);
+}
+
+function _moveWatchlist(delta) {
+    const visible = state.symbols.filter(s => _matchesFilter(s, state.watchlistFilter));
+    if (!visible.length) return;
+    const idx = visible.findIndex(s => s.symbol === state.activeSymbol);
+    const next = visible[(idx + delta + visible.length) % visible.length];
+    selectSymbol(next.symbol);
+}
+
+// Watchlist filter helper
+function _matchesFilter(symEntry, needle) {
+    if (!needle) return true;
+    const n = needle.toLowerCase();
+    return symEntry.symbol.toLowerCase().includes(n) ||
+           (symEntry.name   || '').toLowerCase().includes(n) ||
+           (symEntry.sector || '').toLowerCase().includes(n);
+}
+
+// Display symbol — converts internal "A~B" store format to "A/B" for ratios
+function _displaySymbol(sym) {
+    return sym.includes('~') ? sym.replace('~', '/') : sym;
 }
 
 function renderSymbolList() {
     const list = document.getElementById('symbol-list');
     list.innerHTML = '';
 
+    const visible = state.symbols.filter(s => _matchesFilter(s, state.watchlistFilter));
+    const countEl = document.getElementById('watchlist-count');
+    if (countEl) {
+        countEl.textContent = state.watchlistFilter
+            ? `${visible.length}/${state.symbols.length}`
+            : (state.symbols.length ? `${state.symbols.length}` : '');
+    }
+
     if (!state.symbols.length) {
         list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No symbols yet.</div>';
         return;
     }
+    if (!visible.length) {
+        list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No matches.</div>';
+        return;
+    }
 
-    // Group symbols by group_tag
-    let lastGroup = undefined;
-    state.symbols.forEach(sym => {
-        const tag = sym.group_tag || '';
-
-        // Render group header when group changes
-        if (tag !== lastGroup) {
-            lastGroup = tag;
-            if (tag) {
-                const hdr = document.createElement('div');
-                hdr.className = 'sym-group-header';
-                hdr.textContent = tag;
-                list.appendChild(hdr);
-            }
-        }
-
+    visible.forEach(sym => {
+        const isRatio = sym.symbol.includes('~');
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
+        if (sym.chg != null) item.classList.add(sym.chg >= 0 ? 'si-up' : 'si-down');
         item.dataset.symbol = sym.symbol;
 
-        const ticker = document.createElement('span');
-        ticker.className = 'sym-ticker';
-        ticker.textContent = sym.symbol;
+        // Left column: ticker + sector / fetch date
+        const left = document.createElement('div');
+        left.className = 'si-col si-col-left';
 
-        // Group tag badge (click to edit inline)
-        const tagBadge = document.createElement('span');
-        tagBadge.className   = 'sym-tag';
-        tagBadge.textContent = tag || '+ tag';
-        tagBadge.title       = 'Click to set group';
-        tagBadge.addEventListener('click', e => {
-            e.stopPropagation();
-            startTagEdit(sym.symbol, tag, tagBadge);
-        });
+        const ticker = document.createElement('span');
+        ticker.className = 'sym-ticker' + (isRatio ? ' sym-ticker-ratio' : '');
+        ticker.textContent = _displaySymbol(sym.symbol);
+        left.appendChild(ticker);
+
+        if (sym.sector && !isRatio) {
+            const secChip = document.createElement('span');
+            secChip.className = 'sym-sector-chip';
+            secChip.textContent = sym.sector.length > 14 ? sym.sector.slice(0, 13) + '…' : sym.sector;
+            secChip.title = sym.sector;
+            left.appendChild(secChip);
+        } else if (sym.last_fetch && sym.chg == null) {
+            const fetchSpan = document.createElement('span');
+            fetchSpan.className = 'sym-fetch-date';
+            fetchSpan.textContent = sym.last_fetch.slice(0, 10);
+            left.appendChild(fetchSpan);
+        }
+
+        // Middle: 20-bar sparkline
+        if (Array.isArray(sym.spark) && sym.spark.length > 1 && typeof sparkSVG === 'function') {
+            item.appendChild(left);
+            item.appendChild(sparkSVG(sym.spark));
+        } else {
+            item.appendChild(left);
+            const gap = document.createElement('span');
+            gap.className = 'si-spark si-spark-empty';
+            item.appendChild(gap);
+        }
+
+        // Right column: price + daily change
+        const right = document.createElement('div');
+        right.className = 'si-col si-col-right';
+
+        if (sym.price != null) {
+            const px = document.createElement('span');
+            px.className = 'si-price';
+            px.textContent = sym.price >= 1000 ? sym.price.toFixed(0) : sym.price.toFixed(2);
+            right.appendChild(px);
+        }
+        if (sym.chg != null) {
+            const chgSpan = document.createElement('span');
+            chgSpan.className = 'sym-chg ' + (sym.chg >= 0 ? 'sym-chg-pos' : 'sym-chg-neg');
+            chgSpan.textContent = (sym.chg >= 0 ? '+' : '') + sym.chg.toFixed(2) + '%';
+            right.appendChild(chgSpan);
+        }
+        item.appendChild(right);
 
         const removeBtn = document.createElement('span');
         removeBtn.className  = 'sym-remove';
@@ -253,45 +411,9 @@ function renderSymbolList() {
         removeBtn.title       = 'Remove';
         removeBtn.addEventListener('click', e => { e.stopPropagation(); removeSymbol(sym.symbol); });
 
-        item.appendChild(ticker);
-        item.appendChild(tagBadge);
         item.appendChild(removeBtn);
         item.addEventListener('click', () => selectSymbol(sym.symbol));
         list.appendChild(item);
-    });
-}
-
-function startTagEdit(symbol, currentTag, badgeEl) {
-    const input = document.createElement('input');
-    input.className   = 'sym-tag-input';
-    input.value       = currentTag;
-    input.placeholder = 'Group name…';
-    input.maxLength   = 30;
-
-    const parent = badgeEl.parentElement;
-    parent.replaceChild(input, badgeEl);
-    input.focus();
-    input.select();
-
-    const commit = async () => {
-        const newTag = input.value.trim();
-        try {
-            await apiFetch(`${API}/symbols/${symbol}/group`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ group_tag: newTag }),
-            });
-            await loadSymbols();
-        } catch (e) {
-            toast('Group update failed: ' + e.message, 'error');
-            input.replaceWith(badgeEl);
-        }
-    };
-
-    input.addEventListener('blur',   commit);
-    input.addEventListener('keydown', e => {
-        if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
-        if (e.key === 'Escape') { input.replaceWith(badgeEl); }
     });
 }
 
@@ -323,7 +445,7 @@ async function addSymbol() {
         await loadSymbols();
         selectSymbol(symbol);
     } catch (e) {
-        toast('Error: ' + e.message, 'error');
+        toastFromError(e, 'Add symbol');
     } finally {
         input.disabled = false;
     }
@@ -339,7 +461,7 @@ async function removeSymbol(symbol) {
         }
         await loadSymbols();
     } catch (e) {
-        toast('Error: ' + e.message, 'error');
+        toastFromError(e, 'Remove symbol');
     }
 }
 
@@ -355,7 +477,7 @@ async function fetchSymbolData(symbol, silent = false) {
         return true;
     } catch (e) {
         console.error(`[App] Fetch failed for ${symbol}:`, e);
-        if (!silent) toast(`${symbol} fetch failed: ` + e.message, 'error');
+        if (!silent) toastFromError(e, symbol);
         return false;
     }
 }
@@ -491,7 +613,7 @@ async function refreshAll() {
         await loadSymbols();
         if (state.activeSymbol) await loadChartData(state.activeSymbol);
     } catch (e) {
-        toast('Refresh failed: ' + e.message, 'error');
+        toastFromError(e, 'Refresh');
     } finally {
         btn.disabled = false;
         btn.innerHTML = '⟳ Refresh All';
@@ -501,21 +623,13 @@ async function refreshAll() {
 // ── Symbol selection & chart loading ─────────────────────────
 async function selectSymbol(symbol) {
     state.activeSymbol = symbol;
-    persistUiState();
+    persistence.save({ activeSymbol: symbol });
     renderSymbolList();
-    if (state.activeTab === 'charts') {
-        await loadChartData(symbol);
-    } else if (state.activeTab === 'stats') {
-        await loadStatsData(symbol);
-    } else if (state.activeTab === 'knn') {
-        await loadKNN(symbol);
-    } else if (state.activeTab === 'backtest') {
-        // Backtest is triggered manually via the Run button; just update header
-        updateSymbolHeader(symbol, null);
-    } else if (state.activeTab === 'trend') {
-        await loadAdaptiveTrendData(symbol);
-    }
-    // Scanner tab doesn't depend on the selected symbol
+    // Update header immediately with symbol name
+    const headerEl = document.getElementById('sym-title');
+    if (headerEl) headerEl.textContent = _displaySymbol(symbol);
+    if (typeof _extrasOnSymbolLoad === 'function') _extrasOnSymbolLoad(symbol);
+    await TAB_DEFS[state.activeTab]?.onSymbol?.(symbol);
 }
 
 async function loadStatsData(symbol) {
@@ -529,8 +643,8 @@ async function loadStatsData(symbol) {
             apiFetch(`${API}/ohlcv/${symbol}?freq=daily&limit=2`),
             apiFetch(`${API}/stats/${symbol}`),
         ]).catch(async e => {
-            // If it's a 404/No data, try fetching
-            if (e.message.includes('404') || e.message.includes('No data')) {
+            // If it's a NO_DATA error, try auto-fetching
+            if (e.code === 'NO_DATA' || e.status === 404) {
                 toast(`No data for ${symbol}. Downloading…`, 'info');
                 const ok = await fetchSymbolData(symbol);
                 if (!ok) throw e;
@@ -545,12 +659,12 @@ async function loadStatsData(symbol) {
 
         state.statsData = stats;
         renderStats(stats);
-        
+
         const last = ohlcv[ohlcv.length - 1];
         const prev = ohlcv[ohlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
-        toast('Stats load failed: ' + e.message, 'error');
+        toastFromError(e, 'Stats');
         // Clear old stats if error
         document.getElementById('stat-vol').textContent = '--';
         document.getElementById('stat-sharpe').textContent = '--';
@@ -578,16 +692,19 @@ async function loadChartData(symbol) {
             apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
         ]).catch(async e => {
             // No data yet — auto-fetch then retry
-            toast(`No data for ${symbol}. Downloading…`, 'info');
-            const ok = await fetchSymbolData(symbol);
-            if (!ok) throw e;
-            await loadSymbols();
-            return Promise.all([
-                apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
-                apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`),
-                apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`),
-                apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
-            ]);
+            if (e.code === 'NO_DATA' || e.status === 404) {
+                toast(`No data for ${symbol}. Downloading…`, 'info');
+                const ok = await fetchSymbolData(symbol);
+                if (!ok) throw e;
+                await loadSymbols();
+                return Promise.all([
+                    apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
+                    apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`),
+                    apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`),
+                    apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
+                ]);
+            }
+            throw e;
         });
 
         initCharts();
@@ -600,9 +717,9 @@ async function loadChartData(symbol) {
 
         const last = dailyOhlcv[dailyOhlcv.length - 1];
         const prev = dailyOhlcv[dailyOhlcv.length - 2];
-        updateSymbolHeader(symbol, last, prev);
+        updateSymbolHeader(symbol, last, prev, dailyOhlcv);
     } catch (e) {
-        toast('Chart load failed: ' + e.message, 'error');
+        toastFromError(e, 'Chart');
         showEmptyState();
     } finally {
         state.loading = false;
@@ -619,273 +736,239 @@ async function loadAdaptiveTrendData(symbol) {
     if (loadingEl) loadingEl.style.display = 'flex';
     updateSymbolHeader(symbol, null);
 
-    const freq   = trendState.freq;
-    const method = trendState.method;
+    const method  = trendState.method;
+    const isBoth  = trendState.freq === 'both';
+    const freqD   = 'daily';
+    const freqW   = 'weekly';
+    const freq    = isBoth ? freqD : trendState.freq;
 
-    const cfg    = typeof trendConfig !== 'undefined' ? trendConfig : {};
-    const cfgStr = Object.entries(cfg).map(([k,v]) => `${k}=${v}`).join('&');
-    const trendUrl = `${API}/adaptive-trend/${symbol}?freq=${freq}&method=${method}&${cfgStr}`;
+    // Build trend URL — append custom params if set
+    const _trendUrl = (f) => {
+        let url = `${API}/adaptive-trend/${symbol}?freq=${f}&method=${method}`;
+        if (trendState.params) {
+            url += '&' + Object.entries(trendState.params)
+                .map(([k, v]) => `${k}=${v}`).join('&');
+        }
+        return url;
+    };
 
     try {
-        let [ohlcv, trendData] = await Promise.all([
-            apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
-            apiFetch(trendUrl),
-        ]).catch(async e => {
-            if (e.message.includes('404') || e.message.includes('No data')) {
+        // In "Both" mode fetch daily + weekly concurrently.
+        // limit=1500 matches the adaptive-trend computation window — with the
+        // default 500 the older trend markers fall outside the candle range
+        // and lightweight-charts piles them up on the leftmost bar.
+        const fetches = isBoth
+            ? [
+                apiFetch(`${API}/ohlcv/${symbol}?freq=${freqD}&limit=1500`),
+                apiFetch(_trendUrl(freqD)),
+                apiFetch(`${API}/ohlcv/${symbol}?freq=${freqW}&limit=1500`),
+                apiFetch(_trendUrl(freqW)),
+              ]
+            : [
+                apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}&limit=1500`),
+                apiFetch(_trendUrl(freq)),
+              ];
+
+        let results = await Promise.all(fetches).catch(async e => {
+            if (e.code === 'NO_DATA' || e.status === 404) {
                 toast(`No data for ${symbol}. Downloading…`, 'info');
                 const ok = await fetchSymbolData(symbol);
                 if (!ok) throw e;
                 await loadSymbols();
-                return Promise.all([
-                    apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
-                    apiFetch(trendUrl),
-                ]);
+                return Promise.all(fetches);
             }
             throw e;
         });
 
-        window._trendLastOhlcv = ohlcv;   // cache for sub-tab back-navigation
-        buildTrendCharts();
-        loadTrendData(trendData, ohlcv);
+        if (isBoth) {
+            const [ohlcv, trendData, ohlcvW, trendDataW] = results;
+            buildTrendCharts();
+            buildWeeklyTrendCharts();
+            loadTrendData(trendData, ohlcv);
+            loadWeeklyTrendData(trendDataW, ohlcvW);
 
-        const last = ohlcv[ohlcv.length - 1];
-        const prev = ohlcv[ohlcv.length - 2];
-        updateSymbolHeader(symbol, last, prev);
+            const last = ohlcv[ohlcv.length - 1];
+            const prev = ohlcv[ohlcv.length - 2];
+            updateSymbolHeader(symbol, last, prev, ohlcv);
+        } else {
+            const [ohlcv, trendData] = results;
+            buildTrendCharts();
+            loadTrendData(trendData, ohlcv);
+
+            const last = ohlcv[ohlcv.length - 1];
+            const prev = ohlcv[ohlcv.length - 2];
+            updateSymbolHeader(symbol, last, prev, freq === 'daily' ? ohlcv : null);
+        }
     } catch (e) {
-        toast('Adaptive Trend load failed: ' + e.message, 'error');
+        toastFromError(e, 'Trend');
     } finally {
         if (loadingEl) loadingEl.style.display = 'none';
     }
 }
 
 // ── UI helpers ───────────────────────────────────────────────
-function showEmptyState() {
-    document.getElementById('empty-state').style.display       = 'flex';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('knn-area').style.display          = 'none';
-    document.getElementById('backtest-area').style.display     = 'none';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'none';
-    document.getElementById('social-area').style.display       = 'none';
+
+// Single source of truth for every tab: its content area, the display
+// mode that area needs, what to run when the tab is shown, and (for
+// symbol-driven tabs) what to run when the active symbol changes.
+const TAB_DEFS = {
+    'charts': {
+        area: 'chart-area', display: 'flex',
+        onShow:   () => state.activeSymbol ? loadChartData(state.activeSymbol) : showEmptyState(),
+        onSymbol: sym => loadChartData(sym),
+    },
+    'stats': {
+        area: 'stats-area', display: 'block',
+        onShow:   () => state.activeSymbol ? loadStatsData(state.activeSymbol) : showEmptyState(),
+        onSymbol: sym => loadStatsData(sym),
+    },
+    'trend': {
+        area: 'trend-area', display: 'flex',
+        onShow: () => {
+            if (!state.activeSymbol) { showEmptyState(); return; }
+            loadAdaptiveTrendData(state.activeSymbol);
+            if (typeof initSwingWidget === 'function') initSwingWidget();
+        },
+        onSymbol: sym => loadAdaptiveTrendData(sym),
+    },
+    'scanner': {
+        area: 'scanner-area', display: 'flex',
+        onShow: () => (typeof initScanner === 'function') ? initScanner() : loadScannerData(),
+    },
+    'data-manager': { area: 'data-manager-area', display: 'flex', onShow: () => initDataManager() },
+    'swirl': {
+        area: 'swirl-area', display: 'flex',
+        onShow:   () => { if (typeof initSwirligram === 'function') initSwirligram(); },
+        onSymbol: () => { if (typeof swLoad === 'function') swLoad(); },
+    },
+    'portfolio':   { area: 'portfolio-area',   display: 'flex', onShow: () => { if (typeof initPortfolioTester === 'function') initPortfolioTester(); } },
+    'regime':      { area: 'regime-area',      display: 'flex', onShow: () => { if (typeof initRegime === 'function') initRegime(); } },
+    'momentum':    { area: 'momentum-area',    display: 'flex', onShow: () => { if (typeof initMomentumRanker === 'function') initMomentumRanker(); } },
+    'seasonality': { area: 'seasonality-area', display: 'flex', onShow: () => { if (typeof initSeasonality === 'function') initSeasonality(); } },
+    'newsletter':  { area: 'newsletter-area',  display: 'flex', onShow: () => { if (typeof initNewsletter === 'function') initNewsletter(); } },
+    'news':        { area: 'news-area',        display: 'flex', onShow: () => { if (typeof initNews === 'function') initNews(); } },
+    'sector':      { area: 'dashboard-area',    display: 'flex', onShow: () => { if (typeof initMarketDashboard === 'function') initMarketDashboard(); } },
+    'calendar':    { area: 'calendar-area',    display: 'flex', onShow: () => { if (typeof initCalendar === 'function') initCalendar(); } },
+    'journal':     { area: 'journal-area',     display: 'flex', onShow: () => { _switchJournalTab('log'); if (typeof initJournal === 'function') initJournal(); } },
+    'analytics':   { area: 'journal-area',     display: 'flex', onShow: () => { _switchJournalTab('analytics'); if (typeof initAnalytics === 'function') initAnalytics(); } },
+    'compare': {
+        area: 'compare-area', display: 'flex',
+        onShow:   () => { if (typeof initCompare === 'function') initCompare(); },
+        onSymbol: () => { if (typeof runCompare === 'function') runCompare(); },
+    },
+    'mtf': {
+        area: 'mtf-area', display: 'flex',
+        onShow:   () => { if (typeof initMtf === 'function') initMtf(); },
+        onSymbol: sym => { if (typeof loadMultiTF === 'function') loadMultiTF(sym); },
+    },
+    'process':   { area: 'dashboard-area', display: 'flex', onShow: () => { if (typeof initMarketDashboard === 'function') initMarketDashboard(); } },
+    'risk-calc': { area: 'risk-calc-area', display: 'flex', onShow: () => { if (typeof initRiskCalc === 'function') initRiskCalc(); } },
+    'dashboard': { area: 'dashboard-area', display: 'flex', onShow: () => { if (typeof initMarketDashboard === 'function') initMarketDashboard(); } },
+    'routine':   { area: 'routine-area',   display: 'flex', onShow: () => { if (typeof initRoutine  === 'function') initRoutine();  } },
+    'settings':  { area: 'settings-area',  display: 'flex', onShow: () => { if (typeof initSettings === 'function') initSettings(); } },
+    'knn': {
+        area: 'knn-area', display: 'block',
+        onShow:   () => { if (state.activeSymbol) loadKNN(state.activeSymbol); },
+        onSymbol: sym => loadKNN(sym),
+    },
+    'backtest': {
+        area: 'backtest-area', display: 'block',
+        onShow:   () => { if (state.activeSymbol) loadBacktest(state.activeSymbol); },
+        onSymbol: sym => loadBacktest(sym),
+    },
+    'phase-plane': { area: 'phase-plane-area', display: 'flex', onShow: () => loadPhasePlane(false) },
+    'social':      { area: 'social-area',      display: 'flex', onShow: () => { if (typeof loadSocialTrends === 'function') loadSocialTrends(); } },
+};
+
+function _showOnly(activeId) {
+    const empty = document.getElementById('empty-state');
+    if (empty) empty.style.display = (activeId === 'empty-state') ? 'flex' : 'none';
+    for (const def of Object.values(TAB_DEFS)) {
+        const el = document.getElementById(def.area);
+        if (el) el.style.display = (def.area === activeId) ? def.display : 'none';
+    }
+    const tabBar = document.querySelector('.tab-bar');
+    if (tabBar) tabBar.style.display = (activeId === 'chart-area') ? '' : 'none';
+}
+
+function showEmptyState()      { _showOnly('empty-state'); }
+function showChartArea()       { _showOnly('chart-area'); }
+function showStatsArea()       { _showOnly('stats-area'); }
+function showTrendArea()       { _showOnly('trend-area'); }
+function showScannerArea()     { _showOnly('scanner-area'); }
+function showDataManagerArea() { _showOnly('data-manager-area'); }
+
+// ── Sidebar collapse ──────────────────────────────────────────
+function toggleSidebar() {
+    const appEl = document.querySelector('.app');
+    const btn   = document.getElementById('sidebar-collapse-btn');
+    const hidden = appEl.classList.toggle('sidebar-hidden');
+    if (btn) btn.textContent = hidden ? '›' : '‹';
+    try { localStorage.setItem('sidebar_hidden', hidden ? '1' : '0'); } catch (_) {}
+    // Fire a resize event after the CSS transition completes so ResizeObservers
+    // on chart containers pick up the new width.
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 280);
 }
 
 function showLoadingOverlay(show) {
     document.getElementById('chart-loading').style.display = show ? 'flex' : 'none';
 }
 
-// ── Phase Plane ───────────────────────────────────────────────
-let _ppLoaded = false;
-
-async function loadPhasePlane(forceRefresh = false) {
-    if (_ppLoaded && !forceRefresh) return;
-
-    const status  = document.getElementById('phase-plane-status');
-    const loading = document.getElementById('phase-plane-loading');
-    const imgWrap = document.getElementById('phase-plane-img-wrap');
-    const img     = document.getElementById('phase-plane-img');
-
-    status.textContent  = 'Loading…';
-    loading.style.display  = 'flex';
-    imgWrap.style.display  = 'none';
-
-    // Fetch meta (KPI cards)
-    try {
-        const qs   = forceRefresh ? '?refresh=1' : '';
-        const meta = await fetch(`/api/phase-plane/meta${qs}`).then(r => r.json());
-        if (!meta.error) {
-            document.getElementById('pp-vix').textContent  = meta.vix  ?? '--';
-            document.getElementById('pp-nu').textContent   = meta.nu   ?? '--';
-            document.getElementById('pp-rho').textContent  = meta.rho  ?? '--';
-            document.getElementById('pp-nobs').textContent = meta.n_obs ?? '--';
-            document.getElementById('pp-date').textContent = meta.date  ?? '--';
-        }
-    } catch (_) {}
-
-    // Fetch image (slow — matplotlib render)
-    try {
-        const qs  = forceRefresh ? '?refresh=1' : '';
-        const url = `/api/phase-plane/image${qs}&_=${Date.now()}`;
-        img.onload = () => {
-            loading.style.display = 'none';
-            imgWrap.style.display = 'block';
-            status.textContent    = `Last generated: ${new Date().toLocaleTimeString()}`;
-            _ppLoaded = true;
-        };
-        img.onerror = () => {
-            loading.style.display = 'none';
-            status.textContent    = 'Error generating diagram.';
-        };
-        img.src = url;
-    } catch (e) {
-        loading.style.display = 'none';
-        status.textContent    = `Error: ${e.message}`;
-    }
-}
-
-// ── Reverse view: themes this symbol shows up in ─────────────
-async function loadSymbolThemes(symbol) {
-    const slot = document.getElementById('sym-themes');
-    if (!slot) return;
-    if (!symbol) { slot.textContent = ''; return; }
-    try {
-        const d = await apiFetch(`${API}/social-trends/for-ticker/${encodeURIComponent(symbol)}`);
-        const themes = d.themes || [];
-        if (!themes.length) { slot.textContent = ''; return; }
-        slot.innerHTML = themes.slice(0, 4).map(t =>
-            `<span class="sym-theme-chip" onclick="switchTab('social')" title="${t.purity_label} · ${t.note}">${t.theme}</span>`
-        ).join('');
-    } catch (e) { slot.textContent = ''; }
-}
-
 // ── Tab Switching ─────────────────────────────────────────────
 async function switchTab(tabId) {
+    const def = TAB_DEFS[tabId];
+    if (!def) return;
+
     state.activeTab = tabId;
+    persistence.save({ activeTab: tabId });
 
-    // Persist for next visit + reflect in the URL so tabs are bookmarkable.
-    try {
-        localStorage.setItem('findash.activeTab', tabId);
-        if (`#${tabId}` !== location.hash) history.replaceState(null, '', `#${tabId}`);
-    } catch (e) { /* storage/history unavailable — non-fatal */ }
-
-    // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.id === `tab-${tabId}`);
+        const active = btn.id === `tab-${tabId}`;
+        btn.classList.toggle('active', active);
+        // The nav scrolls horizontally — keep the active tab visible
+        if (active) btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
 
-    // Hide all content areas first
-    document.getElementById('empty-state').style.display        = 'none';
-    document.getElementById('chart-area').style.display         = 'none';
-    document.getElementById('stats-area').style.display         = 'none';
-    document.getElementById('knn-area').style.display           = 'none';
-    document.getElementById('backtest-area').style.display      = 'none';
-    document.getElementById('trend-area').style.display         = 'none';
-    document.getElementById('scanner-area').style.display       = 'none';
-    document.getElementById('social-area').style.display        = 'none';
-    document.getElementById('data-manager-area').style.display  = 'none';
-    document.getElementById('phase-plane-area').style.display   = 'none';
-    document.querySelector('.tab-bar').style.display            = 'none';
+    _showOnly(def.area);
+    await def.onShow?.();
+}
 
-    persistUiState();
+// ── Ratio Symbol UI ───────────────────────────────────────────
+function toggleRatioForm() {
+    const form = document.getElementById('ratio-form');
+    if (!form) return;
+    const visible = form.style.display !== 'none';
+    form.style.display = visible ? 'none' : 'flex';
+    if (!visible) document.getElementById('ratio-sym-a')?.focus();
+}
 
-    // Symbol-dependent tabs: show the guidance empty-state instead of a blank
-    // panel when nothing is selected yet.
-    const NEEDS_SYMBOL = ['charts', 'stats', 'knn', 'backtest', 'trend'];
-    if (NEEDS_SYMBOL.includes(tabId) && !state.activeSymbol) {
-        showEmptyState();
-        return;
+async function addRatioSymbol() {
+    const symA = document.getElementById('ratio-sym-a')?.value.trim().toUpperCase();
+    const symB = document.getElementById('ratio-sym-b')?.value.trim().toUpperCase();
+    if (!symA || !symB) { toast('Enter both symbols for the ratio', 'warning'); return; }
+    if (symA === symB)  { toast('Symbols must be different', 'warning'); return; }
+
+    const btn = document.getElementById('btn-ratio-add');
+    if (btn) btn.disabled = true;
+    toast(`Computing ${symA}/${symB} ratio…`, 'info', 5000);
+
+    try {
+        const result = await apiFetch(`${API}/fetch-ratio`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ sym_a: symA, sym_b: symB }),
+        });
+        toast(`${symA}/${symB}: ${result.daily_rows} daily bars stored`, 'success');
+        document.getElementById('ratio-sym-a').value = '';
+        document.getElementById('ratio-sym-b').value = '';
+        toggleRatioForm();
+        await loadSymbols();
+        selectSymbol(result.symbol);
+    } catch (e) {
+        toastFromError(e, 'Ratio');
+    } finally {
+        if (btn) btn.disabled = false;
     }
-
-    if (tabId === 'charts') {
-        showChartArea();
-        if (state.activeSymbol) loadChartData(state.activeSymbol);
-    } else if (tabId === 'stats') {
-        showStatsArea();
-        if (state.activeSymbol) loadStatsData(state.activeSymbol);
-    } else if (tabId === 'knn') {
-        document.getElementById('knn-area').style.display = 'block';
-        if (state.activeSymbol) loadKNN(state.activeSymbol);
-    } else if (tabId === 'backtest') {
-        document.getElementById('backtest-area').style.display = 'block';
-        if (state.activeSymbol) {
-            updateSymbolHeader(state.activeSymbol, null);
-        }
-    } else if (tabId === 'trend') {
-        showTrendArea();
-        if (typeof renderTrendConfig === 'function') renderTrendConfig();
-        if (state.activeSymbol) loadAdaptiveTrendData(state.activeSymbol);
-    } else if (tabId === 'scanner') {
-        showScannerArea();
-        loadScannerData();
-    } else if (tabId === 'social') {
-        showSocialArea();
-        if (typeof loadSocialTrends === 'function' && !socialState.data) loadSocialTrends();
-    } else if (tabId === 'data-manager') {
-        showDataManagerArea();
-        initDataManager();
-    } else if (tabId === 'phase-plane') {
-        document.getElementById('phase-plane-area').style.display = 'flex';
-        document.getElementById('phase-plane-area').style.flexDirection = 'column';
-        loadPhasePlane(false);
-    }
-}
-
-function showStatsArea() {
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'block';
-    document.getElementById('knn-area').style.display          = 'none';
-    document.getElementById('backtest-area').style.display     = 'none';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'none';
-    document.getElementById('social-area').style.display       = 'none';
-    document.querySelector('.tab-bar').style.display           = 'none';
-}
-
-function showChartArea() {
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('knn-area').style.display          = 'none';
-    document.getElementById('backtest-area').style.display     = 'none';
-    document.getElementById('chart-area').style.display        = 'flex';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'none';
-    document.getElementById('social-area').style.display       = 'none';
-    document.querySelector('.tab-bar').style.display           = 'flex';
-}
-
-function showTrendArea() {
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('knn-area').style.display          = 'none';
-    document.getElementById('backtest-area').style.display     = 'none';
-    document.getElementById('trend-area').style.display        = 'flex';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'none';
-    document.getElementById('social-area').style.display       = 'none';
-    document.querySelector('.tab-bar').style.display           = 'none';
-}
-
-function showScannerArea() {
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('knn-area').style.display          = 'none';
-    document.getElementById('backtest-area').style.display     = 'none';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'flex';
-    document.getElementById('data-manager-area').style.display = 'none';
-    document.getElementById('social-area').style.display       = 'none';
-    document.querySelector('.tab-bar').style.display           = 'none';
-}
-
-function showSocialArea() {
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('knn-area').style.display          = 'none';
-    document.getElementById('backtest-area').style.display     = 'none';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'none';
-    document.getElementById('social-area').style.display       = 'flex';
-    document.querySelector('.tab-bar').style.display           = 'none';
-}
-
-function showDataManagerArea() {
-    document.getElementById('empty-state').style.display       = 'none';
-    document.getElementById('chart-area').style.display        = 'none';
-    document.getElementById('stats-area').style.display        = 'none';
-    document.getElementById('knn-area').style.display          = 'none';
-    document.getElementById('backtest-area').style.display     = 'none';
-    document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
-    document.getElementById('data-manager-area').style.display = 'flex';
-    document.querySelector('.tab-bar').style.display           = 'none';
 }
 
 // ── Stats Rendering ───────────────────────────────────────────
@@ -898,12 +981,12 @@ function renderStats(data) {
         return pct ? (v * 100).toFixed(2) + '%' : v.toFixed(2);
     };
     const pctValue = v => (v !== null && Number.isFinite(v)) ? v * 100 : null;
-    const pctColor = v => (v !== null && Number.isFinite(v) && v >= 0) ? '#22c55e' : '#ef4444';
+    const pctColor = v => (v !== null && Number.isFinite(v) && v >= 0) ? '#4DAF88' : '#E05252';
 
     const kamaColors = {
-        '10': '#3b82f6',
-        '20': '#f97316',
-        '50': '#a855f7',
+        '10': '#029FD5',
+        '20': '#F68B42',
+        '50': '#9B89C4',
     };
     const alignedDeciles = series => {
         const values = Array(10).fill(null);
@@ -920,14 +1003,14 @@ function renderStats(data) {
     document.getElementById('stat-drawdown').textContent = fmt(m.max_drawdown, true);
     document.getElementById('stat-winrate').textContent  = fmt(m.win_rate, true);
 
-    // Common Chart.js options
+    // Common Chart.js options — 538 style (font defaults set globally in chart_helpers.js)
     const baseChartOpts = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 10 } } },
-            x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } }
+            y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#9aafc4' } },
+            x: { grid: { display: false }, ticks: { color: '#9aafc4' } }
         }
     };
     const distanceChartOptions = {
@@ -935,7 +1018,7 @@ function renderStats(data) {
         plugins: {
             legend: {
                 display: true,
-                labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
+                labels: { usePointStyle: true, boxWidth: 10 }
             }
         }
     };
@@ -944,16 +1027,13 @@ function renderStats(data) {
         plugins: {
             legend: {
                 display: true,
-                labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
+                labels: { usePointStyle: true, boxWidth: 10 }
             }
         }
     };
 
-    const destroy = (id) => { if (statsCharts[id]) statsCharts[id].destroy(); };
-
     // 1. RSI Deciles 1D
-    destroy('rsi1d');
-    statsCharts['rsi1d'] = new Chart(document.getElementById('chart-rsi-1d'), {
+    statsCharts['rsi1d'] = updateOrCreate('stats.rsi1d', document.getElementById('chart-rsi-1d'), {
         type: 'bar',
         data: {
             labels: data.rsi_analysis.fwd_1d.map(d => `D${d.bin+1}`),
@@ -967,16 +1047,15 @@ function renderStats(data) {
     });
 
     // 2b. Price vs KAMA distance deciles (1D)
-    destroy('kamaDist1d');
-    statsCharts['kamaDist1d'] = new Chart(document.getElementById('chart-kama-dist-1d'), {
+    statsCharts['kamaDist1d'] = updateOrCreate('stats.kamaDist1d', document.getElementById('chart-kama-dist-1d'), {
         type: 'line',
         data: {
             labels: Array.from({ length: 10 }, (_, i) => `D${i + 1}`),
             datasets: Object.entries(data.kama_distance_analysis?.fwd_1d || {}).map(([period, points]) => ({
                 label: `KAMA ${period}`,
                 data: alignedDeciles(points),
-                borderColor: kamaColors[period] || '#4facfe',
-                backgroundColor: kamaColors[period] || '#4facfe',
+                borderColor: kamaColors[period] || '#029FD5',
+                backgroundColor: kamaColors[period] || '#029FD5',
                 spanGaps: true,
                 pointRadius: 3,
                 pointHoverRadius: 5,
@@ -988,8 +1067,7 @@ function renderStats(data) {
     });
 
     // 2. RSI Deciles 5D
-    destroy('rsi5d');
-    statsCharts['rsi5d'] = new Chart(document.getElementById('chart-rsi-5d'), {
+    statsCharts['rsi5d'] = updateOrCreate('stats.rsi5d', document.getElementById('chart-rsi-5d'), {
         type: 'bar',
         data: {
             labels: data.rsi_analysis.fwd_5d.map(d => `D${d.bin+1}`),
@@ -1003,16 +1081,15 @@ function renderStats(data) {
     });
 
     // 2c. Price vs KAMA distance deciles (5D)
-    destroy('kamaDist5d');
-    statsCharts['kamaDist5d'] = new Chart(document.getElementById('chart-kama-dist-5d'), {
+    statsCharts['kamaDist5d'] = updateOrCreate('stats.kamaDist5d', document.getElementById('chart-kama-dist-5d'), {
         type: 'line',
         data: {
             labels: Array.from({ length: 10 }, (_, i) => `D${i + 1}`),
             datasets: Object.entries(data.kama_distance_analysis?.fwd_5d || {}).map(([period, points]) => ({
                 label: `KAMA ${period}`,
                 data: alignedDeciles(points),
-                borderColor: kamaColors[period] || '#4facfe',
-                backgroundColor: kamaColors[period] || '#4facfe',
+                borderColor: kamaColors[period] || '#029FD5',
+                backgroundColor: kamaColors[period] || '#029FD5',
                 spanGaps: true,
                 pointRadius: 3,
                 pointHoverRadius: 5,
@@ -1024,15 +1101,14 @@ function renderStats(data) {
     });
 
     // 3. Returns Distribution
-    destroy('dist');
-    statsCharts['dist'] = new Chart(document.getElementById('chart-dist'), {
+    statsCharts['dist'] = updateOrCreate('stats.dist', document.getElementById('chart-dist'), {
         type: 'bar',
         data: {
             labels: data.distribution.map(d => (d.bin * 100).toFixed(1) + '%'),
             datasets: [{
                 data: data.distribution.map(d => d.count),
-                backgroundColor: 'rgba(79, 172, 254, 0.6)',
-                borderColor: '#4facfe',
+                backgroundColor: 'rgba(2,159,213,0.55)',
+                borderColor: '#029FD5',
                 borderWidth: 1,
                 categoryPercentage: 1.0,
                 barPercentage: 1.0
@@ -1049,22 +1125,20 @@ function renderStats(data) {
 
     // 4. Seasonality
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    destroy('season');
-    statsCharts['season'] = new Chart(document.getElementById('chart-seasonality'), {
+    statsCharts['season'] = updateOrCreate('stats.season', document.getElementById('chart-seasonality'), {
         type: 'bar',
         data: {
             labels: data.seasonality.map(d => monthNames[d.month-1]),
             datasets: [{
                 data: data.seasonality.map(d => pctValue(d.value)),
-                backgroundColor: data.seasonality.map(d => Number.isFinite(d.value) && d.value >= 0 ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'),
+                backgroundColor: data.seasonality.map(d => Number.isFinite(d.value) && d.value >= 0 ? 'rgba(77,175,136,0.65)' : 'rgba(224,82,82,0.65)'),
             }]
         },
         options: baseChartOpts
     });
 
     // 4b. KAMA cross forward returns
-    destroy('kamaCross');
-    statsCharts['kamaCross'] = new Chart(document.getElementById('chart-kama-cross'), {
+    statsCharts['kamaCross'] = updateOrCreate('stats.kamaCross', document.getElementById('chart-kama-cross'), {
         type: 'bar',
         data: {
             labels: (data.kama_cross_analysis || []).map(d => d.label),
@@ -1072,15 +1146,15 @@ function renderStats(data) {
                 {
                     label: '1D Fwd Return',
                     data: (data.kama_cross_analysis || []).map(d => pctValue(d.fwd_1d)),
-                    backgroundColor: 'rgba(79, 172, 254, 0.65)',
-                    borderColor: '#4facfe',
+                    backgroundColor: 'rgba(2,159,213,0.60)',
+                    borderColor: '#029FD5',
                     borderWidth: 1,
                 },
                 {
                     label: '5D Fwd Return',
                     data: (data.kama_cross_analysis || []).map(d => pctValue(d.fwd_5d)),
-                    backgroundColor: 'rgba(249, 115, 22, 0.65)',
-                    borderColor: '#f97316',
+                    backgroundColor: 'rgba(246,139,66,0.60)',
+                    borderColor: '#F68B42',
                     borderWidth: 1,
                 }
             ]
@@ -1089,16 +1163,15 @@ function renderStats(data) {
     });
 
     // 4c. KAMA cross event counts
-    destroy('kamaCrossCounts');
-    statsCharts['kamaCrossCounts'] = new Chart(document.getElementById('chart-kama-cross-counts'), {
+    statsCharts['kamaCrossCounts'] = updateOrCreate('stats.kamaCrossCounts', document.getElementById('chart-kama-cross-counts'), {
         type: 'bar',
         data: {
             labels: (data.kama_cross_analysis || []).map(d => d.label),
             datasets: [{
                 label: '1D Event Count',
                 data: (data.kama_cross_analysis || []).map(d => d.count_1d),
-                backgroundColor: (data.kama_cross_analysis || []).map(d => d.direction === 'bull' ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'),
-                borderColor: (data.kama_cross_analysis || []).map(d => d.direction === 'bull' ? '#22c55e' : '#ef4444'),
+                backgroundColor: (data.kama_cross_analysis || []).map(d => d.direction === 'bull' ? 'rgba(77,175,136,0.65)' : 'rgba(224,82,82,0.65)'),
+                borderColor: (data.kama_cross_analysis || []).map(d => d.direction === 'bull' ? '#4DAF88' : '#E05252'),
                 borderWidth: 1,
             }]
         },
@@ -1106,14 +1179,16 @@ function renderStats(data) {
     });
 }
 
-function updateSymbolHeader(symbol, last, prev) {
-    document.getElementById('sym-title').textContent = symbol;
+function updateSymbolHeader(symbol, last, prev, series) {
+    document.getElementById('sym-title').textContent = _displaySymbol(symbol);
     const symInfo = state.symbols.find(s => s.symbol === symbol);
     document.getElementById('sym-subtitle').textContent = symInfo?.name || '';
 
-    // Reverse view: surface any Social Trends themes this ticker shows up in,
-    // so the user sees "this stock is a play on X" right in the chart header.
-    loadSymbolThemes(symbol);
+    if (typeof renderRange52 === 'function') renderRange52(series);
+
+    document.title = last
+        ? `${_displaySymbol(symbol)} $${last.close.toFixed(2)} — FinDash`
+        : `${_displaySymbol(symbol)} — FinDash`;
 
     if (!last) {
         document.getElementById('sym-price').textContent   = '--';
@@ -1145,6 +1220,7 @@ function updateSymbolHeader(symbol, last, prev) {
     set('ohlcv-close',  `$${fmt(last.close)}`);
     set('ohlcv-volume', fmtVol(last.volume));
 }
+
 
 // ── KNN Functions ────────────────────────────────────────────
 async function loadKNN(symbol) {
@@ -1320,10 +1396,53 @@ function renderBacktest(data) {
     }
 }
 
-// renderScannerTable is defined in scanner.js (multi-timeframe version).
-// The legacy signal-based scanner UI (S&P 500 bulk fetch + Run Scanner) was
-// removed; its driver functions lived here and referenced DOM that no longer
-// exists, so they have been deleted along with their boot wiring.
+// ── Phase Plane ───────────────────────────────────────────────
+async function loadPhasePlane(forceRefresh = false) {
+    if (_ppLoaded && !forceRefresh) return;
+
+    const status  = document.getElementById('phase-plane-status');
+    const loading = document.getElementById('phase-plane-loading');
+    const imgWrap = document.getElementById('phase-plane-img-wrap');
+    const img     = document.getElementById('phase-plane-img');
+
+    status.textContent  = 'Loading…';
+    loading.style.display  = 'flex';
+    imgWrap.style.display  = 'none';
+
+    // Fetch meta (KPI cards)
+    try {
+        const qs   = forceRefresh ? '?refresh=1' : '';
+        const meta = await fetch(`/api/phase-plane/meta${qs}`).then(r => r.json());
+        if (!meta.error) {
+            document.getElementById('pp-vix').textContent  = meta.vix  ?? '--';
+            document.getElementById('pp-nu').textContent   = meta.nu   ?? '--';
+            document.getElementById('pp-rho').textContent  = meta.rho  ?? '--';
+            document.getElementById('pp-nobs').textContent = meta.n_obs ?? '--';
+            document.getElementById('pp-date').textContent = meta.date  ?? '--';
+        }
+    } catch (_) {}
+
+    // Fetch image (slow — matplotlib render)
+    try {
+        const qs  = forceRefresh ? '?refresh=1' : '';
+        const url = `/api/phase-plane/image${qs}&_=${Date.now()}`;
+        img.onload = () => {
+            loading.style.display = 'none';
+            imgWrap.style.display = 'block';
+            status.textContent    = `Last generated: ${new Date().toLocaleTimeString()}`;
+            _ppLoaded = true;
+        };
+        img.onerror = () => {
+            loading.style.display = 'none';
+            status.textContent    = 'Error generating diagram.';
+        };
+        img.src = url;
+    } catch (e) {
+        loading.style.display = 'none';
+        status.textContent    = `Error: ${e.message}`;
+    }
+}
+
 
 // ── Boot ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -1349,40 +1468,104 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.key === 'Enter') addSymbol();
     });
 
-    // Backtest button
-    document.getElementById('btn-run-backtest').addEventListener('click', () => {
-        if (state.activeSymbol) loadBacktest(state.activeSymbol);
-        else toast('Select a symbol first', 'warning');
-    });
-
     // Close bulk modal on Escape
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') closeBulkModal();
     });
 
+    // Watchlist filter
+    const wlSearch = document.getElementById('watchlist-search');
+    if (wlSearch) {
+        let _filterTimer = null;
+        wlSearch.addEventListener('input', () => {
+            clearTimeout(_filterTimer);
+            _filterTimer = setTimeout(() => {
+                state.watchlistFilter = wlSearch.value.trim();
+                renderSymbolList();
+            }, 150);
+        });
+        wlSearch.addEventListener('keydown', e => {
+            if (e.key === 'Enter') {
+                const visible = state.symbols.filter(s => _matchesFilter(s, state.watchlistFilter));
+                if (visible.length) selectSymbol(visible[0].symbol);
+            } else if (e.key === 'Escape') {
+                wlSearch.value = '';
+                state.watchlistFilter = '';
+                renderSymbolList();
+                wlSearch.blur();
+            }
+        });
+    }
+
+    // Keyboard shortcuts — 1-9 then 0 for the ten most-used tabs
+    const TAB_ORDER = ['charts','stats','trend','scanner','dashboard',
+                       'journal','momentum','regime','portfolio','data-manager'];
+    TAB_ORDER.forEach((id, i) =>
+        registerShortcut({ key: String((i + 1) % 10), handler: () => switchTab(id), description: `Go to ${id}` })
+    );
+    registerShortcut({ key: 'j', handler: () => _moveWatchlist(+1), description: 'Next symbol' });
+    registerShortcut({ key: 'k', handler: () => _moveWatchlist(-1), description: 'Previous symbol' });
+    registerShortcut({ key: 'r', handler: () => { if (state.activeSymbol) switchTab(state.activeTab); }, description: 'Reload view' });
+    registerShortcut({ key: '/', handler: () => document.getElementById('watchlist-search')?.focus(), description: 'Focus watchlist search' });
+    registerShortcut({ key: '?', shift: true, handler: showShortcutsHelp, description: 'Show this help' });
+    registerShortcut({ key: 'b', ctrl: true, handler: toggleSidebar, description: 'Toggle sidebar' });
+
+    // Restore sidebar collapsed state
+    try {
+        if (localStorage.getItem('sidebar_hidden') === '1') {
+            document.querySelector('.app')?.classList.add('sidebar-hidden');
+            const btn = document.getElementById('sidebar-collapse-btn');
+            if (btn) btn.textContent = '›';
+        }
+    } catch (_) {}
+
     await loadSymbols();
+
+    // Start alert polling (60s interval, first check immediate)
+    if (typeof startAlertPolling  === 'function') startAlertPolling(60000);
+    // Init hover chart preview
+    if (typeof initHoverPreview   === 'function') initHoverPreview();
+
+    // Apply saved UI preferences (accent, density, scale, hidden tabs)
+    applyUiPrefs();
+
+    // Open-risk status bar widget (non-blocking)
+    _loadOpenRiskBadge();
+    setInterval(_loadOpenRiskBadge, 60_000);
+
+    // Macro event proximity chip (refresh every 6h)
+    _loadMacroChip();
+    setInterval(_loadMacroChip, 6 * 3600_000);
+
+    // Load regime badge async (non-blocking)
+    if (typeof loadRegimeBadge === 'function') loadRegimeBadge('SPY');
 
     // Always-visible social top-movers banner (fire-and-forget, warms cache),
     // then refresh every 5 min so the strip stays current.
     if (typeof loadTopMovers === 'function') loadTopMovers();
     if (typeof startBannerAutoRefresh === 'function') startBannerAutoRefresh();
 
-    // Restore the last-used tab + symbol when possible.
-    const saved     = loadUiState();
-    const savedSym  = saved.symbol && state.symbols.find(s => s.symbol === saved.symbol)
-                        ? saved.symbol : null;
+    const saved = persistence.load();
+    const savedSym = saved?.activeSymbol;
+    const savedTab = TAB_DEFS[saved?.activeTab] ? saved.activeTab : 'charts';
 
-    if (saved.tab && ['scanner', 'data-manager', 'phase-plane', 'newsletter', 'social'].includes(saved.tab)) {
-        switchTab(saved.tab);                       // symbol-independent tabs
-    } else if (savedSym) {
-        // Set the symbol first so switchTab reveals + loads the saved tab
-        // (some loaders only show their area when reached via switchTab).
+    // Restore symbol (without loading any view yet) only if still in the watchlist
+    const validSym = savedSym && state.symbols.find(s => s.symbol === savedSym);
+    if (validSym) {
         state.activeSymbol = savedSym;
-        renderSymbolList();
-        switchTab(saved.tab || 'charts');
     } else if (state.symbols.length && state.symbols[0].last_fetch) {
-        selectSymbol(state.symbols[0].symbol);
-    } else {
-        showEmptyState();
+        state.activeSymbol = state.symbols[0].symbol;
     }
+
+    if (state.activeSymbol) {
+        renderSymbolList();
+        const headerEl = document.getElementById('sym-title');
+        if (headerEl) headerEl.textContent = _displaySymbol(state.activeSymbol);
+        if (typeof _extrasOnSymbolLoad === 'function') _extrasOnSymbolLoad(state.activeSymbol);
+    }
+
+    // switchTab shows the saved tab's area and loads its data — previously a
+    // saved non-chart tab restored the button highlight but left the empty
+    // state on screen.
+    await switchTab(savedTab);
 });

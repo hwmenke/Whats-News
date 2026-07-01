@@ -5,7 +5,9 @@ Run: python app.py
 
 import concurrent.futures
 import json
+import logging
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
@@ -15,26 +17,50 @@ import database as db
 import data_fetcher as fetcher
 import indicators as ind
 import stats as stats
-import knn_model
-import backtester
-import scanner
 import adaptive_trend as adaptive
+import scanner as scan
 from utils import kama as kama_fn, rsi as rsi_fn
 import ticker_lists as tl
+import knn_model
+import backtester
 import spy_vix_phase_plane as phase_plane
 import newsletter_engine
 import social_trends
 import insights
 import llm_insights
+import swirligram as swirl
+import market_regime as mr
+import momentum_ranker as mom_rank
+import seasonality as seas
+import data_quality as dq
+import portfolio_backtest as pb
+import errors
+from errors import ApiError
+from api import ALL_BLUEPRINTS
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
+errors.register(app)
+for _bp in ALL_BLUEPRINTS:
+    app.register_blueprint(_bp)
 
 # Initialise the database on startup
 db.init_db()
 
 # In-memory cache for the phase-plane image (rebuilt at most once per hour)
 _pp_cache: dict = {"png": None, "meta": None, "ts": 0.0}
+
+# Warm the numba JIT cache so the first real request isn't slow
+try:
+    from ta_core import _kama_nb as _kama_nb_fn
+    import numpy as _np_warm
+    if _kama_nb_fn is not None:
+        _kama_nb_fn(_np_warm.ones(50, dtype=float), 10, 0.6667, 0.0645)
+    del _kama_nb_fn, _np_warm
+except Exception:
+    pass
 
 
 # -- Helpers --------------------------------------------------------------------
@@ -114,7 +140,7 @@ def add_symbol():
     data   = request.get_json(force=True)
     symbol = data.get("symbol", "").strip().upper()
     if not symbol:
-        return jsonify({"error": "symbol is required"}), 400
+        raise errors.symbol_required()
     added = db.add_symbol(symbol)
     if not added:
         return jsonify({"message": f"{symbol} already in watchlist"}), 200
@@ -127,29 +153,17 @@ def delete_symbol(symbol):
     return jsonify({"message": f"{symbol.upper()} removed"})
 
 
-@app.route("/api/symbols/<string:symbol>/group", methods=["PUT"])
-def set_symbol_group(symbol):
-    data      = request.get_json(force=True) or {}
-    group_tag = data.get("group_tag", "").strip()
-    db.set_symbol_group(symbol.upper(), group_tag)
-    return jsonify({"message": "ok"})
-
-
 # -- Data fetch -----------------------------------------------------------------
 
 @app.route("/api/fetch/<string:symbol>", methods=["POST"])
 def fetch_symbol(symbol):
     print(f">> API: Fetch request for {symbol}")
-    try:
-        result = fetcher.fetch_and_store(symbol.upper())
-        if "error" in result:
-            print(f"!! API: Error fetching {symbol}: {result['error']}")
-            return jsonify(result), 400
-        print(f"<< API: Successfully fetched {symbol}")
-        return jsonify(result)
-    except Exception as e:
-        print(f"!! API: Exception fetching {symbol}: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+    result = fetcher.fetch_and_store(symbol.upper())
+    if "error" in result:
+        print(f"!! API: Error fetching {symbol}: {result['error']}")
+        raise errors.fetch_failed(symbol.upper(), result["error"])
+    print(f"<< API: Successfully fetched {symbol}")
+    return jsonify(result)
 
 
 @app.route("/api/refresh", methods=["POST"])
@@ -179,16 +193,16 @@ def get_ohlcv(symbol):
     try:
         limit = int(request.args.get("limit", 500))
     except (TypeError, ValueError):
-        return jsonify({"error": "limit must be an integer"}), 400
+        raise errors.validation("limit must be an integer")
 
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        raise errors.validation("freq must be 'daily' or 'weekly'")
     if limit <= 0:
-        return jsonify({"error": "limit must be a positive integer"}), 400
+        raise errors.validation("limit must be a positive integer")
 
     rows = db.get_ohlcv(symbol.upper(), freq, limit)
     if not rows:
-        return jsonify({"error": "No data. Fetch the symbol first."}), 404
+        raise errors.no_data(symbol.upper())
     return jsonify(rows)
 
 
@@ -198,7 +212,7 @@ def get_ohlcv(symbol):
 def get_indicators(symbol):
     freq = request.args.get("freq", "daily")
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        raise errors.validation("freq must be 'daily' or 'weekly'")
 
     kama_param = request.args.get("kama", "10,20,50")
     try:
@@ -206,23 +220,12 @@ def get_indicators(symbol):
         if not kama_periods:
             kama_periods = [10, 20, 50]
     except ValueError:
-        return jsonify({"error": "kama must be comma-separated integers"}), 400
+        raise errors.validation("kama must be comma-separated integers")
 
     result = ind.compute_indicators(symbol.upper(), freq, kama_periods)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
     return jsonify(result)
-
-
-# -- Stats ----------------------------------------------------------------------
-
-@app.route("/api/stats/<string:symbol>", methods=["GET"])
-def get_stats(symbol):
-    try:
-        result = stats.compute_stats(symbol.upper())
-        if "error" in result:
-            return jsonify(result), 404
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 
 # -- KNN Lookalike --------------------------------------------------------------
@@ -232,10 +235,10 @@ def get_knn(symbol):
     try:
         k = int(request.args.get("k", 15))
     except (TypeError, ValueError):
-        return jsonify({"error": "k must be an integer"}), 400
+        raise errors.validation("k must be an integer")
     result = knn_model.compute_knn_lookalike(symbol.upper(), k=k)
     if "error" in result:
-        return jsonify(result), 404
+        raise errors.no_data(symbol.upper())
     return jsonify(result)
 
 
@@ -245,7 +248,17 @@ def get_knn(symbol):
 def get_backtest(symbol):
     result = backtester.run_optimization(symbol.upper())
     if "error" in result:
-        return jsonify(result), 404
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
+
+
+# -- Stats ----------------------------------------------------------------------
+
+@app.route("/api/stats/<string:symbol>", methods=["GET"])
+def get_stats(symbol):
+    result = stats.compute_stats(symbol.upper())
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
     return jsonify(result)
 
 
@@ -256,17 +269,49 @@ def get_adaptive_trend(symbol):
     freq   = request.args.get("freq", "daily")
     method = request.args.get("method", "kama")
     if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        raise errors.validation("freq must be 'daily' or 'weekly'")
     if method not in ("kama", "adma"):
-        return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
+        raise errors.validation("method must be 'kama' or 'adma'")
 
+    _int_keys = ("sb_er","sb_slow","mb_er","mb_slow","lb_er","lb_slow",
+                 "atr_fast","atr_slow","atr_er")
+    custom = {}
+    for k in _int_keys:
+        v = request.args.get(k)
+        if v is not None:
+            try:
+                custom[k] = int(v)
+            except ValueError:
+                raise errors.validation(f"{k} must be an integer")
+
+    result = adaptive.compute_adaptive_trend(
+        symbol.upper(), freq, method, params=custom or None)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
+
+
+@app.route("/api/adaptive-trend/<string:symbol>/optimize", methods=["POST"])
+def optimize_trend(symbol):
+    body   = request.get_json(force=True) or {}
+    freq   = body.get("freq", "daily")
+    method = body.get("method", "kama")
+    if freq == "both":          # UI "Both" mode — optimize on the daily series
+        freq = "daily"
+    if freq not in ("daily", "weekly"):
+        raise errors.validation("freq must be 'daily' or 'weekly'")
+    if method not in ("kama", "adma"):
+        raise errors.validation("method must be 'kama' or 'adma'")
     try:
-        result = adaptive.compute_adaptive_trend(symbol.upper(), freq, method, **_parse_at_config())
-        if "error" in result:
-            return jsonify(result), 404
-        return jsonify(result)
+        result = adaptive.optimize_adaptive_trend(symbol.upper(), freq, method)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.exception("optimize_adaptive_trend crashed for %s", symbol)
+        raise errors.computation_failed(f"{type(e).__name__}: {e}")
+    if "error" in result:
+        # Pass the real reason through (e.g. insufficient bars) instead of
+        # masking everything as a 404 no-data error.
+        raise errors.ApiError("OPTIMIZE_FAILED", result["error"], http=422)
+    return jsonify(result)
 
 
 # -- Trend Scan ----------------------------------------------------------------
@@ -361,40 +406,6 @@ def trend_scan():
 
 # -- Scanner --------------------------------------------------------------------
 
-@app.route("/api/scanner/sp500")
-def get_sp500():
-    tickers = scanner.get_sp500_tickers()
-    return jsonify(tickers.to_dict(orient="records"))
-
-
-@app.route("/api/scanner/fetch", methods=["POST"])
-def fetch_sp500():
-    force = request.get_json(force=True, silent=True) or {}
-    force_refresh = force.get("force", False)
-    if scanner._fetch_status["running"]:
-        return jsonify({"message": "Fetch already running", "status": scanner._fetch_status})
-    import threading
-    def _run():
-        scanner._fetch_status["running"] = True
-        result = scanner.bulk_fetch_sp500(max_workers=5, force_refresh=force_refresh)
-        scanner._fetch_status["running"] = False
-        scanner._fetch_status["summary"] = result
-    threading.Thread(target=_run, daemon=True).start()
-    return jsonify({"message": "S&P 500 fetch started"})
-
-
-@app.route("/api/scanner/status")
-def scanner_status():
-    return jsonify(scanner._fetch_status)
-
-
-@app.route("/api/scanner/run")
-def run_scanner():
-    signal_filter = request.args.get("signal")
-    results = scanner.run_scanner(signal_filter=signal_filter or None)
-    return jsonify(results)
-
-
 @app.route("/api/scanner", methods=["GET"])
 def get_scanner():
     """Compute multi-timeframe scanner metrics for every watched symbol."""
@@ -402,10 +413,11 @@ def get_scanner():
         symbols = [s['symbol'] for s in db.list_symbols()]
         if not symbols:
             return jsonify([])
-        data = scanner.compute_scanner(symbols)
+        data = scan.compute_scanner(symbols)
         return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        logger.exception("Scanner computation failed")
+        raise errors.computation_failed("Scanner computation failed — check server logs")
 
 
 # -- Social Trends --------------------------------------------------------------
@@ -798,7 +810,7 @@ def fetch_batch():
     add_wl      = bool(body.get("add_watchlist", True))
 
     if not tickers:
-        return jsonify({"error": "tickers list is empty"}), 400
+        raise ApiError("SYMBOL_REQUIRED", "tickers list is empty", http=400)
 
     delay = max(0.3, min(delay, 10.0))
 
@@ -846,10 +858,164 @@ def fetch_batch():
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
-        headers={
-            "Cache-Control":  "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# -- Price Ratios ---------------------------------------------------------------
+
+@app.route("/api/fetch-ratio", methods=["POST"])
+def fetch_ratio():
+    """
+    Compute and store a synthetic A/B ratio OHLCV series.
+    POST body: {"sym_a": "AAPL", "sym_b": "MSFT"}
+    """
+    body  = request.get_json(force=True) or {}
+    sym_a = body.get("sym_a", "").strip().upper()
+    sym_b = body.get("sym_b", "").strip().upper()
+    if not sym_a or not sym_b:
+        raise ApiError("SYMBOL_REQUIRED", "sym_a and sym_b are required", http=400)
+    if sym_a == sym_b:
+        raise errors.validation("sym_a and sym_b must be different")
+    valid = re.compile(r'^[\^]?[A-Z][A-Z0-9.\-\^]{0,9}$')
+    if not valid.match(sym_a) or not valid.match(sym_b):
+        raise errors.invalid_symbol(f"{sym_a}/{sym_b}")
+    result = fetcher.fetch_ratio_and_store(sym_a, sym_b)
+    if "error" in result:
+        raise ApiError("FETCH_FAILED", result["error"], http=400)
+    db.add_symbol(result["symbol"])
+    return jsonify(result), 201
+
+
+# -- Data Quality ----------------------------------------------------------------
+
+@app.route("/api/data-quality/<string:symbol>", methods=["GET"])
+def get_data_quality(symbol):
+    """Return stored data-quality report for a symbol."""
+    report = db.get_quality_report(symbol.upper())
+    if report is None:
+        # Run on-demand if not stored yet
+        df = db.get_ohlcv_df(symbol.upper(), "daily", limit=2000)
+        if df.empty:
+            raise errors.no_data(symbol.upper())
+        report = dq.validate(df, "daily")
+    return jsonify(report)
+
+
+@app.route("/api/strategy/portfolio-backtest", methods=["POST"])
+def portfolio_backtest_endpoint():
+    """Multi-asset portfolio backtest with vol-targeted / risk-parity / equal sizing."""
+    body    = request.get_json(force=True, silent=True) or {}
+    symbols = [s.strip().upper() for s in body.get("symbols", []) if s.strip()]
+    freq    = body.get("freq", "daily")
+    config  = body.get("config", {})
+    sizing  = body.get("sizing", "vol_target")
+
+    if not symbols:
+        raise errors.symbol_required()
+    if len(symbols) > 20:
+        raise errors.validation("Max 20 symbols per portfolio backtest")
+    if freq not in ("daily", "weekly"):
+        raise errors.validation("freq must be 'daily' or 'weekly'")
+    if sizing not in ("vol_target", "risk_parity", "equal"):
+        raise errors.validation("sizing must be vol_target, risk_parity, or equal")
+
+    # Data quality gate
+    for sym in symbols:
+        df = db.get_ohlcv_df(sym, freq, limit=200)
+        if df.empty:
+            continue
+        report = dq.validate(df, freq)
+        if not report["ok"]:
+            crits = [i for i in report["issues"] if i["severity"] == "critical"]
+            if crits:
+                raise ApiError("DATA_QUALITY",
+                               f"Data quality check failed for {sym}",
+                               hint=crits[0]["detail"], http=422)
+
+    result = pb.run_portfolio_backtest(symbols, freq, config, sizing)
+    if "error" in result:
+        raise ApiError("COMPUTATION_FAILED", result["error"], http=422)
+    return jsonify(result)
+
+
+# -- Swirligram -----------------------------------------------------------------
+
+@app.route("/api/swirligram/<string:symbol>", methods=["GET"])
+def get_swirligram(symbol):
+    """RSI phase-space (Swirligram) for daily + weekly timeframes."""
+    try:
+        rsi_period   = int(request.args.get("period", 14))
+        daily_trail  = int(request.args.get("trail",  90))
+        weekly_trail = int(request.args.get("wtrail", 52))
+    except (TypeError, ValueError):
+        raise errors.validation("period/trail must be integers")
+    if not (5 <= rsi_period <= 50):
+        raise errors.validation("period must be 5–50")
+    if not (20 <= daily_trail <= 504):
+        raise errors.validation("trail must be 20–504")
+    result = swirl.compute_swirligram(
+        symbol.upper(), rsi_period, daily_trail, weekly_trail)
+    if "error" in result:
+        raise errors.no_data(symbol.upper())
+    return jsonify(result)
+
+
+# -- Market Regime --------------------------------------------------------------
+
+@app.route("/api/market-regime", methods=["GET"])
+def market_regime_route():
+    symbol = request.args.get("symbol", "SPY").upper()
+    result = mr.compute_market_regime(symbol)
+    if "error" in result:
+        return jsonify(result), 422
+    return jsonify(result)
+
+
+# -- Momentum Ranker ------------------------------------------------------------
+
+@app.route("/api/momentum-rank", methods=["GET"])
+def momentum_rank_route():
+    result = mom_rank.compute_momentum_ranks()
+    if "error" in result:
+        return jsonify(result), 422
+    return jsonify(result)
+
+
+# -- Seasonality ----------------------------------------------------------------
+
+@app.route("/api/seasonality/<string:symbol>", methods=["GET"])
+def seasonality_route(symbol: str):
+    result = seas.compute_seasonality(symbol.upper())
+    if "error" in result:
+        return jsonify(result), 422
+    return jsonify(result)
+
+
+# -- Cache stats (debug) --------------------------------------------------------
+
+@app.route("/api/_cache/stats", methods=["GET"])
+def get_cache_stats():
+    """Return indicator cache hit/miss stats."""
+    import indicator_cache as cache
+    return jsonify(cache.cache_stats())
+
+
+# -- Backup / restore -----------------------------------------------------------
+
+@app.route("/api/backup", methods=["GET"])
+def download_backup():
+    """Download a copy of the SQLite database for backup purposes."""
+    import shutil, datetime
+    src = db.DB_PATH
+    if not os.path.exists(src):
+        raise errors.ApiError("NO_DATA", "Database file not found", http=404)
+    date_tag = datetime.date.today().strftime("%Y%m%d")
+    return send_from_directory(
+        os.path.dirname(src),
+        os.path.basename(src),
+        as_attachment=True,
+        download_name=f"finance_{date_tag}.db",
     )
 
 

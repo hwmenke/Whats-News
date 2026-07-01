@@ -1,12 +1,15 @@
-flask==3.0.3
-flask-cors==4.0.1
-yfinance==1.2.0
-pandas==2.2.2
-numpy==1.26.4
+flask>=3.0.3
+flask-cors>=4.0.1
+yfinance==0.2.52
+pandas>=2.2.2
+numpy>=1.26.4
+scikit-learn>=1.4.2
 ta==0.11.0
-scikit-learn==1.4.2
-lxml==5.2.1
-scipy>=1.11.0
+lxml
+pytest>=8.0
+numba>=0.59
+matplotlib>=3.8
+scipy>=1.12
 pytrends==4.9.2   # optional: live Google Trends for the Social Trends tab (import is guarded)
 gunicorn==23.0.0  # production WSGI server (used by Dockerfile)
 anthropic==0.40.0 # optional: LLM-augmented narratives/explanations/critiques (import is guarded)

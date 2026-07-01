@@ -6,6 +6,7 @@ import pandas as pd
 
 import app as app_module
 import stats
+import indicator_cache as cache
 
 
 class ApiValidationTests(unittest.TestCase):
@@ -16,16 +17,23 @@ class ApiValidationTests(unittest.TestCase):
         response = self.client.get("/api/ohlcv/AAPL?limit=abc")
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.get_json(), {"error": "limit must be an integer"})
+        body = response.get_json()
+        self.assertEqual(body["code"], "VALIDATION")
+        self.assertIn("integer", body["message"])
 
     def test_ohlcv_limit_must_be_positive(self):
         response = self.client.get("/api/ohlcv/AAPL?limit=0")
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.get_json(), {"error": "limit must be a positive integer"})
+        body = response.get_json()
+        self.assertEqual(body["code"], "VALIDATION")
+        self.assertIn("positive", body["message"])
 
 
 class StatsEdgeCaseTests(unittest.TestCase):
+    def setUp(self):
+        cache.bump_version("AAPL")
+
     @patch("stats.db.get_ohlcv_df")
     def test_compute_stats_returns_none_for_flat_series(self, mock_get_ohlcv_df):
         index = pd.date_range("2024-01-01", periods=40, freq="D")
