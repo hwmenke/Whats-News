@@ -31,6 +31,7 @@ import llm_insights
 import swirligram as swirl
 import market_regime as mr
 import momentum_ranker as mom_rank
+import vol_momentum as vol_mom
 import seasonality as seas
 import data_quality as dq
 import portfolio_backtest as pb
@@ -985,6 +986,58 @@ def momentum_rank_route():
     if "error" in result:
         return jsonify(result), 422
     return jsonify(result)
+
+
+# -- Vol-Adjusted Momentum (turnover-brake portfolio) -----------------------------
+
+_VM_FLOAT_PARAMS = ("l_max", "kappa", "tau", "lam", "delta_w", "delta_s",
+                    "spread_bps", "impact_bps", "fee_bps")
+_VM_INT_PARAMS   = ("mom_lb", "skip", "vol_lb")
+
+
+def _parse_vm_params(source) -> dict:
+    """Pull known vol-momentum params from a request-args dict or JSON body."""
+    params = {}
+    for k in _VM_FLOAT_PARAMS:
+        v = source.get(k)
+        if v is not None and v != "":
+            try:
+                params[k] = float(v)
+            except (TypeError, ValueError):
+                raise errors.validation(f"{k} must be a number")
+    for k in _VM_INT_PARAMS:
+        v = source.get(k)
+        if v is not None and v != "":
+            try:
+                params[k] = int(v)
+            except (TypeError, ValueError):
+                raise errors.validation(f"{k} must be an integer")
+    return params
+
+
+@app.route("/api/vol-momentum", methods=["GET"])
+def vol_momentum_route():
+    """Dry-run: signals, ranks, target weights and trade decisions. No state change."""
+    result = vol_mom.compute_vol_momentum(_parse_vm_params(request.args))
+    if "error" in result:
+        return jsonify(result), 422
+    return jsonify(result)
+
+
+@app.route("/api/vol-momentum/apply", methods=["POST"])
+def vol_momentum_apply_route():
+    """Compute and persist the partial-adjusted weights as the new state."""
+    body = request.get_json(force=True, silent=True) or {}
+    result = vol_mom.apply_vol_momentum(_parse_vm_params(body))
+    if "error" in result:
+        return jsonify(result), 422
+    return jsonify(result)
+
+
+@app.route("/api/vol-momentum/state", methods=["DELETE"])
+def vol_momentum_reset_route():
+    """Clear persisted weights/signals (fresh start: w_prev = 0, S_prev = 0)."""
+    return jsonify({"cleared": vol_mom.reset_state()})
 
 
 # -- Seasonality ----------------------------------------------------------------

@@ -844,6 +844,7 @@ const TAB_DEFS = {
     'portfolio':   { area: 'portfolio-area',   display: 'flex', onShow: () => { if (typeof initPortfolioTester === 'function') initPortfolioTester(); } },
     'regime':      { area: 'regime-area',      display: 'flex', onShow: () => { if (typeof initRegime === 'function') initRegime(); } },
     'momentum':    { area: 'momentum-area',    display: 'flex', onShow: () => { if (typeof initMomentumRanker === 'function') initMomentumRanker(); } },
+    'vol-momentum': { area: 'vol-momentum-area', display: 'flex', onShow: () => { if (typeof initVolMomentum === 'function') initVolMomentum(); } },
     'seasonality': { area: 'seasonality-area', display: 'flex', onShow: () => { if (typeof initSeasonality === 'function') initSeasonality(); } },
     'newsletter':  { area: 'newsletter-area',  display: 'flex', onShow: () => { if (typeof initNewsletter === 'function') initNewsletter(); } },
     'news':        { area: 'news-area',        display: 'flex', onShow: () => { if (typeof initNews === 'function') initNews(); } },

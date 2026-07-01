@@ -192,6 +192,9 @@
       <button id="tab-momentum" data-key="7" class="tab-btn" onclick="switchTab('momentum')" title="Momentum ranker (7)">
         <span class="tab-icon">🏆</span> Momentum
       </button>
+      <button id="tab-vol-momentum" class="tab-btn" onclick="switchTab('vol-momentum')" title="Vol-adjusted momentum with turnover brake">
+        <span class="tab-icon">⚖️</span> Vol Momentum
+      </button>
       <button id="tab-regime" data-key="8" class="tab-btn" onclick="switchTab('regime')" title="Market regime (8)">
         <span class="tab-icon">🌡</span> Regime
       </button>
@@ -1139,6 +1142,49 @@
       </div>
     </div><!-- #momentum-area -->
 
+    <!-- ── Vol-Adjusted Momentum Area ── -->
+    <div id="vol-momentum-area" class="mom-container" style="display:none;">
+      <div id="vm-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Computing signals…</div>
+
+      <div class="mom-controls" style="flex-wrap:wrap; gap:8px;">
+        <button class="btn btn-primary btn-sm" onclick="loadVolMomentum()">↻ Compute</button>
+        <button class="btn btn-ghost btn-sm" onclick="applyVolMomentum()" title="Persist partial-adjusted weights as the new previous state">✓ Apply Weights</button>
+        <button class="btn btn-ghost btn-sm" onclick="resetVolMomentumState()" title="Clear stored weights and signals">⟲ Reset State</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportTableToCSV('vm-tbl','vol_momentum.csv')" title="Export to CSV">⤓ CSV</button>
+        <span class="vm-param"><label title="Momentum lookback M (bars)">M <input id="vm-mom-lb" class="kama-input vm-input" type="number" value="126" min="20"></label></span>
+        <span class="vm-param"><label title="Vol lookback L (bars); σ annualized">L <input id="vm-vol-lb" class="kama-input vm-input" type="number" value="63" min="10"></label></span>
+        <span class="vm-param"><label title="Skip most recent bars (reversal guard)">skip <input id="vm-skip" class="kama-input vm-input" type="number" value="5" min="0"></label></span>
+        <span class="vm-param"><label title="Gross leverage cap: Σ|w| ≤ L_max">L<sub>max</sub> <input id="vm-lmax" class="kama-input vm-input" type="number" value="1.0" step="0.1" min="0.1"></label></span>
+        <span class="vm-param"><label title="Turnover brake: trade only if Gain > κ·Cost">κ <input id="vm-kappa" class="kama-input vm-input" type="number" value="1.0" step="0.5" min="0"></label></span>
+        <span class="vm-param"><label title="Basket threshold on S">τ <input id="vm-tau" class="kama-input vm-input" type="number" value="0.5" step="0.1" min="0"></label></span>
+        <span class="vm-param"><label title="Partial adjustment: w = w_prev + λ·Δw">λ <input id="vm-lam" class="kama-input vm-input" type="number" value="0.5" step="0.1" min="0.05" max="1"></label></span>
+        <span class="vm-param"><label title="No-trade band on |Δw|">δ<sub>w</sub> <input id="vm-dw" class="kama-input vm-input" type="number" value="0.005" step="0.005" min="0"></label></span>
+        <span class="vm-param"><label title="No-trade band on |S − S_prev|">δ<sub>S</sub> <input id="vm-ds" class="kama-input vm-input" type="number" value="0.05" step="0.05" min="0"></label></span>
+        <span class="vm-param"><label title="Spread cost in bps (impact + fee added server-side)">bps <input id="vm-cost" class="kama-input vm-input" type="number" value="5" step="1" min="0"></label></span>
+      </div>
+
+      <div id="vm-empty" class="empty-state">
+        <div class="empty-icon">⚖️</div>
+        <p>Vol-adjusted momentum: S = M / (σ + ε), dollar-neutral weights with a
+           turnover brake (trade only when Gain &gt; κ·Cost), partial adjustment
+           w = w<sub>prev</sub> + λΔw, and a no-trade band. Click <b>Compute</b>.</p>
+      </div>
+      <div id="vm-error" class="dm-error" style="display:none;"></div>
+
+      <div id="vm-results" style="display:none;">
+        <div class="kpi-row" style="margin:10px 0;">
+          <div class="kpi-card"><div class="kpi-label">Traded / Universe</div><div id="vm-sum-n" class="kpi-value">--</div></div>
+          <div class="kpi-card"><div class="kpi-label">Long basket</div><div id="vm-sum-long" class="kpi-value">--</div></div>
+          <div class="kpi-card"><div class="kpi-label">Short basket</div><div id="vm-sum-short" class="kpi-value">--</div></div>
+          <div class="kpi-card"><div class="kpi-label">Gross Σ|w|</div><div id="vm-sum-gross" class="kpi-value">--</div></div>
+          <div class="kpi-card"><div class="kpi-label">Net Σw</div><div id="vm-sum-net" class="kpi-value">--</div></div>
+          <div class="kpi-card"><div class="kpi-label">Turnover</div><div id="vm-sum-turnover" class="kpi-value">--</div></div>
+        </div>
+        <div id="vm-skipped-note" style="font-size:11px;color:var(--text-dim);margin-bottom:6px;"></div>
+        <div id="vm-table-wrap" class="scanner-table-wrap"></div>
+      </div>
+    </div><!-- #vol-momentum-area -->
+
     <!-- ── Seasonality Area ── -->
     <div id="seasonality-area" class="seas-container" style="display:none;">
       <div id="seas-loading" class="chart-loading" style="display:none;"><span class="spinner"></span> Computing seasonality…</div>
@@ -2027,6 +2073,7 @@
 <script src="scripts/portfolio.js"></script>
 <script src="scripts/market_regime.js"></script>
 <script src="scripts/momentum_ranker.js"></script>
+<script src="scripts/vol_momentum.js"></script>
 <script src="scripts/seasonality.js"></script>
 <script src="scripts/sector.js"></script>
 <script src="scripts/social_trends.js"></script>

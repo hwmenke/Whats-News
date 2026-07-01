@@ -287,6 +287,16 @@ def init_db():
         )
     """)
 
+    # ── Vol-momentum previous weights/signals (turnover-brake state) ────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS vol_mom_state (
+            symbol      TEXT PRIMARY KEY,
+            weight      REAL NOT NULL DEFAULT 0,
+            signal      REAL NOT NULL DEFAULT 0,
+            updated_at  TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
 
