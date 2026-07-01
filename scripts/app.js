@@ -624,6 +624,7 @@ function showEmptyState() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('social-area').style.display       = 'none';
 }
 
 function showChartArea() {
@@ -684,9 +685,30 @@ async function loadPhasePlane(forceRefresh = false) {
     }
 }
 
+// ── Reverse view: themes this symbol shows up in ─────────────
+async function loadSymbolThemes(symbol) {
+    const slot = document.getElementById('sym-themes');
+    if (!slot) return;
+    if (!symbol) { slot.textContent = ''; return; }
+    try {
+        const d = await apiFetch(`${API}/social-trends/for-ticker/${encodeURIComponent(symbol)}`);
+        const themes = d.themes || [];
+        if (!themes.length) { slot.textContent = ''; return; }
+        slot.innerHTML = themes.slice(0, 4).map(t =>
+            `<span class="sym-theme-chip" onclick="switchTab('social')" title="${t.purity_label} · ${t.note}">${t.theme}</span>`
+        ).join('');
+    } catch (e) { slot.textContent = ''; }
+}
+
 // ── Tab Switching ─────────────────────────────────────────────
 async function switchTab(tabId) {
     state.activeTab = tabId;
+
+    // Persist for next visit + reflect in the URL so tabs are bookmarkable.
+    try {
+        localStorage.setItem('findash.activeTab', tabId);
+        if (`#${tabId}` !== location.hash) history.replaceState(null, '', `#${tabId}`);
+    } catch (e) { /* storage/history unavailable — non-fatal */ }
 
     // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -701,6 +723,7 @@ async function switchTab(tabId) {
     document.getElementById('backtest-area').style.display      = 'none';
     document.getElementById('trend-area').style.display         = 'none';
     document.getElementById('scanner-area').style.display       = 'none';
+    document.getElementById('social-area').style.display        = 'none';
     document.getElementById('data-manager-area').style.display  = 'none';
     document.getElementById('phase-plane-area').style.display   = 'none';
     document.querySelector('.tab-bar').style.display            = 'none';
@@ -726,6 +749,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'scanner') {
         showScannerArea();
         loadScannerData();
+    } else if (tabId === 'social') {
+        showSocialArea();
+        if (typeof loadSocialTrends === 'function' && !socialState.data) loadSocialTrends();
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
@@ -745,6 +771,7 @@ function showStatsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('social-area').style.display       = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -757,6 +784,7 @@ function showChartArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('social-area').style.display       = 'none';
     document.querySelector('.tab-bar').style.display           = 'flex';
 }
 
@@ -769,6 +797,7 @@ function showTrendArea() {
     document.getElementById('trend-area').style.display        = 'flex';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('social-area').style.display       = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -781,6 +810,20 @@ function showScannerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'flex';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('social-area').style.display       = 'none';
+    document.querySelector('.tab-bar').style.display           = 'none';
+}
+
+function showSocialArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('social-area').style.display       = 'flex';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -1018,6 +1061,10 @@ function updateSymbolHeader(symbol, last, prev) {
     document.getElementById('sym-title').textContent = symbol;
     const symInfo = state.symbols.find(s => s.symbol === symbol);
     document.getElementById('sym-subtitle').textContent = symInfo?.name || '';
+
+    // Reverse view: surface any Social Trends themes this ticker shows up in,
+    // so the user sees "this stock is a play on X" right in the chart header.
+    loadSymbolThemes(symbol);
 
     if (!last) {
         document.getElementById('sym-price').textContent   = '--';
@@ -1340,7 +1387,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadSymbols();
 
-    if (state.symbols.length && state.symbols[0].last_fetch) {
+    // Always-visible social top-movers banner (fire-and-forget, warms cache),
+    // then refresh every 5 min so the strip stays current.
+    if (typeof loadTopMovers === 'function') loadTopMovers();
+    if (typeof startBannerAutoRefresh === 'function') startBannerAutoRefresh();
+
+    // Restore the last tab from the URL hash or localStorage.
+    const VALID_TABS = ['charts','stats','knn','backtest','trend','scanner','social','data-manager'];
+    let initialTab = (location.hash || '').replace('#','');
+    if (!VALID_TABS.includes(initialTab)) {
+        try { initialTab = localStorage.getItem('findash.activeTab') || ''; } catch (e) { initialTab = ''; }
+    }
+
+    if (initialTab && VALID_TABS.includes(initialTab) && initialTab !== 'charts') {
+        switchTab(initialTab);
+        // Tabs that don't depend on a selected symbol still want one loaded behind them.
+        if (state.symbols.length && state.symbols[0].last_fetch) {
+            state.activeSymbol = state.symbols[0].symbol;
+            renderSymbolList();
+        }
+    } else if (state.symbols.length && state.symbols[0].last_fetch) {
         selectSymbol(state.symbols[0].symbol);
     } else {
         showEmptyState();

@@ -7,12 +7,22 @@
   <meta name="description" content="Professional financial dashboard with Yahoo Finance data, SQLite storage, and technical analysis charts." />
   <link rel="stylesheet" href="styles/main.css" />
   <link rel="stylesheet" href="styles/newsletter.css" />
+  <!-- PWA: install on phone home screen + offline shell -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0d1117">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <!-- TradingView Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <!-- Chart.js for statistics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Chart.js annotation plugin (for newsletter charts) -->
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => null));
+    }
+  </script>
 </head>
 <body>
 
@@ -21,6 +31,9 @@
   <!-- ═══════════════════ TOP BAR ═══════════════════ -->
   <header class="topbar">
     <button id="btn-sidebar-toggle" class="btn-sidebar-toggle" onclick="toggleSidebar()" title="Toggle watchlist">☰</button>
+
+    <!-- Always-visible social top-movers strip (populated by social_trends.js) -->
+    <div id="topmovers" class="topmovers" style="display:none;"></div>
 
     <div class="topbar-spacer"></div>
 
@@ -63,6 +76,7 @@
       <div class="symbol-header-name">
         <span id="sym-title" class="sym-title">--</span>
         <span id="sym-subtitle" class="sym-subtitle"></span>
+        <span id="sym-themes" class="sym-themes" title="Social-trend themes this ticker plays into"></span>
       </div>
 
       <div class="sym-price-block">
@@ -115,6 +129,9 @@
       </button>
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">
         <span class="tab-icon">📡</span> Scanner
+      </button>
+      <button id="tab-social" class="tab-btn" onclick="switchTab('social')">
+        <span class="tab-icon">🔥</span> Social Trends
       </button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
         <span class="tab-icon">🗄️</span> Data Manager
@@ -603,6 +620,175 @@
 
     </div><!-- #scanner-area -->
 
+    <!-- ── Social Trends Area ── -->
+    <div id="social-area" class="social-container" style="display:none;">
+
+      <!-- Loading overlay -->
+      <div id="social-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span>
+        Scanning social trends…
+      </div>
+
+      <!-- Controls bar -->
+      <div class="social-controls">
+        <div class="social-controls-left">
+          <button id="btn-social-scan" class="btn btn-primary" onclick="loadSocialTrends(true)" title="Re-run trend providers (bypasses cache)">⟳ Scan Trends</button>
+          <span class="overlay-section-label">Window</span>
+          <button class="ind-pill social-days-btn" data-days="7"  onclick="setSocialDays(7)">7d</button>
+          <button class="ind-pill social-days-btn" data-days="14" onclick="setSocialDays(14)">14d</button>
+          <button class="ind-pill social-days-btn social-toggle-on" data-days="30" onclick="setSocialDays(30)">30d</button>
+          <button class="ind-pill social-days-btn" data-days="90" onclick="setSocialDays(90)">90d</button>
+        </div>
+        <div class="social-controls-right">
+          <span class="overlay-section-label">Sources</span>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="google"    onclick="toggleSocialSource('google')">Google</button>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="tiktok"    onclick="toggleSocialSource('tiktok')">TikTok</button>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="twitter"   onclick="toggleSocialSource('twitter')">Twitter/X</button>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="reddit"    onclick="toggleSocialSource('reddit')">Reddit</button>
+          <button class="ind-pill social-src-btn social-toggle-on" data-src="instagram" onclick="toggleSocialSource('instagram')">Instagram</button>
+        </div>
+      </div>
+
+      <!-- v5 · Daily narrative + ambient bar (LLM + streaks/anomalies) -->
+      <div class="insight-strip">
+        <div class="insight-card">
+          <div class="insight-card-header">
+            <span class="insight-card-title">🧭 Today's read</span>
+            <button class="insight-refresh" onclick="refreshInsightNarrative()" title="Regenerate">↻</button>
+          </div>
+          <div id="insight-narrative" class="insight-body"></div>
+        </div>
+        <div class="insight-card insight-card-side">
+          <div class="insight-card-header">
+            <span class="insight-card-title">🎯 Your portfolio · themes</span>
+          </div>
+          <div id="insight-portfolio" class="insight-body"></div>
+        </div>
+      </div>
+
+      <!-- v5 · Ambient: streaks + anomaly-of-anomaly chips -->
+      <div id="insight-ambient" class="insight-ambient"></div>
+
+      <!-- v5.1 · Theme rotation + custom signal DSL -->
+      <div class="insight-strip">
+        <div class="insight-card">
+          <div class="insight-card-header">
+            <span class="insight-card-title">🔄 Theme rotation · 7d</span>
+          </div>
+          <div id="insight-rotation" class="insight-body"></div>
+        </div>
+        <div class="insight-card insight-card-side">
+          <div class="insight-card-header">
+            <span class="insight-card-title">🧪 Custom signal</span>
+          </div>
+          <div class="insight-body">
+            <input id="signal-expr" class="social-search-input" type="text"
+                   placeholder="catch_up > 50 and purity >= 0.7"
+                   onkeydown="if(event.key==='Enter') runSignalDSL()"
+                   style="width:100%; margin-bottom:6px;">
+            <div class="ins-sig-examples">
+              <span onclick="setSignalExample(0)">catch_up &gt; 50</span>
+              <span onclick="setSignalExample(1)">hot status</span>
+              <span onclick="setSignalExample(2)">watchlist losers</span>
+            </div>
+            <div id="signal-result"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- v5.2 · Co-movement + Rolled-over panels -->
+      <div class="insight-strip">
+        <div class="insight-card">
+          <div class="insight-card-header">
+            <span class="insight-card-title">⇆ Co-movement · top correlated terms</span>
+          </div>
+          <div id="insight-comov" class="insight-body"></div>
+        </div>
+        <div class="insight-card insight-card-side">
+          <div class="insight-card-header">
+            <span class="insight-card-title">↘ Rolled over · just peaked &amp; fading</span>
+          </div>
+          <div id="insight-rollover" class="insight-body"></div>
+        </div>
+      </div>
+
+      <!-- Status strip: live/seed badges + timestamp + prime-sweep status -->
+      <div id="social-status" class="social-status"></div>
+
+      <!-- v5 · Heatmap (terms × momentum bands) collapsible above trends -->
+      <details class="insight-heatmap-wrap">
+        <summary>🔥 Heatmap — terms × momentum</summary>
+        <div id="insight-heatmap" class="insight-heatmap"></div>
+      </details>
+
+      <!-- Cross-panel toolbar: search · trend-movers-only · watchlist-only · prime badge -->
+      <div class="social-toolbar">
+        <input id="social-search" class="social-search-input" type="search"
+               placeholder="Search trends or tickers…"
+               oninput="setSocialSearch(this.value)" />
+        <button id="btn-movers-only" class="ind-pill social-movers-btn" onclick="toggleMoversOnly()"
+                title="Trends panel: show only new today / accelerating terms">🆕 Movers only</button>
+        <button id="btn-watchlist-only" class="ind-pill social-wl-btn" onclick="toggleWatchlistOnly()"
+                title="Ideas table: show only tickers in your watchlist">★ Watchlist only</button>
+        <button class="ind-pill" onclick="compareThemes()" title="Compare two themes side-by-side">⇔ Compare</button>
+        <button class="ind-pill" onclick="openSettings()" title="Settings &amp; persisted state">⚙</button>
+        <span id="social-prime-badge" class="social-prime-badge" style="display:none;"></span>
+      </div>
+
+      <!-- Two-panel layout: trending words | pure-play ideas -->
+      <div class="social-panels">
+
+        <!-- ── Trending words ── -->
+        <div class="social-panel social-panel-trends">
+          <div class="panel-header">Trending Words · biggest movers</div>
+          <div id="social-trend-grid" class="social-trend-grid"></div>
+          <div id="social-trend-empty" class="scanner-empty" style="display:none;">
+            <div class="empty-icon">🔥</div>
+            <p>No trends — click <strong>⟳ Scan Trends</strong>.</p>
+          </div>
+        </div>
+
+        <!-- ── Pure-play ideas ── -->
+        <div class="social-panel social-panel-ideas">
+          <div class="panel-header social-ideas-header">
+            <span>Pure-Play Stock Ideas · ranked</span>
+            <div class="social-ideas-tools">
+              <span id="social-theme-filter" class="social-theme-filter" style="display:none;"></span>
+              <button id="btn-catchup-only" class="ind-pill social-catchup-btn"
+                      onclick="toggleCatchUpOnly()"
+                      title="Show only ideas where the trend is hot but the stock hasn't moved yet">
+                🚀 Catch-up only
+              </button>
+              <button class="ind-pill" onclick="exportIdeasCSV()" title="Download visible ideas as CSV">⬇ CSV</button>
+            </div>
+          </div>
+          <div class="social-ideas-wrap">
+            <table id="social-ideas-table" class="social-ideas-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Ticker</th>
+                  <th>Theme</th>
+                  <th class="si-th-sort" data-sort="purity"         onclick="sortSocialIdeas('purity')">Purity<span class="si-sort-ind"></span></th>
+                  <th class="si-th-sort" data-sort="score"          onclick="sortSocialIdeas('score')">Score<span class="si-sort-ind"></span></th>
+                  <th class="si-th-sort" data-sort="catch_up"       onclick="sortSocialIdeas('catch_up')" title="Trend hot − stock already moved. High = room to run.">Catch-up<span class="si-sort-ind"></span></th>
+                  <th class="si-th-sort" data-sort="ret_20d"        onclick="sortSocialIdeas('ret_20d')" title="Stock's 20-day price move (from stored data)">20d<span class="si-sort-ind"></span></th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="social-ideas-tbody"></tbody>
+            </table>
+          </div>
+          <div id="social-ideas-empty" class="scanner-empty" style="display:none;">
+            <div class="empty-icon">📈</div>
+            <p>No stock ideas matched the current filters.</p>
+          </div>
+        </div>
+
+      </div><!-- .social-panels -->
+
+    </div><!-- #social-area -->
+
     <!-- ── Data Manager Area ── -->
     <div id="data-manager-area" class="dm-container" style="display:none;">
 
@@ -808,6 +994,8 @@
 <script src="scripts/charts.js"></script>
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
+<script src="scripts/social_trends.js"></script>
+<script src="scripts/social_insights.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/app.js"></script>
 <script src="scripts/newsletter.js"></script>

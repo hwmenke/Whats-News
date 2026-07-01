@@ -1,0 +1,724 @@
+[
+  {
+    "theme": "GLP-1 / Weight Loss",
+    "keywords": [
+      "ozempic",
+      "wegovy",
+      "mounjaro",
+      "zepbound",
+      "semaglutide",
+      "tirzepatide",
+      "glp-1",
+      "glp1",
+      "weight loss",
+      "skinny jab",
+      "ozempic face"
+    ],
+    "stocks": [
+      {
+        "ticker": "NVO",
+        "name": "Novo Nordisk",
+        "purity": 0.95,
+        "note": "Maker of Ozempic & Wegovy \u2014 the defining GLP-1 name (US-listed ADR)."
+      },
+      {
+        "ticker": "LLY",
+        "name": "Eli Lilly",
+        "purity": 0.9,
+        "note": "Maker of Mounjaro & Zepbound; GLP-1 is the core growth engine."
+      },
+      {
+        "ticker": "VKTX",
+        "name": "Viking Therapeutics",
+        "purity": 0.85,
+        "note": "Clinical-stage obesity-drug developer; high-beta GLP-1 pure play."
+      },
+      {
+        "ticker": "HIMS",
+        "name": "Hims & Hers Health",
+        "purity": 0.55,
+        "note": "Telehealth platform selling compounded GLP-1 weight-loss programs."
+      }
+    ]
+  },
+  {
+    "theme": "Artificial Intelligence",
+    "keywords": [
+      "ai",
+      "artificial intelligence",
+      "chatgpt",
+      "openai",
+      "sora",
+      "llm",
+      "generative ai",
+      "deepseek",
+      "gemini",
+      "copilot",
+      "ai girlfriend",
+      "chatbot",
+      "nvidia",
+      "palantir",
+      "soundhound"
+    ],
+    "stocks": [
+      {
+        "ticker": "NVDA",
+        "name": "NVIDIA",
+        "purity": 0.85,
+        "note": "GPUs are the core hardware behind the entire AI build-out."
+      },
+      {
+        "ticker": "AI",
+        "name": "C3.ai",
+        "purity": 0.9,
+        "note": "Enterprise AI software \u2014 near-pure thematic exposure."
+      },
+      {
+        "ticker": "SOUN",
+        "name": "SoundHound AI",
+        "purity": 0.85,
+        "note": "Voice / conversational-AI pure play."
+      },
+      {
+        "ticker": "BBAI",
+        "name": "BigBear.ai",
+        "purity": 0.8,
+        "note": "Small-cap AI analytics pure play."
+      },
+      {
+        "ticker": "SMCI",
+        "name": "Super Micro Computer",
+        "purity": 0.75,
+        "note": "AI server / rack maker levered directly to GPU demand."
+      },
+      {
+        "ticker": "PLTR",
+        "name": "Palantir",
+        "purity": 0.7,
+        "note": "AI-driven analytics (AIP) platform; a retail AI favorite."
+      }
+    ]
+  },
+  {
+    "theme": "Electric Vehicles",
+    "keywords": [
+      "tesla",
+      "cybertruck",
+      "ev",
+      "electric vehicle",
+      "model 3",
+      "model y",
+      "robotaxi"
+    ],
+    "stocks": [
+      {
+        "ticker": "RIVN",
+        "name": "Rivian Automotive",
+        "purity": 0.92,
+        "note": "Pure-play EV maker."
+      },
+      {
+        "ticker": "LCID",
+        "name": "Lucid Group",
+        "purity": 0.92,
+        "note": "Pure-play luxury EV maker."
+      },
+      {
+        "ticker": "NIO",
+        "name": "NIO Inc.",
+        "purity": 0.88,
+        "note": "China EV pure play."
+      },
+      {
+        "ticker": "TSLA",
+        "name": "Tesla",
+        "purity": 0.75,
+        "note": "Cybertruck / robotaxi headlines; the EV bellwether (also AI/robotics)."
+      }
+    ]
+  },
+  {
+    "theme": "Meme Stocks",
+    "keywords": [
+      "roaring kitty",
+      "gamestop",
+      "gme",
+      "amc",
+      "meme stock",
+      "short squeeze",
+      "deep value"
+    ],
+    "stocks": [
+      {
+        "ticker": "GME",
+        "name": "GameStop",
+        "purity": 1.0,
+        "note": "The original meme stock; moves on Roaring Kitty / social buzz."
+      },
+      {
+        "ticker": "AMC",
+        "name": "AMC Entertainment",
+        "purity": 0.95,
+        "note": "Core meme-stock complex."
+      }
+    ]
+  },
+  {
+    "theme": "Crypto",
+    "keywords": [
+      "bitcoin",
+      "btc",
+      "crypto",
+      "ethereum",
+      "bitcoin etf",
+      "dogecoin",
+      "doge",
+      "altcoin",
+      "crypto rally"
+    ],
+    "stocks": [
+      {
+        "ticker": "MARA",
+        "name": "MARA Holdings",
+        "purity": 0.95,
+        "note": "Bitcoin-mining pure play."
+      },
+      {
+        "ticker": "RIOT",
+        "name": "Riot Platforms",
+        "purity": 0.95,
+        "note": "Bitcoin-mining pure play."
+      },
+      {
+        "ticker": "COIN",
+        "name": "Coinbase",
+        "purity": 0.85,
+        "note": "Largest US crypto exchange; direct crypto-volume proxy."
+      },
+      {
+        "ticker": "MSTR",
+        "name": "MicroStrategy",
+        "purity": 0.85,
+        "note": "Leveraged Bitcoin holder / proxy."
+      },
+      {
+        "ticker": "HOOD",
+        "name": "Robinhood",
+        "purity": 0.55,
+        "note": "Retail brokerage levered to crypto / meme trading."
+      }
+    ]
+  },
+  {
+    "theme": "Live Events / Concerts",
+    "keywords": [
+      "eras tour",
+      "taylor swift",
+      "concert",
+      "tour",
+      "ticketmaster",
+      "live nation",
+      "beyonce"
+    ],
+    "stocks": [
+      {
+        "ticker": "LYV",
+        "name": "Live Nation",
+        "purity": 0.85,
+        "note": "Owns Ticketmaster \u2014 direct beneficiary of tour demand."
+      },
+      {
+        "ticker": "MSGE",
+        "name": "MSG Entertainment",
+        "purity": 0.55,
+        "note": "Live-venue exposure (The Sphere, Garden)."
+      }
+    ]
+  },
+  {
+    "theme": "Energy Drinks",
+    "keywords": [
+      "celsius",
+      "energy drink",
+      "prime energy",
+      "prime hydration",
+      "monster energy"
+    ],
+    "stocks": [
+      {
+        "ticker": "CELH",
+        "name": "Celsius Holdings",
+        "purity": 0.95,
+        "note": "Viral energy-drink pure play."
+      },
+      {
+        "ticker": "MNST",
+        "name": "Monster Beverage",
+        "purity": 0.85,
+        "note": "Energy-drink pure play."
+      },
+      {
+        "ticker": "KDP",
+        "name": "Keurig Dr Pepper",
+        "purity": 0.4,
+        "note": "Distributes Celsius; partial exposure."
+      }
+    ]
+  },
+  {
+    "theme": "Viral Drinkware",
+    "keywords": [
+      "stanley cup",
+      "stanley tumbler",
+      "tumbler",
+      "water bottle",
+      "hydration"
+    ],
+    "stocks": [
+      {
+        "ticker": "YETI",
+        "name": "YETI Holdings",
+        "purity": 0.65,
+        "note": "Premium drinkware / cooler brand; closest listed proxy."
+      },
+      {
+        "ticker": "SWK",
+        "name": "Stanley Black & Decker",
+        "purity": 0.25,
+        "note": "Owns the Stanley brand, but it's a tiny share of revenue."
+      }
+    ]
+  },
+  {
+    "theme": "Beauty / Skincare",
+    "keywords": [
+      "e.l.f.",
+      "elf cosmetics",
+      "skincare",
+      "sephora",
+      "drunk elephant",
+      "rare beauty",
+      "makeup",
+      "glow"
+    ],
+    "stocks": [
+      {
+        "ticker": "ELF",
+        "name": "e.l.f. Beauty",
+        "purity": 0.9,
+        "note": "TikTok-viral cosmetics pure play."
+      },
+      {
+        "ticker": "ULTA",
+        "name": "Ulta Beauty",
+        "purity": 0.65,
+        "note": "Beauty specialty retailer."
+      },
+      {
+        "ticker": "EL",
+        "name": "Est\u00e9e Lauder",
+        "purity": 0.55,
+        "note": "Prestige-beauty exposure."
+      }
+    ]
+  },
+  {
+    "theme": "Discount E-Commerce",
+    "keywords": [
+      "temu",
+      "shein",
+      "haul",
+      "dupe",
+      "dupes",
+      "fast fashion"
+    ],
+    "stocks": [
+      {
+        "ticker": "PDD",
+        "name": "PDD Holdings",
+        "purity": 0.7,
+        "note": "Parent of Temu; direct beneficiary of haul culture."
+      }
+    ]
+  },
+  {
+    "theme": "Quantum Computing",
+    "keywords": [
+      "quantum",
+      "quantum computing",
+      "qubit"
+    ],
+    "stocks": [
+      {
+        "ticker": "IONQ",
+        "name": "IonQ",
+        "purity": 0.9,
+        "note": "Quantum-computing pure play."
+      },
+      {
+        "ticker": "RGTI",
+        "name": "Rigetti Computing",
+        "purity": 0.9,
+        "note": "Quantum-computing pure play."
+      },
+      {
+        "ticker": "QBTS",
+        "name": "D-Wave Quantum",
+        "purity": 0.9,
+        "note": "Quantum-computing pure play."
+      }
+    ]
+  },
+  {
+    "theme": "Nuclear / SMR / Uranium",
+    "keywords": [
+      "nuclear",
+      "uranium",
+      "smr",
+      "small modular reactor",
+      "nuscale",
+      "reactor"
+    ],
+    "stocks": [
+      {
+        "ticker": "SMR",
+        "name": "NuScale Power",
+        "purity": 0.9,
+        "note": "Small-modular-reactor pure play."
+      },
+      {
+        "ticker": "OKLO",
+        "name": "Oklo",
+        "purity": 0.9,
+        "note": "Advanced-nuclear pure play."
+      },
+      {
+        "ticker": "LEU",
+        "name": "Centrus Energy",
+        "purity": 0.85,
+        "note": "Enriched-uranium pure play."
+      },
+      {
+        "ticker": "CCJ",
+        "name": "Cameco",
+        "purity": 0.8,
+        "note": "Uranium-mining pure play."
+      }
+    ]
+  },
+  {
+    "theme": "Space",
+    "keywords": [
+      "space",
+      "spacex",
+      "rocket",
+      "satellite",
+      "moon landing",
+      "starship"
+    ],
+    "stocks": [
+      {
+        "ticker": "RKLB",
+        "name": "Rocket Lab",
+        "purity": 0.9,
+        "note": "Launch / space-systems pure play."
+      },
+      {
+        "ticker": "ASTS",
+        "name": "AST SpaceMobile",
+        "purity": 0.9,
+        "note": "Satellite-to-phone pure play."
+      },
+      {
+        "ticker": "LUNR",
+        "name": "Intuitive Machines",
+        "purity": 0.85,
+        "note": "Lunar-lander pure play."
+      }
+    ]
+  },
+  {
+    "theme": "Sports Betting",
+    "keywords": [
+      "draftkings",
+      "sports betting",
+      "parlay",
+      "fanduel",
+      "betting"
+    ],
+    "stocks": [
+      {
+        "ticker": "DKNG",
+        "name": "DraftKings",
+        "purity": 0.95,
+        "note": "Online sports-betting pure play."
+      },
+      {
+        "ticker": "PENN",
+        "name": "PENN Entertainment",
+        "purity": 0.55,
+        "note": "ESPN Bet exposure plus casinos."
+      },
+      {
+        "ticker": "MGM",
+        "name": "MGM Resorts",
+        "purity": 0.4,
+        "note": "BetMGM stake plus casinos."
+      }
+    ]
+  },
+  {
+    "theme": "Gaming / Metaverse",
+    "keywords": [
+      "roblox",
+      "fortnite",
+      "gaming",
+      "video game",
+      "metaverse"
+    ],
+    "stocks": [
+      {
+        "ticker": "RBLX",
+        "name": "Roblox",
+        "purity": 0.95,
+        "note": "UGC-gaming platform pure play."
+      },
+      {
+        "ticker": "TTWO",
+        "name": "Take-Two Interactive",
+        "purity": 0.7,
+        "note": "GTA publisher."
+      },
+      {
+        "ticker": "EA",
+        "name": "Electronic Arts",
+        "purity": 0.65,
+        "note": "Major game publisher."
+      }
+    ]
+  },
+  {
+    "theme": "Athleisure / Sneakers",
+    "keywords": [
+      "hoka",
+      "lululemon",
+      "leggings",
+      "on running",
+      "sneakers",
+      "running shoes",
+      "athleisure"
+    ],
+    "stocks": [
+      {
+        "ticker": "ONON",
+        "name": "On Holding",
+        "purity": 0.9,
+        "note": "On Running shoe pure play."
+      },
+      {
+        "ticker": "DECK",
+        "name": "Deckers Outdoor",
+        "purity": 0.85,
+        "note": "Owns HOKA & UGG; viral footwear pure play."
+      },
+      {
+        "ticker": "LULU",
+        "name": "Lululemon",
+        "purity": 0.8,
+        "note": "Athleisure pure play."
+      },
+      {
+        "ticker": "NKE",
+        "name": "Nike",
+        "purity": 0.6,
+        "note": "Athletic-apparel bellwether."
+      }
+    ]
+  },
+  {
+    "theme": "Cannabis",
+    "keywords": [
+      "cannabis",
+      "marijuana",
+      "weed",
+      "rescheduling",
+      "420"
+    ],
+    "stocks": [
+      {
+        "ticker": "TLRY",
+        "name": "Tilray Brands",
+        "purity": 0.9,
+        "note": "Cannabis pure play."
+      },
+      {
+        "ticker": "CGC",
+        "name": "Canopy Growth",
+        "purity": 0.9,
+        "note": "Cannabis pure play."
+      },
+      {
+        "ticker": "CRON",
+        "name": "Cronos Group",
+        "purity": 0.85,
+        "note": "Cannabis pure play."
+      }
+    ]
+  },
+  {
+    "theme": "Solar / Clean Energy",
+    "keywords": [
+      "solar",
+      "solar panel",
+      "clean energy",
+      "rooftop solar"
+    ],
+    "stocks": [
+      {
+        "ticker": "ENPH",
+        "name": "Enphase Energy",
+        "purity": 0.9,
+        "note": "Solar-microinverter pure play."
+      },
+      {
+        "ticker": "FSLR",
+        "name": "First Solar",
+        "purity": 0.85,
+        "note": "Utility-scale solar pure play."
+      },
+      {
+        "ticker": "RUN",
+        "name": "Sunrun",
+        "purity": 0.85,
+        "note": "Residential-solar pure play."
+      }
+    ]
+  },
+  {
+    "theme": "Dating Apps",
+    "keywords": [
+      "tinder",
+      "hinge",
+      "dating app",
+      "bumble",
+      "online dating"
+    ],
+    "stocks": [
+      {
+        "ticker": "BMBL",
+        "name": "Bumble",
+        "purity": 0.95,
+        "note": "Dating-app pure play."
+      },
+      {
+        "ticker": "MTCH",
+        "name": "Match Group",
+        "purity": 0.9,
+        "note": "Tinder / Hinge owner; dating pure play."
+      }
+    ]
+  },
+  {
+    "theme": "Social Media",
+    "keywords": [
+      "tiktok ban",
+      "tiktok",
+      "snapchat",
+      "reddit",
+      "pinterest",
+      "threads",
+      "x app"
+    ],
+    "stocks": [
+      {
+        "ticker": "RDDT",
+        "name": "Reddit",
+        "purity": 0.9,
+        "note": "Social-platform pure play."
+      },
+      {
+        "ticker": "SNAP",
+        "name": "Snap Inc.",
+        "purity": 0.85,
+        "note": "Social-media pure play."
+      },
+      {
+        "ticker": "PINS",
+        "name": "Pinterest",
+        "purity": 0.85,
+        "note": "Visual-discovery social pure play."
+      },
+      {
+        "ticker": "META",
+        "name": "Meta Platforms",
+        "purity": 0.55,
+        "note": "Instagram / Threads owner; a TikTok-ban beneficiary."
+      }
+    ]
+  },
+  {
+    "theme": "Robotics",
+    "keywords": [
+      "humanoid robot",
+      "optimus",
+      "robot",
+      "robotics",
+      "automation"
+    ],
+    "stocks": [
+      {
+        "ticker": "SERV",
+        "name": "Serve Robotics",
+        "purity": 0.8,
+        "note": "Sidewalk delivery-robot pure play."
+      },
+      {
+        "ticker": "TSLA",
+        "name": "Tesla",
+        "purity": 0.4,
+        "note": "Optimus humanoid-robot program."
+      }
+    ]
+  },
+  {
+    "theme": "Mixed Reality",
+    "keywords": [
+      "vision pro",
+      "apple vision",
+      "vr",
+      "ar",
+      "mixed reality",
+      "headset"
+    ],
+    "stocks": [
+      {
+        "ticker": "META",
+        "name": "Meta Platforms",
+        "purity": 0.45,
+        "note": "Quest / Reality Labs exposure."
+      },
+      {
+        "ticker": "AAPL",
+        "name": "Apple",
+        "purity": 0.3,
+        "note": "Vision Pro maker; tiny share of revenue."
+      }
+    ]
+  },
+  {
+    "theme": "Telehealth",
+    "keywords": [
+      "telehealth",
+      "hims",
+      "online prescription"
+    ],
+    "stocks": [
+      {
+        "ticker": "HIMS",
+        "name": "Hims & Hers Health",
+        "purity": 0.85,
+        "note": "Direct-to-consumer telehealth pure play."
+      }
+    ]
+  }
+]
