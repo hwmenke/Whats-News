@@ -402,3 +402,17 @@ function fitContent() {
     // Fitting both independently would leave them showing different periods.
     if (charts.daily.main) charts.daily.main.timeScale().fitContent();
 }
+
+// ── Screenshot capture (for the trade journal) ───────────────
+// Returns a PNG data-URL of the current daily main chart, or null
+// if no chart is rendered yet (Lightweight Charts 4.x takeScreenshot).
+function captureMainChartDataURL() {
+    const c = charts.daily && charts.daily.main;
+    if (!c || typeof c.takeScreenshot !== 'function') return null;
+    try {
+        return c.takeScreenshot().toDataURL('image/png');
+    } catch (e) {
+        console.error('takeScreenshot failed', e);
+        return null;
+    }
+}
