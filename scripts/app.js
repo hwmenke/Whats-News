@@ -19,7 +19,6 @@ let state = {
 
 let statsCharts = {};
 let backtestEquityChart = null;
-let scannerPollTimer = null;
 
 // ── Toast system ─────────────────────────────────────────────
 function toast(message, type = 'info', duration = 3500) {
@@ -34,10 +33,52 @@ function toast(message, type = 'info', duration = 3500) {
     }, duration);
 }
 
+// ── UI state persistence (active tab + symbol survive reloads) ──
+const UI_STATE_KEY = 'findash.ui';
+function persistUiState() {
+    try {
+        localStorage.setItem(UI_STATE_KEY, JSON.stringify({
+            tab:    state.activeTab,
+            symbol: state.activeSymbol,
+        }));
+    } catch (_) { /* storage unavailable (private mode) — ignore */ }
+}
+function loadUiState() {
+    try {
+        return JSON.parse(localStorage.getItem(UI_STATE_KEY)) || {};
+    } catch (_) {
+        return {};
+    }
+}
+
+// ── Connection status indicator ──────────────────────────────
+function setConnection(online) {
+    const dot   = document.getElementById('status-dot');
+    const label = document.getElementById('conn-label');
+    if (dot) {
+        dot.classList.toggle('offline', !online);
+        dot.title = online ? 'Connected to server' : 'Cannot reach server';
+    }
+    if (label) {
+        label.classList.toggle('offline', !online);
+        label.textContent = online ? 'Live' : 'Offline';
+    }
+}
+
 // ── API helpers ──────────────────────────────────────────────
 async function apiFetch(url, opts = {}) {
     console.log(`>> API Fetch: ${url}`, opts.method || 'GET');
-    const res  = await fetch(url, opts);
+    let res;
+    try {
+        res = await fetch(url, opts);
+    } catch (netErr) {
+        // fetch only throws on a network-level failure → server unreachable
+        setConnection(false);
+        console.error('!! Network error:', netErr.message);
+        throw new Error('Cannot reach server — check that the backend is running');
+    }
+    // Any HTTP response means the server is reachable, even if it's a 4xx/5xx
+    setConnection(true);
     console.log(`<< API Response: ${res.status} ${res.statusText}`);
     const data = await res.json();
     if (!res.ok) {
@@ -460,6 +501,7 @@ async function refreshAll() {
 // ── Symbol selection & chart loading ─────────────────────────
 async function selectSymbol(symbol) {
     state.activeSymbol = symbol;
+    persistUiState();
     renderSymbolList();
     if (state.activeTab === 'charts') {
         await loadChartData(symbol);
@@ -621,15 +663,12 @@ function showEmptyState() {
     document.getElementById('empty-state').style.display       = 'flex';
     document.getElementById('chart-area').style.display        = 'none';
     document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     document.getElementById('social-area').style.display       = 'none';
-}
-
-function showChartArea() {
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('chart-area').style.display  = 'flex';
 }
 
 function showLoadingOverlay(show) {
@@ -727,6 +766,16 @@ async function switchTab(tabId) {
     document.getElementById('data-manager-area').style.display  = 'none';
     document.getElementById('phase-plane-area').style.display   = 'none';
     document.querySelector('.tab-bar').style.display            = 'none';
+
+    persistUiState();
+
+    // Symbol-dependent tabs: show the guidance empty-state instead of a blank
+    // panel when nothing is selected yet.
+    const NEEDS_SYMBOL = ['charts', 'stats', 'knn', 'backtest', 'trend'];
+    if (NEEDS_SYMBOL.includes(tabId) && !state.activeSymbol) {
+        showEmptyState();
+        return;
+    }
 
     if (tabId === 'charts') {
         showChartArea();
@@ -1271,79 +1320,10 @@ function renderBacktest(data) {
     }
 }
 
-// ── Scanner Functions ─────────────────────────────────────────
-async function fetchSP500() {
-    const btn      = document.getElementById('btn-fetch-sp500');
-    const statusEl = document.getElementById('scanner-fetch-status');
-    if (btn) btn.disabled = true;
-    if (statusEl) statusEl.textContent = 'Starting fetch…';
-
-    try {
-        await apiFetch(`${API}/scanner/fetch`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ force: false }),
-        });
-        if (statusEl) statusEl.textContent = 'Fetching… 0%';
-        pollScannerStatus();
-    } catch (e) {
-        toast('Fetch failed: ' + e.message, 'error');
-        if (statusEl) statusEl.textContent = 'Error: ' + e.message;
-        if (btn) btn.disabled = false;
-    }
-}
-
-function pollScannerStatus() {
-    if (scannerPollTimer) clearInterval(scannerPollTimer);
-    scannerPollTimer = setInterval(async () => {
-        try {
-            const s      = await apiFetch(`${API}/scanner/status`);
-            const btn    = document.getElementById('btn-fetch-sp500');
-            const statusEl = document.getElementById('scanner-fetch-status');
-            if (s.running) {
-                if (statusEl) statusEl.textContent = `Fetching… ${s.progress}% (${s.done}/${s.total})`;
-            } else {
-                clearInterval(scannerPollTimer);
-                scannerPollTimer = null;
-                if (btn) btn.disabled = false;
-                const sum = s.summary || {};
-                if (statusEl) {
-                    statusEl.textContent = sum.error
-                        ? 'Error: ' + sum.error
-                        : `Done — ${sum.success || 0} ok, ${sum.skipped || 0} skipped, ${sum.failed || 0} failed`;
-                }
-                toast('S&P 500 fetch complete', 'success');
-            }
-        } catch (e) {
-            clearInterval(scannerPollTimer);
-            scannerPollTimer = null;
-        }
-    }, 3000);
-}
-
-async function runScanner() {
-    const btn       = document.getElementById('btn-run-scanner');
-    const countEl   = document.getElementById('scanner-count');
-    const filterSel = document.getElementById('scanner-signal-filter');
-    const signal    = filterSel ? filterSel.value : '';
-
-    if (btn) { btn.disabled = true; btn.textContent = 'Scanning…'; }
-    if (countEl) countEl.textContent = '';
-
-    try {
-        let url = `${API}/scanner/run`;
-        if (signal) url += `?signal=${encodeURIComponent(signal)}`;
-        const results = await apiFetch(url);
-        renderScannerTable(results);
-        if (countEl) countEl.textContent = `${results.length} results`;
-    } catch (e) {
-        toast('Scanner failed: ' + e.message, 'error');
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = 'Run Scanner'; }
-    }
-}
-
-// renderScannerTable is defined in scanner.js (multi-timeframe version)
+// renderScannerTable is defined in scanner.js (multi-timeframe version).
+// The legacy signal-based scanner UI (S&P 500 bulk fetch + Run Scanner) was
+// removed; its driver functions lived here and referenced DOM that no longer
+// exists, so they have been deleted along with their boot wiring.
 
 // ── Boot ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -1369,11 +1349,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.key === 'Enter') addSymbol();
     });
 
-    // Scanner buttons (optional — only present in legacy scanner UI)
-    document.getElementById('btn-fetch-sp500')?.addEventListener('click', fetchSP500);
-    document.getElementById('btn-run-scanner')?.addEventListener('click', runScanner);
-    document.getElementById('scanner-signal-filter')?.addEventListener('change', runScanner);
-
     // Backtest button
     document.getElementById('btn-run-backtest').addEventListener('click', () => {
         if (state.activeSymbol) loadBacktest(state.activeSymbol);
@@ -1392,20 +1367,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (typeof loadTopMovers === 'function') loadTopMovers();
     if (typeof startBannerAutoRefresh === 'function') startBannerAutoRefresh();
 
-    // Restore the last tab from the URL hash or localStorage.
-    const VALID_TABS = ['charts','stats','knn','backtest','trend','scanner','social','data-manager'];
-    let initialTab = (location.hash || '').replace('#','');
-    if (!VALID_TABS.includes(initialTab)) {
-        try { initialTab = localStorage.getItem('findash.activeTab') || ''; } catch (e) { initialTab = ''; }
-    }
+    // Restore the last-used tab + symbol when possible.
+    const saved     = loadUiState();
+    const savedSym  = saved.symbol && state.symbols.find(s => s.symbol === saved.symbol)
+                        ? saved.symbol : null;
 
-    if (initialTab && VALID_TABS.includes(initialTab) && initialTab !== 'charts') {
-        switchTab(initialTab);
-        // Tabs that don't depend on a selected symbol still want one loaded behind them.
-        if (state.symbols.length && state.symbols[0].last_fetch) {
-            state.activeSymbol = state.symbols[0].symbol;
-            renderSymbolList();
-        }
+    if (saved.tab && ['scanner', 'data-manager', 'phase-plane', 'newsletter', 'social'].includes(saved.tab)) {
+        switchTab(saved.tab);                       // symbol-independent tabs
+    } else if (savedSym) {
+        // Set the symbol first so switchTab reveals + loads the saved tab
+        // (some loaders only show their area when reached via switchTab).
+        state.activeSymbol = savedSym;
+        renderSymbolList();
+        switchTab(saved.tab || 'charts');
     } else if (state.symbols.length && state.symbols[0].last_fetch) {
         selectSymbol(state.symbols[0].symbol);
     } else {

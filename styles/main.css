@@ -143,6 +143,21 @@ html, body {
   animation: pulse-dot 2s infinite;
 }
 
+/* Offline / unreachable backend — steady red, no pulse */
+.status-dot.offline {
+  background: var(--red);
+  box-shadow: 0 0 6px var(--red);
+  animation: none;
+}
+
+.conn-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+.conn-label.offline { color: var(--red); }
+
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -523,13 +538,16 @@ html, body {
 
 .chart-label {
   position: absolute;
-  top: 8px;
-  left: 12px;
+  top: 7px;
+  left: 10px;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.7px;
-  color: var(--text-dim);
+  color: var(--text-muted);
+  background: rgba(13,17,23,0.72);
+  padding: 2px 7px;
+  border-radius: 4px;
   z-index: 10;
   pointer-events: none;
 }
@@ -933,7 +951,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 7px 20px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   flex-wrap: wrap;
@@ -1003,7 +1021,7 @@ html, body {
 
 /* ── Description strip ─────────────────────────────────────── */
 .trend-line-desc {
-  padding: 5px 20px;
+  padding: 6px 16px;
   font-size: 11px;
   line-height: 1.5;
   background: var(--bg-base);
@@ -1058,9 +1076,10 @@ html, body {
   background: var(--bg-base);
 }
 
-/* Regime strip wrapper */
+/* Regime strip wrapper ("swirlogram") — a touch taller so the three
+   stacked S/M/L horizon bands don't crowd the top/bottom edges. */
 .trend-regime-wrap {
-  height: 130px;
+  height: 148px;
   flex-shrink: 0;
   position: relative;
   background: var(--bg-base);
@@ -1857,6 +1876,7 @@ html, body {
     padding: 8px 16px;
     background: var(--bg-elevated);
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
 }
 .tconf-label {
     display: flex;
@@ -1881,8 +1901,9 @@ html, body {
 /* ── Trend sub-tabs (Chart / Scan) ────────────────────────── */
 .trend-subtabs {
     display: flex;
+    align-items: center;
     gap: 4px;
-    padding: 6px 12px 0;
+    padding: 6px 16px 0;
     background: var(--bg-base);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
@@ -1911,7 +1932,7 @@ html, body {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 8px 14px;
+    padding: 8px 16px;
     background: var(--bg-elevated);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;

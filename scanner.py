@@ -447,9 +447,12 @@ def _to_monthly(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
     agg = dict(open='first', high='max', low='min', close='last', volume='sum')
+    # Pass the agg dict positionally — `.agg(**agg)` triggers pandas named-
+    # aggregation (which expects (col, func) tuples) and always raises, forcing
+    # a fallback to the deprecated 'M' alias. 'ME' is the pandas 2.2+ alias.
     for alias in ('ME', 'M'):
         try:
-            return df.resample(alias).agg(**agg).dropna(subset=['close'])
+            return df.resample(alias).agg(agg).dropna(subset=['close'])
         except Exception:
             continue
     return pd.DataFrame()
