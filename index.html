@@ -141,6 +141,14 @@
       <p>Add a ticker symbol to your watchlist using the sidebar, then click it to load its chart.</p>
     </div>
 
+    <!-- ── Load Error State (a symbol IS selected; its data load failed) ── -->
+    <div id="error-state" class="empty-state" style="display:none;">
+      <div class="empty-icon">⚠️</div>
+      <h2 id="error-title">Couldn't load data</h2>
+      <p id="error-msg"></p>
+      <button id="btn-error-retry" class="btn btn-primary">↻ Retry</button>
+    </div>
+
     <!-- ── Chart Area ── -->
     <div id="chart-area" class="charts-container" style="display:none; position:relative;">
 

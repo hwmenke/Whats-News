@@ -1864,6 +1864,19 @@ html, body {
 }
 .sym-group-header:first-child { border-top: none; margin-top: 0; }
 
+/* Per-row change badge in the watchlist */
+.sym-chg {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: auto;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.sym-chg.positive { color: var(--green); }
+.sym-chg.negative { color: var(--red); }
+.sym-chg.nodata   { color: var(--text-dim); font-style: italic; font-weight: 400; }
+
 .sym-tag {
     font-size: 9px;
     padding: 1px 5px;

@@ -86,11 +86,16 @@ async function apiFetch(url, opts = {}) {
     // Any HTTP response means the server is reachable, even if it's a 4xx/5xx
     setConnection(true);
     console.log(`<< API Response: ${res.status} ${res.statusText}`);
-    const data = await res.json();
+    // A crashed route returns an HTML error page; blindly calling res.json()
+    // on it produced a cryptic "Unexpected token <" toast.
+    const isJson = (res.headers.get('content-type') || '').includes('json');
+    const data   = isJson ? await res.json() : null;
     if (!res.ok) {
-        console.error('!! API Error:', data.error || `HTTP ${res.status}`);
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const msg = (data && data.error) || `HTTP ${res.status}`;
+        console.error('!! API Error:', msg);
+        throw new Error(msg);
     }
+    if (data === null) throw new Error('Unexpected non-JSON response from server');
     return data;
 }
 
@@ -243,6 +248,19 @@ function renderSymbolList() {
         ticker.className = 'sym-ticker';
         ticker.textContent = sym.symbol;
 
+        // Price change badge — the sidebar is a watchlist, not a link list.
+        const chgEl = document.createElement('span');
+        if (sym.last_close != null && sym.prev_close != null && sym.prev_close !== 0) {
+            const chg = (sym.last_close / sym.prev_close - 1) * 100;
+            chgEl.className   = 'sym-chg ' + (chg >= 0 ? 'positive' : 'negative');
+            chgEl.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+            chgEl.title       = `Last close $${sym.last_close.toFixed(2)}`;
+        } else {
+            chgEl.className   = 'sym-chg nodata';
+            chgEl.textContent = 'no data';
+            chgEl.title       = 'No stored data — click the symbol to download';
+        }
+
         // Group tag badge (click to edit inline)
         const tagBadge = document.createElement('span');
         tagBadge.className   = 'sym-tag';
@@ -261,6 +279,7 @@ function renderSymbolList() {
 
         item.appendChild(ticker);
         item.appendChild(tagBadge);
+        item.appendChild(chgEl);
         item.appendChild(removeBtn);
         item.addEventListener('click', () => selectSymbol(sym.symbol));
         list.appendChild(item);
@@ -619,8 +638,7 @@ async function loadChartData(symbol) {
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
         if (gen !== loadGen) return;
-        toast('Chart load failed: ' + e.message, 'error');
-        showEmptyState();
+        showErrorState(symbol, e.message);
     } finally {
         if (gen === loadGen) {
             state.loading = false;
@@ -690,7 +708,16 @@ function showEmptyState() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
+}
+
+function showErrorState(symbol, message) {
+    showEmptyState();                       // hides every content area
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('error-state').style.display = 'flex';
+    document.getElementById('error-title').textContent   = `Couldn't load ${symbol}`;
+    document.getElementById('error-msg').textContent     = message || 'Unknown error';
 }
 
 function showLoadingOverlay(show) {
@@ -715,6 +742,7 @@ async function switchTab(tabId) {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
     persistUiState();
@@ -763,6 +791,7 @@ function showStatsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -775,6 +804,7 @@ function showChartArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'flex';
 }
 
@@ -787,6 +817,7 @@ function showTrendArea() {
     document.getElementById('trend-area').style.display        = 'flex';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -799,6 +830,7 @@ function showScannerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'flex';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -811,6 +843,7 @@ function showDataManagerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'flex';
+    document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -1335,9 +1368,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         else toast('Select a symbol first', 'warning');
     });
 
-    // Close bulk modal on Escape
+    // Retry button on the load-error state
+    document.getElementById('btn-error-retry').addEventListener('click', () => {
+        if (state.activeSymbol) selectSymbol(state.activeSymbol);
+    });
+
+    // Keyboard model: Escape closes the bulk modal, "/" focuses the symbol
+    // input, ArrowUp/Down walk the watchlist (when not typing in a field).
     document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') closeBulkModal();
+        if (e.key === 'Escape') { closeBulkModal(); return; }
+
+        const tag = document.activeElement?.tagName;
+        const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+        if (typing) return;
+
+        if (e.key === '/') {
+            e.preventDefault();
+            document.getElementById('new-symbol-input').focus();
+            return;
+        }
+        if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && state.symbols.length) {
+            e.preventDefault();
+            const idx  = state.symbols.findIndex(s => s.symbol === state.activeSymbol);
+            const next = e.key === 'ArrowDown'
+                ? Math.min(idx + 1, state.symbols.length - 1)
+                : Math.max(idx - 1, 0);
+            if (next !== idx) selectSymbol(state.symbols[next].symbol);
+        }
     });
 
     await loadSymbols();

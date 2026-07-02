@@ -79,10 +79,25 @@ def init_db():
 # ── Symbol CRUD ────────────────────────────────────────────────────────────────
 
 def list_symbols():
+    """Symbols with their last two daily closes attached so the sidebar can
+    show price/change without one request per row."""
     conn = get_connection()
-    rows = conn.execute(
-        "SELECT * FROM symbols ORDER BY COALESCE(NULLIF(group_tag,''), 'zzz'), symbol"
-    ).fetchall()
+    rows = conn.execute("""
+        SELECT s.*, q.last_close, q.prev_close
+        FROM symbols s
+        LEFT JOIN (
+            SELECT symbol,
+                   MAX(CASE WHEN rn = 1 THEN close END) AS last_close,
+                   MAX(CASE WHEN rn = 2 THEN close END) AS prev_close
+            FROM (
+                SELECT symbol, close,
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+                FROM ohlcv WHERE freq = 'daily'
+            ) WHERE rn <= 2
+            GROUP BY symbol
+        ) q ON q.symbol = s.symbol
+        ORDER BY COALESCE(NULLIF(s.group_tag,''), 'zzz'), s.symbol
+    """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
