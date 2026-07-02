@@ -55,27 +55,29 @@ what has shipped.
 - [x] Refresh All: one summary toast instead of N (UX #8, Engineer #7).
 - [x] Empty state no longer shows the floating KAMA toolbar (UX #10).
 
-## Wave 2 — next (M effort, high value)
+## Wave 2 — SHIPPED
 
-1. **Honest backtester**: walk-forward split (train/test), report the selected
-   config's out-of-sample performance; label in-sample numbers (Quant #1).
-2. **Validate the app's own signals**: push `trend_score` and composite trend
-   state through `stats.get_binned_performance`; backtest MRT/MDB exit rules
-   and attach historical hit-rate to the R:R card (Quant #6, #7).
-3. **Watchlist that informs**: last close + change% per row, "no data" badge
-   with one-click refetch (UX #3).
-4. **Real error state**: dedicated retry UI instead of the misleading
-   "No Symbol Selected"; unify 404-auto-fetch across all tabs; guard
-   `res.json()` on non-JSON responses (UX #2).
-5. **Compute cache + vectorization**: memo `(symbol, freq, config-hash,
-   latest_bar_date)` for trend-scan/scanner; vectorize `_pct_rank` and KAMA
-   loops (Engineer #1, #5).
-6. **Adjustment drift**: overlap-check stored closes vs fresh download; full
-   re-download on mismatch (Engineer #4b).
-7. **Keyboard model**: `/` focuses symbol input, ↑/↓ walk the watchlist,
-   focusable rows (UX #4).
-8. **Re-token Statistics tab** to the app palette (Visual #2) and unify
-   `--gutter-x: 16px` across remaining bars (Visual #3).
+- [x] **Honest backtester**: configs ranked on the first 75% of history only;
+      selected config's holdout metrics + OOS buy-and-hold shown in a second
+      KPI row; equity curve overlays the holdout segment (Quant #1).
+- [x] **Validate the app's own signals**: `trend_score_analysis` (fwd 1d/5d +
+      N per score level) rendered as a Statistics card; `system_stats` replays
+      the MRT/MDB exit rules and shows TP-first rate / win rate / expectancy
+      under the signal grid (Quant #6, #7).
+- [x] **Watchlist that informs**: change% badge per row from a single window-
+      function query; explicit "no data" badge (UX #3).
+- [x] **Real error state**: dedicated retry UI replaces the misleading
+      "No Symbol Selected"; `res.json()` guarded by content-type (UX #2).
+- [x] **Scan caches**: 5-min TTL keyed on config + latest bar date; repeat
+      trend-scan 1.3 s → 14 ms measured (Engineer #1, #5 — vectorizing the
+      cold path remains open, see Wave 3).
+- [x] **Adjustment drift**: 7-day overlap check on incremental fetch; full
+      re-download on close mismatch (Engineer #4b).
+- [x] **Keyboard model**: `/` focuses symbol input, ↑/↓ walk the watchlist
+      (UX #4 — focusable rows / ARIA remain open).
+- [x] **Re-token Statistics tab** to the app palette; unify topbar /
+      symbol-header / tab-bar / scanner-controls to the 16px gutter; lift
+      9/9.5px table headers to 10px (Visual #2, #3, part of #8/#10).
 
 ## Wave 3 — bigger bets
 
