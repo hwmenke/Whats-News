@@ -216,6 +216,14 @@ def get_adaptive_trend(symbol):
 
 # -- Trend Scan ----------------------------------------------------------------
 
+# Per-row result cache. Recomputing the full adaptive-trend stack takes
+# ~300 ms/symbol of GIL-bound Python, so repeat scans on a large watchlist
+# cost tens of seconds. Rows are keyed on the exact config + the symbol's
+# latest bar date; the short TTL covers intraday refetches of today's bar.
+_TREND_SCAN_TTL = 300  # seconds
+_trend_scan_cache = {}
+
+
 @app.route("/api/trend-scan")
 def trend_scan():
     """Compute adaptive-trend metrics for every watchlist symbol."""
@@ -245,7 +253,21 @@ def trend_scan():
             try: at_config[p] = float(v)
             except ValueError: pass
 
+    cfg_key = (freq, method, rsi_period, tuple(sorted(at_config.items())))
+
     def _one(sym):
+        cache_key = (sym,) + cfg_key + (db.get_latest_ohlcv_date(sym, freq),)
+        hit = _trend_scan_cache.get(cache_key)
+        if hit is not None and time.time() - hit[0] < _TREND_SCAN_TTL:
+            return hit[1]
+
+        row = _compute_one(sym)
+        if len(_trend_scan_cache) > 4096:
+            _trend_scan_cache.clear()
+        _trend_scan_cache[cache_key] = (time.time(), row)
+        return row
+
+    def _compute_one(sym):
         try:
             ohlcv = db.get_ohlcv_df(sym, freq, limit=600)
             if ohlcv.empty or len(ohlcv) < 30:

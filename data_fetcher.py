@@ -5,6 +5,7 @@ Supports incremental fetching: only downloads bars newer than what's in the DB.
 
 import datetime
 import time
+import numpy as np
 import yfinance as yf
 import pandas as pd
 import database as db
@@ -53,11 +54,26 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     # Check if we have existing data and can do an incremental fetch
     last_date_str = db.get_latest_ohlcv_date(sym, "daily")
     if last_date_str:
+        # Overlap the last week of stored bars. auto_adjust=True rescales the
+        # ENTIRE history at Yahoo on every dividend/split, so an incremental
+        # fetch that never re-checks old bars drifts out of adjustment. If the
+        # overlapping closes disagree, re-download the full history.
         last_date  = datetime.date.fromisoformat(last_date_str)
-        start_date = last_date + datetime.timedelta(days=1)
+        start_date = last_date - datetime.timedelta(days=7)
         start_str  = start_date.isoformat()
-        print(f"++ Fetcher: Incremental fetch for {sym} from {start_str}")
+        print(f"++ Fetcher: Incremental fetch for {sym} from {start_str} (7d overlap)")
         raw = ticker.history(start=start_str, interval="1d", auto_adjust=True)
+
+        if not raw.empty:
+            fresh  = _clean_df(raw)
+            stored = db.get_ohlcv_df(sym, "daily", limit=10)
+            common = fresh.index.intersection(stored.index)
+            if len(common):
+                rel_diff = np.abs(fresh.loc[common, "close"] / stored.loc[common, "close"] - 1.0)
+                if (rel_diff > 0.001).any():
+                    print(f"!! Fetcher: Adjustment drift detected for {sym} "
+                          f"(max diff {rel_diff.max():.4%}) — full re-download")
+                    raw = ticker.history(period="max", interval="1d", auto_adjust=True)
     else:
         print(f"++ Fetcher: Full {period} download for {sym}")
         raw = ticker.history(period=period, interval="1d", auto_adjust=True)
