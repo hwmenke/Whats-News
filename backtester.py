@@ -11,6 +11,11 @@ import database as db
 FAST_PERIODS = [5, 8, 10, 15, 20]
 SLOW_PERIODS = [20, 30, 50, 100, 200]
 
+# Transaction cost per side, in basis points. Without a cost term the Sharpe
+# ranking systematically favours the highest-turnover configs, whose paper
+# edge is thinnest in practice.
+COST_BPS = 5.0
+
 
 def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> pd.Series:
     """Kaufman's Adaptive Moving Average."""
@@ -85,7 +90,8 @@ def _run_strategy(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
     position = signal_raw.shift(1).fillna(0)
 
     daily_ret = close.pct_change()
-    strat_ret = position * daily_ret
+    costs     = (COST_BPS / 1e4) * position.diff().abs().fillna(0.0)
+    strat_ret = position * daily_ret - costs
 
     # Drop leading NaNs
     strat_ret = strat_ret.dropna()
@@ -142,8 +148,9 @@ def _weekly_equity(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
 
     position  = signal_raw.shift(1).fillna(0)
     daily_ret = close.pct_change().fillna(0)
+    costs     = (COST_BPS / 1e4) * position.diff().abs().fillna(0.0)
 
-    strat_equity = (1 + position * daily_ret).cumprod()
+    strat_equity = (1 + position * daily_ret - costs).cumprod()
     bh_equity    = (1 + daily_ret).cumprod()
 
     # Resample to weekly
@@ -255,6 +262,7 @@ def run_optimization(symbol: str) -> dict:
         "equity_curve":  equity_curve,
         "heatmap":       heatmap,
         "total_tested":  total_tested,
+        "cost_bps":      COST_BPS,
         "fast_periods":  FAST_PERIODS,
         "slow_periods":  SLOW_PERIODS,
     }

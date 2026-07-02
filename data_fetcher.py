@@ -69,8 +69,13 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     daily_df = _clean_df(raw)
     print(f"++ Fetcher: Processed {len(daily_df)} daily bars")
 
-    # Resample to weekly (week ending Friday)
-    weekly_df = daily_df.resample("W-FRI").agg({
+    daily_count = db.upsert_ohlcv(sym, "daily", daily_df)
+
+    # Rebuild weekly bars from the FULL stored daily history. Resampling only
+    # the incremental slice produced partial W-FRI candles (wrong open, missing
+    # high/low/volume from earlier in the week) that overwrote correct ones.
+    full_daily = db.get_ohlcv_df(sym, "daily", limit=100000)
+    weekly_df = full_daily.resample("W-FRI").agg({
         "open":   "first",
         "high":   "max",
         "low":    "min",
@@ -79,7 +84,6 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     }).dropna()
     print(f"++ Fetcher: Resampled to {len(weekly_df)} weekly bars")
 
-    daily_count  = db.upsert_ohlcv(sym, "daily",  daily_df)
     weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
     print(f"++ Fetcher: Database updated ({daily_count}d, {weekly_count}w)")
 

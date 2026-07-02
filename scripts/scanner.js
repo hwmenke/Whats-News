@@ -262,12 +262,16 @@ function _buildRow(row) {
     tr.className = 'scan-row';
     if (row.error) tr.classList.add('scan-row-error');
 
-    // Symbol — click to load
+    // Symbol — click selects it AND navigates to its chart. Without the tab
+    // switch, selectSymbol() is a no-op on the scanner tab and the click
+    // appears to do nothing.
     const tdSym = _td('scan-td scan-td-sym');
     tdSym.textContent = row.symbol;
-    tdSym.title = row.error ? `Error: ${row.error}` : `Load ${row.symbol}`;
+    tdSym.title = row.error ? `Error: ${row.error}` : `Open ${row.symbol} chart`;
     tdSym.addEventListener('click', () => {
+        if (row.error) return;
         if (typeof selectSymbol === 'function') selectSymbol(row.symbol);
+        if (typeof switchTab === 'function') switchTab('charts');
     });
     tr.appendChild(tdSym);
 

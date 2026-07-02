@@ -20,6 +20,12 @@ let state = {
 let statsCharts = {};
 let backtestEquityChart = null;
 
+// Monotonic id shared by all per-symbol view loaders. Each loader captures
+// ++loadGen on entry and bails after every await if a newer load started —
+// otherwise a slow response (e.g. auto-fetch retry) for a previously clicked
+// symbol lands last and renders under the newer symbol's header.
+let loadGen = 0;
+
 // ── Toast system ─────────────────────────────────────────────
 function toast(message, type = 'info', duration = 3500) {
     const container = document.getElementById('toast-container');
@@ -484,10 +490,15 @@ async function refreshAll() {
     btn.innerHTML = '<span class="spinner"></span> Refreshing…';
     try {
         const results = await apiFetch(`${API}/refresh`, { method: 'POST' });
-        results.forEach(r => {
-            if (r.error) toast(`${r.symbol}: ${r.error}`, 'error');
-            else toast(`${r.symbol}: updated`, 'success', 2000);
-        });
+        // One summary toast — per-symbol toasts stack up the whole viewport
+        // on large watchlists.
+        const failed = results.filter(r => r.error);
+        const okCount = results.length - failed.length;
+        if (failed.length) {
+            toast(`${okCount} updated, ${failed.length} failed: ${failed.map(f => f.symbol).join(', ')}`, 'warning', 7000);
+        } else {
+            toast(`${okCount} symbol${okCount === 1 ? '' : 's'} updated`, 'success');
+        }
         await loadSymbols();
         if (state.activeSymbol) await loadChartData(state.activeSymbol);
     } catch (e) {
@@ -520,6 +531,7 @@ async function selectSymbol(symbol) {
 
 async function loadStatsData(symbol) {
     if (!symbol) return;
+    const gen = ++loadGen;
     showStatsArea();
     showLoadingOverlay(true);
     updateSymbolHeader(symbol, null);
@@ -543,13 +555,15 @@ async function loadStatsData(symbol) {
             throw e;
         });
 
+        if (gen !== loadGen) return;
         state.statsData = stats;
         renderStats(stats);
-        
+
         const last = ohlcv[ohlcv.length - 1];
         const prev = ohlcv[ohlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
+        if (gen !== loadGen) return;
         toast('Stats load failed: ' + e.message, 'error');
         // Clear old stats if error
         document.getElementById('stat-vol').textContent = '--';
@@ -557,12 +571,13 @@ async function loadStatsData(symbol) {
         document.getElementById('stat-drawdown').textContent = '--';
         document.getElementById('stat-winrate').textContent = '--';
     } finally {
-        showLoadingOverlay(false);
+        if (gen === loadGen) showLoadingOverlay(false);
     }
 }
 
 async function loadChartData(symbol) {
     if (!symbol) return;
+    const gen = ++loadGen;
     state.loading = true;
     showChartArea();
     showLoadingOverlay(true);
@@ -590,6 +605,7 @@ async function loadChartData(symbol) {
             ]);
         });
 
+        if (gen !== loadGen) return;
         initCharts();
 
         loadOHLCV('daily',  dailyOhlcv);
@@ -602,17 +618,21 @@ async function loadChartData(symbol) {
         const prev = dailyOhlcv[dailyOhlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
+        if (gen !== loadGen) return;
         toast('Chart load failed: ' + e.message, 'error');
         showEmptyState();
     } finally {
-        state.loading = false;
-        showLoadingOverlay(false);
+        if (gen === loadGen) {
+            state.loading = false;
+            showLoadingOverlay(false);
+        }
     }
 }
 
 // ── Adaptive Trend loading ────────────────────────────────────
 async function loadAdaptiveTrendData(symbol) {
     if (!symbol) return;
+    const gen = ++loadGen;
     showTrendArea();
 
     const loadingEl = document.getElementById('trend-loading');
@@ -644,6 +664,7 @@ async function loadAdaptiveTrendData(symbol) {
             throw e;
         });
 
+        if (gen !== loadGen) return;
         window._trendLastOhlcv = ohlcv;   // cache for sub-tab back-navigation
         buildTrendCharts();
         loadTrendData(trendData, ohlcv);
@@ -652,9 +673,10 @@ async function loadAdaptiveTrendData(symbol) {
         const prev = ohlcv[ohlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
+        if (gen !== loadGen) return;
         toast('Adaptive Trend load failed: ' + e.message, 'error');
     } finally {
-        if (loadingEl) loadingEl.style.display = 'none';
+        if (gen === loadGen && loadingEl) loadingEl.style.display = 'none';
     }
 }
 
@@ -668,6 +690,7 @@ function showEmptyState() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.querySelector('.tab-bar').style.display           = 'none';
 }
 
 function showLoadingOverlay(show) {
@@ -1047,14 +1070,17 @@ function updateSymbolHeader(symbol, last, prev) {
 
 // ── KNN Functions ────────────────────────────────────────────
 async function loadKNN(symbol) {
+    const gen = ++loadGen;
     document.getElementById('knn-loading').style.display = 'flex';
     try {
         const data = await apiFetch(`${API}/knn/${symbol}?k=15`);
+        if (gen !== loadGen) return;
         renderKNN(data);
     } catch (e) {
+        if (gen !== loadGen) return;
         toast('KNN failed: ' + e.message, 'error');
     } finally {
-        document.getElementById('knn-loading').style.display = 'none';
+        if (gen === loadGen) document.getElementById('knn-loading').style.display = 'none';
     }
 }
 
@@ -1126,7 +1152,10 @@ async function loadBacktest(symbol) {
     try {
         const data = await apiFetch(`${API}/backtest/${symbol}`);
         renderBacktest(data);
-        if (statusEl) statusEl.textContent = `Done — ${data.total_tested} combos tested`;
+        if (statusEl) {
+            const costNote = data.cost_bps ? ` · ${data.cost_bps} bps/side costs · in-sample` : '';
+            statusEl.textContent = `Done — ${data.total_tested} combos tested${costNote}`;
+        }
     } catch (e) {
         toast('Backtest failed: ' + e.message, 'error');
         if (statusEl) statusEl.textContent = 'Error: ' + e.message;

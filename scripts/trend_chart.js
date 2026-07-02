@@ -8,7 +8,7 @@
  * Lines rendered on price chart:
  *   SB  (blue  solid  2px) — fast adaptive baseline
  *   MB  (red   solid  2px) — medium adaptive baseline  ← master regime
- *   LB  (orange dashed 1.5px) — long baseline          [toggleable]
+ *   LB  (yellow solid 1.5px) — long baseline           [toggleable]
  *   SDB (bright-green dashed 1px) — short TP band
  *   MDB (dark-green   dashed 1px) — medium TP band
  *   LDB (cyan         dashed 1px) — long TP band       [toggleable]
@@ -43,57 +43,67 @@ const trendConfig = {
     rsi_period: 14,
 };
 
-// ── Line metadata (descriptions + colors) ─────────────────────
+// ── Line metadata (descriptions; colors mirror TC below) ──────
 const LINE_META = {
     sb:  {
         color: '#3b82f6',
         label: 'SB — Short Baseline',
-        params: 'KAMA · ER=10 · fast=2 · slow=15 · source=HLC/3',
         desc:  'Fast-adapting baseline. Tracks near-term momentum and is the primary input for the short-horizon regime. Turns quickly in trending markets, stays flat in chop.',
     },
     mb:  {
         color: '#ef4444',
         label: 'MB — Medium Baseline',
-        params: 'KAMA · ER=20 · fast=2 · slow=30 · source=HLC/3',
         desc:  'Master trend line. Drives the medium-horizon regime that governs all trade management bands (MRT, MDB). When SB crosses above MB, a long regime entry fires.',
     },
     lb:  {
-        color: '#f97316',
+        color: '#eab308',
         label: 'LB — Long Baseline',
-        params: 'KAMA · ER=40 · fast=2 · slow=60 · source=HLC/3',
         desc:  'Macro structure line. Very slow to react — only flips on sustained multi-month directional moves. Provides the long-horizon regime context for LRT / LDB bands.',
     },
     sdb: {
         color: '#22c55e',
         label: 'SDB — Short Deviation Band  (TP1)',
-        params: 'Center=SB · +2.0 × ATR(20) · ratchets UP in long regime',
         desc:  'First take-profit target. Ratcheting band anchored to SB — moves only in the direction of the trade and never pulls back. Reset on regime flip.',
     },
     mrt: {
         color: '#475569',
         label: 'MRT — Medium Retracement  (Stop)',
-        params: 'Center=MB · −2.25 × ATR(20) · ratchets UP in long regime',
         desc:  'Trailing stop level. Sits 2.25 ATR on the loss side of MB and tightens as MB advances. Exit here on an adverse move. Never retreats against the trade.',
     },
     mdb: {
         color: '#16a34a',
         label: 'MDB — Medium Deviation Band  (TP2)',
-        params: 'Center=MB · +4.5 × ATR(20) · ratchets UP in long regime',
-        desc:  'Main take-profit target. Exactly 2× the stop distance, giving a built-in 2:1 R:R. Ratchets in the direction of the trade; resets on medium-regime flip.',
+        desc:  'Main take-profit target. Band is built 2× the stop distance from MB (a construction ratio, not a win-probability). Ratchets with the trade; resets on medium-regime flip.',
     },
     lrt: {
         color: '#6b7280',
         label: 'LRT — Long Retracement  (Wide Stop)',
-        params: 'Center=LB · −2.25 × ATR(20) · ratchets in long-horizon regime',
         desc:  'Wide trailing stop for long-horizon positions. Based on LB so it only tightens on sustained macro trends. Use for position-level sizing against macro structure.',
     },
     ldb: {
         color: '#06b6d4',
         label: 'LDB — Long Deviation Band  (Extended Target)',
-        params: 'Center=LB · +4.5 × ATR(20) · ratchets in long-horizon regime',
         desc:  'Extended target for multi-month positions. Only meaningful in confirmed long-horizon regimes. Gives a sense of how far macro momentum can carry the move.',
     },
 };
+
+// Parameter caption built from the LIVE config — the old hardcoded strings
+// drifted from the defaults and kept lying after the user tuned anything.
+function _lineParams(key) {
+    const c = trendConfig;
+    const m = (trendState.method || 'kama').toUpperCase();
+    switch (key) {
+        case 'sb':  return `${m} · ER=${c.sb_er} · fast=${c.sb_fast} · slow=${c.sb_slow} · source=HLC/3`;
+        case 'mb':  return `${m} · ER=${c.mb_er} · fast=${c.mb_fast} · slow=${c.mb_slow} · source=HLC/3`;
+        case 'lb':  return `${m} · ER=${c.lb_er} · fast=${c.lb_fast} · slow=${c.lb_slow} · source=HLC/3`;
+        case 'sdb': return `Center=SB · +2.0 × ATR(${c.atr_n}) · ratchets with medium regime`;
+        case 'mrt': return `Center=MB · −2.25 × ATR(${c.atr_n}) · ratchets with medium regime`;
+        case 'mdb': return `Center=MB · +4.5 × ATR(${c.atr_n}) · ratchets with medium regime`;
+        case 'lrt': return `Center=LB · −2.25 × ATR(${c.atr_n}) · ratchets with long regime`;
+        case 'ldb': return `Center=LB · +4.5 × ATR(${c.atr_n}) · ratchets with long regime`;
+    }
+    return '';
+}
 
 // ── Instances ─────────────────────────────────────────────────
 let trendCharts    = { price: null, regime: null };
@@ -449,7 +459,7 @@ function showLineDesc(key) {
         `<span class="tld-dot" style="background:${meta.color}"></span>` +
         `<span class="tld-label">${meta.label}</span>` +
         `<span class="tld-sep">·</span>` +
-        `<span class="tld-params">${meta.params}</span>` +
+        `<span class="tld-params">${_lineParams(key)}</span>` +
         `<span class="tld-sep">—</span>` +
         `<span class="tld-desc">${meta.desc}</span>`;
     el.style.opacity = '1';
@@ -466,7 +476,10 @@ function setTrendMethod(method) {
     document.querySelectorAll('.trend-method-btn').forEach(btn => {
         btn.classList.toggle('trend-active', btn.dataset.val === method);
     });
-    if (typeof state !== 'undefined' && state.activeSymbol) {
+    const scanVisible = document.getElementById('trend-scan-panel')?.style.display !== 'none';
+    if (scanVisible && trendScanState.data) {
+        loadTrendScan();          // keep the scan table in sync with the method pill
+    } else if (typeof state !== 'undefined' && state.activeSymbol) {
         loadAdaptiveTrendData(state.activeSymbol);
     }
 }
@@ -706,6 +719,9 @@ function setTrendScanFreq(freq) {
     document.querySelectorAll('.trend-scan-freq-btn').forEach(btn => {
         btn.classList.toggle('trend-active', btn.dataset.val === freq);
     });
+    // Re-run the scan so the table never shows the old frequency's data
+    // under the newly active pill.
+    if (trendScanState.data) loadTrendScan();
 }
 
 async function loadTrendScan() {

@@ -17,8 +17,13 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "finance.db")
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    # WAL lets readers proceed while bulk fetches commit; the default rollback
+    # journal takes an exclusive lock per commit and stalls chart reads for
+    # seconds during Refresh All / S&P 500 fetches.
+    conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 
@@ -63,9 +68,9 @@ def init_db():
         )
     """)
 
-    cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_ohlcv ON ohlcv(symbol, freq, date)
-    """)
+    # The UNIQUE(symbol, freq, date) constraint already creates this index;
+    # keeping a duplicate doubles write amplification on every upsert.
+    cur.execute("DROP INDEX IF EXISTS idx_ohlcv")
 
     conn.commit()
     conn.close()
