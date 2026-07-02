@@ -1106,6 +1106,30 @@ html, body {
 .trend-signal-value.bear    { color: var(--red);   }
 .trend-signal-value.neutral { color: var(--text-muted); }
 
+/* Historical outcome strip under the signal grid */
+.trend-sig-history {
+  margin: 0 12px 12px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Backtest section labels (in-sample vs holdout) */
+.bt-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.bt-section-label span { text-transform: none; letter-spacing: 0; color: var(--text-dim); font-weight: 500; }
+
 /* ── Bulk Import Modal ─────────────────────────────────────── */
 .bulk-modal-overlay {
   position: fixed;

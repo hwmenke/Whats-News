@@ -276,6 +276,12 @@
             <canvas id="chart-kama-cross-counts"></canvas>
           </div>
         </div>
+        <div class="stats-card">
+          <div class="stats-card-header">Trend Score vs Fwd Returns (validation)</div>
+          <div class="chart-container-js">
+            <canvas id="chart-trend-score"></canvas>
+          </div>
+        </div>
       </div>
 
     </div><!-- #stats-area -->
@@ -338,8 +344,9 @@
         <span id="backtest-status" style="color:var(--text-muted); font-size:12px;"></span>
       </div>
 
-      <!-- Best result KPI cards -->
-      <div class="kpi-row" style="margin-bottom:24px;">
+      <!-- Best result KPI cards — train window (used to select the config) -->
+      <div class="bt-section-label">In-Sample — optimization window (first 75%)</div>
+      <div class="kpi-row" style="margin-bottom:16px;">
         <div class="kpi-card">
           <div class="kpi-label">Best Sharpe</div>
           <div id="bt-sharpe" class="kpi-value">--</div>
@@ -359,6 +366,31 @@
         <div class="kpi-card">
           <div class="kpi-label">Trades</div>
           <div id="bt-trades" class="kpi-value">--</div>
+        </div>
+      </div>
+
+      <!-- Holdout KPI cards — the honest numbers -->
+      <div class="bt-section-label">Out-of-Sample — untouched holdout (last 25%) <span id="bt-oos-range"></span></div>
+      <div class="kpi-row" style="margin-bottom:24px;">
+        <div class="kpi-card">
+          <div class="kpi-label">Sharpe</div>
+          <div id="bt-oos-sharpe" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Ann. Return</div>
+          <div id="bt-oos-annret" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Max Drawdown</div>
+          <div id="bt-oos-maxdd" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Win Rate</div>
+          <div id="bt-oos-winrate" class="kpi-value">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">B&amp;H Sharpe (OOS)</div>
+          <div id="bt-oos-bench" class="kpi-value">--</div>
         </div>
       </div>
 
@@ -543,6 +575,9 @@
               <div id="trend-sig-rr" class="trend-signal-value neutral">—</div>
             </div>
           </div>
+
+          <!-- Observed outcomes of the system's own long entries/exits -->
+          <div id="trend-sig-history" class="trend-sig-history" title="Historical outcome of this system's long entries: exit at MRT stop, MDB target, or regime flip">—</div>
 
         </div><!-- .trend-panel-signal -->
 

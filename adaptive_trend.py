@@ -172,6 +172,66 @@ def _ratchet_band(center: pd.Series, regime: pd.Series, atr: pd.Series,
     return pd.Series(band, index=center.index)
 
 
+def _system_stats(high: pd.Series, low: pd.Series, close: pd.Series,
+                  medium_state: pd.Series, entry_long: pd.Series,
+                  mrt: pd.Series, mdb: pd.Series) -> dict:
+    """
+    Historical outcome of the system's own LONG rules: enter on entry_long
+    (at that bar's close), exit when the low tags MRT (stop), the high tags
+    MDB (TP2), or the medium regime leaves +1 (exit at close).
+
+    This attaches an observed hit-rate to the displayed R:R — the 2:1 band
+    geometry alone says nothing about how often TP is reached before the stop.
+    """
+    n   = len(close)
+    ms  = medium_state.values
+    el  = entry_long.values
+    hi  = high.values
+    lo  = low.values
+    cl  = close.values
+    stop = mrt.values
+    tp   = mdb.values
+
+    trades = []          # (outcome, return)
+    i = 0
+    while i < n:
+        if not el[i]:
+            i += 1
+            continue
+        entry = cl[i]
+        outcome, exit_px, j = None, None, i + 1
+        while j < n:
+            if np.isfinite(stop[j]) and lo[j] <= stop[j]:
+                outcome, exit_px = "stop", stop[j]
+                break
+            if np.isfinite(tp[j]) and hi[j] >= tp[j]:
+                outcome, exit_px = "tp", tp[j]
+                break
+            if ms[j] != 1:
+                outcome, exit_px = "flip", cl[j]
+                break
+            j += 1
+        if outcome is None:                     # still open at end of data
+            outcome, exit_px, j = "open", cl[-1], n - 1
+        if entry > 0 and np.isfinite(exit_px):
+            trades.append((outcome, exit_px / entry - 1.0))
+        i = j + 1
+
+    closed = [t for t in trades if t[0] != "open"]
+    rets   = [r for _, r in closed]
+    tp_n   = sum(1 for o, _ in closed if o == "tp")
+    return {
+        "trades":     len(trades),
+        "tp_hits":    tp_n,
+        "stop_hits":  sum(1 for o, _ in closed if o == "stop"),
+        "flip_exits": sum(1 for o, _ in closed if o == "flip"),
+        "open":       len(trades) - len(closed),
+        "tp_rate":    round(tp_n / len(closed), 3) if closed else None,
+        "win_rate":   round(float(np.mean([r > 0 for r in rets])), 3) if rets else None,
+        "avg_ret":    round(float(np.mean(rets)), 5) if rets else None,
+    }
+
+
 # ── Main computation ──────────────────────────────────────────
 
 def compute_adaptive_trend(symbol: str, freq: str = "daily",
@@ -252,6 +312,14 @@ def compute_adaptive_trend(symbol: str, freq: str = "daily",
     entry_long  = (medium_state == 1) & (med_prev != 1) & (~is_first)
     entry_short = (medium_state == -1) & (med_prev != -1) & (~is_first)
 
+    # ── Historical performance of the system's own long rules ─────────────
+    # Computed on the full (untrimmed) series so every entry is counted.
+    try:
+        system_stats = _system_stats(high, low, close,
+                                     medium_state, entry_long, mrt, mdb)
+    except Exception:
+        system_stats = None
+
     # ── Clip to first bar where all key series have valid values ──────────
     key_series = [sb, mb, lb, mdb, mrt, atr]
     first_valid = max(
@@ -293,4 +361,5 @@ def compute_adaptive_trend(symbol: str, freq: str = "daily",
         "entry_long":   bool_list(entry_long),
         "entry_short":  bool_list(entry_short),
         "atr":          _series_to_list(atr),
+        "system_stats": system_stats,
     }

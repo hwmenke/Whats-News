@@ -69,14 +69,14 @@ def _safe(val):
         return None
 
 
-def _run_strategy(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
-                  trend_score: pd.Series = None, use_trend: bool = False) -> dict:
+def _strategy_returns(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
+                      trend_score: pd.Series = None, use_trend: bool = False):
     """
-    Run a single KAMA crossover backtest.
-    Signal = fast crosses above slow → long; fast crosses below slow → flat.
-    Executes on the next bar (shift 1).
+    Daily strategy returns for one KAMA crossover config.
+    Signal = fast above slow → long; else flat. Executes next bar (shift 1).
+    Returns (position, strat_ret) full-length series so callers can slice
+    train/test windows from the same computation.
     """
-    # Raw signal: 1 = long, 0 = flat
     fast_above = (kama_fast > kama_slow).astype(int)
 
     if use_trend and trend_score is not None:
@@ -92,8 +92,11 @@ def _run_strategy(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
     daily_ret = close.pct_change()
     costs     = (COST_BPS / 1e4) * position.diff().abs().fillna(0.0)
     strat_ret = position * daily_ret - costs
+    return position, strat_ret
 
-    # Drop leading NaNs
+
+def _metrics(strat_ret: pd.Series, position: pd.Series) -> dict:
+    """Performance metrics over a (possibly sliced) return series."""
     strat_ret = strat_ret.dropna()
     if strat_ret.empty or strat_ret.std() == 0:
         return {
@@ -138,19 +141,11 @@ def _run_strategy(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
 def _weekly_equity(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
                    trend_score: pd.Series = None, use_trend: bool = False) -> list:
     """Return weekly equity curve for strategy and buy-and-hold."""
-    fast_above = (kama_fast > kama_slow).astype(int)
-
-    if use_trend and trend_score is not None:
-        trend_ok   = (trend_score > 0).astype(int)
-        signal_raw = fast_above * trend_ok
-    else:
-        signal_raw = fast_above
-
-    position  = signal_raw.shift(1).fillna(0)
+    position, strat_ret = _strategy_returns(close, kama_fast, kama_slow,
+                                            trend_score=trend_score, use_trend=use_trend)
     daily_ret = close.pct_change().fillna(0)
-    costs     = (COST_BPS / 1e4) * position.diff().abs().fillna(0.0)
 
-    strat_equity = (1 + position * daily_ret - costs).cumprod()
+    strat_equity = (1 + strat_ret.fillna(0)).cumprod()
     bh_equity    = (1 + daily_ret).cumprod()
 
     # Resample to weekly
@@ -168,55 +163,74 @@ def _weekly_equity(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
     return curve
 
 
+def _bh_metrics(daily_ret: pd.Series) -> dict:
+    """Buy-and-hold metrics over a (possibly sliced) daily-return series."""
+    daily_ret = daily_ret.dropna()
+    if daily_ret.empty or daily_ret.std() == 0:
+        return {"ann_ret": None, "ann_vol": None, "sharpe": None, "max_dd": None}
+    ann_ret = daily_ret.mean() * 252
+    ann_vol = daily_ret.std() * np.sqrt(252)
+    equity  = (1 + daily_ret).cumprod()
+    max_dd  = ((equity - equity.cummax()) / equity.cummax()).min()
+    return {
+        "ann_ret": _safe(ann_ret),
+        "ann_vol": _safe(ann_vol),
+        "sharpe":  _safe(ann_ret / ann_vol if ann_vol != 0 else 0.0),
+        "max_dd":  _safe(max_dd),
+    }
+
+
+TRAIN_FRAC = 0.75
+
+
 def run_optimization(symbol: str) -> dict:
     """
-    Test all FAST × SLOW KAMA period combinations, with and without trend filter.
-    Returns top-10 results sorted by Sharpe, plus equity curve and heatmap data.
+    Walk-forward KAMA crossover optimization.
+
+    All FAST × SLOW combinations (± trend filter) are ranked by Sharpe on the
+    TRAIN window (first 75% of history) only; the selected config's metrics on
+    the untouched holdout window are reported separately. Ranking on the full
+    sample and plotting the winner on the same data is pure selection bias —
+    the max of 48 noisy Sharpes always looks good.
     """
     df = db.get_ohlcv_df(symbol, "daily", limit=5000)
     if df.empty or len(df) < 220:
         return {"error": f"Not enough data for {symbol}"}
 
     close = df["close"]
+    split_idx  = int(len(close) * TRAIN_FRAC)
+    split_date = close.index[split_idx].strftime("%Y-%m-%d")
 
     # Pre-compute trend score once
     trend_score = _compute_trend_score(df)
 
-    # Pre-compute all KAMA series
+    # Pre-compute all KAMA series (recursive → past-only, safe on full series)
     kama_cache = {}
     for p in set(FAST_PERIODS + SLOW_PERIODS):
         kama_cache[p] = _kama(close, window=p)
 
-    # Buy-and-hold benchmark
-    daily_ret = close.pct_change().dropna()
-    bh_ann_ret = daily_ret.mean() * 252
-    bh_ann_vol = daily_ret.std() * np.sqrt(252)
-    bh_sharpe  = bh_ann_ret / bh_ann_vol if bh_ann_vol != 0 else 0.0
-    equity_bh  = (1 + daily_ret).cumprod()
-    peak_bh    = equity_bh.cummax()
-    bh_max_dd  = ((equity_bh - peak_bh) / peak_bh).min()
-
-    benchmark = {
-        "ann_ret": _safe(bh_ann_ret),
-        "ann_vol": _safe(bh_ann_vol),
-        "sharpe":  _safe(bh_sharpe),
-        "max_dd":  _safe(bh_max_dd),
-    }
+    # Buy-and-hold benchmark, train + holdout
+    daily_ret     = close.pct_change()
+    benchmark     = _bh_metrics(daily_ret.iloc[:split_idx])
+    benchmark_oos = _bh_metrics(daily_ret.iloc[split_idx:])
 
     all_results = []
+    returns_by_label = {}
     for fast_p in FAST_PERIODS:
         for slow_p in SLOW_PERIODS:
             if fast_p >= slow_p:
                 continue
             for use_trend in (False, True):
                 label = f"K{fast_p}/K{slow_p}" + (" +Trend" if use_trend else "")
-                metrics = _run_strategy(
+                position, strat_ret = _strategy_returns(
                     close,
                     kama_cache[fast_p],
                     kama_cache[slow_p],
                     trend_score=trend_score,
                     use_trend=use_trend,
                 )
+                returns_by_label[label] = (position, strat_ret)
+                metrics = _metrics(strat_ret.iloc[:split_idx], position.iloc[:split_idx])
                 all_results.append({
                     "label":      label,
                     "fast":       fast_p,
@@ -227,7 +241,7 @@ def run_optimization(symbol: str) -> dict:
 
     total_tested = len(all_results)
 
-    # Sort by Sharpe descending (None → treated as -inf)
+    # Sort by TRAIN Sharpe descending (None → treated as -inf)
     def sharpe_key(r):
         s = r.get("sharpe")
         return s if s is not None else -1e9
@@ -235,10 +249,13 @@ def run_optimization(symbol: str) -> dict:
     all_results.sort(key=sharpe_key, reverse=True)
     top10 = all_results[:10]
 
-    # Equity curve for the best result
+    # Best config: holdout metrics + full-period equity curve
     best = all_results[0] if all_results else None
+    best_oos = None
     equity_curve = []
     if best:
+        position, strat_ret = returns_by_label[best["label"]]
+        best_oos = _metrics(strat_ret.iloc[split_idx:], position.iloc[split_idx:])
         equity_curve = _weekly_equity(
             close,
             kama_cache[best["fast"]],
@@ -256,9 +273,13 @@ def run_optimization(symbol: str) -> dict:
 
     return {
         "symbol":        symbol,
-        "benchmark":     benchmark,
-        "top10":         top10,
-        "best":          best,
+        "benchmark":     benchmark,       # buy & hold, train window
+        "benchmark_oos": benchmark_oos,   # buy & hold, holdout window
+        "top10":         top10,           # ranked by TRAIN Sharpe
+        "best":          best,            # train metrics of selected config
+        "best_oos":      best_oos,        # holdout metrics of selected config
+        "split_date":    split_date,
+        "train_frac":    TRAIN_FRAC,
         "equity_curve":  equity_curve,
         "heatmap":       heatmap,
         "total_tested":  total_tested,

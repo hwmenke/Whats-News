@@ -60,6 +60,30 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
     return pd.Series(kama_vals, index=close.index)
 
 
+def _trend_score(df: pd.DataFrame) -> pd.Series:
+    """Composite RSI+CCI+MACD vote (-3..+3), mirroring indicators.py."""
+    close, high, low = df['close'], df['high'], df['low']
+    rsi = _rsi(close, window=14)
+
+    ema12     = close.ewm(span=12, adjust=False).mean()
+    ema26     = close.ewm(span=26, adjust=False).mean()
+    macd_line = ema12 - ema26
+    macd_hist = macd_line - macd_line.ewm(span=9, adjust=False).mean()
+
+    tp  = (high + low + close) / 3.0
+    ma  = tp.rolling(20).mean()
+    md  = tp.rolling(20).apply(lambda x: np.abs(x - x.mean()).mean(), raw=True)
+    cci = (tp - ma) / (0.015 * md.replace(0, np.nan))
+
+    rsi_sc  = np.where(rsi > 80, 0, np.where(rsi > 50, 1, -1))
+    cci_sc  = np.where(cci > 0, 1, -1)
+    macd_sc = np.where(macd_hist > 0, 1, -1)
+
+    total = pd.Series(rsi_sc + cci_sc + macd_sc, index=close.index, dtype=float)
+    total[rsi.isna() | cci.isna() | macd_hist.isna()] = np.nan
+    return total
+
+
 def compute_stats(symbol: str) -> dict:
     # Use 5000 bars (~20 years) for deep statistical context
     df = db.get_ohlcv_df(symbol, "daily", limit=5000)
@@ -153,6 +177,16 @@ def compute_stats(symbol: str) -> dict:
                 **summary,
             })
 
+    # 4b. Validate the app's own composite trend score against forward returns.
+    # The score gates the backtest filter and colours scanner badges — showing
+    # its historical fwd returns per level turns it from decoration into a
+    # tested claim.
+    df['trend_score'] = _trend_score(df)
+    trend_score_analysis = []
+    for level in range(-3, 4):
+        summary = summarize_forward_returns(df['trend_score'] == level)
+        trend_score_analysis.append({"score": level, **summary})
+
     # 5. Seasonality
     df['month'] = df.index.month
     monthly_ret = df.groupby('month')['ret_1d'].mean() * 21 # Monthly approx
@@ -175,6 +209,7 @@ def compute_stats(symbol: str) -> dict:
         },
         "kama_distance_analysis": kama_distance_analysis,
         "kama_cross_analysis": kama_cross_analysis,
+        "trend_score_analysis": trend_score_analysis,
         "seasonality": seasonality,
         "distribution": distribution
     }

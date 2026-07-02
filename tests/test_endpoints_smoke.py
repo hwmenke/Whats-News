@@ -122,6 +122,8 @@ class EndpointSmokeTests(unittest.TestCase):
         d = self._ok("/api/stats/AAPL")
         self.assertIsNotNone(d["metrics"]["volatility"])
         self.assertEqual(len(d["kama_cross_analysis"]), 6)
+        # Trend-score validation: one row per score level -3..+3
+        self.assertEqual([r["score"] for r in d["trend_score_analysis"]], list(range(-3, 4)))
 
     def test_knn(self):
         d = self._ok("/api/knn/AAPL?k=15")
@@ -132,12 +134,21 @@ class EndpointSmokeTests(unittest.TestCase):
         d = self._ok("/api/backtest/AAPL")
         self.assertGreater(len(d["top10"]), 0)
         self.assertGreater(len(d["equity_curve"]), 0)
+        # Walk-forward contract: holdout metrics + split point + costs
+        self.assertIn("best_oos", d)
+        self.assertIn("benchmark_oos", d)
+        self.assertRegex(d["split_date"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertGreater(d["cost_bps"], 0)
 
     # ── adaptive trend / scans ─────────────────────────────────────────────
     def test_adaptive_trend(self):
         d = self._ok("/api/adaptive-trend/AAPL?freq=daily&method=kama")
         for key in ("sb", "mb", "lb", "mrt", "mdb", "medium_state", "entry_long", "atr"):
             self.assertIn(key, d)
+        # Observed hit-rate stats for the system's own long rules
+        self.assertIn("system_stats", d)
+        if d["system_stats"] is not None:
+            self.assertIn("tp_rate", d["system_stats"])
 
     def test_adaptive_trend_bad_method(self):
         self.assertEqual(self.client.get("/api/adaptive-trend/AAPL?method=foo").status_code, 400)

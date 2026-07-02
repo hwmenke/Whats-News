@@ -1014,6 +1014,35 @@ function renderStats(data) {
         options: crossChartOptions
     });
 
+    // 4b2. Trend score validation — does the app's own composite score
+    // actually line up with forward returns? Counts shown in the labels so
+    // thin buckets are visibly thin.
+    destroy('trendScore');
+    const tsa = data.trend_score_analysis || [];
+    statsCharts['trendScore'] = new Chart(document.getElementById('chart-trend-score'), {
+        type: 'bar',
+        data: {
+            labels: tsa.map(d => `${d.score > 0 ? '+' : ''}${d.score} (n=${d.count_1d})`),
+            datasets: [
+                {
+                    label: '1D Fwd Return',
+                    data: tsa.map(d => pctValue(d.fwd_1d)),
+                    backgroundColor: 'rgba(79, 172, 254, 0.65)',
+                    borderColor: '#4facfe',
+                    borderWidth: 1,
+                },
+                {
+                    label: '5D Fwd Return',
+                    data: tsa.map(d => pctValue(d.fwd_5d)),
+                    backgroundColor: 'rgba(249, 115, 22, 0.65)',
+                    borderColor: '#f97316',
+                    borderWidth: 1,
+                },
+            ]
+        },
+        options: crossChartOptions
+    });
+
     // 4c. KAMA cross event counts
     destroy('kamaCrossCounts');
     statsCharts['kamaCrossCounts'] = new Chart(document.getElementById('chart-kama-cross-counts'), {
@@ -1176,6 +1205,15 @@ function renderBacktest(data) {
     set('bt-winrate', fmtPct(best.win_rate));
     set('bt-trades',  best.n_trades !== undefined ? String(best.n_trades) : '--');
 
+    // Holdout — how the selected config actually did on unseen data
+    const oos = data.best_oos || {};
+    set('bt-oos-sharpe',  fmt(oos.sharpe, 3));
+    set('bt-oos-annret',  fmtPct(oos.ann_ret));
+    set('bt-oos-maxdd',   fmtPct(oos.max_dd));
+    set('bt-oos-winrate', fmtPct(oos.win_rate));
+    set('bt-oos-bench',   fmt(data.benchmark_oos?.sharpe, 3));
+    set('bt-oos-range',   data.split_date ? `· from ${data.split_date}` : '');
+
     // Top 10 table
     const tbody = document.querySelector('#bt-results-table tbody');
     if (tbody) {
@@ -1205,20 +1243,34 @@ function renderBacktest(data) {
         const labels    = data.equity_curve.map(d => d.date);
         const strategy  = data.equity_curve.map(d => d.strategy);
         const benchmark = data.equity_curve.map(d => d.benchmark);
+        // Overlay the holdout portion in green so the eye separates the window
+        // the config was fitted on from the window that tests it.
+        const split  = data.split_date || '';
+        const oosSeg = data.equity_curve.map(d => (split && d.date >= split) ? d.strategy : null);
         backtestEquityChart = new Chart(canvas, {
             type: 'line',
             data: {
                 labels,
                 datasets: [
                     {
-                        label: 'Strategy',
+                        label: 'Strategy (in-sample)',
                         data: strategy,
-                        borderColor: '#4facfe',
-                        backgroundColor: 'rgba(79,172,254,0.08)',
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59,130,246,0.08)',
                         borderWidth: 2,
                         pointRadius: 0,
                         tension: 0.1,
                         fill: true,
+                    },
+                    {
+                        label: 'Strategy (holdout)',
+                        data: oosSeg,
+                        borderColor: '#22c55e',
+                        backgroundColor: 'transparent',
+                        borderWidth: 2.5,
+                        pointRadius: 0,
+                        tension: 0.1,
+                        spanGaps: false,
                     },
                     {
                         label: 'Buy & Hold',

@@ -603,6 +603,28 @@ function _updateSignalPanel(data, ohlcvRows) {
     setCard('trend-sig-sdb', fmtP(sdbV), 'neutral');
     setCard('trend-sig-mdb', fmtP(mdbV), 'neutral');
 
+    // ── Observed system history (context for the R:R card) ───
+    // The 2:1 band geometry says nothing about how often TP is hit before
+    // the stop — this strip shows what actually happened historically.
+    const histEl = document.getElementById('trend-sig-history');
+    if (histEl) {
+        const st = data.system_stats;
+        if (st && st.trades > 0 && (st.trades - st.open) > 0) {
+            const pct = v => v != null ? (v * 100).toFixed(0) + '%' : '—';
+            const avg = st.avg_ret != null
+                ? (st.avg_ret >= 0 ? '+' : '') + (st.avg_ret * 100).toFixed(1) + '%'
+                : '—';
+            histEl.textContent =
+                `History (long entries, n=${st.trades}):  TP first ${pct(st.tp_rate)}  ·  ` +
+                `win ${pct(st.win_rate)}  ·  avg ${avg}  ·  ` +
+                `${st.tp_hits} TP / ${st.stop_hits} stop / ${st.flip_exits} flip`;
+            histEl.style.color = st.avg_ret > 0 ? 'var(--green)' : st.avg_ret < 0 ? 'var(--red)' : '';
+        } else {
+            histEl.textContent = 'History: no completed long entries in loaded window';
+            histEl.style.color = '';
+        }
+    }
+
     // ── R:R ratio ─────────────────────────────────────────────
     // Only meaningful when in an active medium-state regime
     if (close > 0 && mrtV != null && mdbV != null && isFinite(mrtV) && isFinite(mdbV) && ms !== 0) {
