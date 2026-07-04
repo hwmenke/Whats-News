@@ -230,14 +230,21 @@ html, body {
   background: var(--accent);
   color: #fff;
 }
-.btn-primary:hover { background: var(--accent-bright); box-shadow: var(--shadow-glow); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-bright); box-shadow: var(--shadow-glow); }
 
 .btn-ghost {
   background: transparent;
   color: var(--text-muted);
   border: 1px solid var(--border);
 }
-.btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+.btn-ghost:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+
+/* Visible keyboard focus everywhere — inputs/pills previously opted out with
+   outline:none and relied on hover styling alone. */
+:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 1px;
+}
 
 .btn-danger {
   background: transparent;
@@ -592,6 +599,7 @@ html, body {
   color: var(--text-primary);
   max-width: 320px;
   box-shadow: var(--shadow-card);
+  cursor: pointer;
   animation: slide-in 0.25s ease;
   transition: opacity 0.3s ease;
 }
@@ -1122,6 +1130,49 @@ html, body {
   line-height: 1.5;
 }
 
+/* Inline action button inside a toast (e.g. Undo) */
+.toast-action {
+  margin-left: 8px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent-bright);
+  cursor: pointer;
+}
+.toast-action:hover { background: rgba(59,130,246,0.15); }
+
+/* Position-size calculator row */
+.trend-size-calc {
+  margin: 0 12px 12px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.trend-size-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.trend-size-result {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Backtest section labels (in-sample vs holdout) */
 .bt-section-label {
   font-size: 10px;
@@ -1350,6 +1401,14 @@ html, body {
   min-width: 100%;
 }
 
+/* Keep the (multi-row) header pinned while the table scrolls vertically */
+.scanner-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg-elevated);
+}
+
 /* ── Header cells ──────────────────────────────────────────────── */
 .scan-th {
   padding: 5px 8px;
@@ -1407,7 +1466,19 @@ html, body {
 .scan-sortable { cursor: pointer; }
 .scan-sortable:hover { color: var(--accent); background: var(--bg-hover); }
 .scan-sort-active { color: var(--accent) !important; }
-.scan-sort-active::after { content: ' ↕'; font-size: 8px; }
+.scan-sort-asc::after  { content: ' ▲'; font-size: 8px; }
+.scan-sort-desc::after { content: ' ▼'; font-size: 8px; }
+
+/* Trend-scan symbol column header — sticky left like its data cells */
+.scan-th-symcol {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border-accent);
+  text-align: left;
+  min-width: 76px;
+}
 
 /* ── Data cells ────────────────────────────────────────────────── */
 .scan-td {
@@ -1453,6 +1524,16 @@ html, body {
   color: var(--text-primary);
   z-index: 5;
   min-width: 76px;
+}
+
+/* Chg% data cell — sticky to match its frozen header */
+.scan-td-chg {
+  position: sticky;
+  left: 202px;
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border-accent);
+  z-index: 5;
+  min-width: 68px;
 }
 
 .scan-row:hover .scan-td        { background: var(--bg-hover); }

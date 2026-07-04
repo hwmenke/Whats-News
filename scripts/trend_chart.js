@@ -43,6 +43,13 @@ const trendConfig = {
     rsi_period: 14,
 };
 
+// Account risk per trade ($) for the position-size calculator
+let trendRiskDollars = 100;
+
+function _persistPrefs() {
+    if (typeof saveSettings === 'function') saveSettings();
+}
+
 // ── Line metadata (descriptions; colors mirror TC below) ──────
 const LINE_META = {
     sb:  {
@@ -448,6 +455,7 @@ function toggleTrendLine(key) {
     const btn = document.getElementById(`trend-toggle-${key}`);
     if (btn) btn.classList.toggle('trend-toggle-on', trendState.vis[key]);
     _applyVis();
+    _persistPrefs();
 }
 
 // ── Line description strip ────────────────────────────────────
@@ -482,6 +490,7 @@ function setTrendMethod(method) {
     } else if (typeof state !== 'undefined' && state.activeSymbol) {
         loadAdaptiveTrendData(state.activeSymbol);
     }
+    _persistPrefs();
 }
 
 function setTrendFreq(freq) {
@@ -492,6 +501,7 @@ function setTrendFreq(freq) {
     if (typeof state !== 'undefined' && state.activeSymbol) {
         loadAdaptiveTrendData(state.activeSymbol);
     }
+    _persistPrefs();
 }
 
 // ── Signal panel ──────────────────────────────────────────────
@@ -625,6 +635,12 @@ function _updateSignalPanel(data, ohlcvRows) {
         }
     }
 
+    // ── Position size from stop distance ──────────────────────
+    _sizeCalcState.close = close;
+    _sizeCalcState.mrt   = mrtV;
+    _sizeCalcState.long  = ms === 1;
+    _updateSizeCalc();
+
     // ── R:R ratio ─────────────────────────────────────────────
     // Only meaningful when in an active medium-state regime
     if (close > 0 && mrtV != null && mdbV != null && isFinite(mrtV) && isFinite(mdbV) && ms !== 0) {
@@ -643,6 +659,56 @@ function _updateSignalPanel(data, ohlcvRows) {
         setCard('trend-sig-rr', atrV != null ? `ATR ${fmtP(atrV)}` : '—', 'neutral');
     }
 }
+
+// ── Position-size calculator ──────────────────────────────────
+// shares = risk $ ÷ (price − MRT stop); notional shown for sanity.
+const _sizeCalcState = { close: null, mrt: null, long: false };
+
+function _updateSizeCalc() {
+    const el    = document.getElementById('trend-size-result');
+    const input = document.getElementById('trend-risk-input');
+    if (!el) return;
+    if (input && Number(input.value) !== trendRiskDollars) {
+        input.value = trendRiskDollars;
+    }
+
+    const { close, mrt, long } = _sizeCalcState;
+    if (!long) {
+        el.textContent = 'no long regime';
+        el.style.color = 'var(--text-dim)';
+        return;
+    }
+    if (close == null || mrt == null || !isFinite(mrt) || close <= mrt) {
+        el.textContent = 'stop above price — no size';
+        el.style.color = 'var(--text-dim)';
+        return;
+    }
+    const perShare = close - mrt;
+    const shares   = Math.floor(trendRiskDollars / perShare);
+    if (shares < 1) {
+        el.textContent = `risk < $${perShare.toFixed(2)}/share — 0 shares`;
+        el.style.color = 'var(--text-dim)';
+        return;
+    }
+    const notional = shares * close;
+    el.textContent = `${shares} sh · $${notional.toLocaleString('en-US', { maximumFractionDigits: 0 })} · $${perShare.toFixed(2)}/sh risk`;
+    el.style.color = '';
+}
+
+// Input wiring (script loads once; element is static in index.html)
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('trend-risk-input');
+    if (!input) return;
+    input.value = trendRiskDollars;
+    input.addEventListener('input', () => {
+        const v = parseFloat(input.value);
+        if (v > 0) {
+            trendRiskDollars = v;
+            _updateSizeCalc();
+            _persistPrefs();
+        }
+    });
+});
 
 // ── Config panel ──────────────────────────────────────────────
 function renderTrendConfig() {
@@ -685,6 +751,7 @@ function applyTrendConfig() {
     if (typeof state !== 'undefined' && state.activeSymbol) {
         loadAdaptiveTrendData(state.activeSymbol);
     }
+    _persistPrefs();
 }
 
 function setTrendPreset(preset) {
@@ -725,6 +792,15 @@ function switchTrendTab(tab) {
         scanPanel.style.display  = 'flex';
         btnChart?.classList.remove('trend-stab-active');
         btnScan?.classList.add('trend-stab-active');
+        // First visit: show a call-to-action instead of a blank void
+        if (!trendScanState.data) {
+            const empty = document.getElementById('trend-scan-empty');
+            if (empty) {
+                empty.style.display = 'flex';
+                const p = empty.querySelector('p');
+                if (p) p.innerHTML = 'Press <strong>⟳ Scan Watchlist</strong> to rank every watchlist symbol by trend signal, R:R, and stop/target levels.';
+            }
+        }
     }
 }
 
@@ -802,7 +878,10 @@ function renderTrendScanTable(data) {
     const tr = document.createElement('tr');
     cols.forEach(c => {
         const th = document.createElement('th');
-        th.className    = `scan-th scan-th-fixed scan-sortable${sk === c.key ? ' scan-sort-active' : ''}`;
+        // Only the symbol column is frozen here — scan-th-fixed's nth-child
+        // offsets are sized for the Scanner's four fixed columns and shear
+        // this table apart on horizontal scroll.
+        th.className    = `scan-th scan-sortable${c.key === 'symbol' ? ' scan-th-symcol' : ''}${sk === c.key ? ' scan-sort-active' : ''}`;
         th.textContent  = c.label + (sk === c.key ? (trendScanState.sortDir > 0 ? ' ▲' : ' ▼') : '');
         th.title        = c.title;
         th.style.cursor = 'pointer';

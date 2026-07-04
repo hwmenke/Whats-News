@@ -19,6 +19,7 @@ let state = {
 
 let statsCharts = {};
 let backtestEquityChart = null;
+let backtestResultsFor = null;   // which symbol the rendered backtest belongs to
 
 // Monotonic id shared by all per-symbol view loaders. Each loader captures
 // ++loadGen on entry and bails after every await if a newer load started —
@@ -32,11 +33,50 @@ function toast(message, type = 'info', duration = 3500) {
     const el = document.createElement('div');
     el.className = `toast ${type}`;
     el.textContent = message;
+    el.title = 'Click to dismiss';
+    el.addEventListener('click', () => el.remove());
     container.appendChild(el);
     setTimeout(() => {
         el.style.opacity = '0';
         setTimeout(() => el.remove(), 300);
     }, duration);
+    return el;
+}
+
+// Toast with an action button (e.g. Undo). Longer-lived; clicking the body
+// still dismisses, clicking the button runs the action then dismisses.
+function toastAction(message, actionLabel, onAction, type = 'info', duration = 8000) {
+    const el  = toast(message + '  ', type, duration);
+    const btn = document.createElement('button');
+    btn.className   = 'toast-action';
+    btn.textContent = actionLabel;
+    btn.addEventListener('click', e => {
+        e.stopPropagation();
+        el.remove();
+        onAction();
+    });
+    el.appendChild(btn);
+    return el;
+}
+
+// ── Persisted user settings (indicator/trend/scanner prefs) ──
+const SETTINGS_KEY = 'findash.settings';
+function saveSettings() {
+    try {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+            kama:        Object.keys(kamaPeriods).map(Number),
+            trendConfig: typeof trendConfig !== 'undefined' ? trendConfig : null,
+            trendMethod: typeof trendState  !== 'undefined' ? trendState.method : null,
+            trendFreq:   typeof trendState  !== 'undefined' ? trendState.freq   : null,
+            trendVis:    typeof trendState  !== 'undefined' ? trendState.vis    : null,
+            scanVisible: typeof scannerState !== 'undefined' ? scannerState.visible : null,
+            riskDollars: typeof trendRiskDollars !== 'undefined' ? trendRiskDollars : null,
+        }));
+    } catch (_) { /* storage unavailable — ignore */ }
+}
+function loadSettings() {
+    try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; }
+    catch (_) { return {}; }
 }
 
 // ── UI state persistence (active tab + symbol survive reloads) ──
@@ -150,6 +190,7 @@ function renderKamaPills() {
             e.preventDefault();
             removeKamaPeriod(p);
             renderKamaPills();
+            saveSettings();
             // re-fetch if symbol loaded so the API param changes
             if (state.activeSymbol) loadChartData(state.activeSymbol);
         });
@@ -175,6 +216,7 @@ function setupKamaAddForm() {
         }
         addKamaPeriod(val);
         renderKamaPills();
+        saveSettings();
         input.value = '';
 
         // If data is already loaded, populate the new series immediately
@@ -355,9 +397,31 @@ async function addSymbol() {
 }
 
 async function removeSymbol(symbol) {
+    const removed = state.symbols.find(s => s.symbol === symbol);
     try {
         await apiFetch(`${API}/symbols/${symbol}`, { method: 'DELETE' });
-        toast(`${symbol} removed`, 'warning');
+        // Removal is one accidental click on a hover-revealed ×, so offer
+        // Undo instead of a confirm dialog. Data re-downloads on next open.
+        toastAction(`${symbol} removed`, 'Undo', async () => {
+            try {
+                await apiFetch(`${API}/symbols`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol }),
+                });
+                if (removed?.group_tag) {
+                    await apiFetch(`${API}/symbols/${symbol}/group`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ group_tag: removed.group_tag }),
+                    });
+                }
+                await loadSymbols();
+                toast(`${symbol} restored — click it to re-download data`, 'success');
+            } catch (e) {
+                toast('Undo failed: ' + e.message, 'error');
+            }
+        }, 'warning');
         if (state.activeSymbol === symbol) {
             state.activeSymbol = null;
             showEmptyState();
@@ -540,8 +604,10 @@ async function selectSymbol(symbol) {
     } else if (state.activeTab === 'knn') {
         await loadKNN(symbol);
     } else if (state.activeTab === 'backtest') {
-        // Backtest is triggered manually via the Run button; just update header
+        // Backtest is triggered manually via the Run button; update the
+        // header and clear results that belong to a different symbol.
         updateSymbolHeader(symbol, null);
+        if (backtestResultsFor && backtestResultsFor !== symbol) resetBacktestUI(symbol);
     } else if (state.activeTab === 'trend') {
         await loadAdaptiveTrendData(symbol);
     }
@@ -552,7 +618,10 @@ async function loadStatsData(symbol) {
     if (!symbol) return;
     const gen = ++loadGen;
     showStatsArea();
-    showLoadingOverlay(true);
+    // #chart-loading sits inside the hidden chart area — use the stats
+    // overlay so this tab has visible loading feedback.
+    const statsLoading = document.getElementById('stats-loading');
+    if (statsLoading) statsLoading.style.display = 'flex';
     updateSymbolHeader(symbol, null);
 
     try {
@@ -590,7 +659,7 @@ async function loadStatsData(symbol) {
         document.getElementById('stat-drawdown').textContent = '--';
         document.getElementById('stat-winrate').textContent = '--';
     } finally {
-        if (gen === loadGen) showLoadingOverlay(false);
+        if (gen === loadGen && statsLoading) statsLoading.style.display = 'none';
     }
 }
 
@@ -768,6 +837,9 @@ async function switchTab(tabId) {
         document.getElementById('backtest-area').style.display = 'block';
         if (state.activeSymbol) {
             updateSymbolHeader(state.activeSymbol, null);
+            if (backtestResultsFor && backtestResultsFor !== state.activeSymbol) {
+                resetBacktestUI(state.activeSymbol);
+            }
         }
     } else if (tabId === 'trend') {
         showTrendArea();
@@ -1113,7 +1185,8 @@ function updateSymbolHeader(symbol, last, prev) {
     const chgPct = prev ? (chg / prev.close * 100).toFixed(2) : '0.00';
     const isPos  = chg >= 0;
 
-    document.getElementById('sym-price').textContent = `$${last.close.toFixed(2)}`;
+    document.getElementById('sym-price').textContent =
+        `$${last.close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     const badge = document.getElementById('sym-change-badge');
     badge.textContent = `${isPos ? '+' : ''}${chg.toFixed(2)} (${isPos ? '+' : ''}${chgPct}%)`;
@@ -1206,6 +1279,28 @@ function renderKNN(data) {
 }
 
 // ── Backtest Functions ────────────────────────────────────────
+// Clear rendered results when the symbol changes — otherwise the KPIs,
+// table, and equity curve keep showing the PREVIOUS symbol under the new
+// symbol's header.
+function resetBacktestUI(symbol) {
+    ['bt-sharpe', 'bt-annret', 'bt-maxdd', 'bt-winrate', 'bt-trades',
+     'bt-oos-sharpe', 'bt-oos-annret', 'bt-oos-maxdd', 'bt-oos-winrate',
+     'bt-oos-bench'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '--';
+    });
+    const oosRange = document.getElementById('bt-oos-range');
+    if (oosRange) oosRange.textContent = '';
+    const tbody = document.querySelector('#bt-results-table tbody');
+    if (tbody) tbody.innerHTML = '';
+    if (backtestEquityChart) { backtestEquityChart.destroy(); backtestEquityChart = null; }
+    const statusEl = document.getElementById('backtest-status');
+    if (statusEl) statusEl.textContent = symbol
+        ? `Run Optimization to grid-search KAMA configs for ${symbol}`
+        : '';
+    backtestResultsFor = null;
+}
+
 async function loadBacktest(symbol) {
     const statusEl = document.getElementById('backtest-status');
     const btn      = document.getElementById('btn-run-backtest');
@@ -1214,9 +1309,10 @@ async function loadBacktest(symbol) {
     try {
         const data = await apiFetch(`${API}/backtest/${symbol}`);
         renderBacktest(data);
+        backtestResultsFor = symbol;
         if (statusEl) {
-            const costNote = data.cost_bps ? ` · ${data.cost_bps} bps/side costs · in-sample` : '';
-            statusEl.textContent = `Done — ${data.total_tested} combos tested${costNote}`;
+            const costNote = data.cost_bps ? ` · ${data.cost_bps} bps/side costs` : '';
+            statusEl.textContent = `${symbol} — ${data.total_tested} combos tested${costNote}`;
         }
     } catch (e) {
         toast('Backtest failed: ' + e.message, 'error');
@@ -1342,10 +1438,42 @@ function renderBacktest(data) {
 document.addEventListener('DOMContentLoaded', async () => {
     startClock();
 
-    // Seed default KAMA periods
-    DEFAULT_KAMA_PERIODS.forEach(p => addKamaPeriod(p));
+    // Hydrate persisted preferences before seeding defaults
+    const prefs = loadSettings();
+    const kamaSeed = Array.isArray(prefs.kama) && prefs.kama.length
+        ? prefs.kama : DEFAULT_KAMA_PERIODS;
+    kamaSeed.forEach(p => addKamaPeriod(p));
     renderKamaPills();
     setupKamaAddForm();
+
+    if (typeof trendConfig !== 'undefined' && prefs.trendConfig) {
+        Object.assign(trendConfig, prefs.trendConfig);
+    }
+    if (typeof trendState !== 'undefined') {
+        if (prefs.trendMethod) trendState.method = prefs.trendMethod;
+        if (prefs.trendFreq)   trendState.freq   = prefs.trendFreq;
+        if (prefs.trendVis)    Object.assign(trendState.vis, prefs.trendVis);
+        // Reflect restored state in the pills
+        document.querySelectorAll('.trend-method-btn').forEach(btn =>
+            btn.classList.toggle('trend-active', btn.dataset.val === trendState.method));
+        document.querySelectorAll('.trend-freq-btn').forEach(btn =>
+            btn.classList.toggle('trend-active', btn.dataset.val === trendState.freq));
+        Object.entries(trendState.vis).forEach(([k, v]) => {
+            document.getElementById(`trend-toggle-${k}`)?.classList.toggle('trend-toggle-on', v);
+        });
+    }
+    if (typeof scannerState !== 'undefined' && prefs.scanVisible) {
+        Object.assign(scannerState.visible, prefs.scanVisible);
+        Object.entries(scannerState.visible).forEach(([k, v]) => {
+            document.querySelector(`.scan-grp-btn[data-grp="${k}"]`)
+                ?.classList.toggle('scanner-toggle-on', v);
+        });
+    }
+    if (typeof trendRiskDollars !== 'undefined' && prefs.riskDollars > 0) {
+        trendRiskDollars = prefs.riskDollars;
+        const riskInput = document.getElementById('trend-risk-input');
+        if (riskInput) riskInput.value = trendRiskDollars;
+    }
 
     // BB pill
     const bbPill = document.getElementById('pill-bb');
