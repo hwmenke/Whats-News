@@ -264,13 +264,6 @@ def run_optimization(symbol: str) -> dict:
             use_trend=best["use_trend"],
         )
 
-    # Heatmap data: Sharpe indexed by (fast, slow) — no-trend version
-    heatmap = {}
-    for r in all_results:
-        if not r["use_trend"]:
-            key = f"{r['fast']}x{r['slow']}"
-            heatmap[key] = r.get("sharpe")
-
     return {
         "symbol":        symbol,
         "benchmark":     benchmark,       # buy & hold, train window
@@ -281,9 +274,6 @@ def run_optimization(symbol: str) -> dict:
         "split_date":    split_date,
         "train_frac":    TRAIN_FRAC,
         "equity_curve":  equity_curve,
-        "heatmap":       heatmap,
         "total_tested":  total_tested,
         "cost_bps":      COST_BPS,
-        "fast_periods":  FAST_PERIODS,
-        "slow_periods":  SLOW_PERIODS,
     }

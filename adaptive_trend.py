@@ -201,14 +201,18 @@ def _system_stats(high: pd.Series, low: pd.Series, close: pd.Series,
         entry = cl[i]
         outcome, exit_px, j = None, None, i + 1
         while j < n:
+            # Regime check MUST come first: on the flip bar _ratchet_band
+            # resets MRT to the short-side band (above price), so testing the
+            # stop first records every flip as a profitable stop-out at a
+            # fictitious above-market price.
+            if ms[j] != 1:
+                outcome, exit_px = "flip", cl[j]
+                break
             if np.isfinite(stop[j]) and lo[j] <= stop[j]:
                 outcome, exit_px = "stop", stop[j]
                 break
             if np.isfinite(tp[j]) and hi[j] >= tp[j]:
                 outcome, exit_px = "tp", tp[j]
-                break
-            if ms[j] != 1:
-                outcome, exit_px = "flip", cl[j]
                 break
             j += 1
         if outcome is None:                     # still open at end of data

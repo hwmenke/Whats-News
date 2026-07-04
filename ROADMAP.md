@@ -79,7 +79,46 @@ what has shipped.
       symbol-header / tab-bar / scanner-controls to the 16px gutter; lift
       9/9.5px table headers to 10px (Visual #2, #3, part of #8/#10).
 
-## Wave 3 — bigger bets
+## Wave 3 / AAA verification pass — SHIPPED
+
+A second agent panel (release auditor + fresh-eyes polish hunter) verified all
+Wave 1/2 claims against the code. Auditor verdict: everything VERIFIED except
+three findings, all fixed:
+
+- [x] **HIGH — `_system_stats` exit ordering**: the regime-flip check now runs
+      before the stop/TP checks (the ratchet band resets to the short side on
+      the flip bar, so flips were recorded as profitable stop-outs at
+      fictitious prices). Two regression tests pin the semantics.
+- [x] Trend-tab coherence: method change on the scan sub-tab invalidates the
+      chart's cached series; `loadTrendScan` and `loadBacktest` gained
+      ordering guards.
+- [x] Dead `heatmap`/`fast_periods`/`slow_periods` payload removed from the
+      backtest response; scan caches no longer cache error rows.
+- [x] Polish panel: stale backtest results cleared on symbol change; Stats tab
+      loading overlay; scan-table sticky headers restored + Chg% cells frozen;
+      trend-scan header offsets fixed; directional sort arrows; global
+      :focus-visible; disabled-hover guards; FinDash wordmark; aria-labels;
+      aria-live toasts; localized header price; trend-scan first-run CTA.
+- [x] Wave 3 usefulness: settings persistence (KAMA pills, trend config/
+      method/freq/visibility, scanner groups, risk $); undo-toast for symbol
+      removal; click-to-dismiss toasts; position-size calculator
+      (risk $ ÷ (price − MRT)).
+
+## Wave 4 — remaining (from the verification panel)
+
+- Crosshair OHLC/indicator legend + crosshair sync across panels (the
+  biggest "amateur vs terminal" tell; polish hunter #7).
+- Responsive: scrollable tab strip, stacking chart panels ~1100px, flex-based
+  Data Manager height (polish #10).
+- Shared number-format module (price/pct/ratio consistent across tabs,
+  polish #6); monochrome icon set (polish #12).
+- Route stats/KNN/trend errors to the retry error-state (auditor note).
+- Test gaps: drift detection, weekly rebuild-from-full-history, cache
+  invalidation on new bar date (auditor blocker #5, partially closed).
+- Unify the two remaining trend-score copies (backtester/scanner use `ta`,
+  indicators/stats use local impls — edge-case divergence at series start).
+
+## Wave 3 (original) — bigger bets
 
 - Position-size calculator from MRT (`shares = risk_$ / (price − stop)`),
   "signals changed since yesterday" diff, RS-vs-SPY column (Quant #9).

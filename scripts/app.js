@@ -1302,12 +1302,14 @@ function resetBacktestUI(symbol) {
 }
 
 async function loadBacktest(symbol) {
+    const gen      = ++loadGen;
     const statusEl = document.getElementById('backtest-status');
     const btn      = document.getElementById('btn-run-backtest');
     if (statusEl) statusEl.textContent = 'Running optimization…';
     if (btn) btn.disabled = true;
     try {
         const data = await apiFetch(`${API}/backtest/${symbol}`);
+        if (gen !== loadGen) return;
         renderBacktest(data);
         backtestResultsFor = symbol;
         if (statusEl) {
@@ -1315,10 +1317,11 @@ async function loadBacktest(symbol) {
             statusEl.textContent = `${symbol} — ${data.total_tested} combos tested${costNote}`;
         }
     } catch (e) {
+        if (gen !== loadGen) return;
         toast('Backtest failed: ' + e.message, 'error');
         if (statusEl) statusEl.textContent = 'Error: ' + e.message;
     } finally {
-        if (btn) btn.disabled = false;
+        if (gen === loadGen && btn) btn.disabled = false;
     }
 }
 

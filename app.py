@@ -262,9 +262,12 @@ def trend_scan():
             return hit[1]
 
         row = _compute_one(sym)
-        if len(_trend_scan_cache) > 4096:
-            _trend_scan_cache.clear()
-        _trend_scan_cache[cache_key] = (time.time(), row)
+        # Don't cache error rows — a transient failure (or "fetch first")
+        # shouldn't stick for the whole TTL after the user fixes it.
+        if "error" not in row:
+            if len(_trend_scan_cache) > 4096:
+                _trend_scan_cache.clear()
+            _trend_scan_cache[cache_key] = (time.time(), row)
         return row
 
     def _compute_one(sym):

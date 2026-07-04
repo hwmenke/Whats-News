@@ -178,5 +178,56 @@ class EndpointSmokeTests(unittest.TestCase):
         self.assertIn(b"FinDash", r.data)
 
 
+class SystemStatsTests(unittest.TestCase):
+    """Pin the exit-classification semantics of adaptive_trend._system_stats."""
+
+    def test_flip_exit_not_misclassified_as_stop(self):
+        # On the regime-flip bar the ratchet band resets to the SHORT side
+        # (above price). If the stop is tested before the regime check, the
+        # flip is recorded as a profitable stop-out at a fictitious price.
+        import adaptive_trend as at
+
+        idx    = pd.date_range("2024-01-01", periods=6, freq="D")
+        close  = pd.Series([100.0, 101.0, 102.0, 101.0, 95.0, 94.0], index=idx)
+        high   = close + 1.0
+        low    = close - 1.0
+        medium = pd.Series([0, 1, 1, 1, -1, -1], index=idx)
+        entry  = pd.Series([False, True, False, False, False, False], index=idx)
+        # Long-regime stop sits below price; on the flip bar (i=4) the band
+        # has reset above price (105) and the TP band below (80).
+        mrt = pd.Series([np.nan, 90.0, 90.0, 90.0, 105.0, 105.0], index=idx)
+        mdb = pd.Series([np.nan, 120.0, 120.0, 120.0, 80.0, 80.0], index=idx)
+
+        st = at._system_stats(high, low, close, medium, entry, mrt, mdb)
+
+        self.assertEqual(st["trades"], 1)
+        self.assertEqual(st["flip_exits"], 1)
+        self.assertEqual(st["stop_hits"], 0)
+        self.assertEqual(st["tp_hits"], 0)
+        # Exit at the flip bar's close (95) from entry 101 → a loss
+        self.assertLess(st["avg_ret"], 0)
+        self.assertEqual(st["win_rate"], 0.0)
+
+    def test_genuine_stop_and_tp_still_classified(self):
+        import adaptive_trend as at
+
+        idx    = pd.date_range("2024-01-01", periods=8, freq="D")
+        close  = pd.Series([100.0, 101.0, 96.0, 100.0, 102.0, 110.0, 111.0, 112.0], index=idx)
+        high   = close + 1.0
+        low    = close - 1.0
+        medium = pd.Series([0, 1, 1, 1, 1, 1, 1, 1], index=idx)
+        entry  = pd.Series([False, True, False, True, False, False, False, False], index=idx)
+        mrt    = pd.Series([np.nan] + [96.0] * 7, index=idx)
+        mdb    = pd.Series([np.nan] + [108.0] * 7, index=idx)
+
+        st = at._system_stats(high, low, close, medium, entry, mrt, mdb)
+
+        # Trade 1 (entry@101): low tags 96 stop on bar 2.
+        # Trade 2 (entry@100): high tags 108 TP on bar 5.
+        self.assertEqual(st["stop_hits"], 1)
+        self.assertEqual(st["tp_hits"], 1)
+        self.assertEqual(st["flip_exits"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

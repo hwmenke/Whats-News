@@ -487,6 +487,10 @@ function setTrendMethod(method) {
     const scanVisible = document.getElementById('trend-scan-panel')?.style.display !== 'none';
     if (scanVisible && trendScanState.data) {
         loadTrendScan();          // keep the scan table in sync with the method pill
+        // The chart's cached series were computed with the OLD method —
+        // drop them so returning to the chart sub-tab refetches instead of
+        // re-rendering stale lines under new-method captions.
+        trendState.data = null;
     } else if (typeof state !== 'undefined' && state.activeSymbol) {
         loadAdaptiveTrendData(state.activeSymbol);
     }
@@ -781,10 +785,13 @@ function switchTrendTab(tab) {
         // Rebuild charts if needed (they may have been destroyed)
         if (typeof state !== 'undefined' && state.activeSymbol) {
             if (!trendCharts.price) buildTrendCharts();
-            if (trendState.data) {
-                // Re-apply data without re-fetching
-                const ohlcvData = window._trendLastOhlcv;
-                if (ohlcvData) loadTrendData(trendState.data, ohlcvData);
+            if (trendState.data && window._trendLastOhlcv) {
+                // Re-apply cached data without re-fetching
+                loadTrendData(trendState.data, window._trendLastOhlcv);
+            } else {
+                // Cache was invalidated (e.g. method changed on the scan
+                // sub-tab) — refetch with the current settings.
+                loadAdaptiveTrendData(state.activeSymbol);
             }
         }
     } else {
@@ -822,7 +829,12 @@ function setTrendScanFreq(freq) {
     if (trendScanState.data) loadTrendScan();
 }
 
+let _trendScanGen = 0;
+
 async function loadTrendScan() {
+    // Ordering guard: rapid freq/method toggles overlap requests on the
+    // slowest endpoint in the app — only the latest response may render.
+    const gen  = ++_trendScanGen;
     const btn  = document.getElementById('btn-trend-scan');
     const load = document.getElementById('trend-scan-loading');
     const ts   = document.getElementById('trend-scan-ts');
@@ -833,14 +845,18 @@ async function loadTrendScan() {
         const cfg    = typeof trendConfig !== 'undefined' ? trendConfig : {};
         const cfgStr = Object.entries(cfg).map(([k, v]) => `${k}=${v}`).join('&');
         const data   = await apiFetch(`${API}/trend-scan?freq=${trendScanState.freq}&method=${trendState.method}&${cfgStr}`);
+        if (gen !== _trendScanGen) return;
         trendScanState.data = data;
         renderTrendScanTable(data);
         if (ts) ts.textContent = 'Updated ' + new Date().toLocaleTimeString();
     } catch (e) {
+        if (gen !== _trendScanGen) return;
         toast('Trend scan failed: ' + e.message, 'error');
     } finally {
-        if (btn)  btn.disabled = false;
-        if (load) load.style.display = 'none';
+        if (gen === _trendScanGen) {
+            if (btn)  btn.disabled = false;
+            if (load) load.style.display = 'none';
+        }
     }
 }
 

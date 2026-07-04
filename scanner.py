@@ -557,9 +557,12 @@ def compute_scanner(symbols: list) -> list:
                 'd': None, 'w': None, 'm': None,
             }
 
-        if len(_scan_row_cache) > 4096:
-            _scan_row_cache.clear()
-        _scan_row_cache[cache_key] = (_time.time(), row)
+        # Error rows aren't cached: they're cheap to recompute and shouldn't
+        # persist for the TTL after the user fetches data.
+        if 'error' not in row:
+            if len(_scan_row_cache) > 4096:
+                _scan_row_cache.clear()
+            _scan_row_cache[cache_key] = (_time.time(), row)
         results.append(row)
 
     return results
