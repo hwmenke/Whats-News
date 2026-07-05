@@ -34,11 +34,11 @@ let charts = {
 // ── Series references ────────────────────────────────────────
 let series = {
     daily: {
-        candle: null, bb: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, bb: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
     weekly: {
-        candle: null, bb: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, bb: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
 };
@@ -106,7 +106,7 @@ function destroyCharts() {
         Object.values(charts[freq]).forEach(c => { if (c) c.remove(); });
         charts[freq] = { main: null, rsi: null, macd: null, trend: null };
         series[freq] = {
-            candle: null, bb: {}, rsi: {}, macdLine: null,
+            candle: null, volume: null, bb: {}, rsi: {}, macdLine: null,
             macdSig: null, macdHist: null, trend: null,
         };
         // Clear kama series refs
@@ -128,6 +128,18 @@ function buildPanel(freq) {
     charts[freq].main = LWC.createChart(mainEl, {
         ...baseOpts(), width: mainEl.clientWidth, height: mainEl.clientHeight,
     });
+    // Volume histogram in the bottom 20% of the price pane (own hidden scale)
+    series[freq].volume = charts[freq].main.addHistogramSeries({
+        priceScaleId:     'vol',
+        priceFormat:      { type: 'volume' },
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    charts[freq].main.priceScale('vol').applyOptions({
+        scaleMargins: { top: 0.8, bottom: 0 },
+        visible: false,
+    });
+
     series[freq].candle = charts[freq].main.addCandlestickSeries({
         upColor: '#22c55e', downColor: '#ef4444',
         borderUpColor: '#22c55e', borderDownColor: '#ef4444',
@@ -301,6 +313,13 @@ function loadOHLCV(freq, rows) {
     series[freq].candle.setData(rows.map(r => ({
         time: r.date, open: r.open, high: r.high, low: r.low, close: r.close,
     })));
+    if (series[freq].volume) {
+        series[freq].volume.setData(rows.map(r => ({
+            time:  r.date,
+            value: r.volume,
+            color: r.close >= r.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)',
+        })));
+    }
 }
 
 function loadIndicatorsToPanel(freq, data) {

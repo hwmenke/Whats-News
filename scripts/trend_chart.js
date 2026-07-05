@@ -118,7 +118,7 @@ let trendSeries    = {
     // Background regime fills (on hidden left scale)
     bgLong: null, bgShort: null,
     // Price overlays
-    candle:   null,
+    candle:   null, volume: null,
     sb: null, mb: null, lb: null,
     sdb: null, mrt: null, mdb: null, lrt: null, ldb: null,
     // Regime strip
@@ -184,7 +184,7 @@ function destroyTrendCharts() {
     trendCharts = { price: null, regime: null };
     trendSeries = {
         bgLong: null, bgShort: null,
-        candle: null, sb: null, mb: null, lb: null,
+        candle: null, volume: null, sb: null, mb: null, lb: null,
         sdb: null, mrt: null, mdb: null, lrt: null, ldb: null,
         regLong: null, regMed: null, regShort: null,
     };
@@ -245,6 +245,18 @@ function buildTrendCharts() {
         base:             1,
         priceLineVisible: false,
         lastValueVisible: false,
+    });
+
+    // Volume histogram — bottom 20% of the price pane, hidden scale
+    trendSeries.volume = trendCharts.price.addHistogramSeries({
+        priceScaleId:     'vol',
+        priceFormat:      { type: 'volume' },
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    trendCharts.price.priceScale('vol').applyOptions({
+        scaleMargins: { top: 0.8, bottom: 0 },
+        visible: false,
     });
 
     // Candlesticks
@@ -400,6 +412,43 @@ function loadTrendData(data, ohlcvRows) {
             time: r.date, open: r.open, high: r.high, low: r.low, close: r.close,
         }))
     );
+
+    // Volume
+    if (trendSeries.volume) {
+        trendSeries.volume.setData(ohlcvRows.map(r => ({
+            time:  r.date,
+            value: r.volume,
+            color: r.close >= r.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)',
+        })));
+    }
+
+    // Trade markers — entries from the signal arrays, exits from the
+    // replayed system trades. Trend data spans a longer window than the
+    // candles, so anything before the first candle is dropped (markers at
+    // times the series doesn't have would misrender).
+    const firstTime = ohlcvRows[0].date;
+    const markers = [];
+    (data.entry_long || []).forEach(d => {
+        if (d.value && d.date >= firstTime) {
+            markers.push({ time: d.date, position: 'belowBar', shape: 'arrowUp', color: '#22c55e', text: 'L' });
+        }
+    });
+    (data.entry_short || []).forEach(d => {
+        if (d.value && d.date >= firstTime) {
+            markers.push({ time: d.date, position: 'aboveBar', shape: 'arrowDown', color: '#ef4444', text: 'S' });
+        }
+    });
+    (data.system_stats?.trade_list || []).forEach(t => {
+        if (t.outcome === 'open' || t.exit_date < firstTime) return;
+        const style = t.outcome === 'tp'
+            ? { color: '#2dd4bf', text: t.r != null ? `TP ${t.r}R` : 'TP' }
+            : t.outcome === 'stop'
+                ? { color: '#f87171', text: 'stop' }
+                : { color: '#8b949e', text: 'flip' };
+        markers.push({ time: t.exit_date, position: 'aboveBar', shape: 'circle', ...style });
+    });
+    markers.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+    trendSeries.candle.setMarkers(markers);
 
     // Background regime shading — driven by medium_state (master regime)
     // bgLong fills green  when medium is long;  invisible otherwise
