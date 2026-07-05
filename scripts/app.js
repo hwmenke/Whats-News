@@ -71,6 +71,7 @@ function saveSettings() {
             trendVis:    typeof trendState  !== 'undefined' ? trendState.vis    : null,
             scanVisible: typeof scannerState !== 'undefined' ? scannerState.visible : null,
             riskDollars: typeof trendRiskDollars !== 'undefined' ? trendRiskDollars : null,
+            logScale:    typeof chartLogScale !== 'undefined' ? chartLogScale : null,
         }));
     } catch (_) { /* storage unavailable — ignore */ }
 }
@@ -694,13 +695,21 @@ async function loadChartData(symbol) {
         });
 
         if (gen !== loadGen) return;
+        // Preserve the user's zoom across symbol switches — logical range is
+        // bar-index based, so the window width carries over.
+        const prevRange = charts.daily.main?.timeScale().getVisibleLogicalRange() || null;
         initCharts();
 
         loadOHLCV('daily',  dailyOhlcv);
         loadOHLCV('weekly', weeklyOhlcv);
         loadIndicatorsToPanel('daily',  dailyInd);
         loadIndicatorsToPanel('weekly', weeklyInd);
-        fitContent();
+        if (prevRange) {
+            try { charts.daily.main.timeScale().setVisibleLogicalRange(prevRange); }
+            catch (_) { fitContent(); }
+        } else {
+            fitContent();
+        }
 
         const last = dailyOhlcv[dailyOhlcv.length - 1];
         const prev = dailyOhlcv[dailyOhlcv.length - 2];
@@ -753,6 +762,8 @@ async function loadAdaptiveTrendData(symbol) {
 
         if (gen !== loadGen) return;
         window._trendLastOhlcv = ohlcv;   // cache for sub-tab back-navigation
+        // Capture zoom before the rebuild so loadTrendData can restore it
+        window._trendPrevRange = trendCharts.price?.timeScale().getVisibleLogicalRange() || null;
         buildTrendCharts();
         loadTrendData(trendData, ohlcv);
 
@@ -1493,6 +1504,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     bbPill.addEventListener('click', () => {
         const on = toggleOverlay('bb');
         bbPill.classList.toggle('active-bb', on);
+    });
+
+    // Log-scale pill (restored from prefs; applies to all price panes)
+    const logPill = document.getElementById('pill-log');
+    if (prefs.logScale && typeof chartLogScale !== 'undefined') {
+        chartLogScale = true;
+        logPill?.classList.add('active-bb');
+    }
+    logPill?.addEventListener('click', () => {
+        const on = setChartLogScale(!chartLogScale);
+        logPill.classList.toggle('active-bb', on);
     });
 
     // Buttons

@@ -27,6 +27,12 @@ function nextKamaColor() {
 // Overlay state
 const activeOverlays = { bb: true };
 
+// Price-scale mode (persisted via saveSettings)
+let chartLogScale = false;
+
+// Last loaded daily date (for range presets)
+let _lastDailyDate = null;
+
 // ── Chart instances ─────────────────────────────────────────
 let charts = {
     daily:  { main: null, rsi: null, macd: null, trend: null },
@@ -235,6 +241,17 @@ function buildPanel(freq) {
     syncTo(charts[freq].rsi,   charts[freq].main);
     syncTo(charts[freq].macd,  charts[freq].main);
     syncTo(charts[freq].trend, charts[freq].main);
+
+    // Crosshair mirrored across every pane of both panels
+    [charts[freq].main, charts[freq].rsi, charts[freq].macd, charts[freq].trend].forEach(c => {
+        c.subscribeCrosshairMove(p => _syncCrosshair(c, p));
+    });
+
+    // Restore persisted scale mode; double-click resets the visible range
+    if (chartLogScale) {
+        charts[freq].main.priceScale('right').applyOptions({ mode: LWC.PriceScaleMode.Logarithmic });
+    }
+    mainEl.addEventListener('dblclick', () => fitContent());
 }
 
 function initCharts() {
@@ -243,6 +260,62 @@ function initCharts() {
     buildPanel('weekly');
     syncPanels();
     setupResizeObserver();
+}
+
+// ── Crosshair sync across every pane of both panels ───────────
+let _xhairSyncing = false;
+function _syncCrosshair(sourceChart, param) {
+    if (_xhairSyncing) return;
+    _xhairSyncing = true;
+    ['daily', 'weekly'].forEach(f => {
+        const targets = [
+            [charts[f].main,  series[f].candle],
+            [charts[f].rsi,   series[f].rsi[14]],
+            [charts[f].macd,  series[f].macdLine],
+            [charts[f].trend, series[f].trend],
+        ];
+        targets.forEach(([c, s]) => {
+            if (!c || c === sourceChart || !s) return;
+            try {
+                if (param && param.time) c.setCrosshairPosition(NaN, param.time, s);
+                else c.clearCrosshairPosition();
+            } catch (_) {}
+        });
+    });
+    _xhairSyncing = false;
+}
+
+// ── Log/linear price scale (main panes) ───────────────────────
+function setChartLogScale(on) {
+    chartLogScale = on;
+    const mode = on ? LWC.PriceScaleMode.Logarithmic : LWC.PriceScaleMode.Normal;
+    ['daily', 'weekly'].forEach(f => {
+        charts[f].main?.priceScale('right').applyOptions({ mode });
+    });
+    if (typeof trendCharts !== 'undefined' && trendCharts.price) {
+        trendCharts.price.priceScale('right').applyOptions({ mode });
+    }
+    if (typeof saveSettings === 'function') saveSettings();
+    return chartLogScale;
+}
+
+// ── Visible range presets (months back from the last daily bar) ──
+function setChartRange(months) {
+    if (!charts.daily.main) return;
+    if (months === 'all' || !_lastDailyDate) {
+        fitContent();
+        return;
+    }
+    const to   = new Date(_lastDailyDate);
+    const from = new Date(_lastDailyDate);
+    from.setMonth(from.getMonth() - months);
+    try {
+        charts.daily.main.timeScale().setVisibleRange({
+            from: from.toISOString().slice(0, 10),
+            to:   to.toISOString().slice(0, 10),
+        });
+        // syncPanels propagates the date range to the weekly panel.
+    } catch (_) {}
 }
 
 // ── Within-panel sync (same freq → logical range by bar index) ──
@@ -314,6 +387,7 @@ function toLineData(arr) {
 
 function loadOHLCV(freq, rows) {
     if (!series[freq].candle || !rows?.length) return;
+    if (freq === 'daily') _lastDailyDate = rows[rows.length - 1].date;
     series[freq].candle.setData(rows.map(r => ({
         time: r.date, open: r.open, high: r.high, low: r.low, close: r.close,
     })));

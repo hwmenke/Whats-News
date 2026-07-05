@@ -130,8 +130,15 @@
       </div>
       <div class="tab-spacer"></div>
       <div class="indicator-toggles">
+        <span class="overlay-section-label">Range</span>
+        <button class="ind-pill" onclick="setChartRange(3)"  title="Last 3 months">3M</button>
+        <button class="ind-pill" onclick="setChartRange(12)" title="Last year">1Y</button>
+        <button class="ind-pill" onclick="setChartRange('all')" title="Full history (or double-click a chart)">All</button>
+      </div>
+      <div class="indicator-toggles">
         <span class="overlay-section-label">Overlays</span>
         <button id="pill-bb" class="ind-pill active-bb">Bol. Bands</button>
+        <button id="pill-log" class="ind-pill" title="Logarithmic price scale">Log</button>
       </div>
     </div>
 

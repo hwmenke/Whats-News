@@ -375,6 +375,28 @@ function buildTrendCharts() {
         _regSyncing = false;
     });
 
+    // ── Crosshair mirrored between price and regime strip ─────
+    let _tXhairSyncing = false;
+    const _mirror = (src, dst, dstSeries) => src.subscribeCrosshairMove(p => {
+        if (_tXhairSyncing || !dst || !dstSeries) return;
+        _tXhairSyncing = true;
+        try {
+            if (p && p.time) dst.setCrosshairPosition(NaN, p.time, dstSeries);
+            else dst.clearCrosshairPosition();
+        } catch (_) {}
+        _tXhairSyncing = false;
+    });
+    _mirror(trendCharts.price,  trendCharts.regime, trendSeries.regMed);
+    _mirror(trendCharts.regime, trendCharts.price,  trendSeries.candle);
+
+    // Persisted scale mode + double-click range reset
+    if (typeof chartLogScale !== 'undefined' && chartLogScale) {
+        trendCharts.price.priceScale('right').applyOptions({
+            mode: LightweightCharts.PriceScaleMode.Logarithmic,
+        });
+    }
+    priceEl.addEventListener('dblclick', () => trendCharts.price?.timeScale().fitContent());
+
     // ── Resize observers ─────────────────────────────────────
     _observe('trend-chart-price',  trendCharts.price);
     _observe('trend-chart-regime', trendCharts.regime);
@@ -496,8 +518,18 @@ function loadTrendData(data, ohlcvRows) {
     // Apply overlay visibility toggles
     _applyVis();
 
-    // Fit to full history
-    trendCharts.price.timeScale().fitContent();
+    // Preserve the user's zoom across re-fetches (config Apply, method/freq
+    // change, symbol switch); fit to full history only on a fresh view.
+    if (window._trendPrevRange) {
+        try {
+            trendCharts.price.timeScale().setVisibleLogicalRange(window._trendPrevRange);
+        } catch (_) {
+            trendCharts.price.timeScale().fitContent();
+        }
+        window._trendPrevRange = null;
+    } else {
+        trendCharts.price.timeScale().fitContent();
+    }
 
     // Update signal panel cards
     _updateSignalPanel(data, ohlcvRows);
