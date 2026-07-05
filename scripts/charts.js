@@ -11,9 +11,11 @@ const LWC = LightweightCharts;
 const kamaPeriods = {};
 
 // Colour pool for dynamically added KAMA lines
+// No cyan/teal (collides with RSI-7 and the trend TP bands) and no
+// candle/status hues; first three slots keep KAMA 10/20/50's identities.
 const KAMA_COLORS = [
-    '#3b82f6', '#eab308', '#a855f7', '#06b6d4',
-    '#f97316', '#ec4899', '#14b8a6', '#f43f5e',
+    '#3b82f6', '#eab308', '#a855f7', '#f97316',
+    '#ec4899', '#818cf8', '#fbbf24', '#94a3b8',
 ];
 let kamaColorIdx = 0;
 function nextKamaColor() {
@@ -45,14 +47,16 @@ let series = {
 
 // ── Colours ──────────────────────────────────────────────────
 const C = {
-    bb_upper:      '#22c55e',
-    bb_middle:     '#22c55e',
-    bb_lower:      '#22c55e',
-    rsi7:          '#06b6d4',
+    // BB is volatility context — slate envelope, not candle-green
+    bb_upper:      '#64748b',
+    bb_middle:     '#94a3b8',
+    bb_lower:      '#64748b',
+    // RSI 14 is the headline; 7/21 recede
+    rsi7:          'rgba(6,182,212,0.55)',
     rsi14:         '#f97316',
-    rsi21:         '#a855f7',
-    macd_line:     '#3b82f6',
-    macd_signal:   '#ef4444',
+    rsi21:         'rgba(168,85,247,0.55)',
+    macd_line:     '#60a5fa',
+    macd_signal:   '#f97316',
     macd_hist_pos: '#22c55e',
     macd_hist_neg: '#ef4444',
     trend_pos:     '#22c55e',
@@ -78,7 +82,7 @@ function baseOpts() {
             vertLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
             horzLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
         },
-        rightPriceScale: { borderColor: '#30363d' },
+        rightPriceScale: { borderColor: '#30363d', minimumWidth: 72 },
         timeScale: {
             borderColor: '#30363d',
             timeVisible: true,
@@ -166,12 +170,12 @@ function buildPanel(freq) {
     });
     charts[freq].rsi.priceScale('right').applyOptions({ autoScale: false });
 
-    series[freq].rsi[7]  = charts[freq].rsi.addLineSeries({ color: C.rsi7,  lineWidth: 1,   lineStyle: 2, priceLineVisible: false, lastValueVisible: true });
-    series[freq].rsi[14] = charts[freq].rsi.addLineSeries({ color: C.rsi14, lineWidth: 1.5, lineStyle: 0, priceLineVisible: false, lastValueVisible: true });
-    series[freq].rsi[21] = charts[freq].rsi.addLineSeries({ color: C.rsi21, lineWidth: 1,   lineStyle: 2, priceLineVisible: false, lastValueVisible: true });
-    series[freq].rsi[14].createPriceLine({ price: 80, color: '#ef444488', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OB' });
+    series[freq].rsi[7]  = charts[freq].rsi.addLineSeries({ color: C.rsi7,  lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+    series[freq].rsi[14] = charts[freq].rsi.addLineSeries({ color: C.rsi14, lineWidth: 2, lineStyle: 0, priceLineVisible: false, lastValueVisible: true });
+    series[freq].rsi[21] = charts[freq].rsi.addLineSeries({ color: C.rsi21, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+    series[freq].rsi[14].createPriceLine({ price: 80, color: '#ef444455', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OB' });
     series[freq].rsi[14].createPriceLine({ price: 50, color: '#4a556888', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
-    series[freq].rsi[14].createPriceLine({ price: 20, color: '#22c55e88', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OS' });
+    series[freq].rsi[14].createPriceLine({ price: 20, color: '#22c55e55', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OS' });
 
     // MACD chart
     charts[freq].macd = LWC.createChart(macdEl, {
@@ -179,7 +183,7 @@ function buildPanel(freq) {
     });
     series[freq].macdHist = charts[freq].macd.addHistogramSeries({ color: C.macd_hist_pos, priceLineVisible: false, lastValueVisible: false });
     series[freq].macdLine = charts[freq].macd.addLineSeries({ color: C.macd_line,   lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
-    series[freq].macdSig  = charts[freq].macd.addLineSeries({ color: C.macd_signal, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
+    series[freq].macdSig  = charts[freq].macd.addLineSeries({ color: C.macd_signal, lineWidth: 1,   priceLineVisible: false, lastValueVisible: false });
 
     // Trend score chart
     charts[freq].trend = LWC.createChart(trendEl, {
@@ -350,7 +354,7 @@ function loadIndicatorsToPanel(freq, data) {
                 if (d.value == null) return { time: d.date };
                 return {
                     time: d.date, value: d.value,
-                    color: d.value >= 0 ? C.macd_hist_pos + 'cc' : C.macd_hist_neg + 'cc',
+                    color: d.value >= 0 ? C.macd_hist_pos + '88' : C.macd_hist_neg + '88',
                 };
             })
         );

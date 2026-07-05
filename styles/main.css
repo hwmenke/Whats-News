@@ -998,10 +998,9 @@ html, body {
   background: var(--bg-base);
 }
 
-/* Regime strip wrapper ("swirlogram") — a touch taller so the three
-   stacked S/M/L horizon bands don't crowd the top/bottom edges. */
+/* Regime strip wrapper — three full-row heatband ribbons (S/M/L) */
 .trend-regime-wrap {
-  height: 148px;
+  height: 110px;
   flex-shrink: 0;
   position: relative;
   background: var(--bg-base);

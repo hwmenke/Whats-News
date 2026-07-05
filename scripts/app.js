@@ -931,9 +931,11 @@ function renderStats(data) {
     const pctValue = v => (v !== null && Number.isFinite(v)) ? v * 100 : null;
     const pctColor = v => (v !== null && Number.isFinite(v) && v >= 0) ? '#22c55e' : '#ef4444';
 
+    // Mirrors the price chart's KAMA pool slots so the same period keeps
+    // the same color on every tab.
     const kamaColors = {
         '10': '#3b82f6',
-        '20': '#f97316',
+        '20': '#eab308',
         '50': '#a855f7',
     };
     const alignedDeciles = series => {
@@ -1006,8 +1008,8 @@ function renderStats(data) {
             datasets: Object.entries(data.kama_distance_analysis?.fwd_1d || {}).map(([period, points]) => ({
                 label: `KAMA ${period}`,
                 data: alignedDeciles(points),
-                borderColor: kamaColors[period] || '#4facfe',
-                backgroundColor: kamaColors[period] || '#4facfe',
+                borderColor: kamaColors[period] || '#3b82f6',
+                backgroundColor: kamaColors[period] || '#3b82f6',
                 spanGaps: true,
                 pointRadius: 3,
                 pointHoverRadius: 5,
@@ -1042,8 +1044,8 @@ function renderStats(data) {
             datasets: Object.entries(data.kama_distance_analysis?.fwd_5d || {}).map(([period, points]) => ({
                 label: `KAMA ${period}`,
                 data: alignedDeciles(points),
-                borderColor: kamaColors[period] || '#4facfe',
-                backgroundColor: kamaColors[period] || '#4facfe',
+                borderColor: kamaColors[period] || '#3b82f6',
+                backgroundColor: kamaColors[period] || '#3b82f6',
                 spanGaps: true,
                 pointRadius: 3,
                 pointHoverRadius: 5,
@@ -1062,8 +1064,8 @@ function renderStats(data) {
             labels: data.distribution.map(d => (d.bin * 100).toFixed(1) + '%'),
             datasets: [{
                 data: data.distribution.map(d => d.count),
-                backgroundColor: 'rgba(79, 172, 254, 0.6)',
-                borderColor: '#4facfe',
+                backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                borderColor: '#3b82f6',
                 borderWidth: 1,
                 categoryPercentage: 1.0,
                 barPercentage: 1.0
@@ -1103,8 +1105,8 @@ function renderStats(data) {
                 {
                     label: '1D Fwd Return',
                     data: (data.kama_cross_analysis || []).map(d => pctValue(d.fwd_1d)),
-                    backgroundColor: 'rgba(79, 172, 254, 0.65)',
-                    borderColor: '#4facfe',
+                    backgroundColor: 'rgba(59, 130, 246, 0.65)',
+                    borderColor: '#3b82f6',
                     borderWidth: 1,
                 },
                 {
@@ -1132,8 +1134,8 @@ function renderStats(data) {
                 {
                     label: '1D Fwd Return',
                     data: tsa.map(d => pctValue(d.fwd_1d)),
-                    backgroundColor: 'rgba(79, 172, 254, 0.65)',
-                    borderColor: '#4facfe',
+                    backgroundColor: 'rgba(59, 130, 246, 0.65)',
+                    borderColor: '#3b82f6',
                     borderWidth: 1,
                 },
                 {
@@ -1440,6 +1442,14 @@ function renderBacktest(data) {
 // ── Boot ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     startClock();
+
+    // Chart.js panels use the same mono type as the LWC charts — otherwise
+    // axis numerals visibly switch typeface between tabs.
+    if (typeof Chart !== 'undefined') {
+        Chart.defaults.font.family = "'JetBrains Mono', monospace";
+        Chart.defaults.font.size   = 10;
+        Chart.defaults.color       = '#8b949e';
+    }
 
     // Hydrate persisted preferences before seeding defaults
     const prefs = loadSettings();

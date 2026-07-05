@@ -5,21 +5,19 @@
  *   Left panel (65%) — price chart with all overlay lines + regime strip
  *   Right panel (35%) — composite signal badge + 8 detail cards
  *
- * Lines rendered on price chart:
- *   SB  (blue  solid  2px) — fast adaptive baseline
- *   MB  (red   solid  2px) — medium adaptive baseline  ← master regime
- *   LB  (yellow solid 1.5px) — long baseline           [toggleable]
- *   SDB (bright-green dashed 1px) — short TP band
- *   MDB (dark-green   dashed 1px) — medium TP band
- *   LDB (cyan         dashed 1px) — long TP band       [toggleable]
- *   MRT (dark-gray    dashed 1.5px) — medium stop band
- *   LRT (mid-gray     dashed 1px)  — long stop band    [toggleable]
+ * Lines rendered on price chart (role-coded; see TC below):
+ *   SB  (blue solid 1.5px)       — fast adaptive baseline
+ *   MB  (near-white solid 2.5px) — medium MASTER baseline
+ *   LB  (yellow solid 1px)       — long baseline        [toggleable]
+ *   SDB (teal-light dashed 1px)  — TP1 band
+ *   MDB (teal dashed 1.5px)      — TP2 band (main target)
+ *   LDB (teal-dark dotted 1px)   — extended target      [toggleable]
+ *   MRT (rose dashed 1.5px)      — stop band
+ *   LRT (rose-faded dotted 1px)  — wide stop            [toggleable]
+ *   + entry/exit trade markers from the system's signals
  *
- * Regime strip (3 offset histograms, 130 px):
- *   Long horizon   plotted at  y = ±1 around base  +3
- *   Medium horizon plotted at  y = ±1 around base   0
- *   Short horizon  plotted at  y = ±1 around base  -3
- *   Reference price-lines label each band: LONG / MED / SHORT
+ * Regime strip: three full-row heatband ribbons (LONG / MED / SHORT),
+ * state encoded purely in cell color (green/red/neutral-gray).
  *
  * Signal panel:
  *   Composite signal  = sum of all 3 states  (-3 … +3)
@@ -58,7 +56,7 @@ const LINE_META = {
         desc:  'Fast-adapting baseline. Tracks near-term momentum and is the primary input for the short-horizon regime. Turns quickly in trending markets, stays flat in chop.',
     },
     mb:  {
-        color: '#ef4444',
+        color: '#e6edf3',
         label: 'MB — Medium Baseline',
         desc:  'Master trend line. Drives the medium-horizon regime that governs all trade management bands (MRT, MDB). When SB crosses above MB, a long regime entry fires.',
     },
@@ -68,27 +66,27 @@ const LINE_META = {
         desc:  'Macro structure line. Very slow to react — only flips on sustained multi-month directional moves. Provides the long-horizon regime context for LRT / LDB bands.',
     },
     sdb: {
-        color: '#22c55e',
+        color: '#5eead4',
         label: 'SDB — Short Deviation Band  (TP1)',
         desc:  'First take-profit target. Ratcheting band anchored to SB — moves only in the direction of the trade and never pulls back. Reset on regime flip.',
     },
     mrt: {
-        color: '#475569',
+        color: '#f87171',
         label: 'MRT — Medium Retracement  (Stop)',
         desc:  'Trailing stop level. Sits 2.25 ATR on the loss side of MB and tightens as MB advances. Exit here on an adverse move. Never retreats against the trade.',
     },
     mdb: {
-        color: '#16a34a',
+        color: '#2dd4bf',
         label: 'MDB — Medium Deviation Band  (TP2)',
         desc:  'Main take-profit target. Band is built 2× the stop distance from MB (a construction ratio, not a win-probability). Ratchets with the trade; resets on medium-regime flip.',
     },
     lrt: {
-        color: '#6b7280',
+        color: 'rgba(248,113,113,0.45)',
         label: 'LRT — Long Retracement  (Wide Stop)',
         desc:  'Wide trailing stop for long-horizon positions. Based on LB so it only tightens on sustained macro trends. Use for position-level sizing against macro structure.',
     },
     ldb: {
-        color: '#06b6d4',
+        color: '#0d9488',
         label: 'LDB — Long Deviation Band  (Extended Target)',
         desc:  'Extended target for multi-month positions. Only meaningful in confirmed long-horizon regimes. Gives a sense of how far macro momentum can carry the move.',
     },
@@ -128,15 +126,21 @@ let _trendObservers = [];   // ResizeObserver instances — cleaned up on destro
 let _regSyncing     = false;
 
 // ── Colors ───────────────────────────────────────────────────
+// Role-coded palette (validated against the dark surface):
+//   solid = baseline · dashed = band · dotted = long horizon
+//   teal family = take-profit · rose family = stop
+//   MB is the master line — neutral near-white, heaviest weight (regime
+//   direction is already encoded by the background fill + regime strip;
+//   painting the bullish master line candle-red was a semantic clash).
 const TC = {
-    sb:     '#3b82f6',   // blue         — fast baseline
-    mb:     '#ef4444',   // red          — medium baseline
-    lb:     '#eab308',   // yellow solid — long baseline
-    sdb:    '#22c55e',   // bright-green — short TP
-    mdb:    '#16a34a',   // dark-green   — medium TP
-    ldb:    '#06b6d4',   // cyan         — long TP
-    mrt:    '#475569',   // slate        — medium stop
-    lrt:    '#6b7280',   // gray         — long stop
+    sb:     '#3b82f6',                    // blue  — fast baseline
+    mb:     '#e6edf3',                    // near-white — MASTER baseline
+    lb:     '#eab308',                    // yellow — long baseline
+    sdb:    '#5eead4',                    // teal light — TP1
+    mdb:    '#2dd4bf',                    // teal       — TP2 (main target)
+    ldb:    '#0d9488',                    // teal dark  — extended target
+    mrt:    '#f87171',                    // rose — stop (most actionable level)
+    lrt:    'rgba(248,113,113,0.45)',     // rose faded — wide stop
     bull:   '#22c55e',
     bear:   '#ef4444',
     neut:   '#4a5568',
@@ -160,7 +164,7 @@ function _trendBaseOpts() {
             vertLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
             horzLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
         },
-        rightPriceScale: { borderColor: '#30363d' },
+        rightPriceScale: { borderColor: '#30363d', minimumWidth: 72 },
         timeScale: {
             borderColor:    '#30363d',
             timeVisible:    true,
@@ -234,14 +238,14 @@ function buildTrendCharts() {
     // Neutral      → value equals base (zero-height, invisible)
     trendSeries.bgLong = trendCharts.price.addHistogramSeries({
         priceScaleId:     'left',
-        color:            'rgba(34,197,94,0.07)',
+        color:            'rgba(34,197,94,0.12)',
         base:             -1,
         priceLineVisible: false,
         lastValueVisible: false,
     });
     trendSeries.bgShort = trendCharts.price.addHistogramSeries({
         priceScaleId:     'left',
-        color:            'rgba(239,68,68,0.07)',
+        color:            'rgba(239,68,68,0.10)',
         base:             1,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -278,16 +282,16 @@ function buildTrendCharts() {
     const LS = LightweightCharts.LineStyle;
 
     // Baselines (lastValueVisible = true for SB + MB only — keep axis clean)
-    trendSeries.sb  = _line(TC.sb,  2,   LS.Solid, 'SB',  true);
-    trendSeries.mb  = _line(TC.mb,  2,   LS.Solid, 'MB',  true);
-    trendSeries.lb  = _line(TC.lb,  1.5, LS.Solid, 'LB',  false);
+    trendSeries.sb  = _line(TC.sb,  1.5, LS.Solid, 'SB',  true);
+    trendSeries.mb  = _line(TC.mb,  2.5, LS.Solid, 'MB',  true);
+    trendSeries.lb  = _line(TC.lb,  1,   LS.Solid, 'LB',  false);
 
-    // Bands
+    // Bands — dashed for medium horizon, dotted for long horizon
     trendSeries.sdb = _line(TC.sdb, 1,   LS.Dashed, 'SDB', false);
     trendSeries.mrt = _line(TC.mrt, 1.5, LS.Dashed, 'MRT', false);
-    trendSeries.mdb = _line(TC.mdb, 1,   LS.Dashed, 'MDB', false);
-    trendSeries.lrt = _line(TC.lrt, 1,   LS.Dashed, 'LRT', false);
-    trendSeries.ldb = _line(TC.ldb, 1,   LS.Dashed, 'LDB', false);
+    trendSeries.mdb = _line(TC.mdb, 1.5, LS.Dashed, 'MDB', false);
+    trendSeries.lrt = _line(TC.lrt, 1,   LS.Dotted, 'LRT', false);
+    trendSeries.ldb = _line(TC.ldb, 1,   LS.Dotted, 'LDB', false);
 
     // ── Regime strip (3 offset histograms) ───────────────────
     trendCharts.regime = LightweightCharts.createChart(regimeEl, {
@@ -300,8 +304,12 @@ function buildTrendCharts() {
         },
     });
 
-    const _hist = (base) => trendCharts.regime.addHistogramSeries({
-        base,
+    // Heatband rows: each series is a full-row ribbon (base = center − 1,
+    // value = center + 1) with the regime encoded purely in color. The old
+    // half-height ±1 bars encoded direction twice and made neutral bars
+    // invisible — indistinguishable from missing data.
+    const _hist = (center) => trendCharts.regime.addHistogramSeries({
+        base: center - 1,
         priceLineVisible: false,
         lastValueVisible: false,
     });
@@ -310,18 +318,17 @@ function buildTrendCharts() {
     trendSeries.regMed   = _hist(0);
     trendSeries.regShort = _hist(-3);
 
-    // Reference lines anchor the scale and label the three bands.
-    // Use a very transparent color so they don't dominate visually.
-    const _ref = (series, price, title, color) =>
+    // Quiet reference lines label the three ribbons on the axis.
+    const _ref = (series, price, title) =>
         series.createPriceLine({
-            price, color, lineWidth: 1,
+            price, color: '#8b949e40', lineWidth: 1,
             lineStyle: LightweightCharts.LineStyle.Dashed,
             axisLabelVisible: true, title,
         });
 
-    _ref(trendSeries.regLong,  3,   'LONG',  TC.lb  + '60');
-    _ref(trendSeries.regMed,   0,   'MED',   TC.neut + '80');
-    _ref(trendSeries.regShort, -3,  'SHORT', TC.lb  + '60');
+    _ref(trendSeries.regLong,  3,  'LONG');
+    _ref(trendSeries.regMed,   0,  'MED');
+    _ref(trendSeries.regShort, -3, 'SHORT');
 
     // ── Crosshair legend: OHLC + baseline values ──────────────
     const priceWrap = priceEl.parentElement;         // .trend-price-wrap
@@ -382,21 +389,20 @@ function _toLine(arr) {
 }
 
 /**
- * Map regime array (+1/-1/0) to histogram data offset around `base`.
- *   Long  (+1) → base + 1  (bar extends up from base)
- *   Short (-1) → base - 1  (bar extends down from base)
- *   Neutral(0) → base      (zero-height bar, invisible)
+ * Map regime array (+1/-1/0) to full-row heatband cells centered on `center`.
+ * State is encoded purely in color: bull green, bear red, neutral a visible
+ * gray (so "neutral" and "no data" stop looking identical).
  */
-function _regData(arr, base) {
+function _regData(arr, center) {
     if (!Array.isArray(arr)) return [];
     return arr.map(d => {
         const v = d.value || 0;
         return {
             time:  d.date,
-            value: base + v,
-            color: v > 0 ? TC.bull + 'cc'
-                 : v < 0 ? TC.bear + 'cc'
-                 :         TC.neut + '22',
+            value: center + 1,
+            color: v > 0 ? TC.bull + 'b3'
+                 : v < 0 ? TC.bear + 'b3'
+                 :         TC.neut + '26',
         };
     });
 }
@@ -458,14 +464,14 @@ function loadTrendData(data, ohlcvRows) {
             data.medium_state.map(d => ({
                 time:  d.date,
                 value: d.value > 0 ? 1 : -1,
-                color: 'rgba(34,197,94,0.07)',
+                color: 'rgba(34,197,94,0.12)',
             }))
         );
         trendSeries.bgShort.setData(
             data.medium_state.map(d => ({
                 time:  d.date,
                 value: d.value < 0 ? -1 : 1,
-                color: 'rgba(239,68,68,0.07)',
+                color: 'rgba(239,68,68,0.10)',
             }))
         );
     }
@@ -505,13 +511,13 @@ function _applyVis() {
     };
     const hide = s => { if (s) s.applyOptions({ visible: false }); };
 
-    if (trendState.vis.sb)  show(trendSeries.sb,  TC.sb,  2,   LS.Solid);
+    if (trendState.vis.sb)  show(trendSeries.sb,  TC.sb,  1.5, LS.Solid);
     else                    hide(trendSeries.sb);
 
-    if (trendState.vis.mb)  show(trendSeries.mb,  TC.mb,  2,   LS.Solid);
+    if (trendState.vis.mb)  show(trendSeries.mb,  TC.mb,  2.5, LS.Solid);
     else                    hide(trendSeries.mb);
 
-    if (trendState.vis.lb)  show(trendSeries.lb,  TC.lb,  1.5, LS.Solid);
+    if (trendState.vis.lb)  show(trendSeries.lb,  TC.lb,  1,   LS.Solid);
     else                    hide(trendSeries.lb);
 
     if (trendState.vis.sdb) show(trendSeries.sdb, TC.sdb, 1,   LS.Dashed);
@@ -520,13 +526,13 @@ function _applyVis() {
     if (trendState.vis.mrt) show(trendSeries.mrt, TC.mrt, 1.5, LS.Dashed);
     else                    hide(trendSeries.mrt);
 
-    if (trendState.vis.mdb) show(trendSeries.mdb, TC.mdb, 1,   LS.Dashed);
+    if (trendState.vis.mdb) show(trendSeries.mdb, TC.mdb, 1.5, LS.Dashed);
     else                    hide(trendSeries.mdb);
 
-    if (trendState.vis.lrt) show(trendSeries.lrt, TC.lrt, 1,   LS.Dashed);
+    if (trendState.vis.lrt) show(trendSeries.lrt, TC.lrt, 1,   LS.Dotted);
     else                    hide(trendSeries.lrt);
 
-    if (trendState.vis.ldb) show(trendSeries.ldb, TC.ldb, 1,   LS.Dashed);
+    if (trendState.vis.ldb) show(trendSeries.ldb, TC.ldb, 1,   LS.Dotted);
     else                    hide(trendSeries.ldb);
 }
 
