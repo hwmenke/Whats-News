@@ -182,6 +182,38 @@ function buildPanel(freq) {
     // Reference line at 0
     series[freq].trend.createPriceLine({ price: 0, color: '#30363d', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
 
+    // Crosshair legend — OHLC + active KAMA values under the panel label
+    const wrapper = mainEl.parentElement;            // .chart-wrapper (position:relative)
+    wrapper.querySelector('.chart-legend')?.remove();
+    const legendEl = document.createElement('div');
+    legendEl.className = 'chart-legend';
+    wrapper.appendChild(legendEl);
+
+    charts[freq].main.subscribeCrosshairMove(param => {
+        if (!param || !param.time || !param.seriesData) {
+            legendEl.innerHTML = '';
+            return;
+        }
+        const c = param.seriesData.get(series[freq].candle);
+        if (!c || c.close == null) { legendEl.innerHTML = ''; return; }
+
+        const f = v => (v != null && isFinite(v)) ? v.toFixed(2) : '—';
+        const dirCls = c.close >= c.open ? 'lg-up' : 'lg-down';
+        let html =
+            `O <b>${f(c.open)}</b> H <b>${f(c.high)}</b> ` +
+            `L <b>${f(c.low)}</b> C <b class="${dirCls}">${f(c.close)}</b>`;
+
+        Object.entries(kamaPeriods).forEach(([p, meta]) => {
+            const s = meta[`series_${freq}`];
+            if (!s || !meta.active) return;
+            const d = param.seriesData.get(s);
+            if (d && d.value != null) {
+                html += ` <span style="color:${meta.color}">K${p} ${f(d.value)}</span>`;
+            }
+        });
+        legendEl.innerHTML = html;
+    });
+
     // Sync sub-charts to main
     syncTo(charts[freq].main, charts[freq].rsi, charts[freq].macd, charts[freq].trend);
     syncTo(charts[freq].rsi,   charts[freq].main);

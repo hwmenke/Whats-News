@@ -539,6 +539,29 @@ html, body {
   pointer-events: none;
 }
 
+/* Crosshair legend — OHLC + indicator values, sits under the panel label */
+.chart-legend {
+  position: absolute;
+  top: 30px;
+  left: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: rgba(13,17,23,0.72);
+  padding: 2px 7px;
+  border-radius: 4px;
+  z-index: 10;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: calc(100% - 20px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chart-legend:empty { display: none; }
+.chart-legend b { color: var(--text-primary); font-weight: 600; }
+.chart-legend b.lg-up   { color: var(--green); }
+.chart-legend b.lg-down { color: var(--red); }
+
 .chart-divider {
   height: 1px;
   background: var(--border);

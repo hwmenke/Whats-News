@@ -311,6 +311,37 @@ function buildTrendCharts() {
     _ref(trendSeries.regMed,   0,   'MED',   TC.neut + '80');
     _ref(trendSeries.regShort, -3,  'SHORT', TC.lb  + '60');
 
+    // ── Crosshair legend: OHLC + baseline values ──────────────
+    const priceWrap = priceEl.parentElement;         // .trend-price-wrap
+    priceWrap.querySelector('.chart-legend')?.remove();
+    const legendEl = document.createElement('div');
+    legendEl.className = 'chart-legend';
+    priceWrap.appendChild(legendEl);
+
+    trendCharts.price.subscribeCrosshairMove(param => {
+        if (!param || !param.time || !param.seriesData) {
+            legendEl.innerHTML = '';
+            return;
+        }
+        const c = param.seriesData.get(trendSeries.candle);
+        if (!c || c.close == null) { legendEl.innerHTML = ''; return; }
+
+        const f = v => (v != null && isFinite(v)) ? v.toFixed(2) : '—';
+        const dirCls = c.close >= c.open ? 'lg-up' : 'lg-down';
+        let html =
+            `O <b>${f(c.open)}</b> H <b>${f(c.high)}</b> ` +
+            `L <b>${f(c.low)}</b> C <b class="${dirCls}">${f(c.close)}</b>`;
+
+        [['sb', 'SB'], ['mb', 'MB'], ['lb', 'LB'], ['mrt', 'Stop'], ['mdb', 'TP2']].forEach(([key, label]) => {
+            if (!trendState.vis[key]) return;
+            const d = param.seriesData.get(trendSeries[key]);
+            if (d && d.value != null) {
+                html += ` <span style="color:${TC[key]}">${label} ${f(d.value)}</span>`;
+            }
+        });
+        legendEl.innerHTML = html;
+    });
+
     // ── Cross-sync price ↔ regime ─────────────────────────────
     trendCharts.price.timeScale().subscribeVisibleLogicalRangeChange(range => {
         if (_regSyncing || !range) return;
