@@ -676,8 +676,8 @@ async function loadChartData(symbol) {
 
     try {
         let [dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd] = await Promise.all([
-            apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
-            apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`),
+            apiFetch(`${API}/ohlcv/${symbol}?freq=daily&limit=1000`),
+            apiFetch(`${API}/ohlcv/${symbol}?freq=weekly&limit=1000`),
             apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`),
             apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
         ]).catch(async e => {
@@ -687,8 +687,8 @@ async function loadChartData(symbol) {
             if (!ok) throw e;
             await loadSymbols();
             return Promise.all([
-                apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
-                apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`),
+                apiFetch(`${API}/ohlcv/${symbol}?freq=daily&limit=1000`),
+                apiFetch(`${API}/ohlcv/${symbol}?freq=weekly&limit=1000`),
                 apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`),
                 apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
             ]);
@@ -744,7 +744,7 @@ async function loadAdaptiveTrendData(symbol) {
 
     try {
         let [ohlcv, trendData] = await Promise.all([
-            apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
+            apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}&limit=1500`),
             apiFetch(trendUrl),
         ]).catch(async e => {
             if (e.message.includes('404') || e.message.includes('No data')) {
@@ -753,7 +753,7 @@ async function loadAdaptiveTrendData(symbol) {
                 if (!ok) throw e;
                 await loadSymbols();
                 return Promise.all([
-                    apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
+                    apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}&limit=1500`),
                     apiFetch(trendUrl),
                 ]);
             }
@@ -769,7 +769,7 @@ async function loadAdaptiveTrendData(symbol) {
 
         const last = ohlcv[ohlcv.length - 1];
         const prev = ohlcv[ohlcv.length - 2];
-        updateSymbolHeader(symbol, last, prev);
+        updateSymbolHeader(symbol, last, prev, freq === 'weekly' ? 'wk' : null);
     } catch (e) {
         if (gen !== loadGen) return;
         toast('Adaptive Trend load failed: ' + e.message, 'error');
@@ -1179,7 +1179,7 @@ function renderStats(data) {
     });
 }
 
-function updateSymbolHeader(symbol, last, prev) {
+function updateSymbolHeader(symbol, last, prev, freqLabel) {
     document.getElementById('sym-title').textContent = symbol;
     const symInfo = state.symbols.find(s => s.symbol === symbol);
     document.getElementById('sym-subtitle').textContent = symInfo?.name || '';
@@ -1202,7 +1202,8 @@ function updateSymbolHeader(symbol, last, prev) {
         `$${last.close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     const badge = document.getElementById('sym-change-badge');
-    badge.textContent = `${isPos ? '+' : ''}${chg.toFixed(2)} (${isPos ? '+' : ''}${chgPct}%)`;
+    const freqTag = freqLabel ? ` ${freqLabel}` : '';
+    badge.textContent = `${isPos ? '+' : ''}${chg.toFixed(2)} (${isPos ? '+' : ''}${chgPct}%)${freqTag}`;
     badge.className   = `sym-change-badge ${isPos ? 'positive' : 'negative'}`;
 
     const fmt    = n => n?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '--';
@@ -1391,7 +1392,12 @@ function renderBacktest(data) {
         // Overlay the holdout portion in green so the eye separates the window
         // the config was fitted on from the window that tests it.
         const split  = data.split_date || '';
-        const oosSeg = data.equity_curve.map(d => (split && d.date >= split) ? d.strategy : null);
+        let splitSeen = false;
+        const oosSeg = data.equity_curve.map(d => {
+            if (!split || d.date < split) return null;
+            if (!splitSeen) { splitSeen = true; return null; }  // split-week Friday mixes train+holdout days
+            return d.strategy;
+        });
         backtestEquityChart = new Chart(canvas, {
             type: 'line',
             data: {

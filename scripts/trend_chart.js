@@ -404,10 +404,12 @@ function buildTrendCharts() {
 
 // ── Data helpers ──────────────────────────────────────────────
 function _toLine(arr) {
+    // Nulls become whitespace points (a visible gap) — filtering them out
+    // would draw a line straight across any genuine data gap.
     if (!Array.isArray(arr)) return [];
-    return arr
-        .filter(d => d.value != null && isFinite(d.value))
-        .map(d => ({ time: d.date, value: d.value }));
+    return arr.map(d => (d.value != null && isFinite(d.value))
+        ? { time: d.date, value: d.value }
+        : { time: d.date });
 }
 
 /**
@@ -1109,6 +1111,15 @@ function renderTrendScanTable(data) {
                 td.style.cursor = 'pointer';
                 td.title = `Load ${row.symbol} → Chart`;
                 td.addEventListener('click', () => {
+                    // Load the chart at the SCAN's frequency — landing a
+                    // "+3 weekly" row on a daily chart shows a different
+                    // signal with no warning.
+                    if (trendState.freq !== trendScanState.freq) {
+                        trendState.freq = trendScanState.freq;
+                        document.querySelectorAll('.trend-freq-btn').forEach(btn =>
+                            btn.classList.toggle('trend-active', btn.dataset.val === trendState.freq));
+                        trendState.data = null;
+                    }
                     if (typeof selectSymbol === 'function') {
                         selectSymbol(row.symbol);
                     }

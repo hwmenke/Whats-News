@@ -172,12 +172,11 @@ function buildPanel(freq) {
     // RSI chart
     charts[freq].rsi = LWC.createChart(rsiEl, {
         ...baseOpts(), width: rsiEl.clientWidth, height: rsiEl.clientHeight,
-        rightPriceScale: { borderColor: '#30363d', autoScale: false, scaleMargins: { top: 0.05, bottom: 0.05 } },
+        rightPriceScale: { borderColor: '#30363d', scaleMargins: { top: 0.05, bottom: 0.05 } },
     });
-    charts[freq].rsi.priceScale('right').applyOptions({ autoScale: false });
 
     series[freq].rsi[7]  = charts[freq].rsi.addLineSeries({ color: C.rsi7,  lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-    series[freq].rsi[14] = charts[freq].rsi.addLineSeries({ color: C.rsi14, lineWidth: 2, lineStyle: 0, priceLineVisible: false, lastValueVisible: true });
+    series[freq].rsi[14] = charts[freq].rsi.addLineSeries({ color: C.rsi14, lineWidth: 2, lineStyle: 0, priceLineVisible: false, lastValueVisible: true, autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) });
     series[freq].rsi[21] = charts[freq].rsi.addLineSeries({ color: C.rsi21, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
     series[freq].rsi[14].createPriceLine({ price: 80, color: '#ef444455', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OB' });
     series[freq].rsi[14].createPriceLine({ price: 50, color: '#4a556888', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
@@ -194,9 +193,8 @@ function buildPanel(freq) {
     // Trend score chart
     charts[freq].trend = LWC.createChart(trendEl, {
         ...baseOpts(), width: trendEl.clientWidth, height: trendEl.clientHeight,
-        rightPriceScale: { borderColor: '#30363d', autoScale: false, scaleMargins: { top: 0.1, bottom: 0.1 } },
+        rightPriceScale: { borderColor: '#30363d', scaleMargins: { top: 0.1, bottom: 0.1 } },
     });
-    charts[freq].trend.priceScale('right').applyOptions({ autoScale: false });
 
     series[freq].trend = charts[freq].trend.addHistogramSeries({
         priceLineVisible: false, lastValueVisible: true,
@@ -331,24 +329,33 @@ function syncTo(source, ...targets) {
 }
 
 // ── Cross-panel sync (daily ↔ weekly by actual date range) ────
-let _crossSyncing = false;
+// LWC applies setVisibleRange in a rAF batch, so the other panel's event
+// fires on a LATER frame — a boolean re-entrancy flag never catches the
+// echo, and each echo re-quantized the daily edges to Friday stamps.
+// Instead remember what we applied to each panel and treat a change within
+// a week of it as our own echo.
+const _syncApplied = { daily: null, weekly: null };
+function _nearDate(a, b) { return Math.abs(new Date(a) - new Date(b)) <= 6 * 864e5; }
+
 function syncPanels() {
     const d = charts.daily.main;
     const w = charts.weekly.main;
     if (!d || !w) return;
 
-    d.timeScale().subscribeVisibleTimeRangeChange(range => {
-        if (_crossSyncing || !range) return;
-        _crossSyncing = true;
-        try { w.timeScale().setVisibleRange(range); } catch (_) {}
-        _crossSyncing = false;
-    });
-    w.timeScale().subscribeVisibleTimeRangeChange(range => {
-        if (_crossSyncing || !range) return;
-        _crossSyncing = true;
-        try { d.timeScale().setVisibleRange(range); } catch (_) {}
-        _crossSyncing = false;
-    });
+    const link = (src, srcName, dst, dstName) => {
+        src.timeScale().subscribeVisibleTimeRangeChange(range => {
+            if (!range) return;
+            const applied = _syncApplied[srcName];
+            if (applied && _nearDate(applied.from, range.from) && _nearDate(applied.to, range.to)) {
+                _syncApplied[srcName] = null;      // echo of our own set
+                return;
+            }
+            _syncApplied[dstName] = range;
+            try { dst.timeScale().setVisibleRange(range); } catch (_) {}
+        });
+    };
+    link(d, 'daily',  w, 'weekly');
+    link(w, 'weekly', d, 'daily');
 }
 
 // ── Resize observer ──────────────────────────────────────────

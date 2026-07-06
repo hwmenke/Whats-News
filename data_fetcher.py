@@ -40,6 +40,21 @@ def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+
+def _clamp_partial_week(weekly_df: pd.DataFrame, last_daily) -> pd.DataFrame:
+    """W-FRI stamps the in-progress week with a FUTURE Friday date; re-stamp
+    the final bin with the last real trading day so downstream indicators
+    never carry dates that haven't happened."""
+    if weekly_df.empty or last_daily is None:
+        return weekly_df
+    if weekly_df.index[-1] > last_daily:
+        idx = weekly_df.index.tolist()
+        idx[-1] = last_daily
+        weekly_df = weekly_df.copy()
+        weekly_df.index = pd.DatetimeIndex(idx)
+    return weekly_df
+
+
 def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     """
     Download daily data from Yahoo Finance, resample to weekly,
@@ -98,8 +113,12 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
         "close":  "last",
         "volume": "sum"
     }).dropna()
+    weekly_df = _clamp_partial_week(weekly_df, full_daily.index.max())
     print(f"++ Fetcher: Resampled to {len(weekly_df)} weekly bars")
 
+    # Replace wholesale: when a partial week completes, its re-stamped row
+    # would otherwise linger next to the final Friday bar.
+    db.delete_ohlcv(sym, "weekly")
     weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
     print(f"++ Fetcher: Database updated ({daily_count}d, {weekly_count}w)")
 
@@ -150,7 +169,7 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
             daily_df = _clean_df(raw)
             print(f"++ Fetcher: {len(daily_df)} daily bars from {start}")
 
-            # Weekly (week ending Friday)
+            # Weekly (week ending Friday), partial week re-stamped
             weekly_df = daily_df.resample("W-FRI").agg({
                 "open":   "first",
                 "high":   "max",
@@ -158,8 +177,10 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
                 "close":  "last",
                 "volume": "sum",
             }).dropna()
+            weekly_df = _clamp_partial_week(weekly_df, daily_df.index.max())
 
             daily_count  = db.upsert_ohlcv(sym, "daily",  daily_df)
+            db.delete_ohlcv(sym, "weekly")
             weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
             print(f"++ Fetcher: Stored {daily_count}d / {weekly_count}w for {sym}")
 

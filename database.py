@@ -200,6 +200,16 @@ def upsert_ohlcv(symbol: str, freq: str, df: pd.DataFrame):
     return len(params)
 
 
+def delete_ohlcv(symbol: str, freq: str):
+    """Remove all stored bars for one symbol+frequency (used when weekly
+    bars are rebuilt wholesale so re-stamped partial weeks don't linger)."""
+    conn = get_connection()
+    conn.execute("DELETE FROM ohlcv WHERE symbol = ? AND freq = ?",
+                 (symbol.upper(), freq))
+    conn.commit()
+    conn.close()
+
+
 def get_ohlcv(symbol: str, freq: str = "daily", limit: int = 500) -> list:
     """Fetch the most recent N rows, returned in ascending date order."""
     conn = get_connection()

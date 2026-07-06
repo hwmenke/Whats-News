@@ -104,6 +104,43 @@ three findings, all fixed:
       removal; click-to-dismiss toasts; position-size calculator
       (risk $ ÷ (price − MRT)).
 
+## Chart panel (2 designers + 2 quants) — SHIPPED
+
+- [x] Crosshair OHLC + indicator legends on all price charts.
+- [x] Trade markers: entries (▲L/▼S) + replayed exits (TP with R-multiple /
+      stop / flip) drawn on the trend chart; `_system_stats` returns
+      per-trade records with gap-aware fills (stop fills at the open when a
+      bar gaps through the level).
+- [x] Volume panes on every price chart (was stored, never charted).
+- [x] Validated visual spec: MB master line near-white 2.5px (was candle-red),
+      teal targets / rose stops / dotted long-horizon, regime strip as
+      full-row heatband ribbons with visible neutral, background fills above
+      gridline salience, slate BB, RSI-14 hierarchy, CVD-safe KAMA pool,
+      cross-tab KAMA color identity, Chart.js mono type + system accent.
+- [x] Crosshair mirrored across all panes (72px shared axis gutter),
+      log-scale toggle (persisted), 3M/1Y/All presets, double-click reset,
+      zoom preserved across symbol switches and trend re-fetches.
+- [x] Correctness (HIGH): candles now fetched at the indicator/trend window
+      (1000/1500 bars) — indicator lines no longer float over candle-less
+      regions and fitContent covers real data.
+- [x] Correctness: in-progress weekly bar no longer future-stamped (final
+      W-FRI bin re-stamped to the last trading day; weekly bars replaced
+      wholesale on rebuild); daily↔weekly sync guard rewritten (the rAF-async
+      event model made the boolean flag a no-op — edges drifted to Friday
+      stamps); RSI pane pinned to 0-100 and trend-score to ±3.5; header
+      change badge labeled "wk" on weekly; scan-row click adopts the scan's
+      frequency; trend `_toLine` emits whitespace instead of bridging gaps;
+      holdout equity overlay starts after the mixed split week.
+
+### Chart backlog (not yet shipped)
+- Subchart hover readouts (RSI/MACD values at crosshair) + collapsible panes.
+- Equity curve: drawdown sub-panel, log y-axis, split-date annotation.
+- Per-trade R-multiple histogram; SPY relative-strength pane.
+- Hoist a shared TREND_WINDOW constant (scan aux columns still use 600-bar
+  warmup vs chart 1000); dim MRT/MDB bands during neutral regimes (they
+  forward-fill and read as live levels); "back to latest" button; decile
+  error bars; bars-vs-calendar period disclosure.
+
 ## Wave 4 — remaining (from the verification panel)
 
 - Crosshair OHLC/indicator legend + crosshair sync across panels (the
