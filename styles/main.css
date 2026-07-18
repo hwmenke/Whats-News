@@ -97,6 +97,20 @@ html, body {
 }
 .btn-sidebar-toggle:hover { color: var(--text-primary); border-color: var(--accent); }
 
+/* News page link in topbar */
+.btn-news {
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  line-height: 1.5;
+  transition: color 0.15s, border-color 0.15s;
+}
+.btn-news:hover { color: var(--text-primary); border-color: var(--accent); }
+
 /* Sidebar collapsed state */
 .app.sidebar-collapsed {
   grid-template-columns: 0 1fr;

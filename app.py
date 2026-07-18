@@ -34,6 +34,12 @@ def index():
     return send_from_directory(".", "index.html")
 
 
+@app.route("/news")
+@app.route("/news/")
+def news():
+    return send_from_directory("news", "index.html")
+
+
 # -- Symbols --------------------------------------------------------------------
 
 @app.route("/api/symbols", methods=["GET"])
