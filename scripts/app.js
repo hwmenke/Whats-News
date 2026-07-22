@@ -652,6 +652,7 @@ async function switchTab(tabId) {
     document.getElementById('backtest-area').style.display     = 'none';
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('setups-area').style.display       = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
@@ -676,6 +677,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'scanner') {
         showScannerArea();
         loadScannerData();
+    } else if (tabId === 'setups') {
+        showSetupsArea();
+        if (typeof initSetups === 'function') initSetups();
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
@@ -730,6 +734,19 @@ function showScannerArea() {
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
+function showSetupsArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('setups-area').style.display       = 'flex';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.querySelector('.tab-bar').style.display           = 'none';
+}
+
 function showDataManagerArea() {
     document.getElementById('empty-state').style.display       = 'none';
     document.getElementById('chart-area').style.display        = 'none';
@@ -738,6 +755,7 @@ function showDataManagerArea() {
     document.getElementById('backtest-area').style.display     = 'none';
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('setups-area').style.display       = 'none';
     document.getElementById('data-manager-area').style.display = 'flex';
     document.querySelector('.tab-bar').style.display           = 'none';
 }

@@ -17,6 +17,7 @@ import stats as stats
 import knn_model
 import backtester
 import scanner
+import setup_scanner
 import adaptive_trend as adaptive
 import ticker_lists as tl
 
@@ -375,6 +376,64 @@ def get_scanner():
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# -- Setup Scanner (breakouts / breakdowns) -------------------------------------
+
+@app.route("/api/setups", methods=["GET"])
+def get_setups():
+    """
+    Scan a universe for breakout/breakdown setups (coiled bases, parabolic moves).
+    Reads daily OHLCV from the local DB only — bulk-fetch a universe first.
+
+    Query params:
+      universe   db (default) | watchlist | library | sp500
+      type       optional setup key filter (e.g. BASE_BREAKOUT)
+      direction  optional up | down | watch
+      min_score  optional float, drop rows below this score
+      trigger    optional "1"/"true" — only setups that have actually fired
+    """
+    universe = request.args.get("universe", "db").lower()
+
+    if universe == "watchlist":
+        symbols = [s["symbol"] for s in db.list_symbols()]
+    elif universe == "library":
+        symbols = tl.get_all_tickers()
+    elif universe == "sp500":
+        try:
+            symbols = scanner.get_sp500_tickers()["Symbol"].tolist()
+        except Exception as e:
+            return jsonify({"error": f"Could not load S&P 500 list: {e}"}), 502
+    else:  # "db" — everything already fetched
+        symbols = [s["symbol"] for s in db.list_symbols()]
+
+    if not symbols:
+        return jsonify({"universe": universe, "scanned": 0, "results": []})
+
+    rows = setup_scanner.scan_setups(symbols)
+
+    # Optional filters
+    stype = request.args.get("type")
+    if stype:
+        rows = [r for r in rows if r["setup"] == stype]
+    direction = request.args.get("direction")
+    if direction:
+        rows = [r for r in rows if r["direction"] == direction]
+    trig = request.args.get("trigger", "").lower() in ("1", "true", "yes")
+    if trig:
+        rows = [r for r in rows if r["trigger"]]
+    try:
+        min_score = float(request.args.get("min_score"))
+        rows = [r for r in rows if (r.get("score") or 0) >= min_score]
+    except (TypeError, ValueError):
+        pass
+
+    return jsonify({
+        "universe": universe,
+        "scanned":  len(symbols),
+        "found":    len(rows),
+        "results":  rows,
+    })
 
 
 # -- Data Manager ---------------------------------------------------------------

@@ -115,6 +115,9 @@
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">
         <span class="tab-icon">📡</span> Scanner
       </button>
+      <button id="tab-setups" class="tab-btn" onclick="switchTab('setups')">
+        <span class="tab-icon">🚀</span> Setups
+      </button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
         <span class="tab-icon">🗄️</span> Data Manager
       </button>
@@ -626,6 +629,71 @@
 
     </div><!-- #scanner-area -->
 
+    <!-- ── Setups Area (breakout / breakdown scanner) ── -->
+    <div id="setups-area" class="setups-container" style="display:none;">
+
+      <!-- Loading overlay -->
+      <div id="setups-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span>
+        <span id="setups-loading-text">Scanning for setups…</span>
+      </div>
+
+      <!-- Controls bar -->
+      <div class="setups-controls">
+        <div class="setups-controls-left">
+          <button id="btn-scan-setups" class="btn btn-primary" onclick="loadSetups()">⟳ Scan Setups</button>
+          <label class="setups-uni">
+            <span class="overlay-section-label">Universe</span>
+            <select id="setups-universe">
+              <option value="db">Everything fetched</option>
+              <option value="watchlist">Watchlist</option>
+              <option value="library">Curated library</option>
+              <option value="sp500">S&amp;P 500</option>
+            </select>
+          </label>
+          <button id="btn-setups-fetch" class="btn" onclick="fetchSp500ForSetups()"
+                  title="Download S&P 500 daily data into the local DB (one-time, a few minutes)">⤓ Fetch S&amp;P 500</button>
+          <span id="setups-fetch-status" class="scanner-ts"></span>
+          <span id="setups-ts" class="scanner-ts"></span>
+        </div>
+        <div class="setups-controls-right">
+          <span class="overlay-section-label">Type</span>
+          <button class="ind-pill setups-type-btn setups-toggle-on" data-type="all"    onclick="setSetupTypeFilter('all')">All</button>
+          <button class="ind-pill setups-type-btn"                  data-type="base"   onclick="setSetupTypeFilter('base')">Bases</button>
+          <button class="ind-pill setups-type-btn"                  data-type="parab"  onclick="setSetupTypeFilter('parab')">Parabolic</button>
+          <span class="setups-sep"></span>
+          <span class="overlay-section-label">Dir</span>
+          <button class="ind-pill setups-dir-btn setups-toggle-on"  data-dir="all"  onclick="setSetupDirFilter('all')">All</button>
+          <button class="ind-pill setups-dir-btn"                   data-dir="up"   onclick="setSetupDirFilter('up')">▲ Up</button>
+          <button class="ind-pill setups-dir-btn"                   data-dir="down" onclick="setSetupDirFilter('down')">▼ Down</button>
+          <button class="ind-pill setups-dir-btn"                   data-dir="watch" onclick="setSetupDirFilter('watch')">◔ Watch</button>
+          <span class="setups-sep"></span>
+          <label class="setups-trig">
+            <input type="checkbox" id="setups-trigger-only" onchange="renderSetups()"> Triggered only
+          </label>
+        </div>
+      </div>
+
+      <!-- Setup-type legend -->
+      <div id="setups-summary" class="setups-summary"></div>
+
+      <!-- Scrollable table -->
+      <div class="scanner-table-wrap setups-table-wrap">
+        <table id="setups-table" class="scanner-table setups-table">
+          <thead id="setups-thead"></thead>
+          <tbody id="setups-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Empty state -->
+      <div id="setups-empty" class="scanner-empty" style="display:none;">
+        <div class="empty-icon">🚀</div>
+        <p id="setups-empty-text">No data scanned yet.<br>Pick a universe and click <strong>⟳ Scan Setups</strong>.<br>
+        (Fetch a universe first if the DB is empty.)</p>
+      </div>
+
+    </div><!-- #setups-area -->
+
     <!-- ── Data Manager Area ── -->
     <div id="data-manager-area" class="dm-container" style="display:none;">
 
@@ -761,6 +829,7 @@
 <script src="scripts/charts.js"></script>
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
+<script src="scripts/setups.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/app.js"></script>
 
