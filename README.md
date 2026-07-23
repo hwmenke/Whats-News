@@ -28,6 +28,8 @@ Open your web browser and go to:
 ---
 
 ## 🛠️ Features
+- **News Page**: "The Daily Brief" — an editorial news + markets front page at [http://localhost:8050/news](http://localhost:8050/news) (Data Desk charts, story clusters, treemap heatmap, screener, ticker drawer).
+- **Setups Scanner**: Sweep a large universe for breakout/breakdown setups — coiled consolidation bases (Bollinger squeeze + ATR contraction) and parabolic/extended moves — each scored, direction-tagged, and flagged when the trigger fires. Filter by setup family, direction, or triggered-only; click a row to open its chart.
 - **Real-time Data**: Fetch OHLCV data for any ticker symbol via `yfinance`.
 - **Interactive Charts**: Powered by TradingView's Lightweight Charts.
 - **Technical Analysis**: SMA, EMA, Bollinger Bands, RSI, MACD, and Volume.
@@ -40,6 +42,9 @@ Open your web browser and go to:
 - `data_fetcher.py`: Yahoo Finance data downloader.
 - `indicators.py`: Technical analysis engine.
 - `index.html`: Main dashboard UI.
+- `setup_scanner.py`: Breakout/breakdown setup detection engine (`/api/setups`).
+- `scripts/setups.js`: Setups tab UI.
+- `news/`: "The Daily Brief" news page (served at `/news`).
 - `styles/main.css`: Premium styling.
 - `scripts/app.js`: Frontend application logic.
 - `scripts/charts.js`: Chart rendering logic.

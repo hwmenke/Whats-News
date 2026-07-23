@@ -97,6 +97,20 @@ html, body {
 }
 .btn-sidebar-toggle:hover { color: var(--text-primary); border-color: var(--accent); }
 
+/* News page link in topbar */
+.btn-news {
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  line-height: 1.5;
+  transition: color 0.15s, border-color 0.15s;
+}
+.btn-news:hover { color: var(--text-primary); border-color: var(--accent); }
+
 /* Sidebar collapsed state */
 .app.sidebar-collapsed {
   grid-template-columns: 0 1fr;
@@ -1556,6 +1570,143 @@ html, body {
   font-size: 13px;
   text-align: center;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   SETUPS TAB (breakout / breakdown scanner)
+   ══════════════════════════════════════════════════════════════════ */
+
+.setups-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+  background: var(--bg-base);
+}
+
+.setups-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 7px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.setups-controls-left,
+.setups-controls-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.setups-uni { display: flex; align-items: center; gap: 6px; }
+.setups-uni select {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 5px 8px;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.setups-trig {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--text-muted); cursor: pointer;
+}
+.setups-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+
+.setups-type-btn, .setups-dir-btn { font-size: 11px; }
+.setups-toggle-on {
+  background: rgba(59,130,246,0.18);
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
+/* Summary chips */
+.setups-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-base);
+  flex-shrink: 0;
+}
+.setups-summary:empty { display: none; }
+.setups-chip {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.setups-chip.dir-up   { color: #4ade80; border-color: rgba(74,222,128,0.4);  background: rgba(74,222,128,0.08); }
+.setups-chip.dir-down { color: #f87171; border-color: rgba(248,113,113,0.4); background: rgba(248,113,113,0.08); }
+.setups-chip.dir-watch{ color: #60a5fa; border-color: rgba(96,165,250,0.4);  background: rgba(96,165,250,0.08); }
+
+/* Setup badge in the table */
+.setup-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.setup-badge.dir-up    { color: #4ade80; border-color: rgba(74,222,128,0.45); background: rgba(74,222,128,0.10); }
+.setup-badge.dir-down  { color: #f87171; border-color: rgba(248,113,113,0.45); background: rgba(248,113,113,0.10); }
+.setup-badge.dir-watch { color: #93c5fd; border-color: rgba(147,197,253,0.4); background: rgba(147,197,253,0.08); }
+.setup-badge.is-trig   { box-shadow: 0 0 0 1px currentColor inset; }
+
+/* Direction glyph cell */
+.dir-cell { font-weight: 700; text-align: center; }
+.dir-cell.dir-up    { color: #4ade80; }
+.dir-cell.dir-down  { color: #f87171; }
+.dir-cell.dir-watch { color: #60a5fa; }
+
+/* Score bar */
+.score-bar-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 78px;
+}
+.score-bar {
+  height: 6px;
+  border-radius: 3px;
+  flex: 1;
+  min-width: 20px;
+  background: var(--accent);
+  opacity: 0.85;
+}
+.score-bar.dir-up    { background: #4ade80; }
+.score-bar.dir-down  { background: #f87171; }
+.score-bar.dir-watch { background: #60a5fa; }
+.score-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 20px;
+  text-align: right;
+}
+
+.setups-th { cursor: pointer; white-space: nowrap; user-select: none; }
+.setups-th.is-num, .setups-table td.is-num { text-align: right; }
+.setups-table td.is-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.setups-row { cursor: default; }
 
 /* ══════════════════════════════════════════════════════════════════
    DATA MANAGER TAB
