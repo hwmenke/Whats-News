@@ -132,6 +132,25 @@ three findings, all fixed:
       frequency; trend `_toLine` emits whitespace instead of bridging gaps;
       holdout equity overlay starts after the mixed split week.
 
+## Roadmap execution round — SHIPPED
+
+- [x] **Chart polish**: crosshair readouts on the RSI/MACD/trend-score panes;
+      ratchet bands (SDB/MRT/MDB by medium regime, LRT/LDB by long regime)
+      gapped while their regime is neutral so forward-filled values stop
+      reading as live stop/target levels; responsive pass (scrolling nav
+      tabs, flex Data-Manager height, 1100px chart-panel stacking).
+- [x] **Backtest honesty**: underwater drawdown pane under the equity curve,
+      logarithmic "Growth of $1" axis, holdout start named in the legend,
+      percent units on every percent-valued stats panel (counts panels
+      overridden back to counts), and an R-multiple distribution histogram
+      with expectancy in the trend signal panel.
+- [x] **FRED macro**: `fred_fetcher.py` (keyless CSV endpoint, retry/backoff,
+      "." → NULL), a `macro` table, `/api/macro`, `/api/macro/refresh`,
+      `/api/macro/recessions` (USREC → date ranges), and a Macro tab with
+      per-series cards (latest value, sparkline, trend badge with inverted
+      semantics for credit spreads / claims / policy rate). Six network-free
+      tests; `window.getRecessionRanges()` exposed for future chart shading.
+
 ### Chart backlog (not yet shipped)
 - Subchart hover readouts (RSI/MACD values at crosshair) + collapsible panes.
 - Equity curve: drawdown sub-panel, log y-axis, split-date annotation.

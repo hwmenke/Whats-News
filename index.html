@@ -115,6 +115,9 @@
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">
         <span class="tab-icon">📡</span> Scanner
       </button>
+      <button id="tab-macro" class="tab-btn" onclick="switchTab('macro')">
+        <span class="tab-icon">🌍</span> Macro
+      </button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
         <span class="tab-icon">🗄️</span> Data Manager
       </button>
@@ -699,6 +702,27 @@
 
     </div><!-- #scanner-area -->
 
+    <!-- ── Macro Area ── -->
+    <div id="macro-area" class="macro-container" style="display:none;">
+
+      <div class="macro-controls">
+        <button id="btn-macro-refresh" class="btn btn-primary" onclick="macroRefresh()">⟳ Refresh Macro Data</button>
+        <span id="macro-ts" class="macro-ts"></span>
+        <div id="macro-loading" style="display:none;">
+          <span class="spinner"></span> Fetching from FRED…
+        </div>
+      </div>
+
+      <div id="macro-cards" class="macro-cards"></div>
+
+      <div id="macro-empty" class="scanner-empty" style="display:none;">
+        <div class="empty-icon">🌍</div>
+        <p>No macro data yet — press <strong>⟳ Refresh Macro Data</strong>.<br>
+           Requires outbound access to <code>fred.stlouisfed.org</code>.</p>
+      </div>
+
+    </div><!-- #macro-area -->
+
     <!-- ── Data Manager Area ── -->
     <div id="data-manager-area" class="dm-container" style="display:none;">
 
@@ -835,6 +859,7 @@
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
+<script src="scripts/macro.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

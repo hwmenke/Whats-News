@@ -19,6 +19,7 @@ import backtester
 import scanner
 import adaptive_trend as adaptive
 import ticker_lists as tl
+import fred_fetcher as fred
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -392,6 +393,39 @@ def get_scanner():
             return jsonify([])
         data = scanner.compute_scanner(symbols)
         return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -- Macro (FRED) ---------------------------------------------------------------
+
+@app.route("/api/macro", methods=["GET"])
+def get_macro():
+    """Stored macro observations plus the catalogue of default series."""
+    try:
+        return jsonify({
+            "series":  fred.DEFAULT_SERIES,
+            "data":    db.get_macro(),
+            "stored":  db.list_macro_series(),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/macro/refresh", methods=["POST"])
+def refresh_macro():
+    """Re-download the default FRED series. Per-series ok/error results."""
+    body = request.get_json(force=True, silent=True) or {}
+    ids  = body.get("series") or None
+    results = fred.fetch_all(ids)
+    return jsonify(results)
+
+
+@app.route("/api/macro/recessions", methods=["GET"])
+def get_recessions():
+    """USREC converted to [{from, to}] ranges for chart shading."""
+    try:
+        return jsonify(fred.recession_ranges())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

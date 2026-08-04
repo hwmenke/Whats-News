@@ -789,6 +789,7 @@ function showEmptyState() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
@@ -823,6 +824,7 @@ async function switchTab(tabId) {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
@@ -860,6 +862,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'scanner') {
         showScannerArea();
         loadScannerData();
+    } else if (tabId === 'macro') {
+        showMacroArea();
+        initMacro();
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
@@ -875,6 +880,7 @@ function showStatsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
@@ -888,6 +894,7 @@ function showChartArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'flex';
 }
@@ -901,6 +908,7 @@ function showTrendArea() {
     document.getElementById('trend-area').style.display        = 'flex';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
@@ -914,7 +922,22 @@ function showScannerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'flex';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
+    document.querySelector('.tab-bar').style.display           = 'none';
+}
+
+function showMacroArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('error-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display        = 'flex';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -927,6 +950,7 @@ function showDataManagerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'flex';
+    document.getElementById('macro-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
@@ -1670,7 +1694,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const savedSym  = saved.symbol && state.symbols.find(s => s.symbol === saved.symbol)
                         ? saved.symbol : null;
 
-    if (saved.tab && ['scanner', 'data-manager'].includes(saved.tab)) {
+    if (saved.tab && ['scanner', 'data-manager', 'macro'].includes(saved.tab)) {
         switchTab(saved.tab);                       // symbol-independent tabs
     } else if (savedSym) {
         // Set the symbol first so switchTab reveals + loads the saved tab

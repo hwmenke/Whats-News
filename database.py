@@ -72,6 +72,17 @@ def init_db():
     # keeping a duplicate doubles write amplification on every upsert.
     cur.execute("DROP INDEX IF EXISTS idx_ohlcv")
 
+    # Macro series from FRED (one row per series per observation date)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS macro (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            series  TEXT NOT NULL,
+            date    TEXT NOT NULL,
+            value   REAL,
+            UNIQUE(series, date)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -265,3 +276,59 @@ def get_latest_ohlcv_date(symbol: str, freq: str = "daily"):
     ).fetchone()
     conn.close()
     return row["d"] if row and row["d"] else None
+
+
+# ── Macro (FRED) CRUD ──────────────────────────────────────────────────────────
+
+def upsert_macro(series: str, rows) -> int:
+    """
+    Upsert macro observations. `rows` is an iterable of (date_str, value)
+    where value may be None (FRED emits '.' for missing observations).
+    """
+    conn = get_connection()
+    params = [(series, d, (None if v is None else float(v))) for d, v in rows]
+    if params:
+        conn.executemany(
+            """
+            INSERT INTO macro (series, date, value) VALUES (?,?,?)
+            ON CONFLICT(series, date) DO UPDATE SET value = excluded.value
+            """,
+            params,
+        )
+    conn.commit()
+    conn.close()
+    return len(params)
+
+
+def get_macro(series: str = None, limit: int = 5000) -> dict:
+    """
+    Return {series_id: [{date, value}, ...]} in ascending date order.
+    Pass `series` to fetch just one.
+    """
+    conn = get_connection()
+    if series:
+        rows = conn.execute(
+            "SELECT series, date, value FROM macro WHERE series = ? "
+            "ORDER BY date ASC LIMIT ?",
+            (series.upper(), limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT series, date, value FROM macro ORDER BY series, date ASC"
+        ).fetchall()
+    conn.close()
+
+    out = {}
+    for r in rows:
+        out.setdefault(r["series"], []).append({"date": r["date"], "value": r["value"]})
+    return out
+
+
+def list_macro_series() -> list:
+    """Series ids currently stored, with their observation counts."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT series, COUNT(*) AS n, MAX(date) AS latest FROM macro GROUP BY series"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
