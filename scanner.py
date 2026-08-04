@@ -479,9 +479,12 @@ def _to_monthly(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
     agg = dict(open='first', high='max', low='min', close='last', volume='sum')
+    # Pass the agg dict positionally — `.agg(**agg)` triggers pandas named-
+    # aggregation (which expects (col, func) tuples) and always raises, forcing
+    # a fallback to the deprecated 'M' alias. 'ME' is the pandas 2.2+ alias.
     for alias in ('ME', 'M'):
         try:
-            return df.resample(alias).agg(**agg).dropna(subset=['close'])
+            return df.resample(alias).agg(agg).dropna(subset=['close'])
         except Exception:
             continue
     return pd.DataFrame()
@@ -489,56 +492,77 @@ def _to_monthly(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── public API ────────────────────────────────────────────────────────
 
+# Per-symbol row cache with a short TTL — the scanner tab reloads on every
+# visit and each row costs ~80 ms of pure-Python compute, so tab-hopping on a
+# large watchlist otherwise recomputes everything for identical data.
+_SCAN_TTL = 300  # seconds
+_scan_row_cache = {}
+
+
 def compute_scanner(symbols: list) -> list:
     """
     Compute D/W/M scanner metrics for every symbol in the list.
     Returns a JSON-serialisable list of row dicts.
     """
+    import time as _time
+
     results = []
     for sym in symbols:
+        cache_key = (sym, db.get_latest_ohlcv_date(sym, 'daily'))
+        hit = _scan_row_cache.get(cache_key)
+        if hit is not None and _time.time() - hit[0] < _SCAN_TTL:
+            results.append(hit[1])
+            continue
         try:
             d_df = db.get_ohlcv_df(sym, 'daily',  limit=600)
             w_df = db.get_ohlcv_df(sym, 'weekly', limit=200)
 
             if d_df.empty:
-                results.append({
+                row = {
                     'symbol': sym, 'error': 'No data — fetch first',
                     'price': None, 'chg': None,
                     'd': None, 'w': None, 'm': None,
-                })
-                continue
+                }
+            else:
+                # Price / change computed before any further processing
+                price = _safe(d_df['close'].iloc[-1])
+                prev  = _safe(d_df['close'].iloc[-2]) if len(d_df) > 1 else None
+                chg   = round((price - prev) / prev * 100, 2) if price and prev else None
 
-            # Price / change computed before any further processing
-            price = _safe(d_df['close'].iloc[-1])
-            prev  = _safe(d_df['close'].iloc[-2]) if len(d_df) > 1 else None
-            chg   = round((price - prev) / prev * 100, 2) if price and prev else None
-
-            # Monthly resample — isolated so a failure doesn't kill price/D/W
-            try:
-                m_df = _to_monthly(d_df)
-            except Exception:
-                m_df = pd.DataFrame()
-
-            # Each timeframe is isolated — one failure won't blank the others
-            def _safe_tf(df, lb):
+                # Monthly resample — isolated so a failure doesn't kill price/D/W
                 try:
-                    return _compute_tf(df, lb)
+                    m_df = _to_monthly(d_df)
                 except Exception:
-                    return None
+                    m_df = pd.DataFrame()
 
-            results.append({
-                'symbol': sym,
-                'price':  price,
-                'chg':    chg,
-                'd':      _safe_tf(d_df, 252),
-                'w':      _safe_tf(w_df, 52),
-                'm':      _safe_tf(m_df, 36),
-            })
+                # Each timeframe is isolated — one failure won't blank the others
+                def _safe_tf(df, lb):
+                    try:
+                        return _compute_tf(df, lb)
+                    except Exception:
+                        return None
+
+                row = {
+                    'symbol': sym,
+                    'price':  price,
+                    'chg':    chg,
+                    'd':      _safe_tf(d_df, 252),
+                    'w':      _safe_tf(w_df, 52),
+                    'm':      _safe_tf(m_df, 36),
+                }
         except Exception as e:
-            results.append({
+            row = {
                 'symbol': sym, 'error': str(e),
                 'price': None, 'chg': None,
                 'd': None, 'w': None, 'm': None,
-            })
+            }
+
+        # Error rows aren't cached: they're cheap to recompute and shouldn't
+        # persist for the TTL after the user fetches data.
+        if 'error' not in row:
+            if len(_scan_row_cache) > 4096:
+                _scan_row_cache.clear()
+            _scan_row_cache[cache_key] = (_time.time(), row)
+        results.append(row)
 
     return results

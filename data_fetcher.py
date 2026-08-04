@@ -5,6 +5,7 @@ Supports incremental fetching: only downloads bars newer than what's in the DB.
 
 import datetime
 import time
+import numpy as np
 import yfinance as yf
 import pandas as pd
 import database as db
@@ -39,6 +40,21 @@ def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+
+def _clamp_partial_week(weekly_df: pd.DataFrame, last_daily) -> pd.DataFrame:
+    """W-FRI stamps the in-progress week with a FUTURE Friday date; re-stamp
+    the final bin with the last real trading day so downstream indicators
+    never carry dates that haven't happened."""
+    if weekly_df.empty or last_daily is None:
+        return weekly_df
+    if weekly_df.index[-1] > last_daily:
+        idx = weekly_df.index.tolist()
+        idx[-1] = last_daily
+        weekly_df = weekly_df.copy()
+        weekly_df.index = pd.DatetimeIndex(idx)
+    return weekly_df
+
+
 def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     """
     Download daily data from Yahoo Finance, resample to weekly,
@@ -53,11 +69,26 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     # Check if we have existing data and can do an incremental fetch
     last_date_str = db.get_latest_ohlcv_date(sym, "daily")
     if last_date_str:
+        # Overlap the last week of stored bars. auto_adjust=True rescales the
+        # ENTIRE history at Yahoo on every dividend/split, so an incremental
+        # fetch that never re-checks old bars drifts out of adjustment. If the
+        # overlapping closes disagree, re-download the full history.
         last_date  = datetime.date.fromisoformat(last_date_str)
-        start_date = last_date + datetime.timedelta(days=1)
+        start_date = last_date - datetime.timedelta(days=7)
         start_str  = start_date.isoformat()
-        print(f"++ Fetcher: Incremental fetch for {sym} from {start_str}")
+        print(f"++ Fetcher: Incremental fetch for {sym} from {start_str} (7d overlap)")
         raw = ticker.history(start=start_str, interval="1d", auto_adjust=True)
+
+        if not raw.empty:
+            fresh  = _clean_df(raw)
+            stored = db.get_ohlcv_df(sym, "daily", limit=10)
+            common = fresh.index.intersection(stored.index)
+            if len(common):
+                rel_diff = np.abs(fresh.loc[common, "close"] / stored.loc[common, "close"] - 1.0)
+                if (rel_diff > 0.001).any():
+                    print(f"!! Fetcher: Adjustment drift detected for {sym} "
+                          f"(max diff {rel_diff.max():.4%}) — full re-download")
+                    raw = ticker.history(period="max", interval="1d", auto_adjust=True)
     else:
         print(f"++ Fetcher: Full {period} download for {sym}")
         raw = ticker.history(period=period, interval="1d", auto_adjust=True)
@@ -69,17 +100,25 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     daily_df = _clean_df(raw)
     print(f"++ Fetcher: Processed {len(daily_df)} daily bars")
 
-    # Resample to weekly (week ending Friday)
-    weekly_df = daily_df.resample("W-FRI").agg({
+    daily_count = db.upsert_ohlcv(sym, "daily", daily_df)
+
+    # Rebuild weekly bars from the FULL stored daily history. Resampling only
+    # the incremental slice produced partial W-FRI candles (wrong open, missing
+    # high/low/volume from earlier in the week) that overwrote correct ones.
+    full_daily = db.get_ohlcv_df(sym, "daily", limit=100000)
+    weekly_df = full_daily.resample("W-FRI").agg({
         "open":   "first",
         "high":   "max",
         "low":    "min",
         "close":  "last",
         "volume": "sum"
     }).dropna()
+    weekly_df = _clamp_partial_week(weekly_df, full_daily.index.max())
     print(f"++ Fetcher: Resampled to {len(weekly_df)} weekly bars")
 
-    daily_count  = db.upsert_ohlcv(sym, "daily",  daily_df)
+    # Replace wholesale: when a partial week completes, its re-stamped row
+    # would otherwise linger next to the final Friday bar.
+    db.delete_ohlcv(sym, "weekly")
     weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
     print(f"++ Fetcher: Database updated ({daily_count}d, {weekly_count}w)")
 
@@ -130,7 +169,7 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
             daily_df = _clean_df(raw)
             print(f"++ Fetcher: {len(daily_df)} daily bars from {start}")
 
-            # Weekly (week ending Friday)
+            # Weekly (week ending Friday), partial week re-stamped
             weekly_df = daily_df.resample("W-FRI").agg({
                 "open":   "first",
                 "high":   "max",
@@ -138,8 +177,10 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
                 "close":  "last",
                 "volume": "sum",
             }).dropna()
+            weekly_df = _clamp_partial_week(weekly_df, daily_df.index.max())
 
             daily_count  = db.upsert_ohlcv(sym, "daily",  daily_df)
+            db.delete_ohlcv(sym, "weekly")
             weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
             print(f"++ Fetcher: Stored {daily_count}d / {weekly_count}w for {sym}")
 

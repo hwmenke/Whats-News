@@ -6,6 +6,7 @@ Run: python app.py
 import json
 import os
 import time
+from datetime import date
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
@@ -19,6 +20,7 @@ import backtester
 import scanner
 import adaptive_trend as adaptive
 import ticker_lists as tl
+import fred_fetcher as fred
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -216,6 +218,14 @@ def get_adaptive_trend(symbol):
 
 # -- Trend Scan ----------------------------------------------------------------
 
+# Per-row result cache. Recomputing the full adaptive-trend stack takes
+# ~300 ms/symbol of GIL-bound Python, so repeat scans on a large watchlist
+# cost tens of seconds. Rows are keyed on the exact config + the symbol's
+# latest bar date; the short TTL covers intraday refetches of today's bar.
+_TREND_SCAN_TTL = 300  # seconds
+_trend_scan_cache = {}
+
+
 @app.route("/api/trend-scan")
 def trend_scan():
     """Compute adaptive-trend metrics for every watchlist symbol."""
@@ -245,7 +255,24 @@ def trend_scan():
             try: at_config[p] = float(v)
             except ValueError: pass
 
+    cfg_key = (freq, method, rsi_period, tuple(sorted(at_config.items())))
+
     def _one(sym):
+        cache_key = (sym,) + cfg_key + (db.get_latest_ohlcv_date(sym, freq),)
+        hit = _trend_scan_cache.get(cache_key)
+        if hit is not None and time.time() - hit[0] < _TREND_SCAN_TTL:
+            return hit[1]
+
+        row = _compute_one(sym)
+        # Don't cache error rows — a transient failure (or "fetch first")
+        # shouldn't stick for the whole TTL after the user fixes it.
+        if "error" not in row:
+            if len(_trend_scan_cache) > 4096:
+                _trend_scan_cache.clear()
+            _trend_scan_cache[cache_key] = (time.time(), row)
+        return row
+
+    def _compute_one(sym):
         try:
             ohlcv = db.get_ohlcv_df(sym, freq, limit=600)
             if ohlcv.empty or len(ohlcv) < 30:
@@ -369,6 +396,72 @@ def get_scanner():
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# -- Macro (FRED) ---------------------------------------------------------------
+
+@app.route("/api/macro", methods=["GET"])
+def get_macro():
+    """Stored macro observations plus the catalogue of default series."""
+    try:
+        return jsonify({
+            "series":  fred.DEFAULT_SERIES,
+            "data":    db.get_macro(),
+            "stored":  db.list_macro_series(),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/macro/refresh", methods=["POST"])
+def refresh_macro():
+    """Re-download the default FRED series. Per-series ok/error results."""
+    body = request.get_json(force=True, silent=True) or {}
+    ids  = body.get("series") or None
+    results = fred.fetch_all(ids)
+    return jsonify(results)
+
+
+@app.route("/api/macro/recessions", methods=["GET"])
+def get_recessions():
+    """USREC converted to [{from, to}] ranges for chart shading."""
+    try:
+        return jsonify(fred.recession_ranges())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -- Capital Structure (capstruct) ----------------------------------------------
+
+@app.route("/api/capstruct/<string:identifier>", methods=["GET"])
+def get_capstruct(identifier):
+    """
+    Summon the capstruct extractor for a ticker or CIK.
+
+    Imported lazily so a capstruct dependency problem can never stop the rest
+    of the dashboard from booting.
+    """
+    as_of_raw = request.args.get("as_of")
+    as_of = None
+    if as_of_raw:
+        try:
+            as_of = date.fromisoformat(as_of_raw)
+        except ValueError:
+            return jsonify({"error": "as_of must be YYYY-MM-DD"}), 400
+
+    point_in_time = request.args.get("point_in_time", "true").lower() != "false"
+
+    try:
+        from capstruct.pipeline import snapshot_or_error
+    except Exception as e:
+        return jsonify({"ok": False, "error": "capstruct_unavailable",
+                        "detail": str(e)}), 500
+
+    result = snapshot_or_error(identifier.strip(), as_of=as_of,
+                               point_in_time=point_in_time)
+    # A blocked-egress result is a real answer about the environment, not a
+    # server fault, so it comes back 200 with ok=false for the UI to render.
+    return jsonify(result)
 
 
 # -- Data Manager ---------------------------------------------------------------

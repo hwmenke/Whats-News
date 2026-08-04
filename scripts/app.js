@@ -19,7 +19,14 @@ let state = {
 
 let statsCharts = {};
 let backtestEquityChart = null;
-let scannerPollTimer = null;
+let backtestDdChart = null;
+let backtestResultsFor = null;   // which symbol the rendered backtest belongs to
+
+// Monotonic id shared by all per-symbol view loaders. Each loader captures
+// ++loadGen on entry and bails after every await if a newer load started —
+// otherwise a slow response (e.g. auto-fetch retry) for a previously clicked
+// symbol lands last and renders under the newer symbol's header.
+let loadGen = 0;
 
 // ── Toast system ─────────────────────────────────────────────
 function toast(message, type = 'info', duration = 3500) {
@@ -27,23 +34,110 @@ function toast(message, type = 'info', duration = 3500) {
     const el = document.createElement('div');
     el.className = `toast ${type}`;
     el.textContent = message;
+    el.title = 'Click to dismiss';
+    el.addEventListener('click', () => el.remove());
     container.appendChild(el);
     setTimeout(() => {
         el.style.opacity = '0';
         setTimeout(() => el.remove(), 300);
     }, duration);
+    return el;
+}
+
+// Toast with an action button (e.g. Undo). Longer-lived; clicking the body
+// still dismisses, clicking the button runs the action then dismisses.
+function toastAction(message, actionLabel, onAction, type = 'info', duration = 8000) {
+    const el  = toast(message + '  ', type, duration);
+    const btn = document.createElement('button');
+    btn.className   = 'toast-action';
+    btn.textContent = actionLabel;
+    btn.addEventListener('click', e => {
+        e.stopPropagation();
+        el.remove();
+        onAction();
+    });
+    el.appendChild(btn);
+    return el;
+}
+
+// ── Persisted user settings (indicator/trend/scanner prefs) ──
+const SETTINGS_KEY = 'findash.settings';
+function saveSettings() {
+    try {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+            kama:        Object.keys(kamaPeriods).map(Number),
+            trendConfig: typeof trendConfig !== 'undefined' ? trendConfig : null,
+            trendMethod: typeof trendState  !== 'undefined' ? trendState.method : null,
+            trendFreq:   typeof trendState  !== 'undefined' ? trendState.freq   : null,
+            trendVis:    typeof trendState  !== 'undefined' ? trendState.vis    : null,
+            scanVisible: typeof scannerState !== 'undefined' ? scannerState.visible : null,
+            riskDollars: typeof trendRiskDollars !== 'undefined' ? trendRiskDollars : null,
+            logScale:    typeof chartLogScale !== 'undefined' ? chartLogScale : null,
+        }));
+    } catch (_) { /* storage unavailable — ignore */ }
+}
+function loadSettings() {
+    try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; }
+    catch (_) { return {}; }
+}
+
+// ── UI state persistence (active tab + symbol survive reloads) ──
+const UI_STATE_KEY = 'findash.ui';
+function persistUiState() {
+    try {
+        localStorage.setItem(UI_STATE_KEY, JSON.stringify({
+            tab:    state.activeTab,
+            symbol: state.activeSymbol,
+        }));
+    } catch (_) { /* storage unavailable (private mode) — ignore */ }
+}
+function loadUiState() {
+    try {
+        return JSON.parse(localStorage.getItem(UI_STATE_KEY)) || {};
+    } catch (_) {
+        return {};
+    }
+}
+
+// ── Connection status indicator ──────────────────────────────
+function setConnection(online) {
+    const dot   = document.getElementById('status-dot');
+    const label = document.getElementById('conn-label');
+    if (dot) {
+        dot.classList.toggle('offline', !online);
+        dot.title = online ? 'Connected to server' : 'Cannot reach server';
+    }
+    if (label) {
+        label.classList.toggle('offline', !online);
+        label.textContent = online ? 'Live' : 'Offline';
+    }
 }
 
 // ── API helpers ──────────────────────────────────────────────
 async function apiFetch(url, opts = {}) {
     console.log(`>> API Fetch: ${url}`, opts.method || 'GET');
-    const res  = await fetch(url, opts);
-    console.log(`<< API Response: ${res.status} ${res.statusText}`);
-    const data = await res.json();
-    if (!res.ok) {
-        console.error('!! API Error:', data.error || `HTTP ${res.status}`);
-        throw new Error(data.error || `HTTP ${res.status}`);
+    let res;
+    try {
+        res = await fetch(url, opts);
+    } catch (netErr) {
+        // fetch only throws on a network-level failure → server unreachable
+        setConnection(false);
+        console.error('!! Network error:', netErr.message);
+        throw new Error('Cannot reach server — check that the backend is running');
     }
+    // Any HTTP response means the server is reachable, even if it's a 4xx/5xx
+    setConnection(true);
+    console.log(`<< API Response: ${res.status} ${res.statusText}`);
+    // A crashed route returns an HTML error page; blindly calling res.json()
+    // on it produced a cryptic "Unexpected token <" toast.
+    const isJson = (res.headers.get('content-type') || '').includes('json');
+    const data   = isJson ? await res.json() : null;
+    if (!res.ok) {
+        const msg = (data && data.error) || `HTTP ${res.status}`;
+        console.error('!! API Error:', msg);
+        throw new Error(msg);
+    }
+    if (data === null) throw new Error('Unexpected non-JSON response from server');
     return data;
 }
 
@@ -98,6 +192,7 @@ function renderKamaPills() {
             e.preventDefault();
             removeKamaPeriod(p);
             renderKamaPills();
+            saveSettings();
             // re-fetch if symbol loaded so the API param changes
             if (state.activeSymbol) loadChartData(state.activeSymbol);
         });
@@ -123,6 +218,7 @@ function setupKamaAddForm() {
         }
         addKamaPeriod(val);
         renderKamaPills();
+        saveSettings();
         input.value = '';
 
         // If data is already loaded, populate the new series immediately
@@ -196,6 +292,19 @@ function renderSymbolList() {
         ticker.className = 'sym-ticker';
         ticker.textContent = sym.symbol;
 
+        // Price change badge — the sidebar is a watchlist, not a link list.
+        const chgEl = document.createElement('span');
+        if (sym.last_close != null && sym.prev_close != null && sym.prev_close !== 0) {
+            const chg = (sym.last_close / sym.prev_close - 1) * 100;
+            chgEl.className   = 'sym-chg ' + (chg >= 0 ? 'positive' : 'negative');
+            chgEl.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+            chgEl.title       = `Last close $${sym.last_close.toFixed(2)}`;
+        } else {
+            chgEl.className   = 'sym-chg nodata';
+            chgEl.textContent = 'no data';
+            chgEl.title       = 'No stored data — click the symbol to download';
+        }
+
         // Group tag badge (click to edit inline)
         const tagBadge = document.createElement('span');
         tagBadge.className   = 'sym-tag';
@@ -214,6 +323,7 @@ function renderSymbolList() {
 
         item.appendChild(ticker);
         item.appendChild(tagBadge);
+        item.appendChild(chgEl);
         item.appendChild(removeBtn);
         item.addEventListener('click', () => selectSymbol(sym.symbol));
         list.appendChild(item);
@@ -289,9 +399,31 @@ async function addSymbol() {
 }
 
 async function removeSymbol(symbol) {
+    const removed = state.symbols.find(s => s.symbol === symbol);
     try {
         await apiFetch(`${API}/symbols/${symbol}`, { method: 'DELETE' });
-        toast(`${symbol} removed`, 'warning');
+        // Removal is one accidental click on a hover-revealed ×, so offer
+        // Undo instead of a confirm dialog. Data re-downloads on next open.
+        toastAction(`${symbol} removed`, 'Undo', async () => {
+            try {
+                await apiFetch(`${API}/symbols`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol }),
+                });
+                if (removed?.group_tag) {
+                    await apiFetch(`${API}/symbols/${symbol}/group`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ group_tag: removed.group_tag }),
+                    });
+                }
+                await loadSymbols();
+                toast(`${symbol} restored — click it to re-download data`, 'success');
+            } catch (e) {
+                toast('Undo failed: ' + e.message, 'error');
+            }
+        }, 'warning');
         if (state.activeSymbol === symbol) {
             state.activeSymbol = null;
             showEmptyState();
@@ -443,10 +575,15 @@ async function refreshAll() {
     btn.innerHTML = '<span class="spinner"></span> Refreshing…';
     try {
         const results = await apiFetch(`${API}/refresh`, { method: 'POST' });
-        results.forEach(r => {
-            if (r.error) toast(`${r.symbol}: ${r.error}`, 'error');
-            else toast(`${r.symbol}: updated`, 'success', 2000);
-        });
+        // One summary toast — per-symbol toasts stack up the whole viewport
+        // on large watchlists.
+        const failed = results.filter(r => r.error);
+        const okCount = results.length - failed.length;
+        if (failed.length) {
+            toast(`${okCount} updated, ${failed.length} failed: ${failed.map(f => f.symbol).join(', ')}`, 'warning', 7000);
+        } else {
+            toast(`${okCount} symbol${okCount === 1 ? '' : 's'} updated`, 'success');
+        }
         await loadSymbols();
         if (state.activeSymbol) await loadChartData(state.activeSymbol);
     } catch (e) {
@@ -460,6 +597,7 @@ async function refreshAll() {
 // ── Symbol selection & chart loading ─────────────────────────
 async function selectSymbol(symbol) {
     state.activeSymbol = symbol;
+    persistUiState();
     renderSymbolList();
     if (state.activeTab === 'charts') {
         await loadChartData(symbol);
@@ -468,8 +606,10 @@ async function selectSymbol(symbol) {
     } else if (state.activeTab === 'knn') {
         await loadKNN(symbol);
     } else if (state.activeTab === 'backtest') {
-        // Backtest is triggered manually via the Run button; just update header
+        // Backtest is triggered manually via the Run button; update the
+        // header and clear results that belong to a different symbol.
         updateSymbolHeader(symbol, null);
+        if (backtestResultsFor && backtestResultsFor !== symbol) resetBacktestUI(symbol);
     } else if (state.activeTab === 'trend') {
         await loadAdaptiveTrendData(symbol);
     }
@@ -478,8 +618,12 @@ async function selectSymbol(symbol) {
 
 async function loadStatsData(symbol) {
     if (!symbol) return;
+    const gen = ++loadGen;
     showStatsArea();
-    showLoadingOverlay(true);
+    // #chart-loading sits inside the hidden chart area — use the stats
+    // overlay so this tab has visible loading feedback.
+    const statsLoading = document.getElementById('stats-loading');
+    if (statsLoading) statsLoading.style.display = 'flex';
     updateSymbolHeader(symbol, null);
 
     try {
@@ -501,13 +645,15 @@ async function loadStatsData(symbol) {
             throw e;
         });
 
+        if (gen !== loadGen) return;
         state.statsData = stats;
         renderStats(stats);
-        
+
         const last = ohlcv[ohlcv.length - 1];
         const prev = ohlcv[ohlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
+        if (gen !== loadGen) return;
         toast('Stats load failed: ' + e.message, 'error');
         // Clear old stats if error
         document.getElementById('stat-vol').textContent = '--';
@@ -515,12 +661,13 @@ async function loadStatsData(symbol) {
         document.getElementById('stat-drawdown').textContent = '--';
         document.getElementById('stat-winrate').textContent = '--';
     } finally {
-        showLoadingOverlay(false);
+        if (gen === loadGen && statsLoading) statsLoading.style.display = 'none';
     }
 }
 
 async function loadChartData(symbol) {
     if (!symbol) return;
+    const gen = ++loadGen;
     state.loading = true;
     showChartArea();
     showLoadingOverlay(true);
@@ -530,8 +677,8 @@ async function loadChartData(symbol) {
 
     try {
         let [dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd] = await Promise.all([
-            apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
-            apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`),
+            apiFetch(`${API}/ohlcv/${symbol}?freq=daily&limit=1000`),
+            apiFetch(`${API}/ohlcv/${symbol}?freq=weekly&limit=1000`),
             apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`),
             apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
         ]).catch(async e => {
@@ -541,36 +688,48 @@ async function loadChartData(symbol) {
             if (!ok) throw e;
             await loadSymbols();
             return Promise.all([
-                apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
-                apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`),
+                apiFetch(`${API}/ohlcv/${symbol}?freq=daily&limit=1000`),
+                apiFetch(`${API}/ohlcv/${symbol}?freq=weekly&limit=1000`),
                 apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`),
                 apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
             ]);
         });
 
+        if (gen !== loadGen) return;
+        // Preserve the user's zoom across symbol switches — logical range is
+        // bar-index based, so the window width carries over.
+        const prevRange = charts.daily.main?.timeScale().getVisibleLogicalRange() || null;
         initCharts();
 
         loadOHLCV('daily',  dailyOhlcv);
         loadOHLCV('weekly', weeklyOhlcv);
         loadIndicatorsToPanel('daily',  dailyInd);
         loadIndicatorsToPanel('weekly', weeklyInd);
-        fitContent();
+        if (prevRange) {
+            try { charts.daily.main.timeScale().setVisibleLogicalRange(prevRange); }
+            catch (_) { fitContent(); }
+        } else {
+            fitContent();
+        }
 
         const last = dailyOhlcv[dailyOhlcv.length - 1];
         const prev = dailyOhlcv[dailyOhlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
-        toast('Chart load failed: ' + e.message, 'error');
-        showEmptyState();
+        if (gen !== loadGen) return;
+        showErrorState(symbol, e.message);
     } finally {
-        state.loading = false;
-        showLoadingOverlay(false);
+        if (gen === loadGen) {
+            state.loading = false;
+            showLoadingOverlay(false);
+        }
     }
 }
 
 // ── Adaptive Trend loading ────────────────────────────────────
 async function loadAdaptiveTrendData(symbol) {
     if (!symbol) return;
+    const gen = ++loadGen;
     showTrendArea();
 
     const loadingEl = document.getElementById('trend-loading');
@@ -586,7 +745,7 @@ async function loadAdaptiveTrendData(symbol) {
 
     try {
         let [ohlcv, trendData] = await Promise.all([
-            apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
+            apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}&limit=1500`),
             apiFetch(trendUrl),
         ]).catch(async e => {
             if (e.message.includes('404') || e.message.includes('No data')) {
@@ -595,24 +754,28 @@ async function loadAdaptiveTrendData(symbol) {
                 if (!ok) throw e;
                 await loadSymbols();
                 return Promise.all([
-                    apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
+                    apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}&limit=1500`),
                     apiFetch(trendUrl),
                 ]);
             }
             throw e;
         });
 
+        if (gen !== loadGen) return;
         window._trendLastOhlcv = ohlcv;   // cache for sub-tab back-navigation
+        // Capture zoom before the rebuild so loadTrendData can restore it
+        window._trendPrevRange = trendCharts.price?.timeScale().getVisibleLogicalRange() || null;
         buildTrendCharts();
         loadTrendData(trendData, ohlcv);
 
         const last = ohlcv[ohlcv.length - 1];
         const prev = ohlcv[ohlcv.length - 2];
-        updateSymbolHeader(symbol, last, prev);
+        updateSymbolHeader(symbol, last, prev, freq === 'weekly' ? 'wk' : null);
     } catch (e) {
+        if (gen !== loadGen) return;
         toast('Adaptive Trend load failed: ' + e.message, 'error');
     } finally {
-        if (loadingEl) loadingEl.style.display = 'none';
+        if (gen === loadGen && loadingEl) loadingEl.style.display = 'none';
     }
 }
 
@@ -621,14 +784,23 @@ function showEmptyState() {
     document.getElementById('empty-state').style.display       = 'flex';
     document.getElementById('chart-area').style.display        = 'none';
     document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
+    document.querySelector('.tab-bar').style.display           = 'none';
 }
 
-function showChartArea() {
+function showErrorState(symbol, message) {
+    showEmptyState();                       // hides every content area
     document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('chart-area').style.display  = 'flex';
+    document.getElementById('error-state').style.display = 'flex';
+    document.getElementById('error-title').textContent   = `Couldn't load ${symbol}`;
+    document.getElementById('error-msg').textContent     = message || 'Unknown error';
 }
 
 function showLoadingOverlay(show) {
@@ -653,7 +825,20 @@ async function switchTab(tabId) {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
+
+    persistUiState();
+
+    // Symbol-dependent tabs: show the guidance empty-state instead of a blank
+    // panel when nothing is selected yet.
+    const NEEDS_SYMBOL = ['charts', 'stats', 'knn', 'backtest', 'trend'];
+    if (NEEDS_SYMBOL.includes(tabId) && !state.activeSymbol) {
+        showEmptyState();
+        return;
+    }
 
     if (tabId === 'charts') {
         showChartArea();
@@ -668,6 +853,9 @@ async function switchTab(tabId) {
         document.getElementById('backtest-area').style.display = 'block';
         if (state.activeSymbol) {
             updateSymbolHeader(state.activeSymbol, null);
+            if (backtestResultsFor && backtestResultsFor !== state.activeSymbol) {
+                resetBacktestUI(state.activeSymbol);
+            }
         }
     } else if (tabId === 'trend') {
         showTrendArea();
@@ -676,6 +864,12 @@ async function switchTab(tabId) {
     } else if (tabId === 'scanner') {
         showScannerArea();
         loadScannerData();
+    } else if (tabId === 'capstruct') {
+        showCapstructArea();
+        initCapstruct();
+    } else if (tabId === 'macro') {
+        showMacroArea();
+        initMacro();
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
@@ -691,6 +885,9 @@ function showStatsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -703,6 +900,9 @@ function showChartArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'flex';
 }
 
@@ -715,6 +915,9 @@ function showTrendArea() {
     document.getElementById('trend-area').style.display        = 'flex';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -727,6 +930,31 @@ function showScannerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'flex';
     document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
+    document.querySelector('.tab-bar').style.display           = 'none';
+}
+
+function showCapstructArea() {
+    ['empty-state','error-state','chart-area','stats-area','knn-area',
+     'backtest-area','trend-area','scanner-area','data-manager-area','macro-area']
+        .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    document.getElementById('capstruct-area').style.display = 'flex';
+    document.querySelector('.tab-bar').style.display = 'none';
+}
+
+function showMacroArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('error-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('macro-area').style.display        = 'flex';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -739,6 +967,9 @@ function showDataManagerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'flex';
+    document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
 
@@ -754,9 +985,11 @@ function renderStats(data) {
     const pctValue = v => (v !== null && Number.isFinite(v)) ? v * 100 : null;
     const pctColor = v => (v !== null && Number.isFinite(v) && v >= 0) ? '#22c55e' : '#ef4444';
 
+    // Mirrors the price chart's KAMA pool slots so the same period keeps
+    // the same color on every tab.
     const kamaColors = {
         '10': '#3b82f6',
-        '20': '#f97316',
+        '20': '#eab308',
         '50': '#a855f7',
     };
     const alignedDeciles = series => {
@@ -775,12 +1008,21 @@ function renderStats(data) {
     document.getElementById('stat-winrate').textContent  = fmt(m.win_rate, true);
 
     // Common Chart.js options
+    // Percent-valued panels: label the axis and tooltips so "0.34" reads as
+    // +0.34% rather than a bare number.
+    const pctTicks   = { color: '#8b949e', font: { size: 10 }, callback: v => v + '%' };
+    const pctTooltip = { callbacks: { label: c => `${c.dataset.label || 'Value'}: ${c.parsed.y == null ? '—' : c.parsed.y.toFixed(2) + '%'}` } };
+
     const baseChartOpts = {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: { legend: { display: false }, tooltip: pctTooltip },
         scales: {
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 10 } } },
+            y: {
+                title: { display: true, text: 'Fwd return', color: '#8b949e', font: { size: 10 } },
+                grid: { color: 'rgba(255,255,255,0.05)' },
+                ticks: pctTicks,
+            },
             x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } }
         }
     };
@@ -790,7 +1032,8 @@ function renderStats(data) {
             legend: {
                 display: true,
                 labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
-            }
+            },
+            tooltip: pctTooltip,
         }
     };
     const crossChartOptions = {
@@ -799,7 +1042,8 @@ function renderStats(data) {
             legend: {
                 display: true,
                 labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
-            }
+            },
+            tooltip: pctTooltip,
         }
     };
 
@@ -829,8 +1073,8 @@ function renderStats(data) {
             datasets: Object.entries(data.kama_distance_analysis?.fwd_1d || {}).map(([period, points]) => ({
                 label: `KAMA ${period}`,
                 data: alignedDeciles(points),
-                borderColor: kamaColors[period] || '#4facfe',
-                backgroundColor: kamaColors[period] || '#4facfe',
+                borderColor: kamaColors[period] || '#3b82f6',
+                backgroundColor: kamaColors[period] || '#3b82f6',
                 spanGaps: true,
                 pointRadius: 3,
                 pointHoverRadius: 5,
@@ -865,8 +1109,8 @@ function renderStats(data) {
             datasets: Object.entries(data.kama_distance_analysis?.fwd_5d || {}).map(([period, points]) => ({
                 label: `KAMA ${period}`,
                 data: alignedDeciles(points),
-                borderColor: kamaColors[period] || '#4facfe',
-                backgroundColor: kamaColors[period] || '#4facfe',
+                borderColor: kamaColors[period] || '#3b82f6',
+                backgroundColor: kamaColors[period] || '#3b82f6',
                 spanGaps: true,
                 pointRadius: 3,
                 pointHoverRadius: 5,
@@ -885,8 +1129,8 @@ function renderStats(data) {
             labels: data.distribution.map(d => (d.bin * 100).toFixed(1) + '%'),
             datasets: [{
                 data: data.distribution.map(d => d.count),
-                backgroundColor: 'rgba(79, 172, 254, 0.6)',
-                borderColor: '#4facfe',
+                backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                borderColor: '#3b82f6',
                 borderWidth: 1,
                 categoryPercentage: 1.0,
                 barPercentage: 1.0
@@ -894,8 +1138,15 @@ function renderStats(data) {
         },
         options: {
             ...baseChartOpts,
+            // This panel plots observation counts, not percentages
+            plugins: { legend: { display: false },
+                       tooltip: { callbacks: { label: c => `${c.parsed.y} observations` } } },
             scales: {
-                ...baseChartOpts.scales,
+                y: {
+                    title: { display: true, text: 'Observations', color: '#8b949e', font: { size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#8b949e', font: { size: 10 } },
+                },
                 x: { ...baseChartOpts.scales.x, ticks: { ...baseChartOpts.scales.x.ticks, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } }
             }
         }
@@ -926,8 +1177,8 @@ function renderStats(data) {
                 {
                     label: '1D Fwd Return',
                     data: (data.kama_cross_analysis || []).map(d => pctValue(d.fwd_1d)),
-                    backgroundColor: 'rgba(79, 172, 254, 0.65)',
-                    borderColor: '#4facfe',
+                    backgroundColor: 'rgba(59, 130, 246, 0.65)',
+                    borderColor: '#3b82f6',
                     borderWidth: 1,
                 },
                 {
@@ -937,6 +1188,35 @@ function renderStats(data) {
                     borderColor: '#f97316',
                     borderWidth: 1,
                 }
+            ]
+        },
+        options: crossChartOptions
+    });
+
+    // 4b2. Trend score validation — does the app's own composite score
+    // actually line up with forward returns? Counts shown in the labels so
+    // thin buckets are visibly thin.
+    destroy('trendScore');
+    const tsa = data.trend_score_analysis || [];
+    statsCharts['trendScore'] = new Chart(document.getElementById('chart-trend-score'), {
+        type: 'bar',
+        data: {
+            labels: tsa.map(d => `${d.score > 0 ? '+' : ''}${d.score} (n=${d.count_1d})`),
+            datasets: [
+                {
+                    label: '1D Fwd Return',
+                    data: tsa.map(d => pctValue(d.fwd_1d)),
+                    backgroundColor: 'rgba(59, 130, 246, 0.65)',
+                    borderColor: '#3b82f6',
+                    borderWidth: 1,
+                },
+                {
+                    label: '5D Fwd Return',
+                    data: tsa.map(d => pctValue(d.fwd_5d)),
+                    backgroundColor: 'rgba(249, 115, 22, 0.65)',
+                    borderColor: '#f97316',
+                    borderWidth: 1,
+                },
             ]
         },
         options: crossChartOptions
@@ -956,11 +1236,23 @@ function renderStats(data) {
                 borderWidth: 1,
             }]
         },
-        options: baseChartOpts
+        options: {
+            ...baseChartOpts,
+            plugins: { legend: { display: false },
+                       tooltip: { callbacks: { label: c => `${c.parsed.y} events` } } },
+            scales: {
+                y: {
+                    title: { display: true, text: 'Event count', color: '#8b949e', font: { size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#8b949e', font: { size: 10 } },
+                },
+                x: baseChartOpts.scales.x,
+            },
+        }
     });
 }
 
-function updateSymbolHeader(symbol, last, prev) {
+function updateSymbolHeader(symbol, last, prev, freqLabel) {
     document.getElementById('sym-title').textContent = symbol;
     const symInfo = state.symbols.find(s => s.symbol === symbol);
     document.getElementById('sym-subtitle').textContent = symInfo?.name || '';
@@ -979,10 +1271,12 @@ function updateSymbolHeader(symbol, last, prev) {
     const chgPct = prev ? (chg / prev.close * 100).toFixed(2) : '0.00';
     const isPos  = chg >= 0;
 
-    document.getElementById('sym-price').textContent = `$${last.close.toFixed(2)}`;
+    document.getElementById('sym-price').textContent =
+        `$${last.close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     const badge = document.getElementById('sym-change-badge');
-    badge.textContent = `${isPos ? '+' : ''}${chg.toFixed(2)} (${isPos ? '+' : ''}${chgPct}%)`;
+    const freqTag = freqLabel ? ` ${freqLabel}` : '';
+    badge.textContent = `${isPos ? '+' : ''}${chg.toFixed(2)} (${isPos ? '+' : ''}${chgPct}%)${freqTag}`;
     badge.className   = `sym-change-badge ${isPos ? 'positive' : 'negative'}`;
 
     const fmt    = n => n?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '--';
@@ -998,14 +1292,17 @@ function updateSymbolHeader(symbol, last, prev) {
 
 // ── KNN Functions ────────────────────────────────────────────
 async function loadKNN(symbol) {
+    const gen = ++loadGen;
     document.getElementById('knn-loading').style.display = 'flex';
     try {
         const data = await apiFetch(`${API}/knn/${symbol}?k=15`);
+        if (gen !== loadGen) return;
         renderKNN(data);
     } catch (e) {
+        if (gen !== loadGen) return;
         toast('KNN failed: ' + e.message, 'error');
     } finally {
-        document.getElementById('knn-loading').style.display = 'none';
+        if (gen === loadGen) document.getElementById('knn-loading').style.display = 'none';
     }
 }
 
@@ -1069,20 +1366,50 @@ function renderKNN(data) {
 }
 
 // ── Backtest Functions ────────────────────────────────────────
+// Clear rendered results when the symbol changes — otherwise the KPIs,
+// table, and equity curve keep showing the PREVIOUS symbol under the new
+// symbol's header.
+function resetBacktestUI(symbol) {
+    ['bt-sharpe', 'bt-annret', 'bt-maxdd', 'bt-winrate', 'bt-trades',
+     'bt-oos-sharpe', 'bt-oos-annret', 'bt-oos-maxdd', 'bt-oos-winrate',
+     'bt-oos-bench'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '--';
+    });
+    const oosRange = document.getElementById('bt-oos-range');
+    if (oosRange) oosRange.textContent = '';
+    const tbody = document.querySelector('#bt-results-table tbody');
+    if (tbody) tbody.innerHTML = '';
+    if (backtestEquityChart) { backtestEquityChart.destroy(); backtestEquityChart = null; }
+    if (backtestDdChart) { backtestDdChart.destroy(); backtestDdChart = null; }
+    const statusEl = document.getElementById('backtest-status');
+    if (statusEl) statusEl.textContent = symbol
+        ? `Run Optimization to grid-search KAMA configs for ${symbol}`
+        : '';
+    backtestResultsFor = null;
+}
+
 async function loadBacktest(symbol) {
+    const gen      = ++loadGen;
     const statusEl = document.getElementById('backtest-status');
     const btn      = document.getElementById('btn-run-backtest');
     if (statusEl) statusEl.textContent = 'Running optimization…';
     if (btn) btn.disabled = true;
     try {
         const data = await apiFetch(`${API}/backtest/${symbol}`);
+        if (gen !== loadGen) return;
         renderBacktest(data);
-        if (statusEl) statusEl.textContent = `Done — ${data.total_tested} combos tested`;
+        backtestResultsFor = symbol;
+        if (statusEl) {
+            const costNote = data.cost_bps ? ` · ${data.cost_bps} bps/side costs` : '';
+            statusEl.textContent = `${symbol} — ${data.total_tested} combos tested${costNote}`;
+        }
     } catch (e) {
+        if (gen !== loadGen) return;
         toast('Backtest failed: ' + e.message, 'error');
         if (statusEl) statusEl.textContent = 'Error: ' + e.message;
     } finally {
-        if (btn) btn.disabled = false;
+        if (gen === loadGen && btn) btn.disabled = false;
     }
 }
 
@@ -1097,6 +1424,15 @@ function renderBacktest(data) {
     set('bt-maxdd',   fmtPct(best.max_dd));
     set('bt-winrate', fmtPct(best.win_rate));
     set('bt-trades',  best.n_trades !== undefined ? String(best.n_trades) : '--');
+
+    // Holdout — how the selected config actually did on unseen data
+    const oos = data.best_oos || {};
+    set('bt-oos-sharpe',  fmt(oos.sharpe, 3));
+    set('bt-oos-annret',  fmtPct(oos.ann_ret));
+    set('bt-oos-maxdd',   fmtPct(oos.max_dd));
+    set('bt-oos-winrate', fmtPct(oos.win_rate));
+    set('bt-oos-bench',   fmt(data.benchmark_oos?.sharpe, 3));
+    set('bt-oos-range',   data.split_date ? `· from ${data.split_date}` : '');
 
     // Top 10 table
     const tbody = document.querySelector('#bt-results-table tbody');
@@ -1127,20 +1463,39 @@ function renderBacktest(data) {
         const labels    = data.equity_curve.map(d => d.date);
         const strategy  = data.equity_curve.map(d => d.strategy);
         const benchmark = data.equity_curve.map(d => d.benchmark);
+        // Overlay the holdout portion in green so the eye separates the window
+        // the config was fitted on from the window that tests it.
+        const split  = data.split_date || '';
+        let splitSeen = false;
+        const oosSeg = data.equity_curve.map(d => {
+            if (!split || d.date < split) return null;
+            if (!splitSeen) { splitSeen = true; return null; }  // split-week Friday mixes train+holdout days
+            return d.strategy;
+        });
         backtestEquityChart = new Chart(canvas, {
             type: 'line',
             data: {
                 labels,
                 datasets: [
                     {
-                        label: 'Strategy',
+                        label: 'Strategy (in-sample)',
                         data: strategy,
-                        borderColor: '#4facfe',
-                        backgroundColor: 'rgba(79,172,254,0.08)',
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59,130,246,0.08)',
                         borderWidth: 2,
                         pointRadius: 0,
                         tension: 0.1,
                         fill: true,
+                    },
+                    {
+                        label: split ? `Strategy (holdout from ${split})` : 'Strategy (holdout)',
+                        data: oosSeg,
+                        borderColor: '#22c55e',
+                        backgroundColor: 'transparent',
+                        borderWidth: 2.5,
+                        pointRadius: 0,
+                        tension: 0.1,
+                        spanGaps: false,
                     },
                     {
                         label: 'Buy & Hold',
@@ -1163,101 +1518,148 @@ function renderBacktest(data) {
                 },
                 scales: {
                     x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 }, maxTicksLimit: 12 } },
-                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 10 } } },
+                    // Log scale: on a multi-year cumprod curve a linear axis
+                    // flattens the early years into a straight line.
+                    y: {
+                        type: 'logarithmic',
+                        title: { display: true, text: 'Growth of $1', color: '#8b949e', font: { size: 10 } },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: {
+                            color: '#8b949e', font: { size: 10 },
+                            callback: v => v + '×',
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    // Underwater (drawdown) plot beneath the equity curve
+    if (backtestDdChart) {
+        backtestDdChart.destroy();
+        backtestDdChart = null;
+    }
+    const ddCanvas = document.getElementById('chart-backtest-dd');
+    if (ddCanvas && data.equity_curve && data.equity_curve.length > 0) {
+        const labels = data.equity_curve.map(d => d.date);
+        backtestDdChart = new Chart(ddCanvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Strategy drawdown',
+                        data: data.equity_curve.map(d => d.dd != null ? d.dd * 100 : null),
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239,68,68,0.18)',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        tension: 0.1,
+                        fill: true,
+                    },
+                    {
+                        label: 'Buy & Hold drawdown',
+                        data: data.equity_curve.map(d => d.bench_dd != null ? d.bench_dd * 100 : null),
+                        borderColor: '#8b949e',
+                        backgroundColor: 'transparent',
+                        borderWidth: 1,
+                        borderDash: [4, 3],
+                        pointRadius: 0,
+                        tension: 0.1,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: true, labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 } },
+                    tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(2)}%` } },
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 }, maxTicksLimit: 12 } },
+                    y: {
+                        title: { display: true, text: 'Drawdown', color: '#8b949e', font: { size: 10 } },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#8b949e', font: { size: 10 }, callback: v => v + '%' },
+                    },
                 },
             },
         });
     }
 }
 
-// ── Scanner Functions ─────────────────────────────────────────
-async function fetchSP500() {
-    const btn      = document.getElementById('btn-fetch-sp500');
-    const statusEl = document.getElementById('scanner-fetch-status');
-    if (btn) btn.disabled = true;
-    if (statusEl) statusEl.textContent = 'Starting fetch…';
-
-    try {
-        await apiFetch(`${API}/scanner/fetch`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ force: false }),
-        });
-        if (statusEl) statusEl.textContent = 'Fetching… 0%';
-        pollScannerStatus();
-    } catch (e) {
-        toast('Fetch failed: ' + e.message, 'error');
-        if (statusEl) statusEl.textContent = 'Error: ' + e.message;
-        if (btn) btn.disabled = false;
-    }
-}
-
-function pollScannerStatus() {
-    if (scannerPollTimer) clearInterval(scannerPollTimer);
-    scannerPollTimer = setInterval(async () => {
-        try {
-            const s      = await apiFetch(`${API}/scanner/status`);
-            const btn    = document.getElementById('btn-fetch-sp500');
-            const statusEl = document.getElementById('scanner-fetch-status');
-            if (s.running) {
-                if (statusEl) statusEl.textContent = `Fetching… ${s.progress}% (${s.done}/${s.total})`;
-            } else {
-                clearInterval(scannerPollTimer);
-                scannerPollTimer = null;
-                if (btn) btn.disabled = false;
-                const sum = s.summary || {};
-                if (statusEl) {
-                    statusEl.textContent = sum.error
-                        ? 'Error: ' + sum.error
-                        : `Done — ${sum.success || 0} ok, ${sum.skipped || 0} skipped, ${sum.failed || 0} failed`;
-                }
-                toast('S&P 500 fetch complete', 'success');
-            }
-        } catch (e) {
-            clearInterval(scannerPollTimer);
-            scannerPollTimer = null;
-        }
-    }, 3000);
-}
-
-async function runScanner() {
-    const btn       = document.getElementById('btn-run-scanner');
-    const countEl   = document.getElementById('scanner-count');
-    const filterSel = document.getElementById('scanner-signal-filter');
-    const signal    = filterSel ? filterSel.value : '';
-
-    if (btn) { btn.disabled = true; btn.textContent = 'Scanning…'; }
-    if (countEl) countEl.textContent = '';
-
-    try {
-        let url = `${API}/scanner/run`;
-        if (signal) url += `?signal=${encodeURIComponent(signal)}`;
-        const results = await apiFetch(url);
-        renderScannerTable(results);
-        if (countEl) countEl.textContent = `${results.length} results`;
-    } catch (e) {
-        toast('Scanner failed: ' + e.message, 'error');
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = 'Run Scanner'; }
-    }
-}
-
-// renderScannerTable is defined in scanner.js (multi-timeframe version)
+// renderScannerTable is defined in scanner.js (multi-timeframe version).
+// The legacy signal-based scanner UI (S&P 500 bulk fetch + Run Scanner) was
+// removed; its driver functions lived here and referenced DOM that no longer
+// exists, so they have been deleted along with their boot wiring.
 
 // ── Boot ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     startClock();
 
-    // Seed default KAMA periods
-    DEFAULT_KAMA_PERIODS.forEach(p => addKamaPeriod(p));
+    // Chart.js panels use the same mono type as the LWC charts — otherwise
+    // axis numerals visibly switch typeface between tabs.
+    if (typeof Chart !== 'undefined') {
+        Chart.defaults.font.family = "'JetBrains Mono', monospace";
+        Chart.defaults.font.size   = 10;
+        Chart.defaults.color       = '#8b949e';
+    }
+
+    // Hydrate persisted preferences before seeding defaults
+    const prefs = loadSettings();
+    const kamaSeed = Array.isArray(prefs.kama) && prefs.kama.length
+        ? prefs.kama : DEFAULT_KAMA_PERIODS;
+    kamaSeed.forEach(p => addKamaPeriod(p));
     renderKamaPills();
     setupKamaAddForm();
+
+    if (typeof trendConfig !== 'undefined' && prefs.trendConfig) {
+        Object.assign(trendConfig, prefs.trendConfig);
+    }
+    if (typeof trendState !== 'undefined') {
+        if (prefs.trendMethod) trendState.method = prefs.trendMethod;
+        if (prefs.trendFreq)   trendState.freq   = prefs.trendFreq;
+        if (prefs.trendVis)    Object.assign(trendState.vis, prefs.trendVis);
+        // Reflect restored state in the pills
+        document.querySelectorAll('.trend-method-btn').forEach(btn =>
+            btn.classList.toggle('trend-active', btn.dataset.val === trendState.method));
+        document.querySelectorAll('.trend-freq-btn').forEach(btn =>
+            btn.classList.toggle('trend-active', btn.dataset.val === trendState.freq));
+        Object.entries(trendState.vis).forEach(([k, v]) => {
+            document.getElementById(`trend-toggle-${k}`)?.classList.toggle('trend-toggle-on', v);
+        });
+    }
+    if (typeof scannerState !== 'undefined' && prefs.scanVisible) {
+        Object.assign(scannerState.visible, prefs.scanVisible);
+        Object.entries(scannerState.visible).forEach(([k, v]) => {
+            document.querySelector(`.scan-grp-btn[data-grp="${k}"]`)
+                ?.classList.toggle('scanner-toggle-on', v);
+        });
+    }
+    if (typeof trendRiskDollars !== 'undefined' && prefs.riskDollars > 0) {
+        trendRiskDollars = prefs.riskDollars;
+        const riskInput = document.getElementById('trend-risk-input');
+        if (riskInput) riskInput.value = trendRiskDollars;
+    }
 
     // BB pill
     const bbPill = document.getElementById('pill-bb');
     bbPill.addEventListener('click', () => {
         const on = toggleOverlay('bb');
         bbPill.classList.toggle('active-bb', on);
+    });
+
+    // Log-scale pill (restored from prefs; applies to all price panes)
+    const logPill = document.getElementById('pill-log');
+    if (prefs.logScale && typeof chartLogScale !== 'undefined') {
+        chartLogScale = true;
+        logPill?.classList.add('active-bb');
+    }
+    logPill?.addEventListener('click', () => {
+        const on = setChartLogScale(!chartLogScale);
+        logPill.classList.toggle('active-bb', on);
     });
 
     // Buttons
@@ -1268,25 +1670,57 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.key === 'Enter') addSymbol();
     });
 
-    // Scanner buttons (optional — only present in legacy scanner UI)
-    document.getElementById('btn-fetch-sp500')?.addEventListener('click', fetchSP500);
-    document.getElementById('btn-run-scanner')?.addEventListener('click', runScanner);
-    document.getElementById('scanner-signal-filter')?.addEventListener('change', runScanner);
-
     // Backtest button
     document.getElementById('btn-run-backtest').addEventListener('click', () => {
         if (state.activeSymbol) loadBacktest(state.activeSymbol);
         else toast('Select a symbol first', 'warning');
     });
 
-    // Close bulk modal on Escape
+    // Retry button on the load-error state
+    document.getElementById('btn-error-retry').addEventListener('click', () => {
+        if (state.activeSymbol) selectSymbol(state.activeSymbol);
+    });
+
+    // Keyboard model: Escape closes the bulk modal, "/" focuses the symbol
+    // input, ArrowUp/Down walk the watchlist (when not typing in a field).
     document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') closeBulkModal();
+        if (e.key === 'Escape') { closeBulkModal(); return; }
+
+        const tag = document.activeElement?.tagName;
+        const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+        if (typing) return;
+
+        if (e.key === '/') {
+            e.preventDefault();
+            document.getElementById('new-symbol-input').focus();
+            return;
+        }
+        if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && state.symbols.length) {
+            e.preventDefault();
+            const idx  = state.symbols.findIndex(s => s.symbol === state.activeSymbol);
+            const next = e.key === 'ArrowDown'
+                ? Math.min(idx + 1, state.symbols.length - 1)
+                : Math.max(idx - 1, 0);
+            if (next !== idx) selectSymbol(state.symbols[next].symbol);
+        }
     });
 
     await loadSymbols();
 
-    if (state.symbols.length && state.symbols[0].last_fetch) {
+    // Restore the last-used tab + symbol when possible.
+    const saved     = loadUiState();
+    const savedSym  = saved.symbol && state.symbols.find(s => s.symbol === saved.symbol)
+                        ? saved.symbol : null;
+
+    if (saved.tab && ['scanner', 'data-manager', 'macro', 'capstruct'].includes(saved.tab)) {
+        switchTab(saved.tab);                       // symbol-independent tabs
+    } else if (savedSym) {
+        // Set the symbol first so switchTab reveals + loads the saved tab
+        // (some loaders only show their area when reached via switchTab).
+        state.activeSymbol = savedSym;
+        renderSymbolList();
+        switchTab(saved.tab || 'charts');
+    } else if (state.symbols.length && state.symbols[0].last_fetch) {
         selectSymbol(state.symbols[0].symbol);
     } else {
         showEmptyState();

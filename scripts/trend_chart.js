@@ -5,21 +5,19 @@
  *   Left panel (65%) — price chart with all overlay lines + regime strip
  *   Right panel (35%) — composite signal badge + 8 detail cards
  *
- * Lines rendered on price chart:
- *   SB  (blue  solid  2px) — fast adaptive baseline
- *   MB  (red   solid  2px) — medium adaptive baseline  ← master regime
- *   LB  (orange dashed 1.5px) — long baseline          [toggleable]
- *   SDB (bright-green dashed 1px) — short TP band
- *   MDB (dark-green   dashed 1px) — medium TP band
- *   LDB (cyan         dashed 1px) — long TP band       [toggleable]
- *   MRT (dark-gray    dashed 1.5px) — medium stop band
- *   LRT (mid-gray     dashed 1px)  — long stop band    [toggleable]
+ * Lines rendered on price chart (role-coded; see TC below):
+ *   SB  (blue solid 1.5px)       — fast adaptive baseline
+ *   MB  (near-white solid 2.5px) — medium MASTER baseline
+ *   LB  (yellow solid 1px)       — long baseline        [toggleable]
+ *   SDB (teal-light dashed 1px)  — TP1 band
+ *   MDB (teal dashed 1.5px)      — TP2 band (main target)
+ *   LDB (teal-dark dotted 1px)   — extended target      [toggleable]
+ *   MRT (rose dashed 1.5px)      — stop band
+ *   LRT (rose-faded dotted 1px)  — wide stop            [toggleable]
+ *   + entry/exit trade markers from the system's signals
  *
- * Regime strip (3 offset histograms, 130 px):
- *   Long horizon   plotted at  y = ±1 around base  +3
- *   Medium horizon plotted at  y = ±1 around base   0
- *   Short horizon  plotted at  y = ±1 around base  -3
- *   Reference price-lines label each band: LONG / MED / SHORT
+ * Regime strip: three full-row heatband ribbons (LONG / MED / SHORT),
+ * state encoded purely in cell color (green/red/neutral-gray).
  *
  * Signal panel:
  *   Composite signal  = sum of all 3 states  (-3 … +3)
@@ -43,57 +41,74 @@ const trendConfig = {
     rsi_period: 14,
 };
 
-// ── Line metadata (descriptions + colors) ─────────────────────
+// Account risk per trade ($) for the position-size calculator
+let trendRiskDollars = 100;
+
+function _persistPrefs() {
+    if (typeof saveSettings === 'function') saveSettings();
+}
+
+// ── Line metadata (descriptions; colors mirror TC below) ──────
 const LINE_META = {
     sb:  {
         color: '#3b82f6',
         label: 'SB — Short Baseline',
-        params: 'KAMA · ER=10 · fast=2 · slow=15 · source=HLC/3',
         desc:  'Fast-adapting baseline. Tracks near-term momentum and is the primary input for the short-horizon regime. Turns quickly in trending markets, stays flat in chop.',
     },
     mb:  {
-        color: '#ef4444',
+        color: '#e6edf3',
         label: 'MB — Medium Baseline',
-        params: 'KAMA · ER=20 · fast=2 · slow=30 · source=HLC/3',
         desc:  'Master trend line. Drives the medium-horizon regime that governs all trade management bands (MRT, MDB). When SB crosses above MB, a long regime entry fires.',
     },
     lb:  {
-        color: '#f97316',
+        color: '#eab308',
         label: 'LB — Long Baseline',
-        params: 'KAMA · ER=40 · fast=2 · slow=60 · source=HLC/3',
         desc:  'Macro structure line. Very slow to react — only flips on sustained multi-month directional moves. Provides the long-horizon regime context for LRT / LDB bands.',
     },
     sdb: {
-        color: '#22c55e',
+        color: '#5eead4',
         label: 'SDB — Short Deviation Band  (TP1)',
-        params: 'Center=SB · +2.0 × ATR(20) · ratchets UP in long regime',
         desc:  'First take-profit target. Ratcheting band anchored to SB — moves only in the direction of the trade and never pulls back. Reset on regime flip.',
     },
     mrt: {
-        color: '#475569',
+        color: '#f87171',
         label: 'MRT — Medium Retracement  (Stop)',
-        params: 'Center=MB · −2.25 × ATR(20) · ratchets UP in long regime',
         desc:  'Trailing stop level. Sits 2.25 ATR on the loss side of MB and tightens as MB advances. Exit here on an adverse move. Never retreats against the trade.',
     },
     mdb: {
-        color: '#16a34a',
+        color: '#2dd4bf',
         label: 'MDB — Medium Deviation Band  (TP2)',
-        params: 'Center=MB · +4.5 × ATR(20) · ratchets UP in long regime',
-        desc:  'Main take-profit target. Exactly 2× the stop distance, giving a built-in 2:1 R:R. Ratchets in the direction of the trade; resets on medium-regime flip.',
+        desc:  'Main take-profit target. Band is built 2× the stop distance from MB (a construction ratio, not a win-probability). Ratchets with the trade; resets on medium-regime flip.',
     },
     lrt: {
-        color: '#6b7280',
+        color: 'rgba(248,113,113,0.45)',
         label: 'LRT — Long Retracement  (Wide Stop)',
-        params: 'Center=LB · −2.25 × ATR(20) · ratchets in long-horizon regime',
         desc:  'Wide trailing stop for long-horizon positions. Based on LB so it only tightens on sustained macro trends. Use for position-level sizing against macro structure.',
     },
     ldb: {
-        color: '#06b6d4',
+        color: '#0d9488',
         label: 'LDB — Long Deviation Band  (Extended Target)',
-        params: 'Center=LB · +4.5 × ATR(20) · ratchets in long-horizon regime',
         desc:  'Extended target for multi-month positions. Only meaningful in confirmed long-horizon regimes. Gives a sense of how far macro momentum can carry the move.',
     },
 };
+
+// Parameter caption built from the LIVE config — the old hardcoded strings
+// drifted from the defaults and kept lying after the user tuned anything.
+function _lineParams(key) {
+    const c = trendConfig;
+    const m = (trendState.method || 'kama').toUpperCase();
+    switch (key) {
+        case 'sb':  return `${m} · ER=${c.sb_er} · fast=${c.sb_fast} · slow=${c.sb_slow} · source=HLC/3`;
+        case 'mb':  return `${m} · ER=${c.mb_er} · fast=${c.mb_fast} · slow=${c.mb_slow} · source=HLC/3`;
+        case 'lb':  return `${m} · ER=${c.lb_er} · fast=${c.lb_fast} · slow=${c.lb_slow} · source=HLC/3`;
+        case 'sdb': return `Center=SB · +2.0 × ATR(${c.atr_n}) · ratchets with medium regime`;
+        case 'mrt': return `Center=MB · −2.25 × ATR(${c.atr_n}) · ratchets with medium regime`;
+        case 'mdb': return `Center=MB · +4.5 × ATR(${c.atr_n}) · ratchets with medium regime`;
+        case 'lrt': return `Center=LB · −2.25 × ATR(${c.atr_n}) · ratchets with long regime`;
+        case 'ldb': return `Center=LB · +4.5 × ATR(${c.atr_n}) · ratchets with long regime`;
+    }
+    return '';
+}
 
 // ── Instances ─────────────────────────────────────────────────
 let trendCharts    = { price: null, regime: null };
@@ -101,7 +116,7 @@ let trendSeries    = {
     // Background regime fills (on hidden left scale)
     bgLong: null, bgShort: null,
     // Price overlays
-    candle:   null,
+    candle:   null, volume: null,
     sb: null, mb: null, lb: null,
     sdb: null, mrt: null, mdb: null, lrt: null, ldb: null,
     // Regime strip
@@ -111,15 +126,21 @@ let _trendObservers = [];   // ResizeObserver instances — cleaned up on destro
 let _regSyncing     = false;
 
 // ── Colors ───────────────────────────────────────────────────
+// Role-coded palette (validated against the dark surface):
+//   solid = baseline · dashed = band · dotted = long horizon
+//   teal family = take-profit · rose family = stop
+//   MB is the master line — neutral near-white, heaviest weight (regime
+//   direction is already encoded by the background fill + regime strip;
+//   painting the bullish master line candle-red was a semantic clash).
 const TC = {
-    sb:     '#3b82f6',   // blue         — fast baseline
-    mb:     '#ef4444',   // red          — medium baseline
-    lb:     '#eab308',   // yellow solid — long baseline
-    sdb:    '#22c55e',   // bright-green — short TP
-    mdb:    '#16a34a',   // dark-green   — medium TP
-    ldb:    '#06b6d4',   // cyan         — long TP
-    mrt:    '#475569',   // slate        — medium stop
-    lrt:    '#6b7280',   // gray         — long stop
+    sb:     '#3b82f6',                    // blue  — fast baseline
+    mb:     '#e6edf3',                    // near-white — MASTER baseline
+    lb:     '#eab308',                    // yellow — long baseline
+    sdb:    '#5eead4',                    // teal light — TP1
+    mdb:    '#2dd4bf',                    // teal       — TP2 (main target)
+    ldb:    '#0d9488',                    // teal dark  — extended target
+    mrt:    '#f87171',                    // rose — stop (most actionable level)
+    lrt:    'rgba(248,113,113,0.45)',     // rose faded — wide stop
     bull:   '#22c55e',
     bear:   '#ef4444',
     neut:   '#4a5568',
@@ -143,7 +164,7 @@ function _trendBaseOpts() {
             vertLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
             horzLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
         },
-        rightPriceScale: { borderColor: '#30363d' },
+        rightPriceScale: { borderColor: '#30363d', minimumWidth: 72 },
         timeScale: {
             borderColor:    '#30363d',
             timeVisible:    true,
@@ -167,7 +188,7 @@ function destroyTrendCharts() {
     trendCharts = { price: null, regime: null };
     trendSeries = {
         bgLong: null, bgShort: null,
-        candle: null, sb: null, mb: null, lb: null,
+        candle: null, volume: null, sb: null, mb: null, lb: null,
         sdb: null, mrt: null, mdb: null, lrt: null, ldb: null,
         regLong: null, regMed: null, regShort: null,
     };
@@ -217,17 +238,29 @@ function buildTrendCharts() {
     // Neutral      → value equals base (zero-height, invisible)
     trendSeries.bgLong = trendCharts.price.addHistogramSeries({
         priceScaleId:     'left',
-        color:            'rgba(34,197,94,0.07)',
+        color:            'rgba(34,197,94,0.12)',
         base:             -1,
         priceLineVisible: false,
         lastValueVisible: false,
     });
     trendSeries.bgShort = trendCharts.price.addHistogramSeries({
         priceScaleId:     'left',
-        color:            'rgba(239,68,68,0.07)',
+        color:            'rgba(239,68,68,0.10)',
         base:             1,
         priceLineVisible: false,
         lastValueVisible: false,
+    });
+
+    // Volume histogram — bottom 20% of the price pane, hidden scale
+    trendSeries.volume = trendCharts.price.addHistogramSeries({
+        priceScaleId:     'vol',
+        priceFormat:      { type: 'volume' },
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    trendCharts.price.priceScale('vol').applyOptions({
+        scaleMargins: { top: 0.8, bottom: 0 },
+        visible: false,
     });
 
     // Candlesticks
@@ -249,16 +282,16 @@ function buildTrendCharts() {
     const LS = LightweightCharts.LineStyle;
 
     // Baselines (lastValueVisible = true for SB + MB only — keep axis clean)
-    trendSeries.sb  = _line(TC.sb,  2,   LS.Solid, 'SB',  true);
-    trendSeries.mb  = _line(TC.mb,  2,   LS.Solid, 'MB',  true);
-    trendSeries.lb  = _line(TC.lb,  1.5, LS.Solid, 'LB',  false);
+    trendSeries.sb  = _line(TC.sb,  1.5, LS.Solid, 'SB',  true);
+    trendSeries.mb  = _line(TC.mb,  2.5, LS.Solid, 'MB',  true);
+    trendSeries.lb  = _line(TC.lb,  1,   LS.Solid, 'LB',  false);
 
-    // Bands
+    // Bands — dashed for medium horizon, dotted for long horizon
     trendSeries.sdb = _line(TC.sdb, 1,   LS.Dashed, 'SDB', false);
     trendSeries.mrt = _line(TC.mrt, 1.5, LS.Dashed, 'MRT', false);
-    trendSeries.mdb = _line(TC.mdb, 1,   LS.Dashed, 'MDB', false);
-    trendSeries.lrt = _line(TC.lrt, 1,   LS.Dashed, 'LRT', false);
-    trendSeries.ldb = _line(TC.ldb, 1,   LS.Dashed, 'LDB', false);
+    trendSeries.mdb = _line(TC.mdb, 1.5, LS.Dashed, 'MDB', false);
+    trendSeries.lrt = _line(TC.lrt, 1,   LS.Dotted, 'LRT', false);
+    trendSeries.ldb = _line(TC.ldb, 1,   LS.Dotted, 'LDB', false);
 
     // ── Regime strip (3 offset histograms) ───────────────────
     trendCharts.regime = LightweightCharts.createChart(regimeEl, {
@@ -271,8 +304,12 @@ function buildTrendCharts() {
         },
     });
 
-    const _hist = (base) => trendCharts.regime.addHistogramSeries({
-        base,
+    // Heatband rows: each series is a full-row ribbon (base = center − 1,
+    // value = center + 1) with the regime encoded purely in color. The old
+    // half-height ±1 bars encoded direction twice and made neutral bars
+    // invisible — indistinguishable from missing data.
+    const _hist = (center) => trendCharts.regime.addHistogramSeries({
+        base: center - 1,
         priceLineVisible: false,
         lastValueVisible: false,
     });
@@ -281,18 +318,48 @@ function buildTrendCharts() {
     trendSeries.regMed   = _hist(0);
     trendSeries.regShort = _hist(-3);
 
-    // Reference lines anchor the scale and label the three bands.
-    // Use a very transparent color so they don't dominate visually.
-    const _ref = (series, price, title, color) =>
+    // Quiet reference lines label the three ribbons on the axis.
+    const _ref = (series, price, title) =>
         series.createPriceLine({
-            price, color, lineWidth: 1,
+            price, color: '#8b949e40', lineWidth: 1,
             lineStyle: LightweightCharts.LineStyle.Dashed,
             axisLabelVisible: true, title,
         });
 
-    _ref(trendSeries.regLong,  3,   'LONG',  TC.lb  + '60');
-    _ref(trendSeries.regMed,   0,   'MED',   TC.neut + '80');
-    _ref(trendSeries.regShort, -3,  'SHORT', TC.lb  + '60');
+    _ref(trendSeries.regLong,  3,  'LONG');
+    _ref(trendSeries.regMed,   0,  'MED');
+    _ref(trendSeries.regShort, -3, 'SHORT');
+
+    // ── Crosshair legend: OHLC + baseline values ──────────────
+    const priceWrap = priceEl.parentElement;         // .trend-price-wrap
+    priceWrap.querySelector('.chart-legend')?.remove();
+    const legendEl = document.createElement('div');
+    legendEl.className = 'chart-legend';
+    priceWrap.appendChild(legendEl);
+
+    trendCharts.price.subscribeCrosshairMove(param => {
+        if (!param || !param.time || !param.seriesData) {
+            legendEl.innerHTML = '';
+            return;
+        }
+        const c = param.seriesData.get(trendSeries.candle);
+        if (!c || c.close == null) { legendEl.innerHTML = ''; return; }
+
+        const f = v => (v != null && isFinite(v)) ? v.toFixed(2) : '—';
+        const dirCls = c.close >= c.open ? 'lg-up' : 'lg-down';
+        let html =
+            `O <b>${f(c.open)}</b> H <b>${f(c.high)}</b> ` +
+            `L <b>${f(c.low)}</b> C <b class="${dirCls}">${f(c.close)}</b>`;
+
+        [['sb', 'SB'], ['mb', 'MB'], ['lb', 'LB'], ['mrt', 'Stop'], ['mdb', 'TP2']].forEach(([key, label]) => {
+            if (!trendState.vis[key]) return;
+            const d = param.seriesData.get(trendSeries[key]);
+            if (d && d.value != null) {
+                html += ` <span style="color:${TC[key]}">${label} ${f(d.value)}</span>`;
+            }
+        });
+        legendEl.innerHTML = html;
+    });
 
     // ── Cross-sync price ↔ regime ─────────────────────────────
     trendCharts.price.timeScale().subscribeVisibleLogicalRangeChange(range => {
@@ -308,6 +375,28 @@ function buildTrendCharts() {
         _regSyncing = false;
     });
 
+    // ── Crosshair mirrored between price and regime strip ─────
+    let _tXhairSyncing = false;
+    const _mirror = (src, dst, dstSeries) => src.subscribeCrosshairMove(p => {
+        if (_tXhairSyncing || !dst || !dstSeries) return;
+        _tXhairSyncing = true;
+        try {
+            if (p && p.time) dst.setCrosshairPosition(NaN, p.time, dstSeries);
+            else dst.clearCrosshairPosition();
+        } catch (_) {}
+        _tXhairSyncing = false;
+    });
+    _mirror(trendCharts.price,  trendCharts.regime, trendSeries.regMed);
+    _mirror(trendCharts.regime, trendCharts.price,  trendSeries.candle);
+
+    // Persisted scale mode + double-click range reset
+    if (typeof chartLogScale !== 'undefined' && chartLogScale) {
+        trendCharts.price.priceScale('right').applyOptions({
+            mode: LightweightCharts.PriceScaleMode.Logarithmic,
+        });
+    }
+    priceEl.addEventListener('dblclick', () => trendCharts.price?.timeScale().fitContent());
+
     // ── Resize observers ─────────────────────────────────────
     _observe('trend-chart-price',  trendCharts.price);
     _observe('trend-chart-regime', trendCharts.regime);
@@ -315,28 +404,47 @@ function buildTrendCharts() {
 
 // ── Data helpers ──────────────────────────────────────────────
 function _toLine(arr) {
+    // Nulls become whitespace points (a visible gap) — filtering them out
+    // would draw a line straight across any genuine data gap.
     if (!Array.isArray(arr)) return [];
-    return arr
-        .filter(d => d.value != null && isFinite(d.value))
-        .map(d => ({ time: d.date, value: d.value }));
+    return arr.map(d => (d.value != null && isFinite(d.value))
+        ? { time: d.date, value: d.value }
+        : { time: d.date });
+}
+
+/** date → regime state (+1/-1/0) lookup. */
+function _stateMap(arr) {
+    const m = new Map();
+    if (Array.isArray(arr)) arr.forEach(d => m.set(d.date, d.value));
+    return m;
 }
 
 /**
- * Map regime array (+1/-1/0) to histogram data offset around `base`.
- *   Long  (+1) → base + 1  (bar extends up from base)
- *   Short (-1) → base - 1  (bar extends down from base)
- *   Neutral(0) → base      (zero-height bar, invisible)
+ * Blank a band wherever its governing regime is neutral, so the ratchet's
+ * forward-filled values render as gaps instead of live levels. Dates absent
+ * from the map pass through untouched. The signal panel keeps reading the
+ * ORIGINAL arrays, so the stop/target cards still show the last known level.
  */
-function _regData(arr, base) {
+function _gapNeutral(arr, stateMap) {
+    if (!Array.isArray(arr)) return [];
+    return arr.map(d => (stateMap.get(d.date) === 0 ? { date: d.date, value: null } : d));
+}
+
+/**
+ * Map regime array (+1/-1/0) to full-row heatband cells centered on `center`.
+ * State is encoded purely in color: bull green, bear red, neutral a visible
+ * gray (so "neutral" and "no data" stop looking identical).
+ */
+function _regData(arr, center) {
     if (!Array.isArray(arr)) return [];
     return arr.map(d => {
         const v = d.value || 0;
         return {
             time:  d.date,
-            value: base + v,
-            color: v > 0 ? TC.bull + 'cc'
-                 : v < 0 ? TC.bear + 'cc'
-                 :         TC.neut + '22',
+            value: center + 1,
+            color: v > 0 ? TC.bull + 'b3'
+                 : v < 0 ? TC.bear + 'b3'
+                 :         TC.neut + '26',
         };
     });
 }
@@ -353,6 +461,43 @@ function loadTrendData(data, ohlcvRows) {
         }))
     );
 
+    // Volume
+    if (trendSeries.volume) {
+        trendSeries.volume.setData(ohlcvRows.map(r => ({
+            time:  r.date,
+            value: r.volume,
+            color: r.close >= r.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)',
+        })));
+    }
+
+    // Trade markers — entries from the signal arrays, exits from the
+    // replayed system trades. Trend data spans a longer window than the
+    // candles, so anything before the first candle is dropped (markers at
+    // times the series doesn't have would misrender).
+    const firstTime = ohlcvRows[0].date;
+    const markers = [];
+    (data.entry_long || []).forEach(d => {
+        if (d.value && d.date >= firstTime) {
+            markers.push({ time: d.date, position: 'belowBar', shape: 'arrowUp', color: '#22c55e', text: 'L' });
+        }
+    });
+    (data.entry_short || []).forEach(d => {
+        if (d.value && d.date >= firstTime) {
+            markers.push({ time: d.date, position: 'aboveBar', shape: 'arrowDown', color: '#ef4444', text: 'S' });
+        }
+    });
+    (data.system_stats?.trade_list || []).forEach(t => {
+        if (t.outcome === 'open' || t.exit_date < firstTime) return;
+        const style = t.outcome === 'tp'
+            ? { color: '#2dd4bf', text: t.r != null ? `TP ${t.r}R` : 'TP' }
+            : t.outcome === 'stop'
+                ? { color: '#f87171', text: 'stop' }
+                : { color: '#8b949e', text: 'flip' };
+        markers.push({ time: t.exit_date, position: 'aboveBar', shape: 'circle', ...style });
+    });
+    markers.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+    trendSeries.candle.setMarkers(markers);
+
     // Background regime shading — driven by medium_state (master regime)
     // bgLong fills green  when medium is long;  invisible otherwise
     // bgShort fills red   when medium is short; invisible otherwise
@@ -361,14 +506,14 @@ function loadTrendData(data, ohlcvRows) {
             data.medium_state.map(d => ({
                 time:  d.date,
                 value: d.value > 0 ? 1 : -1,
-                color: 'rgba(34,197,94,0.07)',
+                color: 'rgba(34,197,94,0.12)',
             }))
         );
         trendSeries.bgShort.setData(
             data.medium_state.map(d => ({
                 time:  d.date,
                 value: d.value < 0 ? -1 : 1,
-                color: 'rgba(239,68,68,0.07)',
+                color: 'rgba(239,68,68,0.10)',
             }))
         );
     }
@@ -378,12 +523,16 @@ function loadTrendData(data, ohlcvRows) {
     trendSeries.mb.setData(_toLine(data.mb));
     trendSeries.lb.setData(_toLine(data.lb));
 
-    // Bands
-    trendSeries.sdb.setData(_toLine(data.sdb));
-    trendSeries.mrt.setData(_toLine(data.mrt));
-    trendSeries.mdb.setData(_toLine(data.mdb));
-    trendSeries.lrt.setData(_toLine(data.lrt));
-    trendSeries.ldb.setData(_toLine(data.ldb));
+    // Bands — blanked while their governing regime is neutral. _ratchet_band
+    // forward-fills through neutral stretches, so drawing them continuously
+    // presents stale levels as live stops/targets.
+    const medMap = _stateMap(data.medium_state);
+    const lngMap = _stateMap(data.long_state);
+    trendSeries.sdb.setData(_toLine(_gapNeutral(data.sdb, medMap)));
+    trendSeries.mrt.setData(_toLine(_gapNeutral(data.mrt, medMap)));
+    trendSeries.mdb.setData(_toLine(_gapNeutral(data.mdb, medMap)));
+    trendSeries.lrt.setData(_toLine(_gapNeutral(data.lrt, lngMap)));
+    trendSeries.ldb.setData(_toLine(_gapNeutral(data.ldb, lngMap)));
 
     // Regime histograms
     trendSeries.regLong.setData(_regData(data.long_state,   3));
@@ -393,8 +542,18 @@ function loadTrendData(data, ohlcvRows) {
     // Apply overlay visibility toggles
     _applyVis();
 
-    // Fit to full history
-    trendCharts.price.timeScale().fitContent();
+    // Preserve the user's zoom across re-fetches (config Apply, method/freq
+    // change, symbol switch); fit to full history only on a fresh view.
+    if (window._trendPrevRange) {
+        try {
+            trendCharts.price.timeScale().setVisibleLogicalRange(window._trendPrevRange);
+        } catch (_) {
+            trendCharts.price.timeScale().fitContent();
+        }
+        window._trendPrevRange = null;
+    } else {
+        trendCharts.price.timeScale().fitContent();
+    }
 
     // Update signal panel cards
     _updateSignalPanel(data, ohlcvRows);
@@ -408,13 +567,13 @@ function _applyVis() {
     };
     const hide = s => { if (s) s.applyOptions({ visible: false }); };
 
-    if (trendState.vis.sb)  show(trendSeries.sb,  TC.sb,  2,   LS.Solid);
+    if (trendState.vis.sb)  show(trendSeries.sb,  TC.sb,  1.5, LS.Solid);
     else                    hide(trendSeries.sb);
 
-    if (trendState.vis.mb)  show(trendSeries.mb,  TC.mb,  2,   LS.Solid);
+    if (trendState.vis.mb)  show(trendSeries.mb,  TC.mb,  2.5, LS.Solid);
     else                    hide(trendSeries.mb);
 
-    if (trendState.vis.lb)  show(trendSeries.lb,  TC.lb,  1.5, LS.Solid);
+    if (trendState.vis.lb)  show(trendSeries.lb,  TC.lb,  1,   LS.Solid);
     else                    hide(trendSeries.lb);
 
     if (trendState.vis.sdb) show(trendSeries.sdb, TC.sdb, 1,   LS.Dashed);
@@ -423,13 +582,13 @@ function _applyVis() {
     if (trendState.vis.mrt) show(trendSeries.mrt, TC.mrt, 1.5, LS.Dashed);
     else                    hide(trendSeries.mrt);
 
-    if (trendState.vis.mdb) show(trendSeries.mdb, TC.mdb, 1,   LS.Dashed);
+    if (trendState.vis.mdb) show(trendSeries.mdb, TC.mdb, 1.5, LS.Dashed);
     else                    hide(trendSeries.mdb);
 
-    if (trendState.vis.lrt) show(trendSeries.lrt, TC.lrt, 1,   LS.Dashed);
+    if (trendState.vis.lrt) show(trendSeries.lrt, TC.lrt, 1,   LS.Dotted);
     else                    hide(trendSeries.lrt);
 
-    if (trendState.vis.ldb) show(trendSeries.ldb, TC.ldb, 1,   LS.Dashed);
+    if (trendState.vis.ldb) show(trendSeries.ldb, TC.ldb, 1,   LS.Dotted);
     else                    hide(trendSeries.ldb);
 }
 
@@ -438,6 +597,7 @@ function toggleTrendLine(key) {
     const btn = document.getElementById(`trend-toggle-${key}`);
     if (btn) btn.classList.toggle('trend-toggle-on', trendState.vis[key]);
     _applyVis();
+    _persistPrefs();
 }
 
 // ── Line description strip ────────────────────────────────────
@@ -449,7 +609,7 @@ function showLineDesc(key) {
         `<span class="tld-dot" style="background:${meta.color}"></span>` +
         `<span class="tld-label">${meta.label}</span>` +
         `<span class="tld-sep">·</span>` +
-        `<span class="tld-params">${meta.params}</span>` +
+        `<span class="tld-params">${_lineParams(key)}</span>` +
         `<span class="tld-sep">—</span>` +
         `<span class="tld-desc">${meta.desc}</span>`;
     el.style.opacity = '1';
@@ -466,9 +626,17 @@ function setTrendMethod(method) {
     document.querySelectorAll('.trend-method-btn').forEach(btn => {
         btn.classList.toggle('trend-active', btn.dataset.val === method);
     });
-    if (typeof state !== 'undefined' && state.activeSymbol) {
+    const scanVisible = document.getElementById('trend-scan-panel')?.style.display !== 'none';
+    if (scanVisible && trendScanState.data) {
+        loadTrendScan();          // keep the scan table in sync with the method pill
+        // The chart's cached series were computed with the OLD method —
+        // drop them so returning to the chart sub-tab refetches instead of
+        // re-rendering stale lines under new-method captions.
+        trendState.data = null;
+    } else if (typeof state !== 'undefined' && state.activeSymbol) {
         loadAdaptiveTrendData(state.activeSymbol);
     }
+    _persistPrefs();
 }
 
 function setTrendFreq(freq) {
@@ -479,6 +647,7 @@ function setTrendFreq(freq) {
     if (typeof state !== 'undefined' && state.activeSymbol) {
         loadAdaptiveTrendData(state.activeSymbol);
     }
+    _persistPrefs();
 }
 
 // ── Signal panel ──────────────────────────────────────────────
@@ -590,6 +759,37 @@ function _updateSignalPanel(data, ohlcvRows) {
     setCard('trend-sig-sdb', fmtP(sdbV), 'neutral');
     setCard('trend-sig-mdb', fmtP(mdbV), 'neutral');
 
+    // ── Observed system history (context for the R:R card) ───
+    // The 2:1 band geometry says nothing about how often TP is hit before
+    // the stop — this strip shows what actually happened historically.
+    const histEl = document.getElementById('trend-sig-history');
+    if (histEl) {
+        const st = data.system_stats;
+        if (st && st.trades > 0 && (st.trades - st.open) > 0) {
+            const pct = v => v != null ? (v * 100).toFixed(0) + '%' : '—';
+            const avg = st.avg_ret != null
+                ? (st.avg_ret >= 0 ? '+' : '') + (st.avg_ret * 100).toFixed(1) + '%'
+                : '—';
+            histEl.textContent =
+                `History (long entries, n=${st.trades}):  TP first ${pct(st.tp_rate)}  ·  ` +
+                `win ${pct(st.win_rate)}  ·  avg ${avg}  ·  ` +
+                `${st.tp_hits} TP / ${st.stop_hits} stop / ${st.flip_exits} flip`;
+            histEl.style.color = st.avg_ret > 0 ? 'var(--green)' : st.avg_ret < 0 ? 'var(--red)' : '';
+        } else {
+            histEl.textContent = 'History: no completed long entries in loaded window';
+            histEl.style.color = '';
+        }
+    }
+
+    // ── R-multiple distribution of closed longs ───────────────
+    _renderRHistogram(data.system_stats?.trade_list);
+
+    // ── Position size from stop distance ──────────────────────
+    _sizeCalcState.close = close;
+    _sizeCalcState.mrt   = mrtV;
+    _sizeCalcState.long  = ms === 1;
+    _updateSizeCalc();
+
     // ── R:R ratio ─────────────────────────────────────────────
     // Only meaningful when in an active medium-state regime
     if (close > 0 && mrtV != null && mdbV != null && isFinite(mrtV) && isFinite(mdbV) && ms !== 0) {
@@ -608,6 +808,123 @@ function _updateSignalPanel(data, ohlcvRows) {
         setCard('trend-sig-rr', atrV != null ? `ATR ${fmtP(atrV)}` : '—', 'neutral');
     }
 }
+
+// ── R-multiple histogram ──────────────────────────────────────
+// "win 54%" hides the shape of the outcomes; swing sizing runs on R, so the
+// distribution of realized R is what says whether the system is tradable.
+let _rHistChart = null;
+
+const _R_BUCKETS = [
+    { label: '< −1R',  test: r => r < -1,            color: '#ef4444' },
+    { label: '−1..0R', test: r => r >= -1 && r < 0,  color: '#f87171' },
+    { label: '0..1R',  test: r => r >= 0  && r < 1,  color: '#5eead4' },
+    { label: '1..2R',  test: r => r >= 1  && r < 2,  color: '#2dd4bf' },
+    { label: '2..3R',  test: r => r >= 2  && r < 3,  color: '#14b8a6' },
+    { label: '> 3R',   test: r => r >= 3,            color: '#0d9488' },
+];
+
+function _renderRHistogram(tradeList) {
+    const wrap = document.getElementById('trend-r-hist-wrap');
+    const el   = document.getElementById('trend-r-hist');
+    if (!wrap || !el || typeof Chart === 'undefined') return;
+
+    const rs = (tradeList || [])
+        .filter(t => t.outcome !== 'open' && t.r != null && isFinite(t.r))
+        .map(t => t.r);
+
+    if (_rHistChart) { _rHistChart.destroy(); _rHistChart = null; }
+    if (!rs.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+
+    const counts = _R_BUCKETS.map(b => rs.filter(b.test).length);
+    const expectancy = rs.reduce((a, b) => a + b, 0) / rs.length;
+
+    _rHistChart = new Chart(el, {
+        type: 'bar',
+        data: {
+            labels: _R_BUCKETS.map(b => b.label),
+            datasets: [{
+                label: 'Trades',
+                data: counts,
+                backgroundColor: _R_BUCKETS.map(b => b.color + 'b3'),
+                borderColor:     _R_BUCKETS.map(b => b.color),
+                borderWidth: 1,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                title: {
+                    display: true,
+                    text: `n=${rs.length} · expectancy ${expectancy >= 0 ? '+' : ''}${expectancy.toFixed(2)}R`,
+                    color: expectancy >= 0 ? '#22c55e' : '#ef4444',
+                    font: { size: 10 },
+                },
+                tooltip: { callbacks: { label: c => `${c.parsed.y} trade${c.parsed.y === 1 ? '' : 's'}` } },
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 9 } } },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#8b949e', font: { size: 9 }, precision: 0 },
+                },
+            },
+        },
+    });
+}
+
+// ── Position-size calculator ──────────────────────────────────
+// shares = risk $ ÷ (price − MRT stop); notional shown for sanity.
+const _sizeCalcState = { close: null, mrt: null, long: false };
+
+function _updateSizeCalc() {
+    const el    = document.getElementById('trend-size-result');
+    const input = document.getElementById('trend-risk-input');
+    if (!el) return;
+    if (input && Number(input.value) !== trendRiskDollars) {
+        input.value = trendRiskDollars;
+    }
+
+    const { close, mrt, long } = _sizeCalcState;
+    if (!long) {
+        el.textContent = 'no long regime';
+        el.style.color = 'var(--text-dim)';
+        return;
+    }
+    if (close == null || mrt == null || !isFinite(mrt) || close <= mrt) {
+        el.textContent = 'stop above price — no size';
+        el.style.color = 'var(--text-dim)';
+        return;
+    }
+    const perShare = close - mrt;
+    const shares   = Math.floor(trendRiskDollars / perShare);
+    if (shares < 1) {
+        el.textContent = `risk < $${perShare.toFixed(2)}/share — 0 shares`;
+        el.style.color = 'var(--text-dim)';
+        return;
+    }
+    const notional = shares * close;
+    el.textContent = `${shares} sh · $${notional.toLocaleString('en-US', { maximumFractionDigits: 0 })} · $${perShare.toFixed(2)}/sh risk`;
+    el.style.color = '';
+}
+
+// Input wiring (script loads once; element is static in index.html)
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('trend-risk-input');
+    if (!input) return;
+    input.value = trendRiskDollars;
+    input.addEventListener('input', () => {
+        const v = parseFloat(input.value);
+        if (v > 0) {
+            trendRiskDollars = v;
+            _updateSizeCalc();
+            _persistPrefs();
+        }
+    });
+});
 
 // ── Config panel ──────────────────────────────────────────────
 function renderTrendConfig() {
@@ -650,6 +967,7 @@ function applyTrendConfig() {
     if (typeof state !== 'undefined' && state.activeSymbol) {
         loadAdaptiveTrendData(state.activeSymbol);
     }
+    _persistPrefs();
 }
 
 function setTrendPreset(preset) {
@@ -679,10 +997,13 @@ function switchTrendTab(tab) {
         // Rebuild charts if needed (they may have been destroyed)
         if (typeof state !== 'undefined' && state.activeSymbol) {
             if (!trendCharts.price) buildTrendCharts();
-            if (trendState.data) {
-                // Re-apply data without re-fetching
-                const ohlcvData = window._trendLastOhlcv;
-                if (ohlcvData) loadTrendData(trendState.data, ohlcvData);
+            if (trendState.data && window._trendLastOhlcv) {
+                // Re-apply cached data without re-fetching
+                loadTrendData(trendState.data, window._trendLastOhlcv);
+            } else {
+                // Cache was invalidated (e.g. method changed on the scan
+                // sub-tab) — refetch with the current settings.
+                loadAdaptiveTrendData(state.activeSymbol);
             }
         }
     } else {
@@ -690,6 +1011,15 @@ function switchTrendTab(tab) {
         scanPanel.style.display  = 'flex';
         btnChart?.classList.remove('trend-stab-active');
         btnScan?.classList.add('trend-stab-active');
+        // First visit: show a call-to-action instead of a blank void
+        if (!trendScanState.data) {
+            const empty = document.getElementById('trend-scan-empty');
+            if (empty) {
+                empty.style.display = 'flex';
+                const p = empty.querySelector('p');
+                if (p) p.innerHTML = 'Press <strong>⟳ Scan Watchlist</strong> to rank every watchlist symbol by trend signal, R:R, and stop/target levels.';
+            }
+        }
     }
 }
 
@@ -706,9 +1036,17 @@ function setTrendScanFreq(freq) {
     document.querySelectorAll('.trend-scan-freq-btn').forEach(btn => {
         btn.classList.toggle('trend-active', btn.dataset.val === freq);
     });
+    // Re-run the scan so the table never shows the old frequency's data
+    // under the newly active pill.
+    if (trendScanState.data) loadTrendScan();
 }
 
+let _trendScanGen = 0;
+
 async function loadTrendScan() {
+    // Ordering guard: rapid freq/method toggles overlap requests on the
+    // slowest endpoint in the app — only the latest response may render.
+    const gen  = ++_trendScanGen;
     const btn  = document.getElementById('btn-trend-scan');
     const load = document.getElementById('trend-scan-loading');
     const ts   = document.getElementById('trend-scan-ts');
@@ -719,14 +1057,18 @@ async function loadTrendScan() {
         const cfg    = typeof trendConfig !== 'undefined' ? trendConfig : {};
         const cfgStr = Object.entries(cfg).map(([k, v]) => `${k}=${v}`).join('&');
         const data   = await apiFetch(`${API}/trend-scan?freq=${trendScanState.freq}&method=${trendState.method}&${cfgStr}`);
+        if (gen !== _trendScanGen) return;
         trendScanState.data = data;
         renderTrendScanTable(data);
         if (ts) ts.textContent = 'Updated ' + new Date().toLocaleTimeString();
     } catch (e) {
+        if (gen !== _trendScanGen) return;
         toast('Trend scan failed: ' + e.message, 'error');
     } finally {
-        if (btn)  btn.disabled = false;
-        if (load) load.style.display = 'none';
+        if (gen === _trendScanGen) {
+            if (btn)  btn.disabled = false;
+            if (load) load.style.display = 'none';
+        }
     }
 }
 
@@ -764,7 +1106,10 @@ function renderTrendScanTable(data) {
     const tr = document.createElement('tr');
     cols.forEach(c => {
         const th = document.createElement('th');
-        th.className    = `scan-th scan-th-fixed scan-sortable${sk === c.key ? ' scan-sort-active' : ''}`;
+        // Only the symbol column is frozen here — scan-th-fixed's nth-child
+        // offsets are sized for the Scanner's four fixed columns and shear
+        // this table apart on horizontal scroll.
+        th.className    = `scan-th scan-sortable${c.key === 'symbol' ? ' scan-th-symcol' : ''}${sk === c.key ? ' scan-sort-active' : ''}`;
         th.textContent  = c.label + (sk === c.key ? (trendScanState.sortDir > 0 ? ' ▲' : ' ▼') : '');
         th.title        = c.title;
         th.style.cursor = 'pointer';
@@ -858,6 +1203,15 @@ function renderTrendScanTable(data) {
                 td.style.cursor = 'pointer';
                 td.title = `Load ${row.symbol} → Chart`;
                 td.addEventListener('click', () => {
+                    // Load the chart at the SCAN's frequency — landing a
+                    // "+3 weekly" row on a daily chart shows a different
+                    // signal with no warning.
+                    if (trendState.freq !== trendScanState.freq) {
+                        trendState.freq = trendScanState.freq;
+                        document.querySelectorAll('.trend-freq-btn').forEach(btn =>
+                            btn.classList.toggle('trend-active', btn.dataset.val === trendState.freq));
+                        trendState.data = null;
+                    }
                     if (typeof selectSymbol === 'function') {
                         selectSymbol(row.symbol);
                     }

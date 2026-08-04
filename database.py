@@ -17,8 +17,13 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "finance.db")
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    # WAL lets readers proceed while bulk fetches commit; the default rollback
+    # journal takes an exclusive lock per commit and stalls chart reads for
+    # seconds during Refresh All / S&P 500 fetches.
+    conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 
@@ -63,8 +68,19 @@ def init_db():
         )
     """)
 
+    # The UNIQUE(symbol, freq, date) constraint already creates this index;
+    # keeping a duplicate doubles write amplification on every upsert.
+    cur.execute("DROP INDEX IF EXISTS idx_ohlcv")
+
+    # Macro series from FRED (one row per series per observation date)
     cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_ohlcv ON ohlcv(symbol, freq, date)
+        CREATE TABLE IF NOT EXISTS macro (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            series  TEXT NOT NULL,
+            date    TEXT NOT NULL,
+            value   REAL,
+            UNIQUE(series, date)
+        )
     """)
 
     conn.commit()
@@ -74,10 +90,25 @@ def init_db():
 # ── Symbol CRUD ────────────────────────────────────────────────────────────────
 
 def list_symbols():
+    """Symbols with their last two daily closes attached so the sidebar can
+    show price/change without one request per row."""
     conn = get_connection()
-    rows = conn.execute(
-        "SELECT * FROM symbols ORDER BY COALESCE(NULLIF(group_tag,''), 'zzz'), symbol"
-    ).fetchall()
+    rows = conn.execute("""
+        SELECT s.*, q.last_close, q.prev_close
+        FROM symbols s
+        LEFT JOIN (
+            SELECT symbol,
+                   MAX(CASE WHEN rn = 1 THEN close END) AS last_close,
+                   MAX(CASE WHEN rn = 2 THEN close END) AS prev_close
+            FROM (
+                SELECT symbol, close,
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+                FROM ohlcv WHERE freq = 'daily'
+            ) WHERE rn <= 2
+            GROUP BY symbol
+        ) q ON q.symbol = s.symbol
+        ORDER BY COALESCE(NULLIF(s.group_tag,''), 'zzz'), s.symbol
+    """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -180,6 +211,16 @@ def upsert_ohlcv(symbol: str, freq: str, df: pd.DataFrame):
     return len(params)
 
 
+def delete_ohlcv(symbol: str, freq: str):
+    """Remove all stored bars for one symbol+frequency (used when weekly
+    bars are rebuilt wholesale so re-stamped partial weeks don't linger)."""
+    conn = get_connection()
+    conn.execute("DELETE FROM ohlcv WHERE symbol = ? AND freq = ?",
+                 (symbol.upper(), freq))
+    conn.commit()
+    conn.close()
+
+
 def get_ohlcv(symbol: str, freq: str = "daily", limit: int = 500) -> list:
     """Fetch the most recent N rows, returned in ascending date order."""
     conn = get_connection()
@@ -235,3 +276,59 @@ def get_latest_ohlcv_date(symbol: str, freq: str = "daily"):
     ).fetchone()
     conn.close()
     return row["d"] if row and row["d"] else None
+
+
+# ── Macro (FRED) CRUD ──────────────────────────────────────────────────────────
+
+def upsert_macro(series: str, rows) -> int:
+    """
+    Upsert macro observations. `rows` is an iterable of (date_str, value)
+    where value may be None (FRED emits '.' for missing observations).
+    """
+    conn = get_connection()
+    params = [(series, d, (None if v is None else float(v))) for d, v in rows]
+    if params:
+        conn.executemany(
+            """
+            INSERT INTO macro (series, date, value) VALUES (?,?,?)
+            ON CONFLICT(series, date) DO UPDATE SET value = excluded.value
+            """,
+            params,
+        )
+    conn.commit()
+    conn.close()
+    return len(params)
+
+
+def get_macro(series: str = None, limit: int = 5000) -> dict:
+    """
+    Return {series_id: [{date, value}, ...]} in ascending date order.
+    Pass `series` to fetch just one.
+    """
+    conn = get_connection()
+    if series:
+        rows = conn.execute(
+            "SELECT series, date, value FROM macro WHERE series = ? "
+            "ORDER BY date ASC LIMIT ?",
+            (series.upper(), limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT series, date, value FROM macro ORDER BY series, date ASC"
+        ).fetchall()
+    conn.close()
+
+    out = {}
+    for r in rows:
+        out.setdefault(r["series"], []).append({"date": r["date"], "value": r["value"]})
+    return out
+
+
+def list_macro_series() -> list:
+    """Series ids currently stored, with their observation counts."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT series, COUNT(*) AS n, MAX(date) AS latest FROM macro GROUP BY series"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

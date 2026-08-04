@@ -11,9 +11,11 @@ const LWC = LightweightCharts;
 const kamaPeriods = {};
 
 // Colour pool for dynamically added KAMA lines
+// No cyan/teal (collides with RSI-7 and the trend TP bands) and no
+// candle/status hues; first three slots keep KAMA 10/20/50's identities.
 const KAMA_COLORS = [
-    '#3b82f6', '#eab308', '#a855f7', '#06b6d4',
-    '#f97316', '#ec4899', '#14b8a6', '#f43f5e',
+    '#3b82f6', '#eab308', '#a855f7', '#f97316',
+    '#ec4899', '#818cf8', '#fbbf24', '#94a3b8',
 ];
 let kamaColorIdx = 0;
 function nextKamaColor() {
@@ -25,6 +27,12 @@ function nextKamaColor() {
 // Overlay state
 const activeOverlays = { bb: true };
 
+// Price-scale mode (persisted via saveSettings)
+let chartLogScale = false;
+
+// Last loaded daily date (for range presets)
+let _lastDailyDate = null;
+
 // ── Chart instances ─────────────────────────────────────────
 let charts = {
     daily:  { main: null, rsi: null, macd: null, trend: null },
@@ -34,25 +42,27 @@ let charts = {
 // ── Series references ────────────────────────────────────────
 let series = {
     daily: {
-        candle: null, bb: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, bb: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
     weekly: {
-        candle: null, bb: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, bb: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
 };
 
 // ── Colours ──────────────────────────────────────────────────
 const C = {
-    bb_upper:      '#22c55e',
-    bb_middle:     '#22c55e',
-    bb_lower:      '#22c55e',
-    rsi7:          '#06b6d4',
+    // BB is volatility context — slate envelope, not candle-green
+    bb_upper:      '#64748b',
+    bb_middle:     '#94a3b8',
+    bb_lower:      '#64748b',
+    // RSI 14 is the headline; 7/21 recede
+    rsi7:          'rgba(6,182,212,0.55)',
     rsi14:         '#f97316',
-    rsi21:         '#a855f7',
-    macd_line:     '#3b82f6',
-    macd_signal:   '#ef4444',
+    rsi21:         'rgba(168,85,247,0.55)',
+    macd_line:     '#60a5fa',
+    macd_signal:   '#f97316',
     macd_hist_pos: '#22c55e',
     macd_hist_neg: '#ef4444',
     trend_pos:     '#22c55e',
@@ -78,7 +88,7 @@ function baseOpts() {
             vertLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
             horzLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
         },
-        rightPriceScale: { borderColor: '#30363d' },
+        rightPriceScale: { borderColor: '#30363d', minimumWidth: 72 },
         timeScale: {
             borderColor: '#30363d',
             timeVisible: true,
@@ -92,13 +102,21 @@ function baseOpts() {
     };
 }
 
+// ── Resize observers (tracked so they can be torn down on rebuild) ──
+let _chartObservers = [];
+
 // ── Destroy all charts ────────────────────────────────────────
 function destroyCharts() {
+    // Disconnect stale resize observers first — otherwise they keep firing
+    // chart.resize() on charts that are about to be removed (throws + leaks).
+    _chartObservers.forEach(obs => obs.disconnect());
+    _chartObservers = [];
+
     ['daily', 'weekly'].forEach(freq => {
         Object.values(charts[freq]).forEach(c => { if (c) c.remove(); });
         charts[freq] = { main: null, rsi: null, macd: null, trend: null };
         series[freq] = {
-            candle: null, bb: {}, rsi: {}, macdLine: null,
+            candle: null, volume: null, bb: {}, rsi: {}, macdLine: null,
             macdSig: null, macdHist: null, trend: null,
         };
         // Clear kama series refs
@@ -120,6 +138,18 @@ function buildPanel(freq) {
     charts[freq].main = LWC.createChart(mainEl, {
         ...baseOpts(), width: mainEl.clientWidth, height: mainEl.clientHeight,
     });
+    // Volume histogram in the bottom 20% of the price pane (own hidden scale)
+    series[freq].volume = charts[freq].main.addHistogramSeries({
+        priceScaleId:     'vol',
+        priceFormat:      { type: 'volume' },
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    charts[freq].main.priceScale('vol').applyOptions({
+        scaleMargins: { top: 0.8, bottom: 0 },
+        visible: false,
+    });
+
     series[freq].candle = charts[freq].main.addCandlestickSeries({
         upColor: '#22c55e', downColor: '#ef4444',
         borderUpColor: '#22c55e', borderDownColor: '#ef4444',
@@ -142,16 +172,15 @@ function buildPanel(freq) {
     // RSI chart
     charts[freq].rsi = LWC.createChart(rsiEl, {
         ...baseOpts(), width: rsiEl.clientWidth, height: rsiEl.clientHeight,
-        rightPriceScale: { borderColor: '#30363d', autoScale: false, scaleMargins: { top: 0.05, bottom: 0.05 } },
+        rightPriceScale: { borderColor: '#30363d', scaleMargins: { top: 0.05, bottom: 0.05 } },
     });
-    charts[freq].rsi.priceScale('right').applyOptions({ autoScale: false });
 
-    series[freq].rsi[7]  = charts[freq].rsi.addLineSeries({ color: C.rsi7,  lineWidth: 1,   lineStyle: 2, priceLineVisible: false, lastValueVisible: true });
-    series[freq].rsi[14] = charts[freq].rsi.addLineSeries({ color: C.rsi14, lineWidth: 1.5, lineStyle: 0, priceLineVisible: false, lastValueVisible: true });
-    series[freq].rsi[21] = charts[freq].rsi.addLineSeries({ color: C.rsi21, lineWidth: 1,   lineStyle: 2, priceLineVisible: false, lastValueVisible: true });
-    series[freq].rsi[14].createPriceLine({ price: 80, color: '#ef444488', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OB' });
+    series[freq].rsi[7]  = charts[freq].rsi.addLineSeries({ color: C.rsi7,  lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+    series[freq].rsi[14] = charts[freq].rsi.addLineSeries({ color: C.rsi14, lineWidth: 2, lineStyle: 0, priceLineVisible: false, lastValueVisible: true, autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) });
+    series[freq].rsi[21] = charts[freq].rsi.addLineSeries({ color: C.rsi21, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+    series[freq].rsi[14].createPriceLine({ price: 80, color: '#ef444455', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OB' });
     series[freq].rsi[14].createPriceLine({ price: 50, color: '#4a556888', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
-    series[freq].rsi[14].createPriceLine({ price: 20, color: '#22c55e88', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OS' });
+    series[freq].rsi[14].createPriceLine({ price: 20, color: '#22c55e55', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'OS' });
 
     // MACD chart
     charts[freq].macd = LWC.createChart(macdEl, {
@@ -159,14 +188,13 @@ function buildPanel(freq) {
     });
     series[freq].macdHist = charts[freq].macd.addHistogramSeries({ color: C.macd_hist_pos, priceLineVisible: false, lastValueVisible: false });
     series[freq].macdLine = charts[freq].macd.addLineSeries({ color: C.macd_line,   lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
-    series[freq].macdSig  = charts[freq].macd.addLineSeries({ color: C.macd_signal, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false });
+    series[freq].macdSig  = charts[freq].macd.addLineSeries({ color: C.macd_signal, lineWidth: 1,   priceLineVisible: false, lastValueVisible: false });
 
     // Trend score chart
     charts[freq].trend = LWC.createChart(trendEl, {
         ...baseOpts(), width: trendEl.clientWidth, height: trendEl.clientHeight,
-        rightPriceScale: { borderColor: '#30363d', autoScale: false, scaleMargins: { top: 0.1, bottom: 0.1 } },
+        rightPriceScale: { borderColor: '#30363d', scaleMargins: { top: 0.1, bottom: 0.1 } },
     });
-    charts[freq].trend.priceScale('right').applyOptions({ autoScale: false });
 
     series[freq].trend = charts[freq].trend.addHistogramSeries({
         priceLineVisible: false, lastValueVisible: true,
@@ -174,11 +202,103 @@ function buildPanel(freq) {
     // Reference line at 0
     series[freq].trend.createPriceLine({ price: 0, color: '#30363d', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
 
+    // Crosshair legend — OHLC + active KAMA values under the panel label
+    const wrapper = mainEl.parentElement;            // .chart-wrapper (position:relative)
+    wrapper.querySelector('.chart-legend')?.remove();
+    const legendEl = document.createElement('div');
+    legendEl.className = 'chart-legend';
+    wrapper.appendChild(legendEl);
+
+    charts[freq].main.subscribeCrosshairMove(param => {
+        if (!param || !param.time || !param.seriesData) {
+            legendEl.innerHTML = '';
+            return;
+        }
+        const c = param.seriesData.get(series[freq].candle);
+        if (!c || c.close == null) { legendEl.innerHTML = ''; return; }
+
+        const f = v => (v != null && isFinite(v)) ? v.toFixed(2) : '—';
+        const dirCls = c.close >= c.open ? 'lg-up' : 'lg-down';
+        let html =
+            `O <b>${f(c.open)}</b> H <b>${f(c.high)}</b> ` +
+            `L <b>${f(c.low)}</b> C <b class="${dirCls}">${f(c.close)}</b>`;
+
+        Object.entries(kamaPeriods).forEach(([p, meta]) => {
+            const s = meta[`series_${freq}`];
+            if (!s || !meta.active) return;
+            const d = param.seriesData.get(s);
+            if (d && d.value != null) {
+                html += ` <span style="color:${meta.color}">K${p} ${f(d.value)}</span>`;
+            }
+        });
+        legendEl.innerHTML = html;
+    });
+
+    // Sub-chart crosshair readouts — same pattern as the price legend, but
+    // pinned top-right so they clear each pane's top-left .chart-label.
+    const _subLegend = (el) => {
+        const w = el.parentElement;
+        w.querySelector('.chart-legend')?.remove();
+        const d = document.createElement('div');
+        d.className = 'chart-legend chart-legend-sub';
+        w.appendChild(d);
+        return d;
+    };
+    const rsiLeg   = _subLegend(rsiEl);
+    const macdLeg  = _subLegend(macdEl);
+    const trendLeg = _subLegend(trendEl);
+
+    const _val = (param, s) => {
+        const d = s ? param.seriesData.get(s) : null;
+        return (d && d.value != null && isFinite(d.value)) ? d.value : null;
+    };
+    const _n = (v, dp) => v == null ? '—' : v.toFixed(dp);
+    // MACD lives in price units, so magnitude varies wildly by symbol
+    const _macdFmt = v => v == null ? '—' : (Math.abs(v) < 1 ? v.toFixed(3) : v.toFixed(2));
+
+    charts[freq].rsi.subscribeCrosshairMove(param => {
+        if (!param || !param.time || !param.seriesData) { rsiLeg.innerHTML = ''; return; }
+        rsiLeg.innerHTML =
+            `<span style="color:#06b6d4">7 ${_n(_val(param, series[freq].rsi[7]), 1)}</span> · ` +
+            `<span style="color:#f97316">14 ${_n(_val(param, series[freq].rsi[14]), 1)}</span> · ` +
+            `<span style="color:#a855f7">21 ${_n(_val(param, series[freq].rsi[21]), 1)}</span>`;
+    });
+
+    charts[freq].macd.subscribeCrosshairMove(param => {
+        if (!param || !param.time || !param.seriesData) { macdLeg.innerHTML = ''; return; }
+        const hist = _val(param, series[freq].macdHist);
+        const histColor = hist == null ? 'var(--text-muted)'
+                        : hist >= 0 ? C.macd_hist_pos : C.macd_hist_neg;
+        macdLeg.innerHTML =
+            `<span style="color:${C.macd_line}">MACD ${_macdFmt(_val(param, series[freq].macdLine))}</span> · ` +
+            `<span style="color:${C.macd_signal}">Sig ${_macdFmt(_val(param, series[freq].macdSig))}</span> · ` +
+            `<span style="color:${histColor}">Hist ${_macdFmt(hist)}</span>`;
+    });
+
+    charts[freq].trend.subscribeCrosshairMove(param => {
+        if (!param || !param.time || !param.seriesData) { trendLeg.innerHTML = ''; return; }
+        const v = _val(param, series[freq].trend);
+        const color = v == null ? 'var(--text-muted)'
+                    : v > 0 ? C.trend_pos : v < 0 ? C.trend_neg : C.trend_zero;
+        trendLeg.innerHTML = `<span style="color:${color}">Score ${v == null ? '—' : (v > 0 ? '+' : '') + v}</span>`;
+    });
+
     // Sync sub-charts to main
     syncTo(charts[freq].main, charts[freq].rsi, charts[freq].macd, charts[freq].trend);
     syncTo(charts[freq].rsi,   charts[freq].main);
     syncTo(charts[freq].macd,  charts[freq].main);
     syncTo(charts[freq].trend, charts[freq].main);
+
+    // Crosshair mirrored across every pane of both panels
+    [charts[freq].main, charts[freq].rsi, charts[freq].macd, charts[freq].trend].forEach(c => {
+        c.subscribeCrosshairMove(p => _syncCrosshair(c, p));
+    });
+
+    // Restore persisted scale mode; double-click resets the visible range
+    if (chartLogScale) {
+        charts[freq].main.priceScale('right').applyOptions({ mode: LWC.PriceScaleMode.Logarithmic });
+    }
+    mainEl.addEventListener('dblclick', () => fitContent());
 }
 
 function initCharts() {
@@ -187,6 +307,62 @@ function initCharts() {
     buildPanel('weekly');
     syncPanels();
     setupResizeObserver();
+}
+
+// ── Crosshair sync across every pane of both panels ───────────
+let _xhairSyncing = false;
+function _syncCrosshair(sourceChart, param) {
+    if (_xhairSyncing) return;
+    _xhairSyncing = true;
+    ['daily', 'weekly'].forEach(f => {
+        const targets = [
+            [charts[f].main,  series[f].candle],
+            [charts[f].rsi,   series[f].rsi[14]],
+            [charts[f].macd,  series[f].macdLine],
+            [charts[f].trend, series[f].trend],
+        ];
+        targets.forEach(([c, s]) => {
+            if (!c || c === sourceChart || !s) return;
+            try {
+                if (param && param.time) c.setCrosshairPosition(NaN, param.time, s);
+                else c.clearCrosshairPosition();
+            } catch (_) {}
+        });
+    });
+    _xhairSyncing = false;
+}
+
+// ── Log/linear price scale (main panes) ───────────────────────
+function setChartLogScale(on) {
+    chartLogScale = on;
+    const mode = on ? LWC.PriceScaleMode.Logarithmic : LWC.PriceScaleMode.Normal;
+    ['daily', 'weekly'].forEach(f => {
+        charts[f].main?.priceScale('right').applyOptions({ mode });
+    });
+    if (typeof trendCharts !== 'undefined' && trendCharts.price) {
+        trendCharts.price.priceScale('right').applyOptions({ mode });
+    }
+    if (typeof saveSettings === 'function') saveSettings();
+    return chartLogScale;
+}
+
+// ── Visible range presets (months back from the last daily bar) ──
+function setChartRange(months) {
+    if (!charts.daily.main) return;
+    if (months === 'all' || !_lastDailyDate) {
+        fitContent();
+        return;
+    }
+    const to   = new Date(_lastDailyDate);
+    const from = new Date(_lastDailyDate);
+    from.setMonth(from.getMonth() - months);
+    try {
+        charts.daily.main.timeScale().setVisibleRange({
+            from: from.toISOString().slice(0, 10),
+            to:   to.toISOString().slice(0, 10),
+        });
+        // syncPanels propagates the date range to the weekly panel.
+    } catch (_) {}
 }
 
 // ── Within-panel sync (same freq → logical range by bar index) ──
@@ -202,24 +378,33 @@ function syncTo(source, ...targets) {
 }
 
 // ── Cross-panel sync (daily ↔ weekly by actual date range) ────
-let _crossSyncing = false;
+// LWC applies setVisibleRange in a rAF batch, so the other panel's event
+// fires on a LATER frame — a boolean re-entrancy flag never catches the
+// echo, and each echo re-quantized the daily edges to Friday stamps.
+// Instead remember what we applied to each panel and treat a change within
+// a week of it as our own echo.
+const _syncApplied = { daily: null, weekly: null };
+function _nearDate(a, b) { return Math.abs(new Date(a) - new Date(b)) <= 6 * 864e5; }
+
 function syncPanels() {
     const d = charts.daily.main;
     const w = charts.weekly.main;
     if (!d || !w) return;
 
-    d.timeScale().subscribeVisibleTimeRangeChange(range => {
-        if (_crossSyncing || !range) return;
-        _crossSyncing = true;
-        try { w.timeScale().setVisibleRange(range); } catch (_) {}
-        _crossSyncing = false;
-    });
-    w.timeScale().subscribeVisibleTimeRangeChange(range => {
-        if (_crossSyncing || !range) return;
-        _crossSyncing = true;
-        try { d.timeScale().setVisibleRange(range); } catch (_) {}
-        _crossSyncing = false;
-    });
+    const link = (src, srcName, dst, dstName) => {
+        src.timeScale().subscribeVisibleTimeRangeChange(range => {
+            if (!range) return;
+            const applied = _syncApplied[srcName];
+            if (applied && _nearDate(applied.from, range.from) && _nearDate(applied.to, range.to)) {
+                _syncApplied[srcName] = null;      // echo of our own set
+                return;
+            }
+            _syncApplied[dstName] = range;
+            try { dst.timeScale().setVisibleRange(range); } catch (_) {}
+        });
+    };
+    link(d, 'daily',  w, 'weekly');
+    link(w, 'weekly', d, 'daily');
 }
 
 // ── Resize observer ──────────────────────────────────────────
@@ -237,12 +422,16 @@ function setupResizeObserver() {
     pairs.forEach(([id, chart]) => {
         const el = document.getElementById(id);
         if (!el || !chart) return;
-        new ResizeObserver(entries => {
+        const obs = new ResizeObserver(entries => {
             for (const e of entries) {
                 const { width, height } = e.contentRect;
-                chart.resize(width, height);
+                if (width > 0 && height > 0) {
+                    try { chart.resize(width, height); } catch (_) {}
+                }
             }
-        }).observe(el);
+        });
+        obs.observe(el);
+        _chartObservers.push(obs);
     });
 }
 
@@ -254,9 +443,17 @@ function toLineData(arr) {
 
 function loadOHLCV(freq, rows) {
     if (!series[freq].candle || !rows?.length) return;
+    if (freq === 'daily') _lastDailyDate = rows[rows.length - 1].date;
     series[freq].candle.setData(rows.map(r => ({
         time: r.date, open: r.open, high: r.high, low: r.low, close: r.close,
     })));
+    if (series[freq].volume) {
+        series[freq].volume.setData(rows.map(r => ({
+            time:  r.date,
+            value: r.volume,
+            color: r.close >= r.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)',
+        })));
+    }
 }
 
 function loadIndicatorsToPanel(freq, data) {
@@ -287,7 +484,7 @@ function loadIndicatorsToPanel(freq, data) {
                 if (d.value == null) return { time: d.date };
                 return {
                     time: d.date, value: d.value,
-                    color: d.value >= 0 ? C.macd_hist_pos + 'cc' : C.macd_hist_neg + 'cc',
+                    color: d.value >= 0 ? C.macd_hist_pos + '88' : C.macd_hist_neg + '88',
                 };
             })
         );

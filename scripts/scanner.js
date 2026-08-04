@@ -215,7 +215,10 @@ function _buildHeader() {
         { label: 'Chg%',   key: 'chg'     },
     ];
     for (const fc of fixed) {
-        const th = _th('scan-th scan-th-fixed scan-sortable');
+        const activeCls = scannerState.sortKey === fc.key
+            ? ` scan-sort-active ${scannerState.sortDir > 0 ? 'scan-sort-asc' : 'scan-sort-desc'}`
+            : '';
+        const th = _th('scan-th scan-th-fixed scan-sortable' + activeCls);
         th.textContent    = fc.label;
         th.rowSpan        = 3;
         th.dataset.sortKey = fc.key;
@@ -243,7 +246,10 @@ function _buildHeader() {
             // Row 3 — D / W / M, clickable for sort
             for (const tf of m.tfs) {
                 const sk  = `${tf}.${m.key}`;
-                const thT = _th(`scan-th scan-th-tf scan-sortable${scannerState.sortKey === sk ? ' scan-sort-active' : ''}`);
+                const dirCls = scannerState.sortKey === sk
+                    ? ` scan-sort-active ${scannerState.sortDir > 0 ? 'scan-sort-asc' : 'scan-sort-desc'}`
+                    : '';
+                const thT = _th(`scan-th scan-th-tf scan-sortable${dirCls}`);
                 thT.textContent    = tf.toUpperCase();
                 thT.dataset.sortKey = sk;
                 thT.title          = `Sort by ${m.label} (${tf.toUpperCase()})`;
@@ -262,12 +268,16 @@ function _buildRow(row) {
     tr.className = 'scan-row';
     if (row.error) tr.classList.add('scan-row-error');
 
-    // Symbol — click to load
+    // Symbol — click selects it AND navigates to its chart. Without the tab
+    // switch, selectSymbol() is a no-op on the scanner tab and the click
+    // appears to do nothing.
     const tdSym = _td('scan-td scan-td-sym');
     tdSym.textContent = row.symbol;
-    tdSym.title = row.error ? `Error: ${row.error}` : `Load ${row.symbol}`;
+    tdSym.title = row.error ? `Error: ${row.error}` : `Open ${row.symbol} chart`;
     tdSym.addEventListener('click', () => {
+        if (row.error) return;
         if (typeof selectSymbol === 'function') selectSymbol(row.symbol);
+        if (typeof switchTab === 'function') switchTab('charts');
     });
     tr.appendChild(tdSym);
 
@@ -290,9 +300,9 @@ function _buildRow(row) {
         : '—';
     tr.appendChild(tdPrice);
 
-    // Chg%
+    // Chg% — sticky like its frozen header
     const chgCls = row.chg != null ? (row.chg >= 0 ? 'sc-s1' : 'sc-b1') : 'sc-n';
-    const tdChg  = _td(`scan-td ${chgCls}`);
+    const tdChg  = _td(`scan-td scan-td-chg ${chgCls}`);
     tdChg.textContent = row.chg != null
         ? (row.chg >= 0 ? '+' : '') + row.chg.toFixed(2) + '%'
         : '—';
@@ -392,6 +402,7 @@ function toggleScanGroup(id) {
     const btn = document.querySelector(`.scan-grp-btn[data-grp="${id}"]`);
     if (btn) btn.classList.toggle('scanner-toggle-on', scannerState.visible[id]);
     if (scannerState.data) renderScannerTable(scannerState.data);
+    if (typeof saveSettings === 'function') saveSettings();
 }
 
 // ── Data loading ───────────────────────────────────────────────────────
