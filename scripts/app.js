@@ -790,6 +790,7 @@ function showEmptyState() {
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
@@ -825,6 +826,7 @@ async function switchTab(tabId) {
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 
@@ -862,6 +864,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'scanner') {
         showScannerArea();
         loadScannerData();
+    } else if (tabId === 'capstruct') {
+        showCapstructArea();
+        initCapstruct();
     } else if (tabId === 'macro') {
         showMacroArea();
         initMacro();
@@ -881,6 +886,7 @@ function showStatsArea() {
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
@@ -895,6 +901,7 @@ function showChartArea() {
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'flex';
 }
@@ -909,6 +916,7 @@ function showTrendArea() {
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
@@ -923,8 +931,17 @@ function showScannerArea() {
     document.getElementById('scanner-area').style.display      = 'flex';
     document.getElementById('data-manager-area').style.display = 'none';
     document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
+}
+
+function showCapstructArea() {
+    ['empty-state','error-state','chart-area','stats-area','knn-area',
+     'backtest-area','trend-area','scanner-area','data-manager-area','macro-area']
+        .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    document.getElementById('capstruct-area').style.display = 'flex';
+    document.querySelector('.tab-bar').style.display = 'none';
 }
 
 function showMacroArea() {
@@ -951,6 +968,7 @@ function showDataManagerArea() {
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'flex';
     document.getElementById('macro-area').style.display = 'none';
+    document.getElementById('capstruct-area').style.display = 'none';
     document.getElementById('error-state').style.display = 'none';
     document.querySelector('.tab-bar').style.display           = 'none';
 }
@@ -1694,7 +1712,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const savedSym  = saved.symbol && state.symbols.find(s => s.symbol === saved.symbol)
                         ? saved.symbol : null;
 
-    if (saved.tab && ['scanner', 'data-manager', 'macro'].includes(saved.tab)) {
+    if (saved.tab && ['scanner', 'data-manager', 'macro', 'capstruct'].includes(saved.tab)) {
         switchTab(saved.tab);                       // symbol-independent tabs
     } else if (savedSym) {
         // Set the symbol first so switchTab reveals + loads the saved tab

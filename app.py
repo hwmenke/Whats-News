@@ -6,6 +6,7 @@ Run: python app.py
 import json
 import os
 import time
+from datetime import date
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
@@ -428,6 +429,39 @@ def get_recessions():
         return jsonify(fred.recession_ranges())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# -- Capital Structure (capstruct) ----------------------------------------------
+
+@app.route("/api/capstruct/<string:identifier>", methods=["GET"])
+def get_capstruct(identifier):
+    """
+    Summon the capstruct extractor for a ticker or CIK.
+
+    Imported lazily so a capstruct dependency problem can never stop the rest
+    of the dashboard from booting.
+    """
+    as_of_raw = request.args.get("as_of")
+    as_of = None
+    if as_of_raw:
+        try:
+            as_of = date.fromisoformat(as_of_raw)
+        except ValueError:
+            return jsonify({"error": "as_of must be YYYY-MM-DD"}), 400
+
+    point_in_time = request.args.get("point_in_time", "true").lower() != "false"
+
+    try:
+        from capstruct.pipeline import snapshot_or_error
+    except Exception as e:
+        return jsonify({"ok": False, "error": "capstruct_unavailable",
+                        "detail": str(e)}), 500
+
+    result = snapshot_or_error(identifier.strip(), as_of=as_of,
+                               point_in_time=point_in_time)
+    # A blocked-egress result is a real answer about the environment, not a
+    # server fault, so it comes back 200 with ok=false for the UI to render.
+    return jsonify(result)
 
 
 # -- Data Manager ---------------------------------------------------------------

@@ -2163,3 +2163,66 @@ html, body {
 .macro-flat { color: var(--text-muted); }
 
 .macro-spark { height: 56px; margin-top: 10px; position: relative; }
+
+/* ═══════════════════ CAP STRUCTURE (capstruct) ═══════════════════ */
+.capstruct-container {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden; position: relative;
+}
+.capstruct-controls {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 16px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.capstruct-label { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+.capstruct-subject { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.capstruct-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
+
+.cs-header { margin-bottom: 16px; }
+.cs-company { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.cs-cik { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); margin-left: 8px; }
+.cs-filing, .cs-mode { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+
+.cs-warning {
+  background: rgba(234,179,8,0.10); border: 1px solid rgba(234,179,8,0.35);
+  color: var(--yellow); border-radius: var(--radius-sm);
+  padding: 6px 10px; font-size: 11px; margin-bottom: 8px;
+}
+
+.cs-section { margin-bottom: 20px; }
+.cs-section-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--text-muted);
+  padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px;
+}
+
+.cs-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.cs-table td { padding: 5px 8px; border-bottom: 1px solid rgba(48,54,61,0.5); vertical-align: top; }
+.cs-table td:first-child { color: var(--text-primary); }
+.cs-val { font-family: var(--font-mono); text-align: right; white-space: nowrap; width: 130px; }
+.cs-prov { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+.cs-prov a { color: var(--accent-bright); text-decoration: none; }
+.cs-prov a:hover { text-decoration: underline; }
+.cs-prov code { color: var(--text-muted); }
+
+.cs-row-missing td { color: var(--text-dim); }
+.cs-row-missing .cs-val { color: var(--yellow); }
+
+.cs-conf { padding: 0 4px; border-radius: 3px; margin-right: 4px; }
+.cs-conf-high   { background: rgba(34,197,94,0.15);  color: var(--green); }
+.cs-conf-medium { background: rgba(234,179,8,0.15);  color: var(--yellow); }
+.cs-conf-low    { background: rgba(239,68,68,0.15);  color: var(--red); }
+
+.cs-total td { border-top: 1px solid var(--border); font-weight: 700; }
+.cs-note { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+.cs-error { padding: 16px; border: 1px solid rgba(239,68,68,0.35);
+            background: rgba(239,68,68,0.06); border-radius: var(--radius-md); }
+.cs-error-title { font-weight: 700; color: var(--red); margin-bottom: 6px; }
+.cs-error-detail { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim);
+                   white-space: pre-wrap; margin: 8px 0; }
+.cs-error-note { font-size: 11px; color: var(--text-muted); }
+.cs-pending p { font-size: 11px; color: var(--text-muted); }
