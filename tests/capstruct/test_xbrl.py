@@ -202,3 +202,48 @@ class ProvenanceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+NONCURRENT_FILER = {
+    "cik": 333,
+    "facts": {"us-gaap": {
+        # This tag EXCLUDES current maturities.
+        "LongTermDebtNoncurrent": {"units": {"USD": [
+            usd(8_000, "2024-06-30", "2024-08-01")]}},
+        "LongTermDebtCurrent": {"units": {"USD": [
+            usd(2_000, "2024-06-30", "2024-08-01")]}},
+        "CashAndCashEquivalentsAtCarryingValue": {"units": {"USD": [
+            usd(1_000, "2024-06-30", "2024-08-01")]}},
+    }},
+}
+
+
+class CurrentPortionTests(unittest.TestCase):
+    def _bridge(self, facts, cik):
+        r = FactResolver(facts, cik)
+        liq = r.resolve_all(LIQUIDITY_CONCEPTS)
+        snap = Snapshot(
+            cik=cik,
+            liquidity=Liquidity(**{k: v for k, v in liq.items()
+                                   if k in Liquidity.model_fields}),
+            debt_summary=DebtSummary(**{k: v for k, v in liq.items()
+                                        if k in DebtSummary.model_fields}),
+        )
+        return netdebt.build(snap)
+
+    def test_noncurrent_tag_adds_current_portion(self):
+        # 8,000 noncurrent + 2,000 current - 1,000 cash = 9,000.
+        # Without the add-back this reports 7,000 and understates net debt.
+        b = self._bridge(NONCURRENT_FILER, 333)
+        self.assertEqual(b.gross_debt, 10_000)
+        self.assertEqual(b.net_debt, 9_000)
+        self.assertTrue(any("excludes current maturities" in n for n in b.notes))
+        self.assertIn("Plus: current portion of LTD",
+                      [c["label"] for c in b.components])
+
+    def test_combined_tag_does_not_double_count(self):
+        # CLEAN_FILER uses LongTermDebt (4,000) with no current-portion tag.
+        b = self._bridge(CLEAN_FILER, 111)
+        self.assertEqual(b.gross_debt, 4_000)
+        self.assertNotIn("Plus: current portion of LTD",
+                         [c["label"] for c in b.components])

@@ -43,17 +43,41 @@ def build(snapshot: Snapshot) -> NetDebtBridge:
     debt = snapshot.debt_summary
     liq = snapshot.liquidity
 
-    components = [
-        _component("Gross debt", debt.total_debt, +1),
-        _component("Less: cash and equivalents", liq.cash_and_equivalents, -1),
-        _component("Less: short-term investments", liq.short_term_investments, -1),
-    ]
-
     gross = _val(debt.total_debt)
     cash = _val(liq.cash_and_equivalents)
     sti = _val(liq.short_term_investments)
+    current = _val(debt.long_term_debt_current)
 
     notes: list[str] = []
+
+    components = [_component("Gross debt", debt.total_debt, +1)]
+
+    # Some tags are noncurrent-only. Adding the current portion to those is
+    # required or net debt is understated by every maturity inside a year;
+    # adding it to a combined tag would double-count. Decide from the tag
+    # that actually produced the value, not from the concept name.
+    NONCURRENT_ONLY = ("LongTermDebtNoncurrent",)
+    locator = debt.total_debt.locator if isinstance(debt.total_debt, Sourced) else ""
+    tag = (locator or "").split(":")[-1]
+
+    if gross is not None and current is not None and tag in NONCURRENT_ONLY:
+        gross += current
+        components.append(_component("Plus: current portion of LTD",
+                                     debt.long_term_debt_current, +1))
+        notes.append(
+            f"Gross debt came from {tag}, which excludes current maturities; "
+            f"the current portion of {current:,.0f} was added."
+        )
+    elif current is not None:
+        notes.append(
+            f"Current portion of long-term debt is {current:,.0f}; {tag} is "
+            "understood to already include it, so it was not added again."
+        )
+
+    components += [
+        _component("Less: cash and equivalents", liq.cash_and_equivalents, -1),
+        _component("Less: short-term investments", liq.short_term_investments, -1),
+    ]
     # Restricted cash is deliberately NOT netted — it isn't available to
     # repay debt — but it's surfaced so the reader knows it was considered.
     if isinstance(liq.restricted_cash_current, Sourced):
