@@ -19,6 +19,7 @@ let state = {
 
 let statsCharts = {};
 let backtestEquityChart = null;
+let backtestDdChart = null;
 let backtestResultsFor = null;   // which symbol the rendered backtest belongs to
 
 // Monotonic id shared by all per-symbol view loaders. Each loader captures
@@ -965,12 +966,21 @@ function renderStats(data) {
     document.getElementById('stat-winrate').textContent  = fmt(m.win_rate, true);
 
     // Common Chart.js options
+    // Percent-valued panels: label the axis and tooltips so "0.34" reads as
+    // +0.34% rather than a bare number.
+    const pctTicks   = { color: '#8b949e', font: { size: 10 }, callback: v => v + '%' };
+    const pctTooltip = { callbacks: { label: c => `${c.dataset.label || 'Value'}: ${c.parsed.y == null ? '—' : c.parsed.y.toFixed(2) + '%'}` } };
+
     const baseChartOpts = {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: { legend: { display: false }, tooltip: pctTooltip },
         scales: {
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 10 } } },
+            y: {
+                title: { display: true, text: 'Fwd return', color: '#8b949e', font: { size: 10 } },
+                grid: { color: 'rgba(255,255,255,0.05)' },
+                ticks: pctTicks,
+            },
             x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } }
         }
     };
@@ -980,7 +990,8 @@ function renderStats(data) {
             legend: {
                 display: true,
                 labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
-            }
+            },
+            tooltip: pctTooltip,
         }
     };
     const crossChartOptions = {
@@ -989,7 +1000,8 @@ function renderStats(data) {
             legend: {
                 display: true,
                 labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
-            }
+            },
+            tooltip: pctTooltip,
         }
     };
 
@@ -1084,8 +1096,15 @@ function renderStats(data) {
         },
         options: {
             ...baseChartOpts,
+            // This panel plots observation counts, not percentages
+            plugins: { legend: { display: false },
+                       tooltip: { callbacks: { label: c => `${c.parsed.y} observations` } } },
             scales: {
-                ...baseChartOpts.scales,
+                y: {
+                    title: { display: true, text: 'Observations', color: '#8b949e', font: { size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#8b949e', font: { size: 10 } },
+                },
                 x: { ...baseChartOpts.scales.x, ticks: { ...baseChartOpts.scales.x.ticks, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } }
             }
         }
@@ -1175,7 +1194,19 @@ function renderStats(data) {
                 borderWidth: 1,
             }]
         },
-        options: baseChartOpts
+        options: {
+            ...baseChartOpts,
+            plugins: { legend: { display: false },
+                       tooltip: { callbacks: { label: c => `${c.parsed.y} events` } } },
+            scales: {
+                y: {
+                    title: { display: true, text: 'Event count', color: '#8b949e', font: { size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#8b949e', font: { size: 10 } },
+                },
+                x: baseChartOpts.scales.x,
+            },
+        }
     });
 }
 
@@ -1308,6 +1339,7 @@ function resetBacktestUI(symbol) {
     const tbody = document.querySelector('#bt-results-table tbody');
     if (tbody) tbody.innerHTML = '';
     if (backtestEquityChart) { backtestEquityChart.destroy(); backtestEquityChart = null; }
+    if (backtestDdChart) { backtestDdChart.destroy(); backtestDdChart = null; }
     const statusEl = document.getElementById('backtest-status');
     if (statusEl) statusEl.textContent = symbol
         ? `Run Optimization to grid-search KAMA configs for ${symbol}`
@@ -1414,7 +1446,7 @@ function renderBacktest(data) {
                         fill: true,
                     },
                     {
-                        label: 'Strategy (holdout)',
+                        label: split ? `Strategy (holdout from ${split})` : 'Strategy (holdout)',
                         data: oosSeg,
                         borderColor: '#22c55e',
                         backgroundColor: 'transparent',
@@ -1444,7 +1476,72 @@ function renderBacktest(data) {
                 },
                 scales: {
                     x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 }, maxTicksLimit: 12 } },
-                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 10 } } },
+                    // Log scale: on a multi-year cumprod curve a linear axis
+                    // flattens the early years into a straight line.
+                    y: {
+                        type: 'logarithmic',
+                        title: { display: true, text: 'Growth of $1', color: '#8b949e', font: { size: 10 } },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: {
+                            color: '#8b949e', font: { size: 10 },
+                            callback: v => v + '×',
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    // Underwater (drawdown) plot beneath the equity curve
+    if (backtestDdChart) {
+        backtestDdChart.destroy();
+        backtestDdChart = null;
+    }
+    const ddCanvas = document.getElementById('chart-backtest-dd');
+    if (ddCanvas && data.equity_curve && data.equity_curve.length > 0) {
+        const labels = data.equity_curve.map(d => d.date);
+        backtestDdChart = new Chart(ddCanvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Strategy drawdown',
+                        data: data.equity_curve.map(d => d.dd != null ? d.dd * 100 : null),
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239,68,68,0.18)',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        tension: 0.1,
+                        fill: true,
+                    },
+                    {
+                        label: 'Buy & Hold drawdown',
+                        data: data.equity_curve.map(d => d.bench_dd != null ? d.bench_dd * 100 : null),
+                        borderColor: '#8b949e',
+                        backgroundColor: 'transparent',
+                        borderWidth: 1,
+                        borderDash: [4, 3],
+                        pointRadius: 0,
+                        tension: 0.1,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: true, labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 } },
+                    tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(2)}%` } },
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 }, maxTicksLimit: 12 } },
+                    y: {
+                        title: { display: true, text: 'Drawdown', color: '#8b949e', font: { size: 10 } },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#8b949e', font: { size: 10 }, callback: v => v + '%' },
+                    },
                 },
             },
         });

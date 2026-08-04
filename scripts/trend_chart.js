@@ -781,6 +781,9 @@ function _updateSignalPanel(data, ohlcvRows) {
         }
     }
 
+    // ── R-multiple distribution of closed longs ───────────────
+    _renderRHistogram(data.system_stats?.trade_list);
+
     // ── Position size from stop distance ──────────────────────
     _sizeCalcState.close = close;
     _sizeCalcState.mrt   = mrtV;
@@ -804,6 +807,73 @@ function _updateSignalPanel(data, ohlcvRows) {
     } else {
         setCard('trend-sig-rr', atrV != null ? `ATR ${fmtP(atrV)}` : '—', 'neutral');
     }
+}
+
+// ── R-multiple histogram ──────────────────────────────────────
+// "win 54%" hides the shape of the outcomes; swing sizing runs on R, so the
+// distribution of realized R is what says whether the system is tradable.
+let _rHistChart = null;
+
+const _R_BUCKETS = [
+    { label: '< −1R',  test: r => r < -1,            color: '#ef4444' },
+    { label: '−1..0R', test: r => r >= -1 && r < 0,  color: '#f87171' },
+    { label: '0..1R',  test: r => r >= 0  && r < 1,  color: '#5eead4' },
+    { label: '1..2R',  test: r => r >= 1  && r < 2,  color: '#2dd4bf' },
+    { label: '2..3R',  test: r => r >= 2  && r < 3,  color: '#14b8a6' },
+    { label: '> 3R',   test: r => r >= 3,            color: '#0d9488' },
+];
+
+function _renderRHistogram(tradeList) {
+    const wrap = document.getElementById('trend-r-hist-wrap');
+    const el   = document.getElementById('trend-r-hist');
+    if (!wrap || !el || typeof Chart === 'undefined') return;
+
+    const rs = (tradeList || [])
+        .filter(t => t.outcome !== 'open' && t.r != null && isFinite(t.r))
+        .map(t => t.r);
+
+    if (_rHistChart) { _rHistChart.destroy(); _rHistChart = null; }
+    if (!rs.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+
+    const counts = _R_BUCKETS.map(b => rs.filter(b.test).length);
+    const expectancy = rs.reduce((a, b) => a + b, 0) / rs.length;
+
+    _rHistChart = new Chart(el, {
+        type: 'bar',
+        data: {
+            labels: _R_BUCKETS.map(b => b.label),
+            datasets: [{
+                label: 'Trades',
+                data: counts,
+                backgroundColor: _R_BUCKETS.map(b => b.color + 'b3'),
+                borderColor:     _R_BUCKETS.map(b => b.color),
+                borderWidth: 1,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                title: {
+                    display: true,
+                    text: `n=${rs.length} · expectancy ${expectancy >= 0 ? '+' : ''}${expectancy.toFixed(2)}R`,
+                    color: expectancy >= 0 ? '#22c55e' : '#ef4444',
+                    font: { size: 10 },
+                },
+                tooltip: { callbacks: { label: c => `${c.parsed.y} trade${c.parsed.y === 1 ? '' : 's'}` } },
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 9 } } },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#8b949e', font: { size: 9 }, precision: 0 },
+                },
+            },
+        },
+    });
 }
 
 // ── Position-size calculator ──────────────────────────────────

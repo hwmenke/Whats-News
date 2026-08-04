@@ -152,6 +152,11 @@ def _weekly_equity(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
     strat_w = strat_equity.resample("W-FRI").last().dropna()
     bh_w    = bh_equity.resample("W-FRI").last().dropna()
 
+    # Underwater series — drawdown depth is what the "would I trade this?"
+    # decision actually rests on; max_dd alone hides how long it lasted.
+    strat_dd = strat_w / strat_w.cummax() - 1.0
+    bh_dd    = bh_w / bh_w.cummax() - 1.0
+
     curve = []
     for date in strat_w.index:
         if date in bh_w.index:
@@ -159,6 +164,8 @@ def _weekly_equity(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
                 "date":      date.strftime("%Y-%m-%d"),
                 "strategy":  round(float(strat_w[date]), 6),
                 "benchmark": round(float(bh_w[date]), 6),
+                "dd":        round(float(strat_dd[date]), 6),
+                "bench_dd":  round(float(bh_dd[date]), 6),
             })
     return curve
 

@@ -139,6 +139,11 @@ class EndpointSmokeTests(unittest.TestCase):
         self.assertIn("benchmark_oos", d)
         self.assertRegex(d["split_date"], r"^\d{4}-\d{2}-\d{2}$")
         self.assertGreater(d["cost_bps"], 0)
+        # Underwater series for the drawdown pane
+        point = d["equity_curve"][0]
+        self.assertIn("dd", point)
+        self.assertIn("bench_dd", point)
+        self.assertTrue(all(p["dd"] <= 1e-9 for p in d["equity_curve"]))
 
     # ── adaptive trend / scans ─────────────────────────────────────────────
     def test_adaptive_trend(self):

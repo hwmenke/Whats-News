@@ -433,9 +433,12 @@
           </div>
         </div>
         <div class="stats-card">
-          <div class="stats-card-header">Best Equity Curve</div>
+          <div class="stats-card-header">Best Equity Curve &amp; Drawdown</div>
           <div class="chart-container-js">
             <canvas id="chart-backtest-equity"></canvas>
+          </div>
+          <div class="chart-container-dd">
+            <canvas id="chart-backtest-dd"></canvas>
           </div>
         </div>
       </div>
@@ -607,6 +610,12 @@
               <input id="trend-risk-input" class="tconf-input" type="number" min="10" step="10" value="100" />
             </label>
             <span id="trend-size-result" class="trend-size-result">—</span>
+          </div>
+
+          <!-- Distribution of realized R-multiples for closed long trades -->
+          <div id="trend-r-hist-wrap" class="trend-r-hist-wrap" style="display:none;">
+            <div class="trend-r-hist-label">R-Multiple Distribution · closed longs</div>
+            <canvas id="trend-r-hist"></canvas>
           </div>
 
         </div><!-- .trend-panel-signal -->

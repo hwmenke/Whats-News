@@ -2058,3 +2058,31 @@ html, body {
   .charts-container > .panel-divider { width: auto; height: 1px; }
   .chart-panel { min-height: 0; }
 }
+
+/* Drawdown pane under the backtest equity curve */
+.chart-container-dd {
+  position: relative;
+  height: 120px;
+  width: 100%;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+/* R-multiple distribution card in the trend signal panel */
+.trend-r-hist-wrap {
+  margin: 0 12px 12px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.trend-r-hist-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.trend-r-hist-wrap canvas { height: 120px !important; }
