@@ -412,6 +412,24 @@ function _toLine(arr) {
         : { time: d.date });
 }
 
+/** date → regime state (+1/-1/0) lookup. */
+function _stateMap(arr) {
+    const m = new Map();
+    if (Array.isArray(arr)) arr.forEach(d => m.set(d.date, d.value));
+    return m;
+}
+
+/**
+ * Blank a band wherever its governing regime is neutral, so the ratchet's
+ * forward-filled values render as gaps instead of live levels. Dates absent
+ * from the map pass through untouched. The signal panel keeps reading the
+ * ORIGINAL arrays, so the stop/target cards still show the last known level.
+ */
+function _gapNeutral(arr, stateMap) {
+    if (!Array.isArray(arr)) return [];
+    return arr.map(d => (stateMap.get(d.date) === 0 ? { date: d.date, value: null } : d));
+}
+
 /**
  * Map regime array (+1/-1/0) to full-row heatband cells centered on `center`.
  * State is encoded purely in color: bull green, bear red, neutral a visible
@@ -505,12 +523,16 @@ function loadTrendData(data, ohlcvRows) {
     trendSeries.mb.setData(_toLine(data.mb));
     trendSeries.lb.setData(_toLine(data.lb));
 
-    // Bands
-    trendSeries.sdb.setData(_toLine(data.sdb));
-    trendSeries.mrt.setData(_toLine(data.mrt));
-    trendSeries.mdb.setData(_toLine(data.mdb));
-    trendSeries.lrt.setData(_toLine(data.lrt));
-    trendSeries.ldb.setData(_toLine(data.ldb));
+    // Bands — blanked while their governing regime is neutral. _ratchet_band
+    // forward-fills through neutral stretches, so drawing them continuously
+    // presents stale levels as live stops/targets.
+    const medMap = _stateMap(data.medium_state);
+    const lngMap = _stateMap(data.long_state);
+    trendSeries.sdb.setData(_toLine(_gapNeutral(data.sdb, medMap)));
+    trendSeries.mrt.setData(_toLine(_gapNeutral(data.mrt, medMap)));
+    trendSeries.mdb.setData(_toLine(_gapNeutral(data.mdb, medMap)));
+    trendSeries.lrt.setData(_toLine(_gapNeutral(data.lrt, lngMap)));
+    trendSeries.ldb.setData(_toLine(_gapNeutral(data.ldb, lngMap)));
 
     // Regime histograms
     trendSeries.regLong.setData(_regData(data.long_state,   3));

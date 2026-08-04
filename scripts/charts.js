@@ -234,6 +234,55 @@ function buildPanel(freq) {
         legendEl.innerHTML = html;
     });
 
+    // Sub-chart crosshair readouts — same pattern as the price legend, but
+    // pinned top-right so they clear each pane's top-left .chart-label.
+    const _subLegend = (el) => {
+        const w = el.parentElement;
+        w.querySelector('.chart-legend')?.remove();
+        const d = document.createElement('div');
+        d.className = 'chart-legend chart-legend-sub';
+        w.appendChild(d);
+        return d;
+    };
+    const rsiLeg   = _subLegend(rsiEl);
+    const macdLeg  = _subLegend(macdEl);
+    const trendLeg = _subLegend(trendEl);
+
+    const _val = (param, s) => {
+        const d = s ? param.seriesData.get(s) : null;
+        return (d && d.value != null && isFinite(d.value)) ? d.value : null;
+    };
+    const _n = (v, dp) => v == null ? '—' : v.toFixed(dp);
+    // MACD lives in price units, so magnitude varies wildly by symbol
+    const _macdFmt = v => v == null ? '—' : (Math.abs(v) < 1 ? v.toFixed(3) : v.toFixed(2));
+
+    charts[freq].rsi.subscribeCrosshairMove(param => {
+        if (!param || !param.time || !param.seriesData) { rsiLeg.innerHTML = ''; return; }
+        rsiLeg.innerHTML =
+            `<span style="color:#06b6d4">7 ${_n(_val(param, series[freq].rsi[7]), 1)}</span> · ` +
+            `<span style="color:#f97316">14 ${_n(_val(param, series[freq].rsi[14]), 1)}</span> · ` +
+            `<span style="color:#a855f7">21 ${_n(_val(param, series[freq].rsi[21]), 1)}</span>`;
+    });
+
+    charts[freq].macd.subscribeCrosshairMove(param => {
+        if (!param || !param.time || !param.seriesData) { macdLeg.innerHTML = ''; return; }
+        const hist = _val(param, series[freq].macdHist);
+        const histColor = hist == null ? 'var(--text-muted)'
+                        : hist >= 0 ? C.macd_hist_pos : C.macd_hist_neg;
+        macdLeg.innerHTML =
+            `<span style="color:${C.macd_line}">MACD ${_macdFmt(_val(param, series[freq].macdLine))}</span> · ` +
+            `<span style="color:${C.macd_signal}">Sig ${_macdFmt(_val(param, series[freq].macdSig))}</span> · ` +
+            `<span style="color:${histColor}">Hist ${_macdFmt(hist)}</span>`;
+    });
+
+    charts[freq].trend.subscribeCrosshairMove(param => {
+        if (!param || !param.time || !param.seriesData) { trendLeg.innerHTML = ''; return; }
+        const v = _val(param, series[freq].trend);
+        const color = v == null ? 'var(--text-muted)'
+                    : v > 0 ? C.trend_pos : v < 0 ? C.trend_neg : C.trend_zero;
+        trendLeg.innerHTML = `<span style="color:${color}">Score ${v == null ? '—' : (v > 0 ? '+' : '') + v}</span>`;
+    });
+
     // Sync sub-charts to main
     syncTo(charts[freq].main, charts[freq].rsi, charts[freq].macd, charts[freq].trend);
     syncTo(charts[freq].rsi,   charts[freq].main);

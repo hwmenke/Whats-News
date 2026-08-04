@@ -558,6 +558,15 @@ html, body {
   text-overflow: ellipsis;
 }
 .chart-legend:empty { display: none; }
+
+/* Sub-panes are only 80-110px tall and already carry a top-left .chart-label,
+   so their readouts sit top-right instead. */
+.chart-legend-sub {
+  top: 4px;
+  left: auto;
+  right: 10px;
+  padding: 1px 6px;
+}
 .chart-legend b { color: var(--text-primary); font-weight: 600; }
 .chart-legend b.lg-up   { color: var(--green); }
 .chart-legend b.lg-down { color: var(--red); }
@@ -679,12 +688,18 @@ html, body {
   padding: 0 16px;
   margin-bottom: 8px;
   border-bottom: 1px solid var(--border);
+  /* Seven tabs clip below ~900px — scroll them instead of wrapping */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.main-nav-tabs::-webkit-scrollbar { display: none; }
 
 .tab-btn {
   background: transparent;
   border: none;
   color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
   padding: 12px 20px;
   font-size: 14px;
   font-weight: 600;
@@ -1601,7 +1616,11 @@ html, body {
 .dm-container {
   display: flex;
   gap: 0;
-  height: calc(100vh - var(--topbar-h) - 52px - 42px); /* subtract header + tabs + tab-bar */
+  /* Fills the remaining height of the flex-column .main. The old
+     calc(100vh - …52px - 42px) hardcoded guesses of the header and tab
+     heights and misjudged the moment any of those bars wrapped. */
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -2029,4 +2048,13 @@ html, body {
 #trend-scan-panel {
   flex: 1;
   min-height: 0;
+}
+
+/* ── Narrow viewports: stack the Daily/Weekly chart panels ──── */
+@media (max-width: 1100px) {
+  .charts-container { flex-direction: column; }
+  /* Scoped to the Charts tab so the Trend tab's divider (inside
+     .trend-panels) keeps its vertical orientation. */
+  .charts-container > .panel-divider { width: auto; height: 1px; }
+  .chart-panel { min-height: 0; }
 }
