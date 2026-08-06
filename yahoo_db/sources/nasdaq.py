@@ -37,12 +37,18 @@ EXCHANGE_CODES = {
     "V": ("IEX", "IEX"),
 }
 
-# ACT/CQS suffix -> Yahoo suffix. Longest key first when matching.
-SUFFIX_MAP = [
-    (".PR", "-P"),    # preferred:  ALL.PRB  -> ALL-PB
-    (".WS", "-WT"),   # warrant:    SPAC.WS  -> SPAC-WT
-    (".U", "-UN"),    # unit:       SPAC.U   -> SPAC-UN
-    (".R", "-RT"),    # right:      SPAC.R   -> SPAC-RT
+# ACT/CQS class suffixes that carry an optional trailing class letter.
+# `ALL.PRB` -> `ALL-PB`, `ALL.PR` -> `ALL-P`, `SPAC.WS.A` -> `SPAC-WTA`.
+CLASS_SUFFIX_RE = re.compile(r"(.+?)\.(PR|WS)\.?([A-Z]?)")
+CLASS_SUFFIX_MAP = {"PR": "-P", "WS": "-WT"}
+
+# Suffixes that take no trailing letter at all. These must match the very end
+# of the symbol: an earlier version tested `".U" in s`, which turned `RGC.US`
+# into `RGC-UNS` and `ABC.RT` into `ABC-RTT` — symbols Yahoo has never heard
+# of, which then come back empty and get written off as delisted.
+EXACT_SUFFIX_MAP = [
+    (".U", "-UN"),    # unit:   SPAC.U -> SPAC-UN
+    (".R", "-RT"),    # right:  SPAC.R -> SPAC-RT
 ]
 
 
@@ -204,11 +210,15 @@ def to_yahoo_symbol(raw) -> str:
     s = str(raw).strip().upper()
     if not s or not _VALID.match(s):
         return ""
-    for act, yahoo in SUFFIX_MAP:
-        if act in s:
-            head, _, tail = s.partition(act)
-            s = f"{head}{yahoo}{tail.replace('.', '')}"
-            break
+    match = CLASS_SUFFIX_RE.fullmatch(s)
+    if match:
+        head, kind, tail = match.groups()
+        s = f"{head}{CLASS_SUFFIX_MAP[kind]}{tail}"
+    else:
+        for act, yahoo in EXACT_SUFFIX_MAP:
+            if s.endswith(act):
+                s = f"{s[:-len(act)]}{yahoo}"
+                break
     # These files are US-only, so a one-letter tail is always a share class —
     # `PSA.L` here is Public Storage class L, not a London listing.
     return normalize_symbol(s, us_style=True)

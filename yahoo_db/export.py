@@ -54,8 +54,18 @@ def export_table(store, table: str, out_dir, fmt: str = "csv",
     if fmt == "parquet":
         _require_parquet()
         paths = []
+        dtypes = None
         for chunk in pd.read_sql_query(sql, store.conn, params=params,
                                        chunksize=chunk_size):
+            # SQLite is untyped per row, so a column that happens to be all
+            # NULL in one chunk and numeric in the next infers different
+            # dtypes — which gives the part-files incompatible Arrow schemas
+            # and breaks any reader that globs the directory. Pin every chunk
+            # to the first one's dtypes.
+            if dtypes is None:
+                dtypes = chunk.dtypes
+            else:
+                chunk = chunk.astype(dtypes, errors="ignore")
             path = out_dir / (f"{table}.parquet" if parts == 0
                               else f"{table}.part{parts}.parquet")
             chunk.to_parquet(path, index=False)

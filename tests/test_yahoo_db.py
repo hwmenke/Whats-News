@@ -283,10 +283,22 @@ class NasdaqSourceTests(unittest.TestCase):
 
     def test_to_yahoo_symbol_suffixes(self):
         self.assertEqual(nasdaq.to_yahoo_symbol("SPAC.WS"), "SPAC-WT")
+        self.assertEqual(nasdaq.to_yahoo_symbol("SPAC.WS.A"), "SPAC-WTA")
         self.assertEqual(nasdaq.to_yahoo_symbol("SPAC.U"), "SPAC-UN")
         self.assertEqual(nasdaq.to_yahoo_symbol("SPAC.R"), "SPAC-RT")
         self.assertEqual(nasdaq.to_yahoo_symbol("ALL.PRB"), "ALL-PB")
+        self.assertEqual(nasdaq.to_yahoo_symbol("ALL.PR"), "ALL-P")
         self.assertEqual(nasdaq.to_yahoo_symbol("bad symbol!"), "")
+
+    def test_to_yahoo_symbol_does_not_eat_longer_tails(self):
+        # The suffix match used to be a substring test, so anything whose tail
+        # merely started with U or R was mangled into a symbol that does not
+        # exist — and a nonexistent symbol gets written off as delisted.
+        self.assertEqual(nasdaq.to_yahoo_symbol("RGC.US"), "RGC.US")
+        self.assertEqual(nasdaq.to_yahoo_symbol("ABC.RT"), "ABC.RT")
+        self.assertEqual(nasdaq.to_yahoo_symbol("ABC.UN"), "ABC.UN")
+        # Ordinary share classes are still translated.
+        self.assertEqual(nasdaq.to_yahoo_symbol("BRK.A"), "BRK-A")
 
     def test_fetch_merges_files(self):
         class FakeHttp:
