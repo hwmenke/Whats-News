@@ -43,6 +43,25 @@ Open your web browser and go to:
 - `styles/main.css`: Premium styling.
 - `scripts/app.js`: Frontend application logic.
 - `scripts/charts.js`: Chart rendering logic.
+- `yahoo_db/`: Standalone bulk data archiver (separate app, see below).
+
+---
+
+## 🗄️ Bulk data archiver (`yahoo_db`)
+
+A separate, self-contained app that downloads Yahoo Finance history for as
+many tickers as possible — listed **and delisted** — into its own SQLite
+database. It shares no code or database with the dashboard above.
+
+```bash
+python3 -m pip install -r requirements-yahoo-db.txt
+python3 -m yahoo_db init
+python3 -m yahoo_db universe --sources sec,nasdaq,static,seeds
+python3 -m yahoo_db download
+python3 -m yahoo_db status
+```
+
+Full documentation: [`yahoo_db/README.md`](yahoo_db/README.md)
 
 ---
 *Built with ❤️ for financial analysis.*

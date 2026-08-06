@@ -12,6 +12,12 @@ env/
 finance.db
 finance.db-journal
 
+# yahoo_db archive + exports (can reach many GB)
+data/
+*.db-wal
+*.db-shm
+export/
+
 # IDEs
 .vscode/
 .idea/
