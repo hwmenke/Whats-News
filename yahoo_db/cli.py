@@ -39,7 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("init", help="create the database and its schema")
 
     p_uni = sub.add_parser("universe", help="discover tickers and merge them in")
-    p_uni.add_argument("--sources", help="comma list: sec,nasdaq,seeds,static,yahoo-lookup")
+    p_uni.add_argument("--sources",
+                       help="comma list: sec,nasdaq,otc,wikipedia,seeds,static,"
+                            "yahoo-lookup")
     p_uni.add_argument("--lookup-depth", type=int,
                        help="prefix length for the Yahoo lookup crawl (1=A..Z, 2=AA..ZZ)")
     p_uni.add_argument("--lookup-types", help="comma list: equity,etf,mutualfund,index,future")
