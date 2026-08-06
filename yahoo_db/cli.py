@@ -7,6 +7,7 @@ cli.py - Command line for the Yahoo data downloader.
     python -m yahoo_db download --limit 500
     python -m yahoo_db profiles --limit 200
     python -m yahoo_db status
+    python -m yahoo_db verify --limit 25
     python -m yahoo_db export --table prices --format parquet --out ./out
 """
 
@@ -18,6 +19,7 @@ import time
 
 from . import export as export_mod
 from . import universe
+from . import verify
 from .config import load_config
 from .db import Store, normalize_symbol
 from .downloader import Downloader
@@ -45,6 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_uni.add_argument("--lookup-types", help="comma list: equity,etf,mutualfund,index,future")
     p_uni.add_argument("--lookup-regions", help="comma list of Yahoo regions, e.g. US,GB,DE")
     p_uni.add_argument("--lookup-sleep", type=float, help="seconds between lookup requests")
+    p_uni.add_argument("--lookup-resume-days", type=int,
+                       help="re-crawl a prefix finished more than N days ago "
+                            "(default 14)")
+    p_uni.add_argument("--lookup-restart", action="store_true", default=None,
+                       help="forget the crawl checkpoints and start from 'A'")
     p_uni.add_argument("--seeds-dir", help="directory of seed CSV/TXT files")
 
     p_dl = sub.add_parser("download", help="download price history")
@@ -87,6 +94,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_mark.add_argument("--interval")
     p_mark.add_argument("--stale-days", type=int)
 
+    p_ver = sub.add_parser("verify", help="audit what is stored (never hits the network)")
+    p_ver.add_argument("--interval")
+    p_ver.add_argument("--limit", type=int, default=10,
+                       help="offending symbols shown per check (default 10)")
+    p_ver.add_argument("--gap-days", type=int, default=verify.DEFAULT_GAP_WEEKDAYS,
+                       help="weekday sessions missing before a hole is a gap")
+    p_ver.add_argument("--zero-volume-run", type=int,
+                       default=verify.DEFAULT_ZERO_VOLUME_RUN,
+                       help="consecutive zero-volume bars before reporting")
+    p_ver.add_argument("--split-tolerance", type=float,
+                       default=verify.DEFAULT_SPLIT_TOLERANCE,
+                       help="how close a close ratio must be to a split factor")
+    p_ver.add_argument("--stale-days", type=int,
+                       help="days behind the market's newest bar before stale")
+    p_ver.add_argument("--json", action="store_true")
+    p_ver.add_argument("--fix", action="store_true",
+                       help="repair has_data/delisted_at/status; never touches prices")
+
     p_exp = sub.add_parser("export", help="dump tables to CSV or Parquet")
     p_exp.add_argument("--table", default="all",
                        help="tickers|prices|dividends|splits|profiles|fetch_log|all")
@@ -118,6 +143,8 @@ def main(argv=None) -> int:
         lookup_regions=_split(getattr(args, "lookup_regions", None)),
         lookup_depth=getattr(args, "lookup_depth", None),
         lookup_sleep=getattr(args, "lookup_sleep", None),
+        lookup_resume_days=getattr(args, "lookup_resume_days", None),
+        lookup_restart=getattr(args, "lookup_restart", None),
     )
 
     store = Store(cfg.db_path)
@@ -140,6 +167,11 @@ def cmd_init(args, cfg, store) -> int:
 
 def cmd_universe(args, cfg, store) -> int:
     before = store.count_tickers()
+    crawling = any(s.strip().lower() in universe.LOOKUP_ALIASES
+                   for s in cfg.sources)
+    if crawling:
+        _print_crawl_resume_state(cfg, store)
+
     start = time.time()
     summary = universe.refresh(cfg, store, progress=_lookup_progress)
     after = store.count_tickers()
@@ -153,6 +185,11 @@ def cmd_universe(args, cfg, store) -> int:
                   f"{result['inserted']:>7} new  {result['updated']:>7} updated")
     print(f"  {'total':<14} {before} -> {after} symbols "
           f"(+{after - before})")
+    if crawling:
+        checkpointed = store.count_lookup_prefixes_done(
+            cfg.lookup_regions, cfg.lookup_types, cfg.lookup_resume_days)
+        print(f"  {'checkpoints':<14} {checkpointed:>7,} prefixes done — "
+              f"re-run to continue where this stopped")
     return 0
 
 
@@ -250,6 +287,28 @@ def cmd_mark_delisted(args, cfg, store) -> int:
     return 0
 
 
+def cmd_verify(args, cfg, store) -> int:
+    report = verify.run(
+        store,
+        interval=cfg.interval,
+        limit=args.limit,
+        gap_weekdays=args.gap_days,
+        stale_days=cfg.stale_days,
+        zero_volume_run=args.zero_volume_run,
+        split_tolerance=args.split_tolerance,
+    )
+    # Fixes run after the audit so the report shows what was wrong, not what
+    # survived the repair.
+    if args.fix:
+        report["fixes"] = verify.apply_fixes(store, cfg.interval, cfg.stale_days)
+
+    if args.json:
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+    _print_verify(report)
+    return 0
+
+
 def cmd_export(args, cfg, store) -> int:
     if args.table == "all":
         results = export_mod.export_all(store, args.out, fmt=args.format,
@@ -277,6 +336,7 @@ COMMANDS = {
     "status": cmd_status,
     "symbols": cmd_symbols,
     "mark-delisted": cmd_mark_delisted,
+    "verify": cmd_verify,
     "export": cmd_export,
     "vacuum": cmd_vacuum,
 }
@@ -300,6 +360,72 @@ def _setup_logging(args):
     )
     # yfinance is chatty about every delisted symbol; that is our normal case.
     logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+
+
+def _print_verify(report):
+    totals = report["totals"]
+    print(f"data quality    {report['db_path']}")
+    print(f"interval        {report['interval']}   "
+          f"market last bar {report['market_last_date'] or '-'}")
+    print(f"tickers         {totals['tickers']:>12,}  "
+          f"({totals['symbols_with_prices']:,} with prices, "
+          f"{totals['price_rows']:,} bars, {totals['split_rows']:,} splits)")
+    print()
+
+    for name, check in report["checks"].items():
+        mark = "ok " if check["count"] == 0 else "** "
+        print(f"{mark}{name:<22} {check['count']:>12,}  {check['label']}")
+        if check.get("skipped"):
+            print(f"      skipped: {check['skipped']}")
+            continue
+        if not check["count"]:
+            continue
+        if check.get("note"):
+            print(f"      note: {check['note']}")
+        for key, label in (("symbols", "symbols affected"),
+                           ("checked_candidates", "candidates examined")):
+            if check.get(key):
+                print(f"      {label}: {check[key]:,}")
+        grouped = check.get("by_status") or {}
+        for status, block in grouped.items():
+            counts = ", ".join(f"{k}={v:,}" for k, v in block.items()
+                               if isinstance(v, int))
+            symbols = ", ".join(block.get("sample") or [])
+            print(f"      {status:<10} {counts}"
+                  + (f"   {symbols}" if symbols else ""))
+        for row in check.get("top_errors") or []:
+            print(f"      {row['n']:>6,}x  {(row['error'] or '')[:90]}")
+        # Skip the flat sample when the per-status lines already carried it.
+        listed = any(block.get("sample") for block in grouped.values())
+        for row in ([] if listed else check.get("sample") or []):
+            print(f"      {_sample_line(row)}")
+
+    if "fixes" in report:
+        print("\nfixes applied (counts above are from before the fix)")
+        for key, value in report["fixes"].items():
+            print(f"  {key:<24} {value:>10,}")
+
+
+def _sample_line(row) -> str:
+    """One offender, symbol first and everything else as key=value — the checks
+    all report different shapes and none of them is worth its own formatter."""
+    if not isinstance(row, dict):
+        return str(row)
+    rest = " ".join(f"{k}={v}" for k, v in row.items() if k != "symbol")
+    return f"{row.get('symbol', ''):<14} {rest}".rstrip()
+
+
+def _print_crawl_resume_state(cfg, store):
+    """Say up front how much of the crawl is already in the bag — the number
+    that tells you whether last night's interrupted run is being resumed."""
+    if cfg.lookup_restart:
+        print("lookup crawl restarting from scratch (--lookup-restart)")
+        return
+    resumed = store.count_lookup_prefixes_done(
+        cfg.lookup_regions, cfg.lookup_types, cfg.lookup_resume_days)
+    if resumed:
+        print(f"resuming lookup crawl — skipping {resumed:,} prefixes finished "
+              f"in the last {cfg.lookup_resume_days} days")
 
 
 def _split(value):
@@ -329,8 +455,9 @@ def _download_progress(done, total, stats):
     sys.stderr.flush()
 
 
-def _lookup_progress(done, total, found):
-    sys.stderr.write(f"\r  lookup {done:>6,}/{total:<6,} requests  "
+def _lookup_progress(done, total, found, skipped=0):
+    resumed = f" ({skipped:,} resumed)" if skipped else ""
+    sys.stderr.write(f"\r  lookup {done:>6,}/{total:<6,} prefixes{resumed}  "
                      f"{found:,} symbols   ")
     sys.stderr.flush()
 

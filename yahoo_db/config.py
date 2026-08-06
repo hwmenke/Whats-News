@@ -37,6 +37,13 @@ def _env_float(key: str, default: float) -> float:
         return default
 
 
+def _env_bool(key: str, default: bool) -> bool:
+    raw = os.environ.get(key)
+    if raw is None or raw.strip() == "":
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 def _env_list(key: str, default: list) -> list:
     raw = os.environ.get(key)
     if raw is None or raw.strip() == "":
@@ -105,6 +112,18 @@ class Config:
     lookup_depth: int = field(default_factory=lambda: _env_int("YDB_LOOKUP_DEPTH", 2))
     lookup_sleep: float = field(
         default_factory=lambda: _env_float("YDB_LOOKUP_SLEEP", 0.4)
+    )
+    # A deep crawl is an overnight job, so it checkpoints every finished
+    # (region, type, prefix) triple and skips those on the next run. Completion
+    # goes stale — the universe gains and loses symbols — so a triple older than
+    # this is crawled again. Two weeks is short enough to track new listings and
+    # long enough that a multi-night crawl is never re-done from the start.
+    lookup_resume_days: int = field(
+        default_factory=lambda: _env_int("YDB_LOOKUP_RESUME_DAYS", 14)
+    )
+    # Throw the checkpoints away and crawl every prefix again.
+    lookup_restart: bool = field(
+        default_factory=lambda: _env_bool("YDB_LOOKUP_RESTART", False)
     )
 
     user_agent: str = field(

@@ -33,6 +33,9 @@ python -m yahoo_db download
 
 # 5. see where you are
 python -m yahoo_db status
+
+# 6. audit what you actually got
+python -m yahoo_db verify
 ```
 
 Step 4 is resumable. Interrupt it whenever you like — every symbol's outcome
@@ -66,8 +69,27 @@ python -m yahoo_db universe --sources yahoo-lookup \
 ```
 
 Depth 3 is ~48k prefixes per type per region, so this is an overnight job —
-`--lookup-sleep` sets the pace. Everything is merged, so it is safe to stop
-and resume.
+`--lookup-sleep` sets the pace.
+
+**The crawl resumes.** Every `(region, quote type, prefix)` triple is written to
+`lookup_progress` once its pagination has finished, *after* its symbols are in
+the database. Stop the job with Ctrl-C and the next run skips straight past
+everything that completed:
+
+```
+$ python -m yahoo_db universe --sources yahoo-lookup --lookup-depth 3
+resuming lookup crawl — skipping 12,431 prefixes finished in the last 14 days
+  lookup 41,900/48,600 prefixes (12,431 resumed)  73,914 symbols
+```
+
+* a triple that failed, timed out, or was half-paginated is **not** recorded,
+  so the next run crawls it again;
+* completion goes stale — the universe changes — so a triple finished more than
+  `--lookup-resume-days` (default 14) ago is crawled again anyway;
+* `--lookup-restart` throws the checkpoints away and starts from `A`, narrowed
+  to the regions and types you are crawling.
+
+Resuming is the default; there is no flag to turn it on.
 
 ## How delisting is decided
 
@@ -95,8 +117,14 @@ splits     (symbol, date) PK, ratio
 profiles   symbol PK, long_name, sector, industry, country, currency,
            market_cap, shares_outstanding, first_trade_date, raw_json, fetched_at
 fetch_log  symbol, interval, status, rows, first_date, last_date, error, fetched_at
+lookup_progress (region, quote_type, prefix) PK, symbols, completed_at
 meta       key PK, value
 ```
+
+`lookup_progress` arrived with schema version 2 and is what makes the lookup
+crawl resumable. Every table is created with `IF NOT EXISTS` and every command
+runs the schema step first, so an older database picks it up on its next run —
+there is no migration to perform.
 
 Prices are stored **unadjusted with `adj_close` alongside** (`auto_adjust=False`),
 so the raw print and the adjusted series are both available and splits do not
@@ -126,8 +154,21 @@ ORDER BY delisted_at DESC;
 | `status` | Row counts, date range, breakdown by type and source. |
 | `symbols` | List symbols in the universe (`--status delisted --with-data`). |
 | `mark-delisted` | Re-run the stale sweep on its own. |
+| `verify` | Audit the stored data and print a quality report. Never hits the network. |
 | `export` | Dump tables to CSV or Parquet. |
 | `vacuum` | `ANALYZE` + `VACUUM`. |
+
+Useful flags on `universe`:
+
+```
+--sources yahoo-lookup      which discovery sources to run
+--lookup-depth 3            prefix length (1=A..Z, 2=AA..ZZ, 3=AAA..999)
+--lookup-types equity,etf   quote types to crawl
+--lookup-regions US,GB      Yahoo regions to crawl
+--lookup-sleep 0.4          seconds between lookup requests
+--lookup-resume-days 14     re-crawl a prefix finished more than N days ago
+--lookup-restart            forget the checkpoints and crawl everything again
+```
 
 Useful flags on `download`:
 
@@ -146,6 +187,55 @@ Useful flags on `download`:
 ```
 
 Every flag also has a `YDB_*` environment variable — see `config.py`.
+
+## Checking the data
+
+```bash
+python -m yahoo_db verify                 # the report
+python -m yahoo_db verify --json          # the same thing, machine-readable
+python -m yahoo_db verify --limit 25      # more offenders per check
+python -m yahoo_db verify --fix           # repair what is safe to repair
+```
+
+`verify` reads and reports; it never makes a request, so it is safe to run
+beside a download that is still going. Every check gives a count and a bounded
+sample of the symbols behind it:
+
+| Check | What it means |
+|---|---|
+| `no_prices` | Universe symbols with no bars at all, split by status. Delisted ones are usually tickers Yahoo never carried; active/unknown ones are the download backlog. |
+| `price_gaps` | Holes of **five or more weekday sessions** in a daily series. US exchanges have never closed for five straight weekdays in the modern era — the longest is four (9/11) — so holidays stay quiet and only real holes show. Trading halts and genuinely illiquid symbols do land here, deliberately. |
+| `high_below_low`, `close_outside_range`, `non_positive_price`, `negative_volume` | Bars that contradict their own arithmetic. |
+| `zero_volume_runs` | Five or more consecutive zero-volume bars — but only for symbols that report volume somewhere. An index or FX pair carries volume 0 on every bar by convention, which is not a defect. |
+| `malformed_dates`, `duplicate_dates`, `future_dates` | The primary key already rules out true duplicate rows and there is no stored ordering to be wrong, so what these check is the way a date string can lie: a value that is not plain `YYYY-MM-DD` sorts wrongly and lets one trading day in twice under two spellings, and a date past today means a bad parse upstream. |
+| `split_suspects` | A day-over-day `close` ratio within 4% of 2, 3, 1.5, 10 or their inverses with no `splits` row within four days. Prices are stored unadjusted, so a real split should have both. A suspect list, not a verdict — the sample carries both closes so you can judge a penny stock that simply doubled. |
+| `stale_active` | Still marked `active`, but the newest bar is more than `--stale-days` behind **the newest bar in the database** (not behind today, so a weekend or an unrefreshed archive does not condemn the universe). |
+| `fetch_log` | Attempts by outcome, the most common error messages, and the symbols whose *most recent* attempt failed. |
+
+Thresholds: `--gap-days`, `--zero-volume-run`, `--split-tolerance`,
+`--stale-days`, `--interval`.
+
+### `--fix`
+
+`--fix` is deliberately small. It only rewrites columns that are *derived* from
+rows already in the database, and it never writes or deletes a price:
+
+* `has_data` and `delisted_at` on `tickers` are caches of "does this symbol have
+  bars, and what is the newest one" — the `prices` table is the authority, so
+  re-deriving them cannot lose information;
+* the stale sweep, which is exactly what `mark-delisted` does and what every
+  download run already finishes with.
+
+Re-queueing symbols for download is **not** auto-fixed. `fetch_log` is
+append-only evidence and `symbols_to_fetch` reads it as "how many times have we
+tried, and when", so writing a row makes a symbol *less* due rather than more,
+and deleting rows would throw away the record of why it failed. Use the report
+instead:
+
+```bash
+python -m yahoo_db verify --json --limit 500 > report.json
+python -m yahoo_db download --force --symbols AAPL,MSFT
+```
 
 ## Rate limits
 
@@ -166,17 +256,25 @@ batch one solo retry before believing it is dead.
 # refresh the universe weekly, top up prices every weekday evening
 30 6 * * 0  cd /path/to/repo && python -m yahoo_db universe -v >> ydb.log 2>&1
 0 22 * * 1-5 cd /path/to/repo && python -m yahoo_db download -v >> ydb.log 2>&1
+# audit on Sunday, after the universe refresh
+0 8 * * 0   cd /path/to/repo && python -m yahoo_db verify >> ydb-quality.log 2>&1
 ```
+
+A deep lookup crawl works well on a schedule too: give it a nightly window and
+let it resume, one bite at a time, until the checkpoints cover every prefix.
 
 ## Tests
 
 ```bash
 python -m unittest tests.test_yahoo_db -v
+python -m unittest tests.test_yahoo_db_quality -v
 ```
 
-51 tests, no network: the lookup crawl takes an injected fetcher, the
-SEC/Nasdaq parsers run on fixture text, and the downloader runs against a
-stubbed `yf.download`.
+102 tests, no network: the lookup crawl takes an injected fetcher (including
+one that raises `KeyboardInterrupt` where a real Ctrl-C would land), the
+SEC/Nasdaq parsers run on fixture text, the downloader runs against a stubbed
+`yf.download`, and the `verify` checks run against bars written straight into a
+temporary database.
 
 ## Legal note
 
