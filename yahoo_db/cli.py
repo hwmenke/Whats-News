@@ -75,7 +75,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_dl.add_argument("--no-single-retry", action="store_true",
                       help="do not re-try empty symbols one by one")
     p_dl.add_argument("--force", action="store_true",
-                      help="ignore the refresh window and the failure backoff")
+                      help="ignore the refresh window and the failure backoff, "
+                           "and re-download full history rather than the tail")
+    p_dl.add_argument("--delist-after-empty", type=int,
+                      dest="delist_after_empty_fetches",
+                      help="empty responses on separate runs before a symbol "
+                           "is written off (default 3)")
+    p_dl.add_argument("--delisted-recheck-days", type=int,
+                      help="how often delisted symbols are looked at again "
+                           "(default 30)")
 
     p_prof = sub.add_parser("profiles", help="download company/fund metadata")
     p_prof.add_argument("--symbols", help="comma list; default = everything with data")
@@ -140,6 +148,8 @@ def main(argv=None) -> int:
         history_start=getattr(args, "history_start", None),
         refresh_after_hours=getattr(args, "refresh_after_hours", None),
         stale_days=getattr(args, "stale_days", None),
+        delist_after_empty_fetches=getattr(args, "delist_after_empty_fetches", None),
+        delisted_recheck_days=getattr(args, "delisted_recheck_days", None),
         sources=_split(getattr(args, "sources", None)),
         lookup_types=_split(getattr(args, "lookup_types", None)),
         lookup_regions=_split(getattr(args, "lookup_regions", None)),
@@ -437,14 +447,32 @@ def _split(value):
 
 
 def _resolve_symbols(args):
+    """-> list of symbols, or None meaning "whatever is due".
+
+    An *empty* selector is not the same as no selector. Returning None for a
+    `--symbols-file` a cron job failed to populate would silently turn a
+    200-symbol job into a run over the entire universe, so that is an error.
+    """
+    selectors = []
     symbols = []
     if getattr(args, "symbols", None):
+        selectors.append("--symbols")
         symbols.extend(_split(args.symbols) or [])
     if getattr(args, "symbols_file", None):
+        selectors.append(f"--symbols-file {args.symbols_file}")
         with open(args.symbols_file, encoding="utf-8") as handle:
-            symbols.extend(line.strip() for line in handle if line.strip())
-    cleaned = [normalize_symbol(s) for s in symbols]
-    return [s for s in cleaned if s] or None
+            symbols.extend(line.strip() for line in handle
+                           if line.strip() and not line.startswith("#"))
+
+    cleaned = [s for s in (normalize_symbol(s) for s in symbols) if s]
+    if not selectors:
+        return None
+    if not cleaned:
+        raise SystemExit(
+            f"error: {' and '.join(selectors)} matched no usable symbols. "
+            "Omit the flag entirely to download everything that is due."
+        )
+    return cleaned
 
 
 def _download_progress(done, total, stats):

@@ -113,18 +113,45 @@ Resuming is the default; there is no flag to turn it on.
 
 ## How delisting is decided
 
-1. Yahoo answering "no data found / may be delisted" for a symbol marks it
-   delisted immediately.
-2. After each download pass, any symbol whose newest bar is more than
+The hard part is that Yahoo answers a dead ticker and a bad afternoon the same
+way: an empty response. yfinance hides the underlying exception by default, so
+a 500, a rate limit and a genuinely dead company all arrive as an empty frame.
+Believing that frame means "delisted" lets one outage permanently bury every
+symbol it touched, which is why the rules are deliberately slow to condemn:
+
+1. Exceptions are un-hidden and classified. A *prices-missing* error is
+   evidence about the symbol; a rate limit or a timeout is evidence about
+   Yahoo, and never counts against the ticker.
+2. A symbol with no stored bars must come back empty on
+   `--delist-after-empty` (default 3) **separate runs** before it is written
+   off. The counter resets on any non-empty outcome.
+3. A whole batch coming back empty is treated as throttling, not as fifty
+   simultaneous delistings — the run backs off instead of firing fifty more
+   requests at a wall.
+4. After a *full* download pass, any symbol whose newest bar is more than
    `--stale-days` (default 30) behind the newest bar *in the whole database*
    is marked delisted. Comparing against the market's own last trading day is
-   what keeps weekends and holidays from sweeping the entire universe.
-3. A `status` column in a seed file, or a filename containing `delisted`,
+   what keeps weekends and holidays from sweeping the universe. A run over an
+   explicit `--symbols` / `--limit` / `--types` subset never sweeps.
+5. A `status` column in a seed file, or a filename containing `delisted`,
    marks symbols up front.
 
-Delisted is sticky: a later source listing the symbol again will not silently
-resurrect it. Delisted symbols are also fetched only once — their history is
-final — which is what keeps a 100k-symbol universe practical to refresh daily.
+Delisting is **reversible by evidence**: bars arriving for a symbol we had
+written off revive it, and delisted symbols are re-checked every
+`--delisted-recheck-days` (default 30) rather than never — so a symbol buried
+during an outage comes back on its own. A source merely re-listing a symbol is
+not evidence and will not resurrect it.
+
+Not re-fetching dead symbols daily is what keeps a 100k-symbol universe
+practical to refresh.
+
+### Splits
+
+Yahoo restates a symbol's **entire** price history when it splits, so an
+incremental fetch of the last few days would leave a permanent cliff in the
+stored series. When a split appears that we have not seen before, the symbol is
+flagged and its whole history is re-downloaded on the next pass. `--force`
+does the same thing on demand.
 
 ## Schema
 
@@ -203,7 +230,10 @@ Useful flags on `download`:
 --start 2000-01-01       earliest date for first-time downloads (default: max)
 --types EQUITY,ETF       only these quote types
 --skip-delisted          leave dead symbols alone entirely
---force                  ignore the refresh window and the failure backoff
+--force                  ignore the refresh window and the failure backoff,
+                         and re-download full history rather than the tail
+--delist-after-empty 3   empty runs before a symbol is written off
+--delisted-recheck-days 30   how often dead symbols are looked at again
 ```
 
 Every flag also has a `YDB_*` environment variable — see `config.py`.

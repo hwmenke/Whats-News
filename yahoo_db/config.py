@@ -93,6 +93,17 @@ class Config:
     max_failure_backoff_days: int = field(
         default_factory=lambda: _env_int("YDB_MAX_BACKOFF_DAYS", 30)
     )
+    # How many separate runs must come back empty before a symbol with no
+    # stored bars is written off. One empty response is as easily a Yahoo
+    # outage as a dead company, and delisting is costly to be wrong about.
+    delist_after_empty_fetches: int = field(
+        default_factory=lambda: _env_int("YDB_DELIST_AFTER_EMPTY", 3)
+    )
+    # Delisted symbols still get looked at this often, so a symbol written off
+    # during an outage can come back when Yahoo starts answering again.
+    delisted_recheck_days: int = field(
+        default_factory=lambda: _env_int("YDB_DELISTED_RECHECK_DAYS", 30)
+    )
 
     # ── Universe discovery ─────────────────────────────────────────────────────
     sources: list = field(

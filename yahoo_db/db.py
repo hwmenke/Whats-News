@@ -178,6 +178,23 @@ class Store:
             value TEXT
         );
         """)
+
+        # Columns added after v1 shipped. CREATE TABLE IF NOT EXISTS will not
+        # add them to a database that already exists, so do it by hand and
+        # ignore the "duplicate column" error on a database that has them.
+        for column, definition in (
+            ("needs_full_refetch", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            try:
+                cur.execute(f"ALTER TABLE tickers ADD COLUMN {column} {definition}")
+            except sqlite3.OperationalError:
+                pass    # already present
+
+        # `status` belongs in this index: symbols_to_fetch filters on it, and
+        # without it every matching log row costs an extra table lookup.
+        cur.execute("""CREATE INDEX IF NOT EXISTS idx_fetch_log_lookup
+                       ON fetch_log(symbol, interval, status, fetched_at)""")
+
         self.conn.commit()
         self.set_meta("schema_version", str(SCHEMA_VERSION))
 
@@ -243,11 +260,16 @@ class Store:
                     # A source listing the symbol today only ever promotes an
                     # unknown symbol to active — it never revives a symbol we
                     # have already proven delisted from its price history.
+                    # A source saying "unknown" is not an opinion, it is the
+                    # absence of one — several sources hard-code it — so it
+                    # must never demote a symbol we have proven active.
                     new_status = rec.get("status")
-                    if new_status == STATUS_DELISTED or row["status"] == STATUS_DELISTED:
-                        status = row["status"] if row["status"] == STATUS_DELISTED else new_status
+                    if new_status in (None, "", STATUS_UNKNOWN):
+                        status = row["status"]
+                    elif row["status"] == STATUS_DELISTED:
+                        status = STATUS_DELISTED
                     else:
-                        status = new_status or row["status"]
+                        status = new_status
                     c.execute(
                         """UPDATE tickers SET
                                name          = COALESCE(NULLIF(?, ''), name),
@@ -286,6 +308,7 @@ class Store:
                          include_delisted: bool = True,
                          quote_types: list = None,
                          max_failure_backoff_days: int = 30,
+                         delisted_recheck_days: int = 30,
                          force: bool = False) -> list:
         """Symbols due for a download, longest-waiting first.
 
@@ -339,9 +362,15 @@ class Store:
                 elif last_try <= _backoff_cutoff(now, r["attempts"],
                                                  max_failure_backoff_days):
                     due.append((last_try, r["symbol"]))
-            elif last_ok <= cutoff and r["status"] != STATUS_DELISTED:
-                # Delisted symbols never gain new bars, so one good fetch is
-                # all they ever need.
+            elif r["status"] == STATUS_DELISTED:
+                # A dead symbol's history is final, so it does not need the
+                # daily pass — but it is not checked *never* either: we may
+                # have written it off during a Yahoo outage, so look again on a
+                # slow cadence and let a real bar revive it.
+                if last_ok <= (now - timedelta(days=max(1, delisted_recheck_days))
+                               ).isoformat(timespec="seconds"):
+                    due.append((last_ok, r["symbol"]))
+            elif last_ok <= cutoff:
                 due.append((last_ok, r["symbol"]))
 
         due.sort()
@@ -359,6 +388,46 @@ class Store:
                    WHERE symbol = ?""",
                 (status, delisted_at, notes, normalize_symbol(symbol)),
             )
+
+    def symbols_needing_full_refetch(self, symbols) -> set:
+        """Symbols flagged for a full re-download — currently, those that have
+        gained a split since we last stored their history."""
+        out = set()
+        clean = [normalize_symbol(s) for s in symbols if s]
+        for chunk in _chunks(clean, 500):
+            placeholders = ",".join("?" for _ in chunk)
+            rows = self.conn.execute(
+                f"""SELECT symbol FROM tickers
+                    WHERE needs_full_refetch=1 AND symbol IN ({placeholders})""",
+                list(chunk),
+            ).fetchall()
+            out.update(r["symbol"] for r in rows)
+        return out
+
+    def clear_full_refetch(self, symbol: str):
+        with self.tx() as c:
+            c.execute("UPDATE tickers SET needs_full_refetch=0 WHERE symbol=?",
+                      (normalize_symbol(symbol),))
+
+    def consecutive_empty_fetches(self, symbol: str, interval: str) -> int:
+        """How many times in a row the most recent fetches came back empty.
+
+        Anything that is not an empty result — a success, or an error we can
+        attribute to Yahoo rather than to the symbol — resets the count, so a
+        bad afternoon cannot accumulate into a delisting.
+        """
+        rows = self.conn.execute(
+            """SELECT status FROM fetch_log
+               WHERE symbol=? AND interval=?
+               ORDER BY fetched_at DESC, id DESC LIMIT 20""",
+            (normalize_symbol(symbol), interval),
+        ).fetchall()
+        streak = 0
+        for r in rows:
+            if r["status"] != "empty":
+                break
+            streak += 1
+        return streak
 
     def mark_has_data(self, symbol: str, last_date: str):
         with self.tx() as c:
@@ -401,6 +470,7 @@ class Store:
                     sink.append((sym, _date_str(idx), float(value)))
                 except (TypeError, ValueError):
                     continue
+        new_splits = 0
         with self.tx() as c:
             if div_rows:
                 c.executemany(
@@ -409,12 +479,24 @@ class Store:
                     div_rows,
                 )
             if split_rows:
+                known = {r["date"] for r in c.execute(
+                    "SELECT date FROM splits WHERE symbol=?", (sym,)).fetchall()}
+                new_splits = sum(1 for r in split_rows if r[1] not in known)
                 c.executemany(
                     "INSERT INTO splits (symbol, date, ratio) VALUES (?,?,?) "
                     "ON CONFLICT(symbol, date) DO UPDATE SET ratio=excluded.ratio",
                     split_rows,
                 )
-        return {"dividends": len(div_rows), "splits": len(split_rows)}
+                if new_splits:
+                    # Yahoo restates a symbol's ENTIRE price history when it
+                    # splits, so the bars we already hold are now on the wrong
+                    # basis. An incremental window can never repair that —
+                    # flag the symbol for a full re-download.
+                    c.execute(
+                        "UPDATE tickers SET needs_full_refetch=1 WHERE symbol=?",
+                        (sym,))
+        return {"dividends": len(div_rows), "splits": len(split_rows),
+                "new_splits": new_splits}
 
     def upsert_profile(self, symbol: str, info: dict):
         sym = normalize_symbol(symbol)

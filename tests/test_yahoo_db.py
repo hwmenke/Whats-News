@@ -143,7 +143,7 @@ class StoreTests(unittest.TestCase):
         frame["Stock Splits"] = [4.0, 0.0]
         result = self.store.upsert_actions(
             "AAPL", dividends=frame["Dividends"], splits=frame["Stock Splits"])
-        self.assertEqual(result, {"dividends": 1, "splits": 1})
+        self.assertEqual(result, {"dividends": 1, "splits": 1, "new_splits": 1})
         self.assertEqual(
             self.store.conn.execute("SELECT amount FROM dividends").fetchone()[0], 0.24)
 
@@ -168,12 +168,30 @@ class StoreTests(unittest.TestCase):
             "VALUES ('DEAD','1d','ok',10,'2000-01-01T00:00:00+00:00')")
         self.store.conn.commit()
 
+        # Never-fetched first. DEAD is included too, but only because its last
+        # look was 25 years ago — delisted symbols get a slow recheck so one
+        # bad day at Yahoo cannot bury a symbol permanently.
         due = self.store.symbols_to_fetch("1d", refresh_after_hours=1)
-        self.assertEqual(due, ["NEW", "OLD"])   # never-fetched first, DEAD skipped
+        self.assertEqual(due, ["NEW", "DEAD", "OLD"])
 
         due = self.store.symbols_to_fetch("1d", refresh_after_hours=1,
                                           include_delisted=False)
         self.assertEqual(due, ["NEW", "OLD"])
+
+    def test_delisted_symbols_are_not_refetched_daily(self):
+        self.store.upsert_tickers([{"symbol": "DEAD", "source": "t",
+                                    "status": STATUS_DELISTED}])
+        self.store.log_fetch("DEAD", "1d", "ok", rows=10)
+        # Fresh success: nothing to do, even though the refresh window is open.
+        self.assertEqual(
+            self.store.symbols_to_fetch("1d", refresh_after_hours=0), [])
+        # …but it is not excluded forever.
+        self.store.conn.execute(
+            "UPDATE fetch_log SET fetched_at='2000-01-01T00:00:00+00:00'")
+        self.store.conn.commit()
+        self.assertEqual(
+            self.store.symbols_to_fetch("1d", refresh_after_hours=0,
+                                        delisted_recheck_days=30), ["DEAD"])
 
     def test_failed_symbols_back_off_exponentially(self):
         self.store.upsert_tickers([{"symbol": "GHOST", "source": "t"}])
@@ -507,8 +525,9 @@ class DownloaderTests(unittest.TestCase):
 
         self.assertEqual(len(calls), 1)
         self.assertNotIn("period", calls[0])
-        # last stored bar 2024-01-10 minus the 7-day overlap
-        self.assertEqual(calls[0]["start"], "2024-01-03")
+        # last stored bar 2024-01-10, minus the 7-day overlap, snapped back to
+        # the Monday so the long tail of symbols still shares a batch
+        self.assertEqual(calls[0]["start"], "2024-01-01")
 
     def test_first_run_asks_for_full_history(self):
         self.store.upsert_tickers([{"symbol": "AAPL", "source": "t"}])
@@ -517,29 +536,120 @@ class DownloaderTests(unittest.TestCase):
         self.downloader.run(interval="1d", single_retry=False)
         self.assertEqual(calls[0]["period"], "max")
 
-    def test_empty_symbol_is_retried_alone_and_marked_delisted(self):
-        self.store.upsert_tickers([{"symbol": "DEADCO", "source": "t"}])
-        self._stub_download({})           # batch returns nothing
+    def _run_with_ticker(self, ticker_cls, **run_kwargs):
+        original = ydl.yf.Ticker
+        ydl.yf.Ticker = ticker_cls
+        try:
+            return self.downloader.run(interval="1d", **run_kwargs)
+        finally:
+            ydl.yf.Ticker = original
 
-        class DeadTicker:
+    def test_one_empty_response_does_not_delist(self):
+        # The single most costly bug this app can have: a Yahoo outage looks
+        # exactly like a delisting, and delisting is close to irreversible.
+        self.store.upsert_tickers([{"symbol": "GOODCO", "source": "t"}])
+        self._stub_download({})
+
+        class Empty:
             def __init__(self, symbol):
                 pass
 
             def history(self, **kwargs):
                 return pd.DataFrame()
 
-        original_ticker = ydl.yf.Ticker
-        ydl.yf.Ticker = DeadTicker
-        try:
-            result = self.downloader.run(interval="1d")
-        finally:
-            ydl.yf.Ticker = original_ticker
-
+        result = self._run_with_ticker(Empty)
         self.assertEqual(result["empty"], 1)
+        self.assertEqual(result.get("empty_pending_delist"), 1)
+        row = self.store.conn.execute(
+            "SELECT status FROM tickers WHERE symbol='GOODCO'").fetchone()
+        self.assertNotEqual(row["status"], STATUS_DELISTED)
+
+    def test_repeated_empties_eventually_delist(self):
+        self.store.upsert_tickers([{"symbol": "DEADCO", "source": "t"}])
+        self._stub_download({})
+
+        class Empty:
+            def __init__(self, symbol):
+                pass
+
+            def history(self, **kwargs):
+                return pd.DataFrame()
+
+        for _ in range(self.cfg.delist_after_empty_fetches):
+            self._run_with_ticker(Empty, force=True)
+
         row = self.store.conn.execute(
             "SELECT status, notes FROM tickers WHERE symbol='DEADCO'").fetchone()
         self.assertEqual(row["status"], STATUS_DELISTED)
-        self.assertIn("no history", row["notes"])
+        self.assertIn("consecutive empty", row["notes"])
+
+    def test_rate_limit_is_never_evidence_of_delisting(self):
+        from yfinance.exceptions import YFRateLimitError
+        self.store.upsert_tickers([{"symbol": "GOODCO", "source": "t"}])
+        self._stub_download({})
+
+        class Throttled:
+            def __init__(self, symbol):
+                pass
+
+            def history(self, **kwargs):
+                raise YFRateLimitError()
+
+        for _ in range(5):
+            result = self._run_with_ticker(Throttled, force=True)
+
+        self.assertTrue(result.get("error_rate_limit"))
+        row = self.store.conn.execute(
+            "SELECT status FROM tickers WHERE symbol='GOODCO'").fetchone()
+        self.assertNotEqual(row["status"], STATUS_DELISTED)
+
+    def test_a_whole_empty_batch_is_treated_as_throttling(self):
+        # 50 companies do not die simultaneously; that shape is a rate limit.
+        # Single-retrying each would fire 50 more requests into the same wall.
+        self.store.upsert_tickers([{"symbol": f"S{i}", "source": "t"}
+                                   for i in range(5)])
+        self._stub_download({})
+        retries = []
+
+        class Counting:
+            def __init__(self, symbol):
+                retries.append(symbol)
+
+            def history(self, **kwargs):
+                return pd.DataFrame()
+
+        result = self._run_with_ticker(Counting)
+        self.assertEqual(retries, [])
+        self.assertEqual(result["error"], 5)
+        self.assertEqual(result.get("batches_throttled"), 1)
+        delisted = self.store.conn.execute(
+            "SELECT COUNT(*) FROM tickers WHERE status=?", (STATUS_DELISTED,)
+        ).fetchone()[0]
+        self.assertEqual(delisted, 0)
+
+    def test_bars_revive_a_symbol_we_wrongly_wrote_off(self):
+        self.store.upsert_tickers([{"symbol": "BACK", "source": "t",
+                                    "status": STATUS_DELISTED}])
+        self._stub_download({"BACK": make_bars(["2024-01-02", "2024-01-03"])})
+        result = self.downloader.run(interval="1d", single_retry=False,
+                                     force=True)
+        self.assertEqual(result.get("revived"), 1)
+        row = self.store.conn.execute(
+            "SELECT status FROM tickers WHERE symbol='BACK'").fetchone()
+        self.assertEqual(row["status"], STATUS_ACTIVE)
+
+    def test_subset_run_does_not_sweep_the_universe(self):
+        # `download --symbols AAPL` must not delist unrelated tickers.
+        self.store.upsert_tickers([{"symbol": "AAPL", "source": "t"},
+                                   {"symbol": "THIN", "source": "t"}])
+        self.store.upsert_prices("THIN", "1d", make_bars(["2020-01-02"]))
+        self.store.mark_has_data("THIN", "2020-01-02")
+        self._stub_download({"AAPL": make_bars(["2024-06-03"])})
+
+        self.downloader.run(symbols=["AAPL"], interval="1d", single_retry=False)
+        row = self.store.conn.execute(
+            "SELECT status FROM tickers WHERE symbol='THIN'").fetchone()
+        self.assertNotEqual(row["status"], STATUS_DELISTED)
 
     def test_single_retry_rescues_a_batch_miss(self):
         self.store.upsert_tickers([{"symbol": "AAPL", "source": "t"}])
@@ -590,7 +700,36 @@ class DownloaderTests(unittest.TestCase):
         self.store.upsert_prices("OLD", "1d", make_bars(["2024-01-10"]))
         groups = self.downloader._group_by_start(["NEW", "OLD"], "1d")
         self.assertEqual(groups[None], ["NEW"])
-        self.assertEqual(groups["2024-01-03"], ["OLD"])
+        self.assertEqual(groups["2024-01-01"], ["OLD"])
+
+    def test_group_by_start_buckets_the_long_tail_together(self):
+        # Three symbols that each last traded on a different weekday used to
+        # get three separate single-symbol downloads.
+        for symbol, day in (("A", "2024-01-09"), ("B", "2024-01-10"),
+                            ("C", "2024-01-11")):
+            self.store.upsert_prices(symbol, "1d", make_bars([day]))
+        groups = self.downloader._group_by_start(["A", "B", "C"], "1d")
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(sorted(next(iter(groups.values()))), ["A", "B", "C"])
+
+    def test_force_and_new_splits_both_demand_full_history(self):
+        self.store.upsert_tickers([{"symbol": "AAPL", "source": "t"},
+                                   {"symbol": "NVDA", "source": "t"}])
+        self.store.upsert_prices("AAPL", "1d", make_bars(["2024-01-10"]))
+        self.store.upsert_prices("NVDA", "1d", make_bars(["2024-01-10"]))
+        self.assertEqual(self.downloader._group_by_start(["AAPL"], "1d",
+                                                         force=True)[None],
+                         ["AAPL"])
+        # A split Yahoo has just told us about restates the whole series.
+        splits = pd.Series([10.0], index=pd.to_datetime(["2024-06-10"]))
+        self.assertEqual(self.store.upsert_actions("NVDA", splits=splits)["new_splits"], 1)
+        self.assertEqual(self.downloader._group_by_start(["NVDA"], "1d")[None],
+                         ["NVDA"])
+        # Re-seeing the same split is not new information and must not queue
+        # another full re-download of the entire history.
+        self.store.clear_full_refetch("NVDA")
+        self.assertEqual(self.store.upsert_actions("NVDA", splits=splits)["new_splits"], 0)
+        self.assertNotIn(None, self.downloader._group_by_start(["NVDA"], "1d"))
 
     def test_limit_caps_the_run(self):
         self.store.upsert_tickers([{"symbol": f"S{i}", "source": "t"}
@@ -634,6 +773,34 @@ class CliTests(unittest.TestCase):
         self.assertEqual(cli.main(["--db", str(db_path), "init"]), 0)
         self.assertEqual(cli.main(["--db", str(db_path), "status"]), 0)
         self.assertEqual(cli.main(["--db", str(db_path), "symbols"]), 0)
+
+    def test_empty_symbol_selector_is_an_error_not_the_whole_universe(self):
+        from yahoo_db.cli import _resolve_symbols
+
+        class NoFlags:
+            symbols = None
+            symbols_file = None
+
+        # No selector at all still means "everything due".
+        self.assertIsNone(_resolve_symbols(NoFlags()))
+
+        path = _tmp_file(self, "batch.txt", "\n\n   \n# only a comment\n")
+
+        class EmptyFile:
+            symbols = None
+            symbols_file = str(path)
+
+        # A file a cron job failed to populate must not silently expand into a
+        # run over every ticker in the database.
+        with self.assertRaises(SystemExit) as caught:
+            _resolve_symbols(EmptyFile())
+        self.assertIn("no usable symbols", str(caught.exception))
+
+        class Populated:
+            symbols = None
+            symbols_file = str(_tmp_file(self, "ok.txt", "aapl\nbrk.b\n"))
+
+        self.assertEqual(_resolve_symbols(Populated()), ["AAPL", "BRK-B"])
 
     def test_config_overrides_reach_the_config(self):
         from yahoo_db.config import load_config
