@@ -13,6 +13,10 @@ Endpoint (undocumented, used by finance.yahoo.com itself):
 
 The request needs Yahoo's cookie + crumb handshake, which yfinance already
 implements — we borrow its session rather than reimplementing it.
+
+A deep crawl is tens of thousands of requests, so it is resumable: the caller
+supplies hooks that say which (region, type, prefix) triples are already done
+and record each one as it finishes. See `fetch`.
 """
 
 import itertools
@@ -44,11 +48,24 @@ def generate_queries(depth: int = 2, alphabet: str = ALPHABET) -> list:
 
 
 def fetch(cfg, quote_types=None, regions=None, depth=None, sleep=None,
-          fetcher=None, progress=None) -> list:
+          fetcher=None, progress=None, completed=None, checkpoint=None) -> list:
     """Crawl the lookup index and return ticker records.
 
     `fetcher(params) -> dict` is injectable so the crawl can be tested without
     network access; the default goes through yfinance's authenticated session.
+
+    Two optional hooks make an overnight crawl resumable, and they only work as
+    a pair:
+
+      * `completed(region, quote_type) -> set of prefixes` names the triples an
+        earlier run already finished; those are skipped.
+      * `checkpoint(records, region, quote_type, prefix)` runs once a triple has
+        been paginated to the end. It must store the records *before* recording
+        the triple as done, so an interrupt can only ever cost a re-crawl and
+        never a symbol.
+
+    Without the hooks the crawl behaves as it always has: every record is held
+    in memory and returned at the end.
     """
     quote_types = quote_types or cfg.lookup_types
     regions = regions or cfg.lookup_regions
@@ -57,34 +74,67 @@ def fetch(cfg, quote_types=None, regions=None, depth=None, sleep=None,
     fetcher = fetcher or _default_fetcher(cfg)
 
     queries = generate_queries(depth)
-    total_requests = len(queries) * len(quote_types) * len(regions)
+    total_triples = len(queries) * len(quote_types) * len(regions)
     logger.info(
         "yahoo-lookup: %d prefixes x %d types x %d regions = up to %d requests",
-        len(queries), len(quote_types), len(regions), total_requests,
+        len(queries), len(quote_types), len(regions), total_triples,
     )
 
-    records = {}
-    done = 0
+    records = {}        # only fills up when nothing is checkpointing
+    seen = set()        # symbols already emitted this run, across every triple
+    done = skipped = crawled = 0
     for region in regions:
         for quote_type in quote_types:
-            for query in queries:
+            already = completed(region, quote_type) if completed else frozenset()
+            pending = [q for q in queries if q not in already]
+            if len(pending) < len(queries):
+                logger.info("yahoo-lookup: %s/%s resuming — skipping %d of %d "
+                            "prefixes already done", region, quote_type,
+                            len(queries) - len(pending), len(queries))
+            skipped += len(queries) - len(pending)
+            done += len(queries) - len(pending)
+
+            for query in pending:
                 done += 1
+                crawled += 1
                 try:
                     found = _crawl_one(fetcher, query, quote_type, region, sleep)
+                    fresh = _unseen(found, seen)
+                    if checkpoint:
+                        checkpoint(list(fresh.values()), region, quote_type, query)
+                    else:
+                        records.update(fresh)
+                    # Only now is the triple accounted for — a failure above
+                    # leaves it unrecorded, so the next run crawls it again.
+                    seen.update(fresh)
                 except KeyboardInterrupt:
-                    logger.warning("yahoo-lookup: interrupted, keeping %d symbols",
-                                   len(records))
+                    logger.warning(
+                        "yahoo-lookup: interrupted after %d prefixes, %d symbols "
+                        "kept — re-run to resume", done - 1, len(seen))
                     return list(records.values())
                 except Exception as exc:
                     logger.warning("yahoo-lookup: %s/%s failed: %s",
                                    query, quote_type, exc)
                     continue
-                for rec in found:
-                    records.setdefault(rec["symbol"], rec)
-                if progress and done % 50 == 0:
-                    progress(done, total_requests, len(records))
-    logger.info("yahoo-lookup: %d symbols discovered", len(records))
+                # Counted on requests actually made, not on `done` — a resume
+                # jumps `done` forward in blocks and would step over the tick.
+                if progress and crawled % 50 == 0:
+                    progress(done, total_triples, len(seen), skipped)
+    if progress:
+        progress(done, total_triples, len(seen), skipped)
+    logger.info("yahoo-lookup: %d symbols discovered (%d prefixes skipped as "
+                "already done)", len(seen), skipped)
     return list(records.values())
+
+
+def _unseen(found, seen) -> dict:
+    """{symbol: record} for the records of one triple that this run has not
+    emitted yet — the lookup index repeats a symbol under every prefix of it."""
+    fresh = {}
+    for rec in found:
+        if rec["symbol"] not in seen:
+            fresh.setdefault(rec["symbol"], rec)
+    return fresh
 
 
 def _crawl_one(fetcher, query: str, quote_type: str, region: str, sleep: float) -> list:

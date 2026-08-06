@@ -2,13 +2,14 @@
 db.py - SQLite store for the Yahoo data downloader.
 
 Tables
-  tickers    : the symbol universe (active + delisted), one row per symbol
-  prices     : OHLCV bars, one row per (symbol, interval, date)
-  dividends  : cash dividends, one row per (symbol, date)
-  splits     : share splits, one row per (symbol, date)
-  profiles   : company/fund metadata snapshot, one row per symbol
-  fetch_log  : the outcome of every download attempt (drives resume + retries)
-  meta       : schema version and bookkeeping key/values
+  tickers         : the symbol universe (active + delisted), one row per symbol
+  prices          : OHLCV bars, one row per (symbol, interval, date)
+  dividends       : cash dividends, one row per (symbol, date)
+  splits          : share splits, one row per (symbol, date)
+  profiles        : company/fund metadata snapshot, one row per symbol
+  fetch_log       : the outcome of every download attempt (drives resume + retries)
+  lookup_progress : finished lookup-crawl triples (drives the universe resume)
+  meta            : schema version and bookkeeping key/values
 
 The database is opened in WAL mode with a large page cache: this store is
 written by one long-running downloader while being read by anything else.
@@ -23,7 +24,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+# 2 added lookup_progress. Every table is created with IF NOT EXISTS and the
+# CLI runs init_schema on every command, so an older database picks the new
+# table up on its next run — no migration step.
+SCHEMA_VERSION = 2
 
 # Symbol lifecycle states.
 STATUS_ACTIVE = "active"
@@ -156,6 +160,18 @@ class Store:
         );
         CREATE INDEX IF NOT EXISTS idx_fetch_log_symbol
             ON fetch_log(symbol, interval, fetched_at);
+
+        -- One row per (region, quote_type, prefix) the lookup crawl has fully
+        -- paginated. Written only after a triple finishes, so an interrupted
+        -- crawl retries whatever it was in the middle of.
+        CREATE TABLE IF NOT EXISTS lookup_progress (
+            region       TEXT NOT NULL,
+            quote_type   TEXT NOT NULL,
+            prefix       TEXT NOT NULL,
+            symbols      INTEGER NOT NULL DEFAULT 0,  -- rows the triple returned
+            completed_at TEXT NOT NULL,
+            PRIMARY KEY (region, quote_type, prefix)
+        ) WITHOUT ROWID;
 
         CREATE TABLE IF NOT EXISTS meta (
             key   TEXT PRIMARY KEY,
@@ -508,6 +524,70 @@ class Store:
             )
         return len(rows)
 
+    # ── lookup crawl progress ──────────────────────────────────────────────────
+
+    def lookup_prefixes_done(self, region: str, quote_type: str,
+                             max_age_days: int = 14) -> set:
+        """Prefixes already crawled for this (region, quote_type) and still
+        fresh enough to trust. Loaded one pair at a time on purpose: a deep
+        worldwide crawl has millions of triples but only ~50k per pair."""
+        region, quote_type = _lookup_key(region, quote_type)
+        rows = self.conn.execute(
+            "SELECT prefix FROM lookup_progress "
+            "WHERE region=? AND quote_type=? AND completed_at >= ?",
+            (region, quote_type, _age_cutoff(max_age_days)),
+        ).fetchall()
+        return {r["prefix"] for r in rows}
+
+    def count_lookup_prefixes_done(self, regions, quote_types,
+                                   max_age_days: int = 14) -> int:
+        """How many of the requested pairs' triples are still fresh — one COUNT
+        for the resume line in the log, without materialising the prefixes."""
+        pairs = [_lookup_key(r, q) for r in regions for q in quote_types]
+        if not pairs:
+            return 0
+        clause = " OR ".join("(region=? AND quote_type=?)" for _ in pairs)
+        params = [p for pair in pairs for p in pair] + [_age_cutoff(max_age_days)]
+        row = self.conn.execute(
+            f"SELECT COUNT(*) n FROM lookup_progress "
+            f"WHERE ({clause}) AND completed_at >= ?", params
+        ).fetchone()
+        return row["n"]
+
+    def mark_lookup_prefix(self, region: str, quote_type: str, prefix: str,
+                           symbols: int = 0):
+        """Record a triple as finished. Called only once its pagination has
+        completed and its symbols are already merged, so the checkpoint can
+        never claim more progress than the database actually holds."""
+        region, quote_type = _lookup_key(region, quote_type)
+        with self.tx() as c:
+            c.execute(
+                """INSERT INTO lookup_progress
+                     (region, quote_type, prefix, symbols, completed_at)
+                   VALUES (?,?,?,?,?)
+                   ON CONFLICT(region, quote_type, prefix) DO UPDATE SET
+                     symbols=excluded.symbols, completed_at=excluded.completed_at""",
+                (region, quote_type, str(prefix), int(symbols), utcnow()),
+            )
+
+    def clear_lookup_progress(self, regions=None, quote_types=None) -> int:
+        """Forget checkpoints so the next crawl starts from prefix "A" again.
+        Narrowed to the regions/types being crawled when they are given, so a
+        `--lookup-restart` of one region does not discard another's night."""
+        where, params = ["1=1"], []
+        if regions:
+            placeholders = ",".join("?" for _ in regions)
+            where.append(f"region IN ({placeholders})")
+            params.extend(_lookup_key(r, "")[0] for r in regions)
+        if quote_types:
+            placeholders = ",".join("?" for _ in quote_types)
+            where.append(f"quote_type IN ({placeholders})")
+            params.extend(_lookup_key("", q)[1] for q in quote_types)
+        with self.tx() as c:
+            cur = c.execute(
+                f"DELETE FROM lookup_progress WHERE {' AND '.join(where)}", params)
+            return cur.rowcount
+
     # ── reporting ──────────────────────────────────────────────────────────────
 
     def stats(self, interval: str = "1d") -> dict:
@@ -612,6 +692,20 @@ def normalize_symbol(symbol, us_style: bool = False) -> str:
         ):
             s = f"{head}-{tail}"
     return s
+
+
+def _lookup_key(region: str, quote_type: str) -> tuple:
+    """Canonical spelling of a crawl coordinate, so `--lookup-types EQUITY` and
+    `--lookup-types equity` resume each other instead of crawling twice."""
+    return (str(region or "").strip().upper(),
+            str(quote_type or "").strip().lower())
+
+
+def _age_cutoff(days: int) -> str:
+    """ISO timestamp `days` ago. Comparing ISO strings is a valid ordering here
+    because every timestamp we write is UTC with the same offset."""
+    return (datetime.now(timezone.utc) - timedelta(days=max(0, days))).isoformat(
+        timespec="seconds")
 
 
 def _backoff_cutoff(now, attempts: int, cap_days: int) -> str:
