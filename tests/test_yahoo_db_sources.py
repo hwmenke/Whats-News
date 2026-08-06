@@ -406,14 +406,14 @@ class SourceWiringTests(unittest.TestCase):
         for name in SOURCE_NAMES:
             if name == "yahoo-lookup":
                 continue    # needs a live fetcher; covered in test_yahoo_db.py
-            result = universe._run_source(name, cfg, Http(), None)
+            result = universe._run_source(name, cfg, Http(), None, None, None)
             self.assertIsInstance(result, list, name)
         self.assertTrue(any("wikipedia.org" in url for url in calls))
         self.assertTrue(any("otcmarkets.com" in url for url in calls))
 
     def test_unknown_source_still_raises(self):
         with self.assertRaises(ValueError) as caught:
-            universe._run_source("nope", Config(), None, None)
+            universe._run_source("nope", Config(), None, None, None, None)
         self.assertIn("wikipedia", str(caught.exception))
 
     def test_refresh_merges_a_new_source_into_the_store(self):
