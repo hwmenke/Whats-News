@@ -90,7 +90,9 @@ class Config:
     # ── Universe discovery ─────────────────────────────────────────────────────
     sources: list = field(
         default_factory=lambda: _env_list(
-            "YDB_SOURCES", ["sec", "nasdaq", "seeds", "static"]
+            # `otc` and `yahoo-lookup` are opt-in: they are paged crawls that
+            # take minutes to hours, where these five are a handful of files.
+            "YDB_SOURCES", ["sec", "nasdaq", "wikipedia", "seeds", "static"]
         )
     )
     lookup_types: list = field(

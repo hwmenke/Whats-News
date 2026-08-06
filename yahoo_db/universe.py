@@ -12,7 +12,8 @@ import logging
 
 from .db import Store
 from .http_client import HttpClient
-from .sources import nasdaq, sec, seeds, static_symbols, yahoo_lookup
+from .sources import (nasdaq, otc, sec, seeds, static_symbols,
+                      wikipedia_indices, yahoo_lookup)
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,10 @@ def _run_source(name: str, cfg, http, progress):
         return sec.fetch(http)
     if name == "nasdaq":
         return nasdaq.fetch(http)
+    if name == "otc":
+        return otc.fetch(http)
+    if name in ("wikipedia", "wiki", "indices"):
+        return wikipedia_indices.fetch(http)
     if name == "seeds":
         return seeds.fetch(cfg.seeds_dir)
     if name == "static":
@@ -65,5 +70,6 @@ def _run_source(name: str, cfg, http, progress):
     if name in ("yahoo-lookup", "yahoo_lookup", "lookup"):
         return yahoo_lookup.fetch(cfg, progress=progress)
     raise ValueError(
-        f"unknown source '{name}' (known: sec, nasdaq, seeds, static, yahoo-lookup)"
+        f"unknown source '{name}' (known: sec, nasdaq, otc, wikipedia, seeds, "
+        "static, yahoo-lookup)"
     )

@@ -13,8 +13,19 @@ else and it still runs.
 pip install -r requirements-yahoo-db.txt     # from the repo root
 ```
 
+Or install the package itself, which also puts a `yahoo-db` command on your
+PATH:
+
+```bash
+pip install .            # from the repo root
+pip install '.[parquet]' # …with Parquet export
+```
+
 Only `yfinance`, `pandas` and `requests` are required. `pyarrow` is optional
 and only needed for Parquet export.
+
+`yahoo-db <command>` and `python -m yahoo_db <command>` are the same program;
+every example below works with either.
 
 ## Quick start
 
@@ -22,20 +33,23 @@ and only needed for Parquet export.
 # 1. create the database
 python -m yahoo_db init
 
-# 2. build the ticker universe (~13k US symbols in about a minute)
-python -m yahoo_db universe --sources sec,nasdaq,static,seeds
+# 2. build the ticker universe (~45k symbols in about a minute)
+python -m yahoo_db universe --sources sec,nasdaq,wikipedia,static,seeds
 
-# 3. go deep — crawl Yahoo's own lookup index for delisted and foreign symbols
+# 3. add the OTC venues (~12k more, the heaviest delisting churn there is)
+python -m yahoo_db universe --sources otc
+
+# 4. go deep — crawl Yahoo's own lookup index for delisted and foreign symbols
 python -m yahoo_db universe --sources yahoo-lookup --lookup-depth 2
 
-# 4. download full price history for everything that is due
+# 5. download full price history for everything that is due
 python -m yahoo_db download
 
-# 5. see where you are
+# 6. see where you are
 python -m yahoo_db status
 ```
 
-Step 4 is resumable. Interrupt it whenever you like — every symbol's outcome
+Step 5 is resumable. Interrupt it whenever you like — every symbol's outcome
 is written to `fetch_log` as it completes, and the next run picks up from
 there. Run it on a schedule and it becomes an incremental daily updater.
 
@@ -44,10 +58,16 @@ there. Run it on a schedule and it becomes an incremental daily updater.
 | Source         | Roughly | What it gives you |
 |----------------|---------|-------------------|
 | `nasdaq`       | ~12k + ~30k funds | Every symbol traded on a US venue today, from the Nasdaq Trader symbol directory: stocks, ETFs, preferreds, warrants, units, mutual funds. |
-| `sec`          | ~10k    | Every SEC registrant with a ticker — including companies that have stopped trading but are still filing. |
-| `yahoo-lookup` | 10k–100k+ | A brute-force crawl of Yahoo's own lookup index (`A`, `AA`, … `ZZ` × equity/etf/fund/index/future). **This is the one that reaches delisted symbols**, because Yahoo keeps answering for tickers that stopped trading years ago. |
-| `static`       | ~330    | Indices, continuous futures, FX pairs and crypto pairs — no listing directory carries these. |
+| `sec`          | ~10k + ~30k funds | Every SEC registrant with a ticker — including companies that have stopped trading but are still filing — plus every mutual fund share class EDGAR knows a ticker for. |
+| `otc`          | ~12k    | Everything quoted on OTCQX / OTCQB / OTCID / Pink. No other source here reaches these, and they delist faster than anything on an exchange. |
+| `wikipedia`    | ~2.5k, ~800 of them dead | Current *and former* members of the S&P 500/400/600, Nasdaq-100, Dow, Russell 1000, FTSE 100, DAX, CAC 40 and S&P/TSX 60. The removals are the point: a ticker dropped from an index after an acquisition or a bankruptcy is a dead symbol with a full price history behind it. |
+| `yahoo-lookup` | 10k–100k+ | A brute-force crawl of Yahoo's own lookup index (`A`, `AA`, … `ZZ` × equity/etf/fund/index/future). **This is the one that reaches deepest into delisted symbols**, because Yahoo keeps answering for tickers that stopped trading years ago. |
+| `static`       | ~465    | Indices, continuous futures, FX pairs, spot metals and crypto pairs — no listing directory carries these. |
 | `seeds`        | you decide | Anything you drop in `yahoo_db/seeds/` as CSV or a plain symbol list. See the README there. |
+
+`sec`, `nasdaq`, `wikipedia`, `static` and `seeds` are the default set: a
+handful of file downloads, a minute end to end. `otc` and `yahoo-lookup` are
+paged crawls that take minutes to hours, so you ask for them explicitly.
 
 Sources are additive and the universe **never shrinks**. A symbol that falls
 out of the exchange directories keeps its row, keeps its history, and gets
@@ -171,12 +191,12 @@ batch one solo retry before believing it is dead.
 ## Tests
 
 ```bash
-python -m unittest tests.test_yahoo_db -v
+python -m unittest tests.test_yahoo_db tests.test_yahoo_db_sources -v
 ```
 
-51 tests, no network: the lookup crawl takes an injected fetcher, the
-SEC/Nasdaq parsers run on fixture text, and the downloader runs against a
-stubbed `yf.download`.
+No network anywhere: the lookup crawl takes an injected fetcher, every source
+parser runs on fixture text, and the downloader runs against a stubbed
+`yf.download`.
 
 ## Legal note
 
