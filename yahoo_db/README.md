@@ -184,6 +184,59 @@ stored series. When a split appears that we have not seen before, the symbol is
 flagged and its whole history is re-downloaded on the next pass. `--force`
 does the same thing on demand.
 
+## Plugging it into the What's News dashboard
+
+`whats_news.py` is a drop-in replacement for the dashboard's `database.py` and
+`data_fetcher.py`, backed by the archive. Change two lines in `app.py`:
+
+```python
+# import database as db
+# import data_fetcher as fetcher
+from yahoo_db import whats_news as db
+from yahoo_db import whats_news as fetcher
+```
+
+That is the whole integration. Every function the dashboard calls keeps its
+name, parameters and return shape — there is a test that imports the real
+`database.py` and `data_fetcher.py` and asserts the signatures still match, so
+this cannot drift silently. Point it at an archive with `YDB_DB_PATH`, or call
+`whats_news.configure(db_path=...)` before the first request.
+
+Nothing about the charts, indicators or scanner changes: `freq` still means
+`daily`/`weekly`, and `get_ohlcv` still returns the same row dicts, oldest
+first.
+
+**Weekly and monthly bars are resampled from daily**, so the timeframe toggle
+works against a daily-only archive with no second download pass. If you do run
+`download --interval 1wk`, the stored bars are used instead.
+
+Two behaviours differ on purpose:
+
+* **The sidebar shows a watchlist, not the universe.** The dashboard renders
+  every row `list_symbols()` returns, and the archive holds tens of thousands
+  of symbols. So the adapter keeps a small `watchlist` table and lists that.
+  `add_symbol()` adds to it (and registers the symbol in the universe if it is
+  new), and `search_symbols(query)` is there for finding things to add — that
+  is how you reach the rest of the archive from the UI. Wiring it to a route
+  is three lines:
+
+  ```python
+  @app.route("/api/search")
+  def search():
+      return jsonify(db.search_symbols(request.args.get("q", ""), limit=25))
+  ```
+
+* **`remove_symbol()` does not delete price history.** In the dashboard's own
+  database that dropped the symbol's bars, which was fine for two years of
+  refetchable data. Here those bars may be fifteen years of a delisted company
+  Yahoo will never serve again, so removal takes the symbol off the watchlist
+  and leaves the archive alone.
+
+The dashboard's "fetch" buttons still work — `fetch_and_store()` and
+`fetch_full_history()` run the archive's downloader for that one symbol, so a
+refresh from the UI and a refresh from the CLI go through the same code and
+land in the same place.
+
 ## Schema
 
 ```

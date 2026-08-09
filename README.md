@@ -61,6 +61,23 @@ python3 -m yahoo_db download
 python3 -m yahoo_db status
 ```
 
+### Using the archive as the dashboard's data source
+
+`yahoo_db/whats_news.py` is a drop-in replacement for `database.py` and
+`data_fetcher.py`. Swap two imports in `app.py` and the dashboard reads from
+the archive instead of `finance.db`:
+
+```python
+# import database as db
+# import data_fetcher as fetcher
+from yahoo_db import whats_news as db
+from yahoo_db import whats_news as fetcher
+```
+
+Same function names, same signatures, same return shapes — charts, indicators
+and the scanner are untouched. Weekly bars are resampled from daily, and the
+sidebar shows a watchlist rather than the full archive.
+
 Full documentation: [`yahoo_db/README.md`](yahoo_db/README.md)
 
 ---
