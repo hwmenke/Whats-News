@@ -24,10 +24,12 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# 2 added lookup_progress. Every table is created with IF NOT EXISTS and the
-# CLI runs init_schema on every command, so an older database picks the new
-# table up on its next run — no migration step.
-SCHEMA_VERSION = 2
+# 2 added lookup_progress; 3 added tickers.needs_full_refetch and the
+# index_constituents / index_changes pair. Every table is created with IF NOT
+# EXISTS and added columns go through the ALTER block below, and the CLI runs
+# init_schema on every command — so an older database upgrades itself on its
+# next run and there is no migration step to remember.
+SCHEMA_VERSION = 3
 
 # Symbol lifecycle states.
 STATUS_ACTIVE = "active"
