@@ -19,8 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from yahoo_db import universe, verify                            # noqa: E402
 from yahoo_db.config import Config                               # noqa: E402
-from yahoo_db.db import (STATUS_ACTIVE, STATUS_DELISTED,         # noqa: E402
-                         STATUS_UNKNOWN, Store)
+from yahoo_db.db import (SCHEMA_VERSION, STATUS_ACTIVE,          # noqa: E402
+                         STATUS_DELISTED, STATUS_UNKNOWN, Store)
 from yahoo_db.sources import yahoo_lookup                        # noqa: E402
 
 
@@ -60,7 +60,11 @@ class LookupProgressStoreTests(unittest.TestCase):
         tables = {r[0] for r in self.store.conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         self.assertIn("lookup_progress", tables)
-        self.assertEqual(self.store.get_meta("schema_version"), "2")
+        # Against the constant, not a literal: the point is that init_schema
+        # stamps the version it actually wrote, and hardcoding a number here
+        # breaks every time the schema legitimately grows.
+        self.assertEqual(self.store.get_meta("schema_version"),
+                         str(SCHEMA_VERSION))
 
     def test_mark_and_read_back(self):
         self.store.mark_lookup_prefix("US", "equity", "AA", symbols=7)
