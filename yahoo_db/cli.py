@@ -104,6 +104,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_sym.add_argument("--with-data", action="store_true")
     p_sym.add_argument("--limit", type=int, default=50)
 
+    p_con = sub.add_parser("constituents",
+                           help="index membership, today or on a past date")
+    p_con.add_argument("--index", help="index name; omit to list what is stored")
+    p_con.add_argument("--on", dest="on_date",
+                       help="YYYY-MM-DD — membership as it stood that day")
+    p_con.add_argument("--limit", type=int, default=0,
+                       help="print at most N symbols (0 = all)")
+    p_con.add_argument("--json", action="store_true")
+
     p_mark = sub.add_parser("mark-delisted",
                             help="flag symbols whose newest bar has gone stale")
     p_mark.add_argument("--interval")
@@ -301,6 +310,50 @@ def cmd_symbols(args, cfg, store) -> int:
     return 0
 
 
+def cmd_constituents(args, cfg, store) -> int:
+    if not args.index:
+        indices = store.list_indices()
+        if not indices:
+            print("no index membership stored — run: "
+                  "python -m yahoo_db universe --sources wikipedia")
+            return 0
+        print(f"{'index':<32} {'members':>8} {'changes':>8}  history")
+        for row in indices:
+            span = (f"{row['first_change']} .. {row['last_change']}"
+                    if row["first_change"] else "none")
+            print(f"{row['index_name']:<32} {row['members']:>8,} "
+                  f"{row['changes']:>8,}  {span}")
+        return 0
+
+    result = store.constituents_on(args.index, args.on_date)
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if not result["symbols"]:
+        print(f"no membership stored for {args.index!r} — "
+              f"`constituents` with no --index lists what is available")
+        return 1
+
+    when = result["on_date"] or "today"
+    print(f"{args.index} on {when}: {len(result['symbols'])} members"
+          + (f" ({result['rewound']} changes rewound)"
+             if result["rewound"] else ""))
+    if result["on_date"] and not result["reliable"]:
+        # Rewinding past the oldest change we hold just returns the membership
+        # as of that date. Saying so beats handing over a confident wrong list.
+        print(f"  WARNING: change history only goes back to "
+              f"{result['earliest_change'] or 'nothing'}; a date before that "
+              f"cannot be reconstructed and this list is not point-in-time.",
+              file=sys.stderr)
+    symbols = result["symbols"]
+    if args.limit:
+        symbols = symbols[:args.limit]
+    for i in range(0, len(symbols), 8):
+        print("  " + "  ".join(f"{s:<9}" for s in symbols[i:i + 8]))
+    return 0
+
+
 def cmd_mark_delisted(args, cfg, store) -> int:
     changed = store.mark_stale_as_delisted(cfg.interval, cfg.stale_days)
     print(f"marked {changed:,} symbols delisted "
@@ -360,6 +413,7 @@ COMMANDS = {
     "profiles": cmd_profiles,
     "status": cmd_status,
     "symbols": cmd_symbols,
+    "constituents": cmd_constituents,
     "mark-delisted": cmd_mark_delisted,
     "verify": cmd_verify,
     "export": cmd_export,

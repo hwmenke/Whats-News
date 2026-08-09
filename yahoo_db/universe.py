@@ -99,7 +99,7 @@ def _run_source(name: str, cfg, http, store, merge, progress):
     if name == "otc":
         return otc.fetch(http)
     if name in ("wikipedia", "wiki", "indices"):
-        return wikipedia_indices.fetch(http)
+        return _run_wikipedia(http, store)
     if name == "seeds":
         return seeds.fetch(cfg.seeds_dir)
     if name == "static":
@@ -110,6 +110,28 @@ def _run_source(name: str, cfg, http, store, merge, progress):
         f"unknown source '{name}' (known: sec, nasdaq, otc, wikipedia, seeds, "
         "static, yahoo-lookup)"
     )
+
+
+def _run_wikipedia(http, store: Store):
+    """Symbols for the universe, and index membership for point-in-time work.
+
+    The changes tables carry the date of every join and departure. Keeping
+    those is what lets a backtest ask who was in the index in 2014 rather than
+    running today's members over yesterday's prices — the cheapest real defence
+    against survivorship bias available here.
+    """
+    records, membership = wikipedia_indices.fetch_all(http)
+    for block in membership:
+        index_name = block["index"]
+        if block["constituents"]:
+            store.replace_index_constituents(index_name, block["constituents"])
+        if block["changes"]:
+            store.add_index_changes(
+                [(index_name, symbol, action, when)
+                 for symbol, action, when in block["changes"]])
+        logger.info("wikipedia: %s -> %d members, %d dated changes",
+                    index_name, len(block["constituents"]), len(block["changes"]))
+    return records
 
 
 def _run_lookup(cfg, store: Store, merge, progress):

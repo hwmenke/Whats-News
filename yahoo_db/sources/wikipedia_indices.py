@@ -20,6 +20,7 @@ nothing here" instead of importing whatever happened to be in column 2.
 
 import logging
 import re
+from datetime import date
 from html.parser import HTMLParser
 
 from ..db import STATUS_ACTIVE, STATUS_UNKNOWN, normalize_symbol
@@ -34,6 +35,7 @@ SYMBOL_HEADERS = ("symbol", "ticker")
 NAME_HEADERS = ("security", "company", "name")
 # The changes tables put their two ticker columns under one of these groups.
 GROUP_HEADERS = ("added", "removed")
+DATE_HEADERS = ("date",)
 
 # Yahoo tickers are short and built from these characters. Anything else in a
 # cell — a date, a footnote, a sentence of prose — is not a symbol.
@@ -63,7 +65,20 @@ PAGES = [
 def fetch(http, pages=None) -> list:
     """Return index members past and present. Never raises: one page that has
     been restructured must not cost us the other nine."""
+    return fetch_all(http, pages)[0]
+
+
+def fetch_all(http, pages=None):
+    """-> (ticker records, membership).
+
+    `membership` is one dict per page: {"index", "constituents", "changes"},
+    where changes are (symbol, action, date) triples. The changes tables carry
+    a date column that the universe has no use for but a backtest very much
+    does — it is what lets you ask who was in the index in 2014 instead of
+    testing today's members against yesterday's prices.
+    """
     records = {}
+    membership = []
 
     for spec in (pages or PAGES):
         try:
@@ -74,6 +89,7 @@ def fetch(http, pages=None) -> list:
 
         try:
             found = parse_page(html, spec)
+            constituents, changes = parse_membership(html, spec)
         except Exception as exc:
             logger.warning("wikipedia: %s did not parse: %s", spec["page"], exc)
             continue
@@ -90,9 +106,108 @@ def fetch(http, pages=None) -> list:
             if existing is None or (existing["status"] != STATUS_ACTIVE
                                     and rec["status"] == STATUS_ACTIVE):
                 records[rec["symbol"]] = rec
-        logger.info("wikipedia: %d symbols after %s", len(records), spec["index"])
 
-    return list(records.values())
+        if constituents or changes:
+            membership.append({"index": spec["index"],
+                               "constituents": constituents,
+                               "changes": changes})
+        logger.info("wikipedia: %d symbols after %s (%d members, %d changes)",
+                    len(records), spec["index"], len(constituents), len(changes))
+
+    return list(records.values()), membership
+
+
+def parse_membership(html: str, spec: dict):
+    """-> (current constituents, [(symbol, action, date), …]) for one page."""
+    constituents, changes = [], []
+    for table in extract_tables(html):
+        members, events = _membership_from_table(table, spec)
+        constituents.extend(members)
+        changes.extend(events)
+    # A page can carry several constituent tables; keep them all, deduped.
+    return sorted(set(constituents)), changes
+
+
+def _membership_from_table(table, spec: dict):
+    """Split one table into today's members and dated add/remove events.
+
+    The constituents table has an ungrouped ticker column. A changes table has
+    two ticker columns under `Added`/`Removed` group headers plus a date
+    column — a row is only usable as history if that date parses.
+    """
+    date_idx = None
+    groups = {}
+    for idx, label in enumerate(table.headers):
+        if _matches(label, DATE_HEADERS) and date_idx is None:
+            date_idx = idx
+        group = _group_of(label)
+        if _matches(label, SYMBOL_HEADERS):
+            groups.setdefault(group, {}).setdefault("symbol", idx)
+
+    members, events = [], []
+    for group, columns in groups.items():
+        symbol_idx = columns["symbol"]
+        for row in table.rows:
+            symbol = _clean_symbol(_cell(row, symbol_idx), spec)
+            if not symbol:
+                continue
+            if group == "":
+                members.append(symbol)
+                continue
+            date = parse_date(_cell(row, date_idx)) if date_idx is not None else ""
+            if date:
+                events.append((symbol, group, date))
+    return members, events
+
+
+MONTHS = {name: i for i, name in enumerate(
+    ["january", "february", "march", "april", "may", "june", "july", "august",
+     "september", "october", "november", "december"], start=1)}
+
+
+def parse_date(raw: str) -> str:
+    """A Wikipedia date cell -> YYYY-MM-DD, or "" if it is not a date.
+
+    The changes tables are hand-maintained, so the same column mixes
+    "March 2, 2015", "2 March 2015" and "2015-03-02", often with a footnote
+    marker stuck on the end.
+    """
+    text = (raw or "").split("[")[0].strip()
+    if not text:
+        return ""
+
+    iso = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", text)
+    if iso:
+        year, month, day = (int(g) for g in iso.groups())
+        return _iso(year, month, day)
+
+    cleaned = text.replace(",", " ").replace(".", " ")
+    words = [w for w in cleaned.split() if w]
+    month = day = year = None
+    for word in words:
+        lowered = word.lower()
+        if lowered in MONTHS:
+            month = MONTHS[lowered]
+        elif lowered[:3] in {m[:3]: m for m in MONTHS} and month is None:
+            match = next((v for k, v in MONTHS.items()
+                          if k.startswith(lowered[:3])), None)
+            month = match
+        elif word.isdigit():
+            value = int(word)
+            if len(word) == 4:
+                year = value
+            elif day is None and 1 <= value <= 31:
+                day = value
+    if month and year:
+        return _iso(year, month, day or 1)
+    return ""
+
+
+def _iso(year: int, month: int, day: int) -> str:
+    try:
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return ""
 
 
 def parse_page(html: str, spec: dict) -> list:

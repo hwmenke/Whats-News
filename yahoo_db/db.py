@@ -176,6 +176,27 @@ class Store:
             PRIMARY KEY (region, quote_type, prefix)
         ) WITHOUT ROWID;
 
+        -- Index membership, today. Replaced wholesale on each refresh: it is a
+        -- snapshot, and the history lives in index_changes.
+        CREATE TABLE IF NOT EXISTS index_constituents (
+            index_name TEXT NOT NULL,
+            symbol     TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (index_name, symbol)
+        ) WITHOUT ROWID;
+
+        -- Every join and departure we know a date for. Append-only and
+        -- idempotent; this is what makes point-in-time membership possible.
+        CREATE TABLE IF NOT EXISTS index_changes (
+            index_name TEXT NOT NULL,
+            symbol     TEXT NOT NULL,
+            action     TEXT NOT NULL,   -- added | removed
+            date       TEXT NOT NULL,   -- YYYY-MM-DD
+            PRIMARY KEY (index_name, symbol, action, date)
+        ) WITHOUT ROWID;
+        CREATE INDEX IF NOT EXISTS idx_index_changes_date
+            ON index_changes(index_name, date);
+
         CREATE TABLE IF NOT EXISTS meta (
             key   TEXT PRIMARY KEY,
             value TEXT
@@ -722,6 +743,104 @@ class Store:
             cur = c.execute(
                 f"DELETE FROM lookup_progress WHERE {' AND '.join(where)}", params)
             return cur.rowcount
+
+    # ── index membership ───────────────────────────────────────────────────────
+
+    def replace_index_constituents(self, index_name: str, symbols) -> int:
+        """Set today's membership for one index."""
+        clean = sorted({normalize_symbol(s) for s in symbols if normalize_symbol(s)})
+        if not clean:
+            return 0
+        now = utcnow()
+        with self.tx() as c:
+            c.execute("DELETE FROM index_constituents WHERE index_name=?",
+                      (index_name,))
+            c.executemany(
+                "INSERT INTO index_constituents (index_name, symbol, updated_at) "
+                "VALUES (?,?,?)", [(index_name, s, now) for s in clean])
+        return len(clean)
+
+    def add_index_changes(self, rows) -> int:
+        """Record joins and departures. `rows` are (index, symbol, action, date)."""
+        clean = []
+        for index_name, symbol, action, date in rows:
+            symbol = normalize_symbol(symbol)
+            action = (action or "").lower()
+            if not (index_name and symbol and date) or action not in (
+                    "added", "removed"):
+                continue
+            clean.append((index_name, symbol, action, date))
+        if not clean:
+            return 0
+        with self.tx() as c:
+            c.executemany(
+                """INSERT INTO index_changes (index_name, symbol, action, date)
+                   VALUES (?,?,?,?)
+                   ON CONFLICT(index_name, symbol, action, date) DO NOTHING""",
+                clean)
+        return len(clean)
+
+    def list_indices(self) -> list:
+        rows = self.conn.execute("""
+            SELECT c.index_name,
+                   COUNT(*) AS members,
+                   (SELECT COUNT(*) FROM index_changes x
+                     WHERE x.index_name = c.index_name) AS changes,
+                   (SELECT MIN(date) FROM index_changes x
+                     WHERE x.index_name = c.index_name) AS first_change,
+                   (SELECT MAX(date) FROM index_changes x
+                     WHERE x.index_name = c.index_name) AS last_change
+            FROM index_constituents c
+            GROUP BY c.index_name ORDER BY c.index_name
+        """).fetchall()
+        return [dict(r) for r in rows]
+
+    def constituents_on(self, index_name: str, on_date: str = None) -> dict:
+        """Index membership as it stood on `on_date` (today's, if omitted).
+
+        Reconstructed by rewinding: start from the current member list and undo
+        every change dated after the target — a symbol added since then comes
+        out, a symbol removed since then goes back in. A change dated exactly
+        `on_date` counts as already in effect, since index changes take effect
+        at that day's open.
+
+        The result carries `reliable` and `earliest_change`. Rewinding past the
+        oldest change we hold cannot be right — it just returns the membership
+        as of that oldest date — so the caller is told rather than quietly given
+        a wrong answer.
+        """
+        current = [r["symbol"] for r in self.conn.execute(
+            "SELECT symbol FROM index_constituents WHERE index_name=?",
+            (index_name,)).fetchall()]
+        earliest = self.conn.execute(
+            "SELECT MIN(date) d FROM index_changes WHERE index_name=?",
+            (index_name,)).fetchone()["d"]
+
+        if not on_date:
+            return {"index_name": index_name, "on_date": None,
+                    "symbols": sorted(current), "rewound": 0,
+                    "earliest_change": earliest, "reliable": bool(current)}
+
+        members = set(current)
+        rows = self.conn.execute(
+            """SELECT symbol, action FROM index_changes
+               WHERE index_name=? AND date > ?
+               ORDER BY date DESC""",
+            (index_name, on_date)).fetchall()
+        for r in rows:
+            if r["action"] == "added":
+                members.discard(r["symbol"])
+            else:
+                members.add(r["symbol"])
+
+        return {
+            "index_name": index_name,
+            "on_date": on_date,
+            "symbols": sorted(members),
+            "rewound": len(rows),
+            "earliest_change": earliest,
+            "reliable": bool(current) and bool(earliest) and on_date >= earliest,
+        }
 
     # ── reporting ──────────────────────────────────────────────────────────────
 

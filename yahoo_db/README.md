@@ -184,6 +184,70 @@ stored series. When a split appears that we have not seen before, the symbol is
 flagged and its whole history is re-downloaded on the next pass. `--force`
 does the same thing on demand.
 
+## Point-in-time index membership
+
+The `wikipedia` source records not just who is in an index but **when each
+symbol joined and left**. That turns the archive into something you can ask a
+question no free price feed answers on its own:
+
+```bash
+python -m yahoo_db universe --sources wikipedia
+
+python -m yahoo_db constituents                       # what is stored
+python -m yahoo_db constituents --index "S&P 500"     # members today
+python -m yahoo_db constituents --index "S&P 500" --on 2015-06-30
+```
+
+```
+S&P 500 on 2015-06-30: 501 members (312 changes rewound)
+```
+
+### Why this matters more than it looks
+
+Backtesting today's S&P 500 over 2010–2020 is the classic way to manufacture a
+strategy that works beautifully in testing and fails live. Today's members are
+the companies that *survived and grew into the index*; the ones that were in it
+in 2015 and then collapsed are missing entirely. Selecting on the outcome is
+the bias, and it flatters returns badly.
+
+With membership history you test the 2015 index against 2015 prices, delisted
+constituents included — which is what the `otc`, `seeds` and `yahoo-lookup`
+sources are collecting for you.
+
+```python
+from yahoo_db.db import Store
+
+store = Store("data/market.db")
+members = store.constituents_on("S&P 500", "2015-06-30")
+for symbol in members["symbols"]:
+    bars = store.get_ohlcv_df(symbol, "1d")   # includes companies since dead
+```
+
+### How it is reconstructed, and where it stops being true
+
+Membership is rewound, not stored per day: start from today's member list and
+undo every change dated after the target — a symbol added since then comes out,
+a symbol removed since then goes back in. A change dated exactly on the target
+counts as in effect, since index changes take effect at that day's open.
+
+That means the answer is only as good as the change history. Ask for a date
+before the oldest change on the page and the result is simply the membership as
+of that oldest change — so the reconstruction says so rather than handing you a
+confident wrong list:
+
+```
+WARNING: change history only goes back to 2000-01-02; a date before that
+cannot be reconstructed and this list is not point-in-time.
+```
+
+`constituents` with no `--index` prints each index's coverage span, which is
+the honest boundary of what you can backtest.
+
+Two caveats worth keeping in mind: the tables are hand-maintained by Wikipedia
+editors, so they are good but not audited, and a symbol that was recycled to a
+different company later will resolve to whatever Yahoo serves under that ticker
+today.
+
 ## Plugging it into the What's News dashboard
 
 `whats_news.py` is a drop-in replacement for the dashboard's `database.py` and
@@ -248,6 +312,8 @@ splits     (symbol, date) PK, ratio
 profiles   symbol PK, long_name, sector, industry, country, currency,
            market_cap, shares_outstanding, first_trade_date, raw_json, fetched_at
 fetch_log  symbol, interval, status, rows, first_date, last_date, error, fetched_at
+index_constituents  (index_name, symbol) PK, updated_at        -- membership today
+index_changes       (index_name, symbol, action, date) PK      -- joins/departures
 lookup_progress (region, quote_type, prefix) PK, symbols, completed_at
 meta       key PK, value
 ```
@@ -284,6 +350,7 @@ ORDER BY delisted_at DESC;
 | `profiles` | Download company/fund metadata (one request per symbol). |
 | `status` | Row counts, date range, breakdown by type and source. |
 | `symbols` | List symbols in the universe (`--status delisted --with-data`). |
+| `constituents` | Index membership, today or as it stood on a past date. |
 | `mark-delisted` | Re-run the stale sweep on its own. |
 | `verify` | Audit the stored data and print a quality report. Never hits the network. |
 | `export` | Dump tables to CSV or Parquet. |
