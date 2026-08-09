@@ -75,10 +75,13 @@ class Store:
 
     @contextmanager
     def tx(self):
+        # BaseException, not Exception: a Ctrl-C landing mid-transaction has to
+        # roll back too, and KeyboardInterrupt does not inherit from Exception.
+        # Long runs are interrupted routinely, so this is the common path.
         try:
             yield self.conn
             self.conn.commit()
-        except Exception:
+        except BaseException:
             self.conn.rollback()
             raise
 
@@ -453,7 +456,22 @@ class Store:
     def upsert_prices(self, symbol: str, interval: str, df) -> int:
         """Upsert a DataFrame of bars. Index must be datetime-like; columns are
         matched case-insensitively against open/high/low/close/adj close/volume."""
+        return self.upsert_price_rows(_bars_to_rows(symbol, interval, df))
+
+    def written_date_range(self, symbol: str, interval: str, df):
+        """(first, last) of the bars `upsert_prices` would actually write.
+
+        Not the frame's own index: all-NaN padding rows are skipped on the way
+        in, so reading the frame's first and last dates can name a date that
+        has no row in `prices` — which then disagrees with the delisting sweep.
+        """
         rows = _bars_to_rows(symbol, interval, df)
+        if not rows:
+            return None, None
+        return rows[0][2], rows[-1][2]
+
+    def upsert_price_rows(self, rows) -> int:
+        rows = list(rows or [])
         if not rows:
             return 0
         with self.tx() as c:
@@ -553,7 +571,7 @@ class Store:
                     _as_float(info.get("marketCap")),
                     _as_float(info.get("sharesOutstanding")),
                     first_trade_str,
-                    json.dumps(info, default=str)[:200000],
+                    _raw_json(info),
                     utcnow(),
                 ),
             )
@@ -595,6 +613,29 @@ class Store:
                     first_date, last_date, (error or "")[:500] or None, utcnow(),
                 ),
             )
+
+    def prune_fetch_log(self, keep_per_symbol: int = 5) -> int:
+        """Keep only the newest N attempts per (symbol, interval).
+
+        `symbols_to_fetch` reads this table on every run, and it grows by one
+        row per symbol per run forever — a year of daily passes over 100k
+        symbols is tens of millions of rows serving no purpose beyond the
+        newest few. The streak and backoff logic only ever looks at the recent
+        tail, so older rows are pure weight.
+        """
+        with self.tx() as c:
+            cur = c.execute(
+                """DELETE FROM fetch_log WHERE id IN (
+                       SELECT id FROM (
+                           SELECT id, ROW_NUMBER() OVER (
+                               PARTITION BY symbol, interval
+                               ORDER BY fetched_at DESC, id DESC) AS rn
+                           FROM fetch_log
+                       ) WHERE rn > ?
+                   )""",
+                (max(1, keep_per_symbol),),
+            )
+            return cur.rowcount
 
     def log_fetches(self, entries):
         """Batch form of log_fetch; `entries` are dicts with the same keys."""
@@ -820,6 +861,22 @@ def _age_cutoff(days: int) -> str:
     because every timestamp we write is UTC with the same offset."""
     return (datetime.now(timezone.utc) - timedelta(days=max(0, days))).isoformat(
         timespec="seconds")
+
+
+MAX_RAW_JSON = 200_000
+
+
+def _raw_json(info: dict):
+    """Serialise a profile blob, or store nothing at all if it is enormous.
+
+    Truncating to a byte limit used to cut mid-token, which leaves a column
+    that looks like JSON and will not parse — worse than an honest NULL.
+    """
+    try:
+        blob = json.dumps(info, default=str)
+    except (TypeError, ValueError):
+        return None
+    return blob if len(blob) <= MAX_RAW_JSON else None
 
 
 def _backoff_cutoff(now, attempts: int, cap_days: int) -> str:

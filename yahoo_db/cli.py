@@ -134,7 +134,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_exp.add_argument("--out", default="./export")
     p_exp.add_argument("--interval")
 
-    sub.add_parser("vacuum", help="VACUUM + ANALYZE the database")
+    p_vac = sub.add_parser("vacuum", help="prune the fetch log, VACUUM + ANALYZE")
+    p_vac.add_argument("--keep-log", type=int, default=5,
+                       help="attempts to keep per symbol in fetch_log "
+                            "(default 5; 0 disables pruning)")
 
     return parser
 
@@ -340,6 +343,10 @@ def cmd_export(args, cfg, store) -> int:
 
 
 def cmd_vacuum(args, cfg, store) -> int:
+    if args.keep_log:
+        pruned = store.prune_fetch_log(args.keep_log)
+        print(f"pruned {pruned:,} fetch_log rows "
+              f"(kept the newest {args.keep_log} per symbol)")
     store.conn.execute("ANALYZE")
     store.conn.execute("VACUUM")
     print("vacuum + analyze done")

@@ -82,7 +82,7 @@ def fetch(cfg, quote_types=None, regions=None, depth=None, sleep=None,
 
     records = {}        # only fills up when nothing is checkpointing
     seen = set()        # symbols already emitted this run, across every triple
-    done = skipped = crawled = 0
+    done = skipped = crawled = failed = 0
     for region in regions:
         for quote_type in quote_types:
             already = completed(region, quote_type) if completed else frozenset()
@@ -113,6 +113,7 @@ def fetch(cfg, quote_types=None, regions=None, depth=None, sleep=None,
                         "kept — re-run to resume", done - 1, len(seen))
                     return list(records.values())
                 except Exception as exc:
+                    failed += 1
                     logger.warning("yahoo-lookup: %s/%s failed: %s",
                                    query, quote_type, exc)
                     continue
@@ -123,7 +124,17 @@ def fetch(cfg, quote_types=None, regions=None, depth=None, sleep=None,
     if progress:
         progress(done, total_triples, len(seen), skipped)
     logger.info("yahoo-lookup: %d symbols discovered (%d prefixes skipped as "
-                "already done)", len(seen), skipped)
+                "already done, %d failed)", len(seen), skipped, failed)
+    # A failed prefix silently costs up to a thousand symbols, and a crawl
+    # that lost half its prefixes to throttling otherwise looks identical to a
+    # clean one — you would not find out until the symbols were missing months
+    # later. Failed triples are not checkpointed, so a re-run picks them up.
+    if failed:
+        share = failed / max(1, crawled)
+        log = logger.error if share > 0.1 else logger.warning
+        log("yahoo-lookup: %d of %d attempted prefixes failed (%.0f%%) — "
+            "re-run to retry them; they were not checkpointed",
+            failed, crawled, share * 100)
     return list(records.values())
 
 

@@ -287,6 +287,60 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(stats["price_rows"], 1)
         self.assertEqual(stats["date_min"], "2024-01-02")
 
+    def test_prune_fetch_log_keeps_the_recent_tail(self):
+        for i in range(10):
+            self.store.conn.execute(
+                "INSERT INTO fetch_log (symbol, interval, status, rows, fetched_at) "
+                "VALUES ('AAPL','1d','ok',?,?)", (i, f"2024-01-{i + 1:02d}T00:00:00+00:00"))
+        self.store.conn.execute(
+            "INSERT INTO fetch_log (symbol, interval, status, rows, fetched_at) "
+            "VALUES ('MSFT','1d','ok',1,'2024-01-01T00:00:00+00:00')")
+        self.store.conn.commit()
+
+        self.assertEqual(self.store.prune_fetch_log(keep_per_symbol=3), 7)
+        kept = [r["rows"] for r in self.store.conn.execute(
+            "SELECT rows FROM fetch_log WHERE symbol='AAPL' ORDER BY rows").fetchall()]
+        self.assertEqual(kept, [7, 8, 9])       # the newest three
+        # Symbols under the limit are untouched.
+        self.assertEqual(self.store.conn.execute(
+            "SELECT COUNT(*) FROM fetch_log WHERE symbol='MSFT'").fetchone()[0], 1)
+
+    def test_written_date_range_ignores_padding_rows(self):
+        frame = make_bars(["2024-01-02", "2024-01-03", "2024-01-04"])
+        # A padding row, as a multi-symbol download produces for a symbol that
+        # did not trade that day. upsert_prices skips it, so the range must too.
+        frame.loc[frame.index[-1], ["Open", "High", "Low", "Close"]] = float("nan")
+        self.assertEqual(self.store.written_date_range("AAPL", "1d", frame),
+                         ("2024-01-02", "2024-01-03"))
+        self.assertEqual(self.store.upsert_prices("AAPL", "1d", frame), 2)
+        self.assertEqual(self.store.last_price_date("AAPL", "1d"), "2024-01-03")
+
+    def test_oversized_profile_json_is_null_not_truncated(self):
+        import json as _json
+        self.store.upsert_profile("BIG", {"longName": "Big", "blob": "x" * 300_000})
+        row = self.store.conn.execute(
+            "SELECT long_name, raw_json FROM profiles WHERE symbol='BIG'").fetchone()
+        self.assertEqual(row["long_name"], "Big")
+        # Better an honest NULL than a column that looks like JSON and is not.
+        self.assertIsNone(row["raw_json"])
+
+        self.store.upsert_profile("SMALL", {"longName": "Small", "sector": "Tech"})
+        raw = self.store.conn.execute(
+            "SELECT raw_json FROM profiles WHERE symbol='SMALL'").fetchone()[0]
+        self.assertEqual(_json.loads(raw)["sector"], "Tech")
+
+    def test_transaction_rolls_back_on_keyboard_interrupt(self):
+        # Long runs get Ctrl-C'd routinely, and KeyboardInterrupt is not an
+        # Exception, so this path used to commit nothing and roll back nothing.
+        with self.assertRaises(KeyboardInterrupt):
+            with self.store.tx() as c:
+                c.execute("INSERT INTO tickers "
+                          "(symbol,status,sources,first_seen,last_seen) "
+                          "VALUES ('GHOST','active','t','x','y')")
+                raise KeyboardInterrupt()
+        self.assertIsNone(self.store.conn.execute(
+            "SELECT 1 FROM tickers WHERE symbol='GHOST'").fetchone())
+
     def test_profile_first_trade_date_from_epoch(self):
         self.store.upsert_profile("AAPL", {
             "longName": "Apple Inc.", "sector": "Technology",
@@ -766,6 +820,40 @@ class DownloaderTests(unittest.TestCase):
         self.store.clear_full_refetch("NVDA")
         self.assertEqual(self.store.upsert_actions("NVDA", splits=splits)["new_splits"], 0)
         self.assertNotIn(None, self.downloader._group_by_start(["NVDA"], "1d"))
+
+    def test_profiles_back_off_and_stop_when_throttled(self):
+        from yfinance.exceptions import YFRateLimitError
+        self.store.upsert_tickers([{"symbol": f"S{i}", "source": "t"}
+                                   for i in range(20)])
+        for i in range(20):
+            self.store.mark_has_data(f"S{i}", "2024-01-02")
+        attempts = []
+
+        class Throttled:
+            def __init__(self, symbol):
+                attempts.append(symbol)
+
+            @property
+            def info(self):
+                raise YFRateLimitError()
+
+        original = ydl.yf.Ticker
+        ydl.yf.Ticker = Throttled
+        try:
+            result = self.downloader.fetch_profiles()
+        finally:
+            ydl.yf.Ticker = original
+
+        # It gives up instead of firing 20 doomed requests into a rate limit.
+        self.assertTrue(result.get("profiles_rate_limited"))
+        self.assertLessEqual(len(attempts), self.cfg.max_retries)
+
+    def test_stats_do_not_leak_between_runs(self):
+        self.store.upsert_tickers([{"symbol": "AAPL", "source": "t"}])
+        self._stub_download({"AAPL": make_bars(["2024-01-02"])})
+        first = self.downloader.run(interval="1d", single_retry=False, force=True)
+        second = self.downloader.run(interval="1d", single_retry=False, force=True)
+        self.assertEqual(first["rows"], second["rows"])
 
     def test_limit_caps_the_run(self):
         self.store.upsert_tickers([{"symbol": f"S{i}", "source": "t"}

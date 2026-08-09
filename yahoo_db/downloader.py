@@ -80,6 +80,9 @@ class Downloader:
             single_retry: bool = True, force: bool = False,
             progress=None) -> dict:
         """Download every due symbol. Returns a summary dict."""
+        # Counters are per call: a Downloader reused for a second run must not
+        # report the first run's totals again.
+        self.stats = defaultdict(int)
         interval = interval or self.cfg.interval
         # A run over an explicit subset must not draw universe-wide conclusions:
         # `download --symbols AAPL` has no business delisting anything else.
@@ -139,6 +142,7 @@ class Downloader:
         One HTTP call per symbol, so this is deliberately separate from the
         price download — run it on the slice you care about.
         """
+        self.stats = defaultdict(int)
         if symbols is None:
             symbols = self._profiles_due(limit=limit, refetch_days=refetch_days)
         else:
@@ -147,6 +151,7 @@ class Downloader:
                 symbols = symbols[:limit]
 
         done = 0
+        consecutive_rate_limits = 0
         for symbol in symbols:
             try:
                 info = yf.Ticker(symbol).info or {}
@@ -155,12 +160,30 @@ class Downloader:
                     self.stats["profiles_ok"] += 1
                 else:
                     self.stats["profiles_empty"] += 1
+                consecutive_rate_limits = 0
             except KeyboardInterrupt:
                 logger.warning("profiles: interrupted after %d symbols", done)
                 break
             except Exception as exc:
                 logger.debug("profiles: %s failed: %s", symbol, exc)
                 self.stats["profiles_error"] += 1
+                # One request per symbol with no backoff turns a throttled run
+                # into an unbounded stream of 429s that accomplishes nothing.
+                if _exception_kind(exc) == "rate_limit":
+                    consecutive_rate_limits += 1
+                    self.stats["profiles_rate_limited"] += 1
+                    wait = self.cfg.retry_backoff * min(
+                        2 ** consecutive_rate_limits, 16)
+                    logger.warning("profiles: rate limited (%d in a row); "
+                                   "sleeping %.0fs", consecutive_rate_limits, wait)
+                    time.sleep(wait)
+                    if consecutive_rate_limits >= self.cfg.max_retries:
+                        logger.error("profiles: still throttled after %d tries, "
+                                     "stopping — re-run to continue",
+                                     consecutive_rate_limits)
+                        break
+                else:
+                    consecutive_rate_limits = 0
             done += 1
             if progress and done % 25 == 0:
                 progress(done, len(symbols), dict(self.stats))
@@ -343,7 +366,11 @@ class Downloader:
     def _store_symbol(self, symbol: str, interval: str, frame: pd.DataFrame):
         rows = self.store.upsert_prices(symbol, interval, frame)
         actions = self._store_actions(symbol, interval, frame)
-        first_date, last_date = _date_range(frame)
+        # From the rows actually stored, not the frame's index — padding rows
+        # are dropped on the way in and would otherwise name a date that has
+        # no bar behind it.
+        first_date, last_date = self.store.written_date_range(
+            symbol, interval, frame)
         # The refetch this flag asked for has now happened.
         self.store.clear_full_refetch(symbol)
 
