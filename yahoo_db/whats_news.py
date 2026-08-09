@@ -30,6 +30,7 @@ Two things genuinely differ, both on purpose:
 """
 
 import logging
+import threading
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -47,7 +48,8 @@ FREQ_TO_INTERVAL = {"daily": "1d", "weekly": "1wk", "monthly": "1mo"}
 RESAMPLE_RULE = {"weekly": "W-FRI", "monthly": "ME"}
 
 _cfg = None
-_store = None
+_generation = 0
+_local = threading.local()
 
 
 # ── wiring ─────────────────────────────────────────────────────────────────────
@@ -55,11 +57,12 @@ _store = None
 def configure(db_path=None, **overrides):
     """Point the adapter at a specific archive. Optional — without it the
     normal YDB_* config applies, so `YDB_DB_PATH=... python app.py` is enough."""
-    global _cfg, _store
-    if _store is not None:
-        _store.close()
-        _store = None
+    global _cfg, _generation
     _cfg = load_config(db_path=db_path, **overrides)
+    # Every thread's connection now points at the wrong database; bumping the
+    # generation makes each one rebuild the next time it is used.
+    _generation += 1
+    close()
     return _cfg
 
 
@@ -71,14 +74,36 @@ def config():
 
 
 def store() -> Store:
-    """The shared Store. Flask's dev server is threaded, so each call checks
-    the connection belongs to this thread and reopens if not."""
-    global _store
-    if _store is None:
-        _store = Store(config().db_path)
-        _store.init_schema()
-        _init_watchlist(_store)
-    return _store
+    """This thread's Store.
+
+    A sqlite3 connection may only be used from the thread that created it, and
+    the dashboard is served by a threaded Flask app that also fans out over a
+    ThreadPoolExecutor — so a single shared connection raises ProgrammingError
+    as soon as a second request lands. Each thread gets its own instead, which
+    WAL mode is built for: concurrent readers, and writers serialised by the
+    busy timeout.
+    """
+    st = getattr(_local, "store", None)
+    if st is not None and getattr(_local, "generation", None) == _generation:
+        return st
+    if st is not None:
+        st.close()          # stale: configure() pointed us somewhere else
+    st = Store(config().db_path)
+    st.init_schema()
+    _init_watchlist(st)
+    _local.store = st
+    _local.generation = _generation
+    return st
+
+
+def close():
+    """Drop this thread's connection. Worth calling from a worker thread that
+    is about to exit; otherwise the process teardown handles it."""
+    st = getattr(_local, "store", None)
+    if st is not None:
+        st.close()
+    _local.store = None
+    _local.generation = None
 
 
 def init_db():

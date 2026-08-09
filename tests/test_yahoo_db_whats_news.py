@@ -43,9 +43,7 @@ class AdapterTestCase(unittest.TestCase):
 
     def _cleanup(self, directory):
         import shutil
-        if wn._store is not None:
-            wn._store.close()
-        wn._store = None
+        wn.close()
         wn._cfg = None
         shutil.rmtree(directory, ignore_errors=True)
 
@@ -278,6 +276,59 @@ class DropInCompatibilityTests(AdapterTestCase):
     def test_update_last_fetch_is_a_harmless_no_op(self):
         wn.add_symbol("AAPL")
         wn.update_last_fetch("AAPL")        # must not raise
+
+
+class ThreadSafetyTests(AdapterTestCase):
+    """The dashboard is served by a threaded Flask app that also fans out over
+    a ThreadPoolExecutor, and a sqlite3 connection belongs to one thread. A
+    single shared connection raises ProgrammingError on the second request."""
+
+    def test_reads_and_writes_work_from_other_threads(self):
+        import threading
+
+        wn.add_symbol("AAPL")
+        self.store.upsert_prices("AAPL", "1d", make_bars(["2024-01-02"]))
+        errors = []
+        seen = []
+
+        def worker(n):
+            try:
+                seen.append(len(wn.list_symbols()))
+                wn.add_symbol(f"SYM{n}")
+                wn.get_ohlcv("AAPL", "daily", limit=5)
+                wn.search_symbols("AAP")
+            except Exception as exc:                    # noqa: BLE001
+                errors.append(f"{type(exc).__name__}: {exc}")
+            finally:
+                wn.close()
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(seen), 8)
+        # Every worker's write is visible to the original thread.
+        watched = {r["symbol"] for r in wn.list_symbols()}
+        for i in range(8):
+            self.assertIn(f"SYM{i}", watched)
+
+    def test_configure_invalidates_a_threads_stale_connection(self):
+        import tempfile as _tf
+        wn.add_symbol("AAPL")
+        first = wn.store()
+
+        directory = _tf.mkdtemp(prefix="wn_test2_")
+        self.addCleanup(self._cleanup, directory)
+        wn.configure(db_path=Path(directory) / "other.db")
+
+        second = wn.store()
+        self.assertIsNot(first, second)
+        # A different archive, so the watchlist starts empty rather than
+        # serving the previous database's rows from a stale connection.
+        self.assertEqual(wn.list_symbols(), [])
 
 
 # The real proof of "plug and play": boot the actual Flask app with the two
