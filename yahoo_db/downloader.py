@@ -76,14 +76,16 @@ class Downloader:
     # ── public API ─────────────────────────────────────────────────────────────
 
     def run(self, symbols=None, interval: str = None, limit: int = None,
-            include_delisted: bool = True, quote_types=None,
+            include_delisted: bool = True, quote_types=None, exclude_types=None,
             single_retry: bool = True, force: bool = False,
             progress=None) -> dict:
         """Download every due symbol. Returns a summary dict."""
         interval = interval or self.cfg.interval
         # A run over an explicit subset must not draw universe-wide conclusions:
         # `download --symbols AAPL` has no business delisting anything else.
-        full_run = symbols is None and not limit and not quote_types
+        # A type filter is different — it is a standing partition of the
+        # universe, not an ad-hoc slice — so it still sweeps, scoped to itself.
+        full_run = symbols is None and not limit
         if symbols is None:
             symbols = self.store.symbols_to_fetch(
                 interval=interval,
@@ -91,6 +93,7 @@ class Downloader:
                 refresh_after_hours=self.cfg.refresh_after_hours,
                 include_delisted=include_delisted,
                 quote_types=quote_types,
+                exclude_types=exclude_types,
                 max_failure_backoff_days=self.cfg.max_failure_backoff_days,
                 delisted_recheck_days=self.cfg.delisted_recheck_days,
                 force=force,
@@ -123,7 +126,9 @@ class Downloader:
                     time.sleep(self.cfg.sleep_between_batches)
 
         if full_run:
-            swept = self.store.mark_stale_as_delisted(interval, self.cfg.stale_days)
+            swept = self.store.mark_stale_as_delisted(
+                interval, self.cfg.stale_days,
+                quote_types=quote_types, exclude_types=exclude_types)
             self.stats["marked_delisted_stale"] += swept
         return dict(self.stats, symbols=processed)
 

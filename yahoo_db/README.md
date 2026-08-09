@@ -78,6 +78,37 @@ marked `delisted` once its bars go stale. Run the tool for a year and the
 archive covers every ticker that traded during that year, whether or not it
 still exists.
 
+### Recipe: US stocks only, 2010 to today, delisted included
+
+The common case, and the one with the sharpest trap in it.
+
+```bash
+# 1. Universe. `otc` and the lookup crawl are where the dead tickers live, so
+#    they are not optional for this goal.
+python -m yahoo_db universe --sources sec,nasdaq,otc,wikipedia,seeds
+python -m yahoo_db universe --sources yahoo-lookup --lookup-types equity
+
+# 2. Prices. --exclude-types, NOT --types.
+python -m yahoo_db download \
+    --start 2010-01-01 \
+    --exclude-types ETF,MUTUALFUND,CURRENCY,CRYPTOCURRENCY,INDEX,FUTURE \
+    --sleep 2 --batch-size 40 -v
+```
+
+**Use `--exclude-types`, not `--types EQUITY`.** Several sources — including
+the lookup crawl, which is where most delisted symbols come from — leave
+`quote_type` blank. `--types EQUITY` keeps only symbols positively identified
+as equities and therefore drops exactly the delisted tail you are trying to
+collect. `--exclude-types` removes what you know you do not want and keeps
+everything unclassified.
+
+Once `profiles` has run, Yahoo's own `quoteType` is stored per symbol, so you
+can tighten the filter later if you want.
+
+Ballpark for this scope: ~10–12k symbols including the delisted tail, ~4,100
+bars each, so **≈50M rows and ~6 GB** (measured at 114 bytes/row on this
+schema), and a few hours for the first pass.
+
 ### Going wider
 
 ```bash
@@ -228,7 +259,9 @@ Useful flags on `download`:
 --workers 8              threads inside each call
 --sleep 1.0              seconds between batches — raise this if throttled
 --start 2000-01-01       earliest date for first-time downloads (default: max)
---types EQUITY,ETF       only these quote types
+--types EQUITY,ETF       only these quote types (drops unknown types)
+--exclude-types ETF      skip these types, keep unknown ones — prefer this
+                         when you want the delisted tail
 --skip-delisted          leave dead symbols alone entirely
 --force                  ignore the refresh window and the failure backoff,
                          and re-download full history rather than the tail

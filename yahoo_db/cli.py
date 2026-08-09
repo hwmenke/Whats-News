@@ -69,7 +69,12 @@ def build_parser() -> argparse.ArgumentParser:
                       help="earliest date for first-time downloads (default: max)")
     p_dl.add_argument("--refresh-after-hours", type=int,
                       help="re-download a symbol only if last success is older")
-    p_dl.add_argument("--types", help="only these quote types, e.g. EQUITY,ETF")
+    p_dl.add_argument("--types", help="only these quote types, e.g. EQUITY,ETF "
+                                      "(drops symbols whose type is unknown)")
+    p_dl.add_argument("--exclude-types",
+                      help="skip these quote types, e.g. ETF,MUTUALFUND. Keeps "
+                           "symbols of unknown type, so prefer this over "
+                           "--types when you want the delisted tail")
     p_dl.add_argument("--skip-delisted", action="store_true",
                       help="do not fetch symbols already marked delisted")
     p_dl.add_argument("--no-single-retry", action="store_true",
@@ -215,6 +220,7 @@ def cmd_download(args, cfg, store) -> int:
         limit=args.limit,
         include_delisted=not args.skip_delisted,
         quote_types=_split(args.types),
+        exclude_types=_split(args.exclude_types),
         single_retry=not args.no_single_retry,
         force=args.force,
         progress=_download_progress,

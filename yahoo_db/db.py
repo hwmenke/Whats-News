@@ -307,6 +307,7 @@ class Store:
                          refresh_after_hours: int = 20,
                          include_delisted: bool = True,
                          quote_types: list = None,
+                         exclude_types: list = None,
                          max_failure_backoff_days: int = 30,
                          delisted_recheck_days: int = 30,
                          force: bool = False) -> list:
@@ -321,6 +322,12 @@ class Store:
         final), and a symbol that keeps coming back empty backs off
         exponentially — 1, 2, 4, … days up to `max_failure_backoff_days`.
         `force=True` ignores both and returns everything.
+
+        `quote_types` keeps only those types; `exclude_types` drops them and
+        **keeps symbols whose type is unknown**. Prefer the latter for "stocks
+        but not ETFs": several sources — including the lookup crawl that finds
+        most of the delisted symbols — leave quote_type blank, so an inclusive
+        filter would silently skip exactly the tickers you were after.
         """
         now = datetime.now(timezone.utc)
         cutoff = (now - timedelta(hours=refresh_after_hours)).isoformat(
@@ -335,6 +342,11 @@ class Store:
             placeholders = ",".join("?" for _ in quote_types)
             where.append(f"UPPER(COALESCE(t.quote_type,'')) IN ({placeholders})")
             params.extend([q.upper() for q in quote_types])
+        if exclude_types:
+            placeholders = ",".join("?" for _ in exclude_types)
+            where.append(
+                f"UPPER(COALESCE(t.quote_type,'')) NOT IN ({placeholders})")
+            params.extend([q.upper() for q in exclude_types])
 
         sql = f"""
             SELECT t.symbol,
@@ -709,10 +721,18 @@ class Store:
         ]
         return out
 
-    def mark_stale_as_delisted(self, interval: str, stale_days: int) -> int:
+    def mark_stale_as_delisted(self, interval: str, stale_days: int,
+                               quote_types: list = None,
+                               exclude_types: list = None) -> int:
         """Flag symbols whose newest stored bar is older than `stale_days` as
         delisted. The market's own newest bar date is the reference point, so a
-        weekend or a stale database does not sweep the whole universe."""
+        weekend or a stale database does not sweep the whole universe.
+
+        The type filters must match the download that preceded it. Sweeping
+        types you are not downloading would mark them dead purely because
+        nobody is keeping them current — a stocks-only run would quietly
+        delist every ETF in the database.
+        """
         row = self.conn.execute(
             "SELECT MAX(date) d FROM prices WHERE interval=?", (interval,)
         ).fetchone()
@@ -722,16 +742,28 @@ class Store:
         cutoff = (
             datetime.fromisoformat(market_last).date() - timedelta(days=stale_days)
         ).isoformat()
+
+        where = ["status != ?", "has_data = 1"]
+        params = [STATUS_DELISTED, interval, STATUS_DELISTED]
+        if quote_types:
+            placeholders = ",".join("?" for _ in quote_types)
+            where.append(f"UPPER(COALESCE(quote_type,'')) IN ({placeholders})")
+            params.extend(q.upper() for q in quote_types)
+        if exclude_types:
+            placeholders = ",".join("?" for _ in exclude_types)
+            where.append(
+                f"UPPER(COALESCE(quote_type,'')) NOT IN ({placeholders})")
+            params.extend(q.upper() for q in exclude_types)
+
         with self.tx() as c:
             cur = c.execute(
-                """UPDATE tickers SET status=?, delisted_at=(
+                f"""UPDATE tickers SET status=?, delisted_at=(
                         SELECT MAX(date) FROM prices p
                         WHERE p.symbol=tickers.symbol AND p.interval=?)
-                   WHERE status != ?
-                     AND has_data = 1
+                   WHERE {' AND '.join(where)}
                      AND (SELECT MAX(date) FROM prices p
                           WHERE p.symbol=tickers.symbol AND p.interval=?) < ?""",
-                (STATUS_DELISTED, interval, STATUS_DELISTED, interval, cutoff),
+                params + [interval, cutoff],
             )
             return cur.rowcount
 

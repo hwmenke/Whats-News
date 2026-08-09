@@ -225,6 +225,42 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(
             self.store.symbols_to_fetch("1d", quote_types=["etf"]), ["SPY"])
 
+    def test_exclude_types_keeps_symbols_of_unknown_type(self):
+        # The lookup crawl and seed files leave quote_type blank, and those are
+        # exactly the delisted symbols. An inclusive --types filter drops them;
+        # an exclusive one must not.
+        self.store.upsert_tickers([
+            {"symbol": "AAPL", "source": "t", "quote_type": "EQUITY"},
+            {"symbol": "SPY", "source": "t", "quote_type": "ETF"},
+            {"symbol": "VFINX", "source": "t", "quote_type": "MUTUALFUND"},
+            {"symbol": "ENRNQ", "source": "seeds"},
+            {"symbol": "OLDCO", "source": "yahoo-lookup", "quote_type": ""},
+        ])
+        self.assertEqual(
+            self.store.symbols_to_fetch("1d", quote_types=["EQUITY"]), ["AAPL"])
+        self.assertEqual(
+            self.store.symbols_to_fetch("1d",
+                                        exclude_types=["ETF", "MUTUALFUND"]),
+            ["AAPL", "ENRNQ", "OLDCO"])
+
+    def test_stale_sweep_respects_the_type_filter(self):
+        # A stocks-only run must not delist the ETFs it never downloads.
+        self.store.upsert_tickers([
+            {"symbol": "LIVE", "source": "t", "quote_type": "EQUITY"},
+            {"symbol": "SPY", "source": "t", "quote_type": "ETF"},
+        ])
+        self.store.upsert_prices("LIVE", "1d", make_bars(["2024-06-03"]))
+        self.store.upsert_prices("SPY", "1d", make_bars(["2024-01-03"]))
+        self.store.mark_has_data("LIVE", "2024-06-03")
+        self.store.mark_has_data("SPY", "2024-01-03")
+
+        swept = self.store.mark_stale_as_delisted("1d", stale_days=30,
+                                                  exclude_types=["ETF"])
+        self.assertEqual(swept, 0)
+        row = self.store.conn.execute(
+            "SELECT status FROM tickers WHERE symbol='SPY'").fetchone()
+        self.assertNotEqual(row["status"], STATUS_DELISTED)
+
     def test_mark_stale_as_delisted_uses_market_date(self):
         self.store.upsert_tickers([
             {"symbol": "LIVE", "source": "t"}, {"symbol": "GONE", "source": "t"}])
