@@ -1,0 +1,45 @@
+# Packaging for the `yahoo_db` app only.
+#
+# The repository root also holds an unrelated Flask dashboard (app.py,
+# scanner.py, …). `packages` is listed explicitly rather than autodiscovered so
+# those top-level modules are never swept into the distribution — autodiscovery
+# on a flat layout like this one would otherwise try to take the whole root.
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yahoo-db"
+version = "1.0.0"
+description = "Archive Yahoo Finance price history for as many tickers as possible — listed and delisted — into SQLite."
+readme = "yahoo_db/README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["yahoo-finance", "market-data", "sqlite", "delisted", "tickers"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Programming Language :: Python :: 3",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = [
+    "yfinance>=1.5.0",
+    "pandas>=2.2.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+# Only needed for `yahoo-db export --format parquet`.
+parquet = ["pyarrow>=15.0.0"]
+
+[project.scripts]
+# Same entry point the module invocation uses, so `yahoo-db …` and
+# `python -m yahoo_db …` are the same program.
+yahoo-db = "yahoo_db.cli:main"
+
+[tool.setuptools]
+packages = ["yahoo_db", "yahoo_db.sources"]
+
+[tool.setuptools.package-data]
+yahoo_db = ["seeds/*.csv", "seeds/*.txt", "seeds/*.tsv", "seeds/README.md"]

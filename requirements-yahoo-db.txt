@@ -1,0 +1,9 @@
+# Dependencies for the yahoo_db downloader (see yahoo_db/README.md).
+# Kept separate from requirements.txt so the downloader can track a newer
+# yfinance than the dashboard app pins.
+yfinance>=1.5.0
+pandas>=2.2.0
+requests>=2.31.0
+
+# Optional: only needed for `python -m yahoo_db export --format parquet`
+# pyarrow>=15.0.0
