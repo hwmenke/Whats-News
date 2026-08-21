@@ -97,6 +97,24 @@ html, body {
 }
 .btn-sidebar-toggle:hover { color: var(--text-primary); border-color: var(--accent); }
 
+/* Topbar navigation link */
+.topbar-nav-link {
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.topbar-nav-link:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
 /* Sidebar collapsed state */
 .app.sidebar-collapsed {
   grid-template-columns: 0 1fr;

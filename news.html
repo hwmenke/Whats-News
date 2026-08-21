@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>News – Whats-News</title>
+  <meta name="description" content="Latest news for your watchlist symbols from Yahoo Finance." />
+  <link rel="stylesheet" href="styles/main.css" />
+  <style>
+    .news-app {
+      display: grid;
+      grid-template-rows: var(--topbar-h) 1fr;
+      height: 100vh;
+      overflow: hidden;
+      background: var(--bg-base);
+    }
+
+    .news-topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+    }
+
+    .news-topbar-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.3px;
+    }
+
+    .news-topbar-logo .logo-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+    }
+
+    .topbar-nav {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .topbar-nav a {
+      padding: 5px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .topbar-nav a:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    .topbar-nav a.active {
+      color: var(--accent-bright);
+      background: var(--accent-glow);
+    }
+
+    .topbar-spacer { flex: 1; }
+
+    .news-main {
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    .news-container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .news-header {
+      margin-bottom: 32px;
+    }
+
+    .news-header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .news-meta {
+      font-size: 13px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .news-status {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      margin-bottom: 24px;
+    }
+
+    .news-status.loading {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.05);
+    }
+
+    .news-status.error {
+      border-color: var(--red);
+      background: rgba(239, 68, 68, 0.05);
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .news-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .news-article {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 18px;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+
+    .news-article:hover {
+      border-color: var(--border-accent);
+      transform: translateY(-1px);
+    }
+
+    .article-symbol {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent-bright);
+      background: var(--accent-glow);
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 10px;
+    }
+
+    .article-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .article-title a {
+      color: inherit;
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .article-title a:hover {
+      color: var(--accent-bright);
+    }
+
+    .article-summary {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+
+    .article-meta {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--text-dim);
+      align-items: center;
+    }
+
+    .article-provider {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .article-provider a {
+      color: inherit;
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .article-provider a:hover {
+      color: var(--text-muted);
+    }
+
+    .article-time {
+      font-family: var(--font-mono);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    .empty-state h3 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .empty-state p {
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .error-detail {
+      margin-top: 16px;
+      padding: 12px;
+      background: var(--bg-elevated);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--red);
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+
+<div class="news-app">
+  <!-- Top Bar -->
+  <header class="news-topbar">
+    <div class="news-topbar-logo">
+      <div class="logo-icon">📰</div>
+      <span>Whats-News</span>
+    </div>
+
+    <nav class="topbar-nav">
+      <a href="/">Dashboard</a>
+      <a href="/news" class="active">News</a>
+    </nav>
+
+    <div class="topbar-spacer"></div>
+
+    <div class="status-dot" title="Connected"></div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="news-main">
+    <div class="news-container">
+      <div class="news-header">
+        <h1>Watchlist News</h1>
+        <div class="news-meta">
+          <span id="news-count">Loading...</span>
+          <span>•</span>
+          <span>Source: Yahoo Finance</span>
+        </div>
+      </div>
+
+      <div id="news-status" class="news-status loading" style="display: none;">
+        <div class="spinner"></div>
+        <span id="status-text">Loading news...</span>
+      </div>
+
+      <div id="news-list" class="news-list">
+        <!-- Articles will be inserted here -->
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  const API_BASE = window.location.origin;
+
+  function formatTime(isoString) {
+    if (!isoString) return 'Unknown time';
+    
+    try {
+      const date = new Date(isoString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined 
+      });
+    } catch (e) {
+      return isoString.split('T')[0];
+    }
+  }
+
+  function stripHtml(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || '';
+  }
+
+  function showStatus(message, type = 'loading') {
+    const statusEl = document.getElementById('news-status');
+    const statusText = document.getElementById('status-text');
+    
+    statusEl.style.display = 'flex';
+    statusEl.className = `news-status ${type}`;
+    statusText.textContent = message;
+
+    if (type !== 'loading') {
+      const spinner = statusEl.querySelector('.spinner');
+      if (spinner) spinner.style.display = 'none';
+    }
+  }
+
+  function hideStatus() {
+    document.getElementById('news-status').style.display = 'none';
+  }
+
+  function renderArticle(article) {
+    const summary = stripHtml(article.summary || '').substring(0, 200) + 
+                   (article.summary && article.summary.length > 200 ? '...' : '');
+    
+    return `
+      <article class="news-article">
+        <div class="article-symbol">${article.symbol}</div>
+        <h2 class="article-title">
+          ${article.url ? 
+            `<a href="${article.url}" target="_blank" rel="noopener">${article.title}</a>` : 
+            article.title
+          }
+        </h2>
+        ${summary ? `<p class="article-summary">${summary}</p>` : ''}
+        <div class="article-meta">
+          <span class="article-provider">
+            <span>via</span>
+            ${article.provider_url ? 
+              `<a href="${article.provider_url}" target="_blank" rel="noopener">${article.provider}</a>` : 
+              article.provider
+            }
+          </span>
+          <span>•</span>
+          <span class="article-time">${formatTime(article.publish_time)}</span>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderEmptyState(message, detail = null) {
+    let html = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📭</div>
+        <h3>No News Available</h3>
+        <p>${message}</p>
+    `;
+    
+    if (detail) {
+      html += `<div class="error-detail">${detail}</div>`;
+    }
+    
+    html += `</div>`;
+    return html;
+  }
+
+  async function loadNews() {
+    showStatus('Fetching news from Yahoo Finance...');
+
+    try {
+      const response = await fetch(`${API_BASE}/api/news`);
+      const data = await response.json();
+
+      hideStatus();
+
+      if (data.error) {
+        document.getElementById('news-list').innerHTML = 
+          renderEmptyState('Failed to fetch news', data.error);
+        document.getElementById('news-count').textContent = 'Error';
+        return;
+      }
+
+      if (!data.articles || data.articles.length === 0) {
+        let message = 'Add symbols to your watchlist to see news.';
+        if (data.symbol_count > 0) {
+          message = `No news found for ${data.symbol_count} symbol${data.symbol_count !== 1 ? 's' : ''} in your watchlist.`;
+        }
+        document.getElementById('news-list').innerHTML = renderEmptyState(message);
+        document.getElementById('news-count').textContent = 
+          `${data.symbol_count || 0} symbols, 0 articles`;
+        return;
+      }
+
+      const articlesHtml = data.articles.map(renderArticle).join('');
+      document.getElementById('news-list').innerHTML = articlesHtml;
+      
+      document.getElementById('news-count').textContent = 
+        `${data.symbol_count} symbol${data.symbol_count !== 1 ? 's' : ''}, ${data.article_count} article${data.article_count !== 1 ? 's' : ''}`;
+
+      if (data.errors && data.errors.length > 0) {
+        console.warn('Some symbols failed to fetch:', data.errors);
+      }
+
+    } catch (error) {
+      hideStatus();
+      document.getElementById('news-list').innerHTML = 
+        renderEmptyState('Network error', error.message);
+      document.getElementById('news-count').textContent = 'Error';
+      console.error('Failed to load news:', error);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', loadNews);
+</script>
+
+</body>
+</html>

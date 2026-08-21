@@ -19,6 +19,7 @@ import backtester
 import scanner
 import adaptive_trend as adaptive
 import ticker_lists as tl
+import yfinance as yf
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -32,6 +33,11 @@ db.init_db()
 @app.route("/")
 def index():
     return send_from_directory(".", "index.html")
+
+
+@app.route("/news")
+def news_page():
+    return send_from_directory(".", "news.html")
 
 
 # -- Symbols --------------------------------------------------------------------
@@ -369,6 +375,114 @@ def get_scanner():
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# -- News -----------------------------------------------------------------------
+
+@app.route("/api/news", methods=["GET"])
+def get_all_news():
+    """Fetch news for all watchlist symbols using yfinance."""
+    symbols = [s["symbol"] for s in db.list_symbols()]
+    if not symbols:
+        return jsonify({"articles": [], "message": "No symbols in watchlist"})
+    
+    all_articles = []
+    seen_urls = set()
+    errors = []
+    
+    for symbol in symbols:
+        try:
+            ticker = yf.Ticker(symbol)
+            news_items = ticker.news
+            
+            if not news_items:
+                continue
+                
+            for item in news_items:
+                content = item.get("content", {})
+                url = (content.get("canonicalUrl", {}).get("url") or 
+                       content.get("clickThroughUrl", {}).get("url") or "")
+                
+                if url and url in seen_urls:
+                    continue
+                    
+                if url:
+                    seen_urls.add(url)
+                
+                provider = content.get("provider", {})
+                article = {
+                    "symbol": symbol,
+                    "title": content.get("title", "No title"),
+                    "summary": content.get("summary") or content.get("description", ""),
+                    "url": url,
+                    "publish_time": content.get("pubDate", ""),
+                    "provider": provider.get("displayName", "Yahoo Finance"),
+                    "provider_url": provider.get("url", "https://finance.yahoo.com/")
+                }
+                all_articles.append(article)
+                
+        except Exception as e:
+            errors.append({"symbol": symbol, "error": str(e)})
+    
+    all_articles.sort(key=lambda x: x.get("publish_time", ""), reverse=True)
+    
+    result = {
+        "articles": all_articles,
+        "source": "Yahoo Finance",
+        "symbol_count": len(symbols),
+        "article_count": len(all_articles)
+    }
+    
+    if errors:
+        result["errors"] = errors
+    
+    return jsonify(result)
+
+
+@app.route("/api/news/<string:symbol>", methods=["GET"])
+def get_symbol_news(symbol):
+    """Fetch news for a specific symbol using yfinance."""
+    try:
+        ticker = yf.Ticker(symbol.upper())
+        news_items = ticker.news
+        
+        if not news_items:
+            return jsonify({
+                "symbol": symbol.upper(),
+                "articles": [],
+                "message": f"No news available for {symbol.upper()}",
+                "source": "Yahoo Finance"
+            })
+        
+        articles = []
+        for item in news_items:
+            content = item.get("content", {})
+            provider = content.get("provider", {})
+            
+            article = {
+                "title": content.get("title", "No title"),
+                "summary": content.get("summary") or content.get("description", ""),
+                "url": (content.get("canonicalUrl", {}).get("url") or 
+                       content.get("clickThroughUrl", {}).get("url") or ""),
+                "publish_time": content.get("pubDate", ""),
+                "provider": provider.get("displayName", "Yahoo Finance"),
+                "provider_url": provider.get("url", "https://finance.yahoo.com/")
+            }
+            articles.append(article)
+        
+        return jsonify({
+            "symbol": symbol.upper(),
+            "articles": articles,
+            "article_count": len(articles),
+            "source": "Yahoo Finance"
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "symbol": symbol.upper(),
+            "error": str(e),
+            "source": "Yahoo Finance"
+        }), 500
 
 
 # -- Data Manager ---------------------------------------------------------------
