@@ -100,6 +100,9 @@
       <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')">
         <span class="tab-icon">📈</span> Charts
       </button>
+      <button id="tab-news" class="tab-btn" onclick="switchTab('news')">
+        <span class="tab-icon">📰</span> News
+      </button>
       <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">
         <span class="tab-icon">📊</span> Statistics
       </button>
@@ -203,6 +206,41 @@
       </div>
 
     </div><!-- #chart-area -->
+
+    <!-- ── News Area ── -->
+    <div id="news-area" class="news-container" style="display:none;">
+      
+      <!-- Loading state -->
+      <div id="news-loading" style="display:none; align-items:center; justify-content:center; gap:10px; padding:40px; color:var(--text-muted);">
+        <span class="spinner"></span> Loading news…
+      </div>
+
+      <!-- News header -->
+      <div class="news-header">
+        <h3 class="news-title">Latest News Headlines</h3>
+        <div class="news-meta">
+          <span id="news-provider-label">Source: Yahoo Finance</span>
+        </div>
+      </div>
+
+      <!-- News list -->
+      <div id="news-list" class="news-list">
+        <!-- News items will be rendered here by JavaScript -->
+      </div>
+
+      <!-- Empty state -->
+      <div id="news-empty" class="news-empty" style="display:none;">
+        <div class="empty-icon">📰</div>
+        <p>No news available for this symbol.</p>
+      </div>
+
+      <!-- Error state -->
+      <div id="news-error" class="news-error" style="display:none;">
+        <div class="empty-icon">⚠️</div>
+        <p id="news-error-message">Failed to load news.</p>
+      </div>
+
+    </div><!-- #news-area -->
 
     <!-- ── Statistics Area ── -->
     <div id="stats-area" class="stats-container" style="display:none;">

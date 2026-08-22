@@ -463,6 +463,8 @@ async function selectSymbol(symbol) {
     renderSymbolList();
     if (state.activeTab === 'charts') {
         await loadChartData(symbol);
+    } else if (state.activeTab === 'news') {
+        await loadNewsData(symbol);
     } else if (state.activeTab === 'stats') {
         await loadStatsData(symbol);
     } else if (state.activeTab === 'knn') {
@@ -517,6 +519,155 @@ async function loadStatsData(symbol) {
     } finally {
         showLoadingOverlay(false);
     }
+}
+
+// ── News Data Loading ─────────────────────────────────────
+async function loadNewsData(symbol) {
+    if (!symbol) return;
+    showNewsArea();
+    
+    const loadingEl = document.getElementById('news-loading');
+    const listEl = document.getElementById('news-list');
+    const emptyEl = document.getElementById('news-empty');
+    const errorEl = document.getElementById('news-error');
+    
+    // Show loading state
+    if (loadingEl) loadingEl.style.display = 'flex';
+    if (listEl) listEl.innerHTML = '';
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (errorEl) errorEl.style.display = 'none';
+    
+    updateSymbolHeader(symbol, null);
+
+    try {
+        // Fetch news from API - returns { symbol, articles: [...], article_count, source } or { symbol, message, source } or { symbol, error, source }
+        const data = await apiFetch(`${API}/news/${symbol}`);
+        
+        // Hide loading
+        if (loadingEl) loadingEl.style.display = 'none';
+        
+        // Handle error response
+        if (data.error) {
+            if (errorEl) {
+                errorEl.style.display = 'flex';
+                const msgEl = document.getElementById('news-error-message');
+                if (msgEl) msgEl.textContent = data.error;
+            }
+            toast('News error: ' + data.error, 'error');
+            return;
+        }
+        
+        // Check if we have articles
+        if (!data.articles || data.articles.length === 0) {
+            if (emptyEl) {
+                emptyEl.style.display = 'flex';
+                // If there's a message from the API, show it
+                const emptyIcon = emptyEl.querySelector('.empty-icon');
+                const emptyText = emptyEl.querySelector('p');
+                if (emptyText && data.message) {
+                    emptyText.textContent = data.message;
+                }
+            }
+            return;
+        }
+        
+        // Render news items
+        renderNews(data.articles);
+        
+        // Also update header with latest price if available
+        try {
+            const ohlcv = await apiFetch(`${API}/ohlcv/${symbol}?freq=daily&limit=2`);
+            if (ohlcv && ohlcv.length > 0) {
+                const last = ohlcv[ohlcv.length - 1];
+                const prev = ohlcv[ohlcv.length - 2];
+                updateSymbolHeader(symbol, last, prev);
+            }
+        } catch (e) {
+            // Ignore errors fetching price data for news tab
+        }
+        
+    } catch (e) {
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (errorEl) {
+            errorEl.style.display = 'flex';
+            const msgEl = document.getElementById('news-error-message');
+            if (msgEl) msgEl.textContent = 'Failed to load news: ' + e.message;
+        }
+        toast('News load failed: ' + e.message, 'error');
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function renderNews(articles) {
+    const listEl = document.getElementById('news-list');
+    if (!listEl) return;
+    
+    listEl.innerHTML = '';
+    
+    articles.forEach(article => {
+        const newsItem = document.createElement('div');
+        newsItem.className = 'news-item';
+        newsItem.addEventListener('click', () => {
+            if (article.url) window.open(article.url, '_blank');
+        });
+        
+        // No thumbnail in main's API format - it doesn't include images
+        
+        // Format publish_time (ISO string like "2026-08-21T10:00:00Z")
+        let timeStr = '';
+        if (article.publish_time) {
+            try {
+                const date = new Date(article.publish_time);
+                if (!isNaN(date.getTime())) {
+                    timeStr = date.toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                }
+            } catch (e) {
+                // If parsing fails, don't show time - never invent "2m ago"
+                timeStr = '';
+            }
+        }
+        
+        // Create content div
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'news-item-content';
+        
+        // Headline (escaped)
+        const headlineEl = document.createElement('h4');
+        headlineEl.className = 'news-item-headline';
+        headlineEl.textContent = article.title || 'No title';
+        contentDiv.appendChild(headlineEl);
+        
+        // Meta (provider + time)
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'news-item-meta';
+        
+        const providerEl = document.createElement('span');
+        providerEl.className = 'news-item-provider';
+        providerEl.textContent = article.provider || 'Yahoo Finance';
+        metaDiv.appendChild(providerEl);
+        
+        if (timeStr) {
+            const timeEl = document.createElement('span');
+            timeEl.className = 'news-item-time';
+            timeEl.textContent = timeStr;
+            metaDiv.appendChild(timeEl);
+        }
+        
+        contentDiv.appendChild(metaDiv);
+        newsItem.appendChild(contentDiv);
+        listEl.appendChild(newsItem);
+    });
 }
 
 async function loadChartData(symbol) {
@@ -620,6 +771,7 @@ async function loadAdaptiveTrendData(symbol) {
 function showEmptyState() {
     document.getElementById('empty-state').style.display       = 'flex';
     document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('news-area').style.display         = 'none';
     document.getElementById('stats-area').style.display        = 'none';
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
@@ -647,6 +799,7 @@ async function switchTab(tabId) {
     // Hide all content areas first
     document.getElementById('empty-state').style.display       = 'none';
     document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('news-area').style.display         = 'none';
     document.getElementById('stats-area').style.display        = 'none';
     document.getElementById('knn-area').style.display          = 'none';
     document.getElementById('backtest-area').style.display     = 'none';
@@ -658,6 +811,9 @@ async function switchTab(tabId) {
     if (tabId === 'charts') {
         showChartArea();
         if (state.activeSymbol) loadChartData(state.activeSymbol);
+    } else if (tabId === 'news') {
+        showNewsArea();
+        if (state.activeSymbol) loadNewsData(state.activeSymbol);
     } else if (tabId === 'stats') {
         showStatsArea();
         if (state.activeSymbol) loadStatsData(state.activeSymbol);
@@ -685,6 +841,7 @@ async function switchTab(tabId) {
 function showStatsArea() {
     document.getElementById('empty-state').style.display       = 'none';
     document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('news-area').style.display         = 'none';
     document.getElementById('stats-area').style.display        = 'block';
     document.getElementById('knn-area').style.display          = 'none';
     document.getElementById('backtest-area').style.display     = 'none';
@@ -696,6 +853,7 @@ function showStatsArea() {
 
 function showChartArea() {
     document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('news-area').style.display         = 'none';
     document.getElementById('stats-area').style.display        = 'none';
     document.getElementById('knn-area').style.display          = 'none';
     document.getElementById('backtest-area').style.display     = 'none';
@@ -709,6 +867,7 @@ function showChartArea() {
 function showTrendArea() {
     document.getElementById('empty-state').style.display       = 'none';
     document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('news-area').style.display         = 'none';
     document.getElementById('stats-area').style.display        = 'none';
     document.getElementById('knn-area').style.display          = 'none';
     document.getElementById('backtest-area').style.display     = 'none';
@@ -721,6 +880,7 @@ function showTrendArea() {
 function showScannerArea() {
     document.getElementById('empty-state').style.display       = 'none';
     document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('news-area').style.display         = 'none';
     document.getElementById('stats-area').style.display        = 'none';
     document.getElementById('knn-area').style.display          = 'none';
     document.getElementById('backtest-area').style.display     = 'none';
@@ -733,6 +893,7 @@ function showScannerArea() {
 function showDataManagerArea() {
     document.getElementById('empty-state').style.display       = 'none';
     document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('news-area').style.display         = 'none';
     document.getElementById('stats-area').style.display        = 'none';
     document.getElementById('knn-area').style.display          = 'none';
     document.getElementById('backtest-area').style.display     = 'none';
@@ -740,6 +901,19 @@ function showDataManagerArea() {
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'flex';
     document.querySelector('.tab-bar').style.display           = 'none';
+}
+
+function showNewsArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('news-area').style.display         = 'flex';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.querySelector('.tab-bar').style.display           = 'flex';
 }
 
 // ── Stats Rendering ───────────────────────────────────────────
