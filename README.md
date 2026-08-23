@@ -42,6 +42,19 @@ Need Python 3? Check with `python3 --version`.
 - Interactive charts and technical tools
 - Watchlist-wide news page with source + time on every story
 - Scanner / stats / backtest tabs for deeper analysis
+- PM Desk: book tape, RS ranks, regime heatmap, ATR sizing
+
+### Scaling the watchlist
+
+SQLite stays the datastore — no extra services. The DB layer is set up so hundreds of tickers (and their OHLCV history) stay practical:
+
+- **WAL journal** + busy timeout so refreshes/scanner can run alongside the UI
+- **Bulk upserts** for OHLCV (vectorized, not row-by-row)
+- **Indexes** on `(symbol, freq, date)` and watchlist grouping
+- **Bulk add**: `POST /api/symbols` with `{"symbols": ["AAPL", "MSFT", ...]}`
+- **Stats / optimize**: `GET /api/db/stats`, `POST /api/db/optimize` after large imports
+
+`finance.db` (and WAL sidecars) stay gitignored — never commit the database file.
 
 ## Project layout (developers)
 
@@ -54,6 +67,7 @@ Need Python 3? Check with `python3 --version`.
 | `tests/` | Unit tests (no live network) |
 | `start.sh` | One-command launcher |
 | `SUGGESTIONS.md` | Ideas for future improvements |
+| `PM_REVIEW.md` / `METHODOLOGY_REVIEW.md` | Desk review notes |
 
 ```bash
 make test    # or: python3 -m unittest discover tests

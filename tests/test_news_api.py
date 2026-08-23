@@ -9,9 +9,9 @@ class NewsApiTests(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
 
-    @patch("app.db.list_symbols")
-    def test_get_all_news_empty_watchlist(self, mock_list_symbols):
-        mock_list_symbols.return_value = []
+    @patch("app.db.list_symbol_codes")
+    def test_get_all_news_empty_watchlist(self, mock_list_symbol_codes):
+        mock_list_symbol_codes.return_value = []
 
         response = self.client.get("/api/news")
         data = response.get_json()
@@ -21,9 +21,9 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(data["message"], "No symbols in watchlist")
 
     @patch("app.yf.Ticker")
-    @patch("app.db.list_symbols")
-    def test_get_all_news_with_articles(self, mock_list_symbols, mock_ticker_class):
-        mock_list_symbols.return_value = [{"symbol": "AAPL"}]
+    @patch("app.db.list_symbol_codes")
+    def test_get_all_news_with_articles(self, mock_list_symbol_codes, mock_ticker_class):
+        mock_list_symbol_codes.return_value = ["AAPL"]
         
         mock_ticker = MagicMock()
         mock_ticker.news = [
@@ -55,9 +55,9 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(article["provider"], "Test News")
 
     @patch("app.yf.Ticker")
-    @patch("app.db.list_symbols")
-    def test_get_all_news_deduplicates_by_url(self, mock_list_symbols, mock_ticker_class):
-        mock_list_symbols.return_value = [{"symbol": "AAPL"}, {"symbol": "MSFT"}]
+    @patch("app.db.list_symbol_codes")
+    def test_get_all_news_deduplicates_by_url(self, mock_list_symbol_codes, mock_ticker_class):
+        mock_list_symbol_codes.return_value = ["AAPL", "MSFT"]
         
         def create_ticker(symbol):
             mock_ticker = MagicMock()
@@ -83,9 +83,9 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(data["article_count"], 1)
 
     @patch("app.yf.Ticker")
-    @patch("app.db.list_symbols")
-    def test_get_all_news_no_news_available(self, mock_list_symbols, mock_ticker_class):
-        mock_list_symbols.return_value = [{"symbol": "AAPL"}]
+    @patch("app.db.list_symbol_codes")
+    def test_get_all_news_no_news_available(self, mock_list_symbol_codes, mock_ticker_class):
+        mock_list_symbol_codes.return_value = ["AAPL"]
         
         mock_ticker = MagicMock()
         mock_ticker.news = []
@@ -99,9 +99,9 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(len(data["articles"]), 0)
 
     @patch("app.yf.Ticker")
-    @patch("app.db.list_symbols")
-    def test_get_all_news_handles_errors(self, mock_list_symbols, mock_ticker_class):
-        mock_list_symbols.return_value = [{"symbol": "AAPL"}, {"symbol": "INVALID"}]
+    @patch("app.db.list_symbol_codes")
+    def test_get_all_news_handles_errors(self, mock_list_symbol_codes, mock_ticker_class):
+        mock_list_symbol_codes.return_value = ["AAPL", "INVALID"]
         
         def create_ticker(symbol):
             mock_ticker = MagicMock()
