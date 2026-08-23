@@ -39,7 +39,8 @@ class EmbeddedMarketDataTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         body = res.get_json()
         self.assertTrue(body["ok"])
-        self.assertEqual(body["service"], "analysis")
+        self.assertEqual(body["service"], "whats-news")
+        self.assertEqual(body["layer"], "analysis")
         self.assertEqual(body["data_mode"], "embedded")
 
 
