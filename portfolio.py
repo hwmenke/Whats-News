@@ -116,6 +116,23 @@ def snapshot_symbol(symbol: str) -> dict:
     ret_5d = (last / float(week_ago) - 1) * 100 if week_ago else None
     ret_21d = (last / float(month_ago) - 1) * 100 if month_ago else None
 
+    # Weekly regime (same KAMA20 logic on weekly bars)
+    w_df = db.get_ohlcv_df(sym, "weekly", limit=80)
+    regime_w = "n/a"
+    vs_kama_w = None
+    if not w_df.empty and len(w_df) >= 25:
+        w_close = w_df["close"].astype(float)
+        w_last = float(w_close.iloc[-1])
+        w_kama = _last_valid(_kama(w_close, 20))
+        if w_kama and w_kama > 0:
+            vs_kama_w = (w_last / w_kama - 1.0) * 100
+            if vs_kama_w >= 1.0:
+                regime_w = "uptrend"
+            elif vs_kama_w <= -1.0:
+                regime_w = "downtrend"
+            else:
+                regime_w = "range"
+
     return {
         "symbol": sym,
         "ready": True,
@@ -129,17 +146,48 @@ def snapshot_symbol(symbol: str) -> dict:
         "kama20": round(kama20, 2) if kama20 is not None else None,
         "vs_kama20_pct": round(vs_kama, 2) if vs_kama is not None else None,
         "regime": regime,
+        "regime_weekly": regime_w,
+        "vs_kama20_weekly_pct": round(vs_kama_w, 2) if vs_kama_w is not None else None,
         "atr14": round(atr14, 2) if atr14 is not None else None,
         "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
         "stop_long_1_5atr": stop_long,
         "stop_short_1_5atr": stop_short,
+        # last ~30 daily closes for correlation (compact)
+        "closes_30": [round(float(x), 4) for x in close.tail(30).tolist()],
+    }
+
+
+def _corr_hint(ready: list) -> dict | None:
+    """Pearson corr of daily returns for the two names with most complete closes_30."""
+    usable = [r for r in ready if len(r.get("closes_30") or []) >= 20]
+    if len(usable) < 2:
+        return None
+    a, b = usable[0], usable[1]
+    ca = np.array(a["closes_30"], dtype=float)
+    cb = np.array(b["closes_30"], dtype=float)
+    n = min(len(ca), len(cb))
+    ra = np.diff(np.log(ca[-n:]))
+    rb = np.diff(np.log(cb[-n:]))
+    if len(ra) < 10 or np.std(ra) == 0 or np.std(rb) == 0:
+        return None
+    corr = float(np.corrcoef(ra, rb)[0, 1])
+    return {
+        "pair": [a["symbol"], b["symbol"]],
+        "corr_30d": round(corr, 2),
+        "note": "high" if abs(corr) >= 0.7 else ("mod" if abs(corr) >= 0.4 else "low"),
     }
 
 
 def portfolio_snapshot() -> dict:
-    symbols = [s["symbol"] for s in db.list_symbols()]
+    symbols_meta = {s["symbol"]: s for s in db.list_symbols()}
+    symbols = list(symbols_meta.keys())
     rows = [snapshot_symbol(sym) for sym in symbols]
     ready = [r for r in rows if r.get("ready")]
+
+    # Attach group tags for rollups
+    for row in rows:
+        meta = symbols_meta.get(row["symbol"], {})
+        row["group_tag"] = (meta.get("group_tag") or "").strip()
 
     # Relative strength rank by 21D return (1 = strongest)
     ranked = sorted(
@@ -152,22 +200,51 @@ def portfolio_snapshot() -> dict:
         row["rs_n"] = len(ranked)
 
     # Alert flags for swing PMs
+    alerts = []
     for row in rows:
         zone = row.get("rsi_zone")
         row["alert"] = None
         if zone == "overbought":
             row["alert"] = "RSI_OB"
+            alerts.append(row["symbol"])
         elif zone == "oversold":
             row["alert"] = "RSI_OS"
+            alerts.append(row["symbol"])
 
     by_day = sorted(ready, key=lambda r: r.get("change_pct") or 0, reverse=True)
+
+    # Group rollup: avg day % by group_tag
+    groups = {}
+    for row in ready:
+        g = row.get("group_tag") or "Ungrouped"
+        groups.setdefault(g, []).append(row.get("change_pct") or 0)
+    group_rollup = [
+        {"group": g, "n": len(vals), "avg_change_pct": round(sum(vals) / len(vals), 2)}
+        for g, vals in groups.items()
+    ]
+    group_rollup.sort(key=lambda x: x["avg_change_pct"], reverse=True)
+
+    # Strip bulky series from API payload after corr
+    corr = _corr_hint(ready)
+    for row in rows:
+        row.pop("closes_30", None)
+
+    weak = ranked[-1] if ranked else None
+    focus_news = list(dict.fromkeys(
+        alerts + ([weak["symbol"]] if weak else [])
+    ))
+
     return {
         "count": len(symbols),
         "ready_count": len(ready),
         "symbols": rows,
         "tape": by_day,
+        "alerts": alerts,
         "top_gainer": by_day[0] if by_day else None,
         "top_loser": by_day[-1] if by_day else None,
         "strongest_rs": ranked[0] if ranked else None,
-        "weakest_rs": ranked[-1] if ranked else None,
+        "weakest_rs": weak,
+        "correlation": corr,
+        "group_rollup": group_rollup,
+        "news_focus": focus_news,
     }

@@ -69,6 +69,11 @@
     <!-- Portfolio tape — sorted by day %, RS ranks -->
     <div id="portfolio-tape" class="portfolio-tape" style="display:none;" aria-label="Portfolio tape">
       <div class="tape-meta" id="tape-meta">Book tape</div>
+      <label class="tape-filter" title="Show only RSI overbought/oversold names">
+        <input type="checkbox" id="tape-alerts-only" />
+        Alerts only
+      </label>
+      <button type="button" id="tape-book-news" class="btn btn-ghost btn-sm" title="Load news for alerting / weakest RS names">Book news</button>
       <div id="tape-chips" class="tape-chips"></div>
     </div>
 
@@ -114,7 +119,7 @@
     <div id="pm-desk" class="pm-desk" style="display:none;" aria-label="PM technical desk">
       <div class="pm-desk-title">PM Desk</div>
       <div class="pm-metric">
-        <span class="pm-label">Regime</span>
+        <span class="pm-label">Regime D / W</span>
         <span id="pm-regime" class="pm-val">—</span>
       </div>
       <div class="pm-metric">

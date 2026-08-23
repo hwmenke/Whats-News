@@ -60,6 +60,11 @@ class PortfolioSnapshotTests(unittest.TestCase):
         ranks = {r["symbol"]: r["rs_rank_21d"] for r in data["symbols"] if r.get("ready")}
         self.assertEqual(sorted(ranks.values()), [1, 2])
         self.assertIn(data["symbols"][0].get("alert"), (None, "RSI_OB", "RSI_OS"))
+        self.assertIn("alerts", data)
+        self.assertIn("news_focus", data)
+        self.assertIsInstance(data.get("group_rollup"), list)
+        # weekly regime present on ready rows
+        self.assertIn("regime_weekly", data["symbols"][0])
 
     def test_pm_desk_endpoint(self):
         self._seed("AAPL")

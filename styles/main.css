@@ -439,6 +439,11 @@ html, body {
   overflow-x: auto;
   flex-shrink: 0;
 }
+.tape-chips {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
 .tape-meta {
   font-size: 10px;
   font-weight: 700;
@@ -447,11 +452,18 @@ html, body {
   color: var(--text-dim);
   white-space: nowrap;
 }
-.tape-chips {
-  display: flex;
-  gap: 6px;
+.tape-filter {
+  display: inline-flex;
   align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
 }
+.tape-filter input { accent-color: var(--accent); }
+#tape-book-news { flex-shrink: 0; font-size: 11px; padding: 3px 8px; }
 .tape-chip {
   display: inline-flex;
   align-items: center;

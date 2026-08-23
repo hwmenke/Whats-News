@@ -29,12 +29,13 @@ Goal: iterate until **3 stock technical-analysis portfolio managers** would rank
 | 0 | baseline | 3.0 | 1.0 | 1.0 | 1.0 | Charts exist; no tape, no risk strip | No |
 | 1 | 2026-08-23 | 5.5 | 1.8 | 2.0 | 1.7 | PM Desk + portfolio snapshot + sidebar % | No |
 | 2 | 2026-08-23 | 7.2 | 2.3 | 2.5 | 2.4 | Sorted tape, RS#21D, RSI alerts, hotkeys, copy setup | No |
+| 3 | 2026-08-23 | 8.3 | 2.7 | 2.8 | 2.8 | D/W regime, alert toasts+filter, book news, ρ hint, group rollup | No |
 
-### Iteration 2 detail (avg 7.2)
+### Iteration 3 detail (avg 8.3)
 
-- **PM-A 7.0 (2.3×):** Book tape + RS ranks help momentum rotation; still missing trend heatmap / multi-TF regime grid.
-- **PM-B 7.5 (2.5×):** RSI_OB/OS badges + `c` copy setup + `j/k` speed are real; wants toast when alerts appear and alert filter.
-- **PM-C 7.2 (2.4×):** Sorted day tape + gainer/loser/RS#1 meta is usable for a small book; wants correlation / sector buckets and news tied to alert names.
+- **PM-A 8.2 (2.7×):** Daily/weekly regime on desk + tape chips; still wants a denser multi-name regime heatmap.
+- **PM-B 8.5 (2.8×):** Alert toasts + “Alerts only” filter are the swing workflow; wants persistent alert log.
+- **PM-C 8.3 (2.8×):** Correlation hint + group rollup + Book news for weak/alert names; wants sector ETFs auto-context.
 
 ## Stop condition
 
@@ -42,8 +43,8 @@ Stop the `/loop` when Iter avg ≥ 9.0 **and** min(PM-A×, PM-B×, PM-C×) ≥ 3
 
 ## Next iteration candidates
 
-1. Toast + filter for RSI OB/OS alerts
-2. Multi-TF regime mini-grid (D vs W) on PM Desk
-3. News filtered to symbols currently alerting / weakest RS
-4. Simple pairwise correlation hint for top-2 names
-5. Sector/group rollup on tape
+1. Compact regime heatmap (all names × D/W)
+2. Persistent alert log panel
+3. Auto-suggest peer ETF for active symbol
+4. Position sizing helper from ATR% risk
+5. Save/load watchlist presets

@@ -17,6 +17,8 @@ let state = {
     statsData:    null,
     portfolio:    {},   // symbol -> snapshot
     portfolioMeta: null,
+    tapeAlertsOnly: false,
+    seenAlerts: new Set(),
 };
 
 let statsCharts = {};
@@ -189,12 +191,22 @@ function renderPortfolioTape(data) {
     const meta = document.getElementById('tape-meta');
     if (!bar || !chips) return;
 
-    const tape = data.tape || [];
-    if (!tape.length) {
+    const tapeAll = data.tape || [];
+    if (!tapeAll.length) {
         bar.style.display = 'none';
         return;
     }
     bar.style.display = 'flex';
+
+    // Toast newly appeared RSI alerts
+    const alertSet = new Set(data.alerts || []);
+    alertSet.forEach(sym => {
+        if (!state.seenAlerts.has(sym)) {
+            const row = (data.symbols || []).find(r => r.symbol === sym);
+            toast(`${sym} ${row?.alert || 'ALERT'} · RSI ${row?.rsi14 ?? '—'}`, 'warning', 4500);
+        }
+    });
+    state.seenAlerts = alertSet;
 
     const g = data.top_gainer;
     const l = data.top_loser;
@@ -203,24 +215,112 @@ function renderPortfolioTape(data) {
     if (g) metaBits += ` · ↑ ${g.symbol} ${g.change_pct >= 0 ? '+' : ''}${g.change_pct}%`;
     if (l && l.symbol !== g?.symbol) metaBits += ` · ↓ ${l.symbol} ${l.change_pct}%`;
     if (rs) metaBits += ` · RS#1 ${rs.symbol}`;
+    if (data.correlation) {
+        const c = data.correlation;
+        metaBits += ` · ρ ${c.pair[0]}/${c.pair[1]} ${c.corr_30d} (${c.note})`;
+    }
+    if (data.group_rollup?.length) {
+        const topG = data.group_rollup[0];
+        metaBits += ` · grp ${topG.group} ${topG.avg_change_pct >= 0 ? '+' : ''}${topG.avg_change_pct}%`;
+    }
     meta.textContent = metaBits;
 
+    const tape = state.tapeAlertsOnly
+        ? tapeAll.filter(r => r.alert)
+        : tapeAll;
+
     chips.innerHTML = '';
+    if (!tape.length) {
+        chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No alerting names</span>';
+        return;
+    }
     tape.forEach(row => {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'tape-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
         const pos = (row.change_pct || 0) >= 0;
+        const dw = row.regime_weekly && row.regime_weekly !== 'n/a'
+            ? ` D:${row.regime?.[0] || '?'} W:${row.regime_weekly[0]}`
+            : '';
         chip.innerHTML = `
             <span>${row.symbol}</span>
             <span class="tape-pct ${pos ? 'positive' : 'negative'}">${pos ? '+' : ''}${row.change_pct?.toFixed(1) ?? '—'}%</span>
-            <span class="tape-rs">RS ${row.rs_rank_21d ?? '—'}/${row.rs_n ?? '—'}</span>
+            <span class="tape-rs">RS ${row.rs_rank_21d ?? '—'}/${row.rs_n ?? '—'}${dw}</span>
             ${row.alert ? `<span class="tape-alert">${row.alert}</span>` : ''}
         `;
-        chip.title = `${row.regime || ''} · RSI ${row.rsi14 ?? '—'} (${row.rsi_zone || ''})`;
+        chip.title = `D ${row.regime || ''} / W ${row.regime_weekly || ''} · RSI ${row.rsi14 ?? '—'}`;
         chip.addEventListener('click', () => selectSymbol(row.symbol));
         chips.appendChild(chip);
     });
+}
+
+async function openBookNews() {
+    const focus = state.portfolioMeta?.news_focus || state.portfolioMeta?.alerts || [];
+    if (!focus.length) {
+        toast('No alert/weak-RS names for book news yet', 'info');
+        switchTab('news');
+        return;
+    }
+    switchTab('news');
+    const listEl = document.getElementById('news-list');
+    const emptyEl = document.getElementById('news-empty');
+    const loadingEl = document.getElementById('news-loading');
+    if (loadingEl) loadingEl.style.display = 'flex';
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (listEl) listEl.innerHTML = '';
+    try {
+        // Prefer focused symbols: fetch per-symbol and merge
+        const batches = await Promise.all(
+            focus.slice(0, 5).map(async sym => {
+                try {
+                    const data = await apiFetch(`${API}/news/${sym}`);
+                    return (data.articles || []).map(a => ({ ...a, symbol: sym }));
+                } catch {
+                    return [];
+                }
+            })
+        );
+        const articles = batches.flat();
+        const seen = new Set();
+        const deduped = [];
+        for (const a of articles) {
+            const key = a.url || a.title;
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            deduped.push(a);
+        }
+        deduped.sort((a, b) => (b.publish_time || '').localeCompare(a.publish_time || ''));
+
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (!deduped.length) {
+            if (emptyEl) {
+                emptyEl.style.display = 'flex';
+                const p = emptyEl.querySelector('p');
+                if (p) p.textContent = `No headlines for focus names: ${focus.join(', ')}`;
+            }
+            return;
+        }
+        // Reuse single-symbol news renderer if present
+        if (typeof renderNewsArticles === 'function') {
+            renderNewsArticles(deduped);
+        } else if (listEl) {
+            listEl.innerHTML = deduped.slice(0, 40).map(a => `
+                <article class="news-item" style="padding:12px 0;border-bottom:1px solid var(--border);">
+                  <div style="font-size:11px;color:var(--accent-bright);font-family:var(--font-mono);">${a.symbol || ''}</div>
+                  <a href="${a.url || '#'}" target="_blank" rel="noopener" style="color:var(--text-primary);font-weight:600;text-decoration:none;">
+                    ${a.title || 'Untitled'}
+                  </a>
+                  <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">
+                    via ${a.provider || 'Yahoo Finance'} · ${a.publish_time || ''}
+                  </div>
+                </article>
+            `).join('');
+        }
+        toast(`Book news: ${focus.join(', ')}`, 'info');
+    } catch (e) {
+        if (loadingEl) loadingEl.style.display = 'none';
+        toast('Book news failed: ' + e.message, 'error');
+    }
 }
 
 function renderSymbolList() {
@@ -1326,8 +1426,11 @@ function renderPmDesk(snap) {
     desk.style.display = 'flex';
 
     const regimeEl = document.getElementById('pm-regime');
-    regimeEl.textContent = snap.regime || '—';
+    const d = snap.regime || '—';
+    const w = snap.regime_weekly && snap.regime_weekly !== 'n/a' ? snap.regime_weekly : '—';
+    regimeEl.textContent = `${d} / ${w}`;
     regimeEl.className = `pm-val regime-${snap.regime || 'n/a'}`;
+    regimeEl.title = `Daily vs KAMA20 ${snap.vs_kama20_pct ?? '—'}% · Weekly ${snap.vs_kama20_weekly_pct ?? '—'}%`;
 
     const rsiEl = document.getElementById('pm-rsi');
     rsiEl.textContent = snap.rsi14 != null
@@ -1376,7 +1479,7 @@ function copySetupCard() {
     }
     const lines = [
         `${snap.symbol} setup @ ${snap.price}`,
-        `Regime: ${snap.regime} · vs KAMA20 ${snap.vs_kama20_pct ?? '—'}%`,
+        `Regime D/W: ${snap.regime} / ${snap.regime_weekly || 'n/a'} · vs KAMA20 ${snap.vs_kama20_pct ?? '—'}%`,
         `RSI14: ${snap.rsi14 ?? '—'} (${snap.rsi_zone})`,
         `5D / 21D: ${snap.ret_5d_pct ?? '—'}% / ${snap.ret_21d_pct ?? '—'}%`,
         snap.rs_rank_21d ? `RS rank 21D: #${snap.rs_rank_21d}/${snap.rs_n}` : null,
@@ -1718,6 +1821,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('pm-copy-setup')?.addEventListener('click', copySetupCard);
+    document.getElementById('tape-alerts-only')?.addEventListener('change', e => {
+        state.tapeAlertsOnly = !!e.target.checked;
+        if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
+    });
+    document.getElementById('tape-book-news')?.addEventListener('click', openBookNews);
     setupPmKeyboard();
 
     await loadSymbols();
