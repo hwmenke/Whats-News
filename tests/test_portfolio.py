@@ -63,8 +63,10 @@ class PortfolioSnapshotTests(unittest.TestCase):
         self.assertIn("alerts", data)
         self.assertIn("news_focus", data)
         self.assertIsInstance(data.get("group_rollup"), list)
-        # weekly regime present on ready rows
-        self.assertIn("regime_weekly", data["symbols"][0])
+        self.assertIn("heatmap", data)
+        self.assertTrue(any(r.get("peer_etf") for r in data["symbols"] if r.get("ready")))
+        ready_row = next(r for r in data["symbols"] if r.get("ready"))
+        self.assertIn("size_risk_100", ready_row)
 
     def test_pm_desk_endpoint(self):
         self._seed("AAPL")

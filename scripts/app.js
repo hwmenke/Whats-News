@@ -232,25 +232,89 @@ function renderPortfolioTape(data) {
     chips.innerHTML = '';
     if (!tape.length) {
         chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No alerting names</span>';
+    } else {
+        tape.forEach(row => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'tape-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
+            const pos = (row.change_pct || 0) >= 0;
+            const dw = row.regime_weekly && row.regime_weekly !== 'n/a'
+                ? ` D:${row.regime?.[0] || '?'} W:${row.regime_weekly[0]}`
+                : '';
+            chip.innerHTML = `
+                <span>${row.symbol}</span>
+                <span class="tape-pct ${pos ? 'positive' : 'negative'}">${pos ? '+' : ''}${row.change_pct?.toFixed(1) ?? '—'}%</span>
+                <span class="tape-rs">RS ${row.rs_rank_21d ?? '—'}/${row.rs_n ?? '—'}${dw}</span>
+                ${row.alert ? `<span class="tape-alert">${row.alert}</span>` : ''}
+            `;
+            chip.title = `D ${row.regime || ''} / W ${row.regime_weekly || ''} · RSI ${row.rsi14 ?? '—'}`;
+            chip.addEventListener('click', () => selectSymbol(row.symbol));
+            chips.appendChild(chip);
+        });
+    }
+
+    renderRegimeHeatmap(data);
+    renderAlertLog(data);
+}
+
+function renderRegimeHeatmap(data) {
+    const panels = document.getElementById('pm-panels');
+    const heat = document.getElementById('regime-heatmap');
+    if (!panels || !heat) return;
+    const rows = data.heatmap || [];
+    if (!rows.length) {
+        panels.style.display = 'none';
         return;
     }
-    tape.forEach(row => {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'tape-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
-        const pos = (row.change_pct || 0) >= 0;
-        const dw = row.regime_weekly && row.regime_weekly !== 'n/a'
-            ? ` D:${row.regime?.[0] || '?'} W:${row.regime_weekly[0]}`
-            : '';
-        chip.innerHTML = `
-            <span>${row.symbol}</span>
-            <span class="tape-pct ${pos ? 'positive' : 'negative'}">${pos ? '+' : ''}${row.change_pct?.toFixed(1) ?? '—'}%</span>
-            <span class="tape-rs">RS ${row.rs_rank_21d ?? '—'}/${row.rs_n ?? '—'}${dw}</span>
-            ${row.alert ? `<span class="tape-alert">${row.alert}</span>` : ''}
+    panels.style.display = 'grid';
+    heat.innerHTML = '';
+    rows.forEach(r => {
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = 'heat-cell';
+        cell.innerHTML = `
+          <span class="heat-sym">${r.symbol}</span>
+          <span class="heat-dots">
+            <span class="heat-dot ${r.regime || ''}" title="Daily ${r.regime || 'n/a'}"></span>
+            <span class="heat-dot ${r.regime_weekly || ''}" title="Weekly ${r.regime_weekly || 'n/a'}"></span>
+          </span>
         `;
-        chip.title = `D ${row.regime || ''} / W ${row.regime_weekly || ''} · RSI ${row.rsi14 ?? '—'}`;
-        chip.addEventListener('click', () => selectSymbol(row.symbol));
-        chips.appendChild(chip);
+        cell.title = `${r.symbol} D:${r.regime} W:${r.regime_weekly} · day ${r.change_pct ?? '—'}%`;
+        cell.addEventListener('click', () => selectSymbol(r.symbol));
+        heat.appendChild(cell);
+    });
+}
+
+function renderAlertLog(data) {
+    const log = document.getElementById('alert-log');
+    if (!log) return;
+    const alerts = (data.symbols || []).filter(r => r.alert);
+    // Persist history in localStorage
+    const key = 'wn_alert_log';
+    let hist = [];
+    try { hist = JSON.parse(localStorage.getItem(key) || '[]'); } catch { hist = []; }
+    const now = new Date().toISOString();
+    alerts.forEach(a => {
+        const last = hist.find(h => h.symbol === a.symbol && h.alert === a.alert);
+        if (!last || (Date.now() - new Date(last.at).getTime()) > 3600000) {
+            hist.unshift({ symbol: a.symbol, alert: a.alert, rsi: a.rsi14, at: now });
+        }
+    });
+    hist = hist.slice(0, 30);
+    localStorage.setItem(key, JSON.stringify(hist));
+
+    if (!hist.length) {
+        log.innerHTML = '<div class="alert-log-empty">No RSI alerts yet</div>';
+        return;
+    }
+    log.innerHTML = hist.slice(0, 12).map(h => `
+      <div class="alert-log-item" data-sym="${h.symbol}">
+        <span><span class="al-flag">${h.alert}</span> ${h.symbol} · RSI ${h.rsi ?? '—'}</span>
+        <span style="color:var(--text-dim)">${(h.at || '').slice(11, 16)}Z</span>
+      </div>
+    `).join('');
+    log.querySelectorAll('.alert-log-item').forEach(el => {
+        el.addEventListener('click', () => selectSymbol(el.dataset.sym));
     });
 }
 
@@ -1409,8 +1473,10 @@ async function loadPmDesk(symbol) {
     const desk = document.getElementById('pm-desk');
     if (!desk || !symbol) return;
     try {
-        const snap = await apiFetch(`${API}/pm-desk/${symbol}`);
-        state.portfolio[symbol] = snap;
+        const riskEl = document.getElementById('pm-risk-input');
+        const risk = riskEl ? riskEl.value : 100;
+        const snap = await apiFetch(`${API}/pm-desk/${symbol}?risk=${encodeURIComponent(risk)}`);
+        state.portfolio[symbol] = { ...(state.portfolio[symbol] || {}), ...snap };
         renderPmDesk(snap);
     } catch (e) {
         desk.style.display = 'none';
@@ -1452,22 +1518,30 @@ function renderPmDesk(snap) {
     const fmtR = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v}%`;
     retEl.textContent = `${fmtR(snap.ret_5d_pct)} / ${fmtR(snap.ret_21d_pct)}`;
 
-    document.getElementById('pm-atr').textContent =
-        snap.atr_pct != null ? `${snap.atr_pct}%` : '—';
+    const atrEl = document.getElementById('pm-atr');
+    atrEl.textContent = snap.atr_pct != null ? `${snap.atr_pct}%` : '—';
+    if (snap.rs_rank_21d) atrEl.title = `RS #${snap.rs_rank_21d}/${snap.rs_n}`;
+
+    const peer = document.getElementById('pm-peer');
+    if (peer) {
+        peer.textContent = snap.peer_etf || 'SPY';
+        peer.title = snap.sector ? `Sector: ${snap.sector}` : 'Default peer';
+    }
+
+    const sizeEl = document.getElementById('pm-size');
+    const size = snap.size || snap.size_risk_100;
+    if (sizeEl && size?.shares != null) {
+        sizeEl.textContent = `${size.shares} sh · $${size.notional}`;
+        sizeEl.title = `Stop distance ${size.stop_distance} (1.5×ATR)`;
+    } else if (sizeEl) {
+        sizeEl.textContent = '—';
+    }
 
     const stops = document.getElementById('pm-stops');
     if (snap.stop_long_1_5atr != null && snap.stop_short_1_5atr != null) {
         stops.textContent = `L ${snap.stop_long_1_5atr} · S ${snap.stop_short_1_5atr}`;
     } else {
         stops.textContent = '—';
-    }
-
-    const rsLine = snap.rs_rank_21d
-        ? `RS #${snap.rs_rank_21d}/${snap.rs_n}`
-        : '';
-    if (rsLine) {
-        const atrEl = document.getElementById('pm-atr');
-        atrEl.title = rsLine;
     }
 }
 
@@ -1483,6 +1557,8 @@ function copySetupCard() {
         `RSI14: ${snap.rsi14 ?? '—'} (${snap.rsi_zone})`,
         `5D / 21D: ${snap.ret_5d_pct ?? '—'}% / ${snap.ret_21d_pct ?? '—'}%`,
         snap.rs_rank_21d ? `RS rank 21D: #${snap.rs_rank_21d}/${snap.rs_n}` : null,
+        snap.peer_etf ? `Peer ETF: ${snap.peer_etf}` : null,
+        snap.size?.shares != null ? `Size @ $${snap.size.risk_dollars} risk: ${snap.size.shares} sh ($${snap.size.notional})` : null,
         `ATR%: ${snap.atr_pct ?? '—'} · stops 1.5×ATR L ${snap.stop_long_1_5atr} / S ${snap.stop_short_1_5atr}`,
         snap.alert ? `Alert: ${snap.alert}` : null,
         'Source: Whats-News PM Desk',
@@ -1501,6 +1577,52 @@ function moveSymbolSelection(delta) {
     if (idx < 0) idx = 0;
     else idx = (idx + delta + codes.length) % codes.length;
     selectSymbol(codes[idx]);
+}
+
+function saveWatchlistPreset() {
+    const preset = {
+        saved_at: new Date().toISOString(),
+        symbols: state.symbols.map(s => ({
+            symbol: s.symbol,
+            group_tag: s.group_tag || '',
+        })),
+    };
+    localStorage.setItem('wn_watchlist_preset', JSON.stringify(preset));
+    toast(`Saved preset (${preset.symbols.length} symbols)`, 'success');
+}
+
+async function loadWatchlistPreset() {
+    let preset;
+    try {
+        preset = JSON.parse(localStorage.getItem('wn_watchlist_preset') || 'null');
+    } catch {
+        preset = null;
+    }
+    if (!preset?.symbols?.length) {
+        toast('No saved preset', 'warning');
+        return;
+    }
+    const codes = preset.symbols.map(s => s.symbol);
+    try {
+        await apiFetch(`${API}/symbols`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbols: codes }),
+        });
+        for (const s of preset.symbols) {
+            if (s.group_tag) {
+                await apiFetch(`${API}/symbols/${s.symbol}/group`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ group_tag: s.group_tag }),
+                });
+            }
+        }
+        await loadSymbols();
+        toast(`Loaded preset (${codes.length} symbols)`, 'success');
+    } catch (e) {
+        toast('Preset load failed: ' + e.message, 'error');
+    }
 }
 
 function setupPmKeyboard() {
@@ -1826,6 +1948,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
     });
     document.getElementById('tape-book-news')?.addEventListener('click', openBookNews);
+    document.getElementById('btn-preset-save')?.addEventListener('click', saveWatchlistPreset);
+    document.getElementById('btn-preset-load')?.addEventListener('click', loadWatchlistPreset);
+    document.getElementById('pm-risk-input')?.addEventListener('change', () => {
+        if (state.activeSymbol) loadPmDesk(state.activeSymbol);
+    });
     setupPmKeyboard();
 
     await loadSymbols();

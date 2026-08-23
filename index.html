@@ -59,6 +59,10 @@
     </div>
 
     <div class="sidebar-actions">
+      <div class="preset-row">
+        <button type="button" id="btn-preset-save" class="btn btn-ghost btn-sm" title="Save watchlist preset">Save</button>
+        <button type="button" id="btn-preset-load" class="btn btn-ghost btn-sm" title="Load watchlist preset">Load</button>
+      </div>
       <button id="btn-refresh-all" class="btn btn-ghost">⟳ Refresh All</button>
     </div>
   </aside>
@@ -75,6 +79,17 @@
       </label>
       <button type="button" id="tape-book-news" class="btn btn-ghost btn-sm" title="Load news for alerting / weakest RS names">Book news</button>
       <div id="tape-chips" class="tape-chips"></div>
+    </div>
+
+    <div id="pm-panels" class="pm-panels" style="display:none;">
+      <div class="pm-panel">
+        <div class="pm-panel-title">Regime map (D / W)</div>
+        <div id="regime-heatmap" class="regime-heatmap"></div>
+      </div>
+      <div class="pm-panel">
+        <div class="pm-panel-title">Alert log</div>
+        <div id="alert-log" class="alert-log"><div class="alert-log-empty">No RSI alerts</div></div>
+      </div>
     </div>
 
     <!-- Symbol Header -->
@@ -137,6 +152,17 @@
       <div class="pm-metric">
         <span class="pm-label">ATR%</span>
         <span id="pm-atr" class="pm-val">—</span>
+      </div>
+      <div class="pm-metric">
+        <span class="pm-label">Peer ETF</span>
+        <span id="pm-peer" class="pm-val">—</span>
+      </div>
+      <div class="pm-metric pm-metric-wide">
+        <span class="pm-label">Size @ $ risk</span>
+        <span class="pm-size-row">
+          <input id="pm-risk-input" type="number" min="10" step="10" value="100" title="Dollars risked at 1.5×ATR stop" />
+          <span id="pm-size" class="pm-val">—</span>
+        </span>
       </div>
       <div class="pm-metric pm-metric-wide">
         <span class="pm-label">1.5×ATR stops</span>

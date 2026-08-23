@@ -71,6 +71,16 @@ def pm_desk(symbol):
         snap = portfolio.snapshot_symbol(symbol.upper())
         if not snap.get("ready"):
             return jsonify(snap), 404
+        # Enrich with peer ETF + default size from DB metadata
+        meta = next((s for s in db.list_symbols() if s["symbol"] == symbol.upper()), {}) or {}
+        snap["sector"] = meta.get("sector") or ""
+        snap["peer_etf"] = portfolio.peer_etf_for(snap["sector"])
+        try:
+            risk = float(request.args.get("risk", 100))
+        except (TypeError, ValueError):
+            risk = 100.0
+        snap["size"] = portfolio.position_size(snap.get("price"), snap.get("atr14"), risk, 1.5)
+        snap.pop("closes_30", None)
         return jsonify(snap)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500

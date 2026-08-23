@@ -9,6 +9,47 @@ import pandas as pd
 
 import database as db
 
+# Liquid peer ETFs by sector (Yahoo sector strings)
+_PEER_ETF = {
+    "Technology": "XLK",
+    "Information Technology": "XLK",
+    "Financial Services": "XLF",
+    "Financials": "XLF",
+    "Healthcare": "XLV",
+    "Health Care": "XLV",
+    "Consumer Cyclical": "XLY",
+    "Consumer Discretionary": "XLY",
+    "Consumer Defensive": "XLP",
+    "Consumer Staples": "XLP",
+    "Energy": "XLE",
+    "Industrials": "XLI",
+    "Basic Materials": "XLB",
+    "Materials": "XLB",
+    "Real Estate": "XLRE",
+    "Utilities": "XLU",
+    "Communication Services": "XLC",
+}
+
+
+def peer_etf_for(sector: str | None) -> str:
+    if not sector:
+        return "SPY"
+    return _PEER_ETF.get(str(sector).strip(), "SPY")
+
+
+def position_size(price, atr, risk_dollars: float = 100.0, atr_mult: float = 1.5) -> dict:
+    """Shares such that atr_mult×ATR move ≈ risk_dollars."""
+    if not price or not atr or atr <= 0 or risk_dollars <= 0:
+        return {"shares": None, "risk_dollars": risk_dollars, "stop_distance": None, "notional": None}
+    stop_distance = float(atr) * atr_mult
+    shares = int(risk_dollars // stop_distance) if stop_distance else 0
+    return {
+        "shares": shares,
+        "risk_dollars": risk_dollars,
+        "stop_distance": round(stop_distance, 2),
+        "notional": round(shares * float(price), 2) if shares else 0.0,
+    }
+
 
 def _last_valid(series: pd.Series):
     s = series.dropna()
@@ -188,6 +229,10 @@ def portfolio_snapshot() -> dict:
     for row in rows:
         meta = symbols_meta.get(row["symbol"], {})
         row["group_tag"] = (meta.get("group_tag") or "").strip()
+        row["sector"] = meta.get("sector") or ""
+        row["peer_etf"] = peer_etf_for(row["sector"])
+        if row.get("ready"):
+            row["size_risk_100"] = position_size(row.get("price"), row.get("atr14"), 100.0, 1.5)
 
     # Relative strength rank by 21D return (1 = strongest)
     ranked = sorted(
@@ -234,12 +279,26 @@ def portfolio_snapshot() -> dict:
         alerts + ([weak["symbol"]] if weak else [])
     ))
 
+    # Regime heatmap rows for PM-A
+    heatmap = [
+        {
+            "symbol": r["symbol"],
+            "regime": r.get("regime"),
+            "regime_weekly": r.get("regime_weekly"),
+            "alert": r.get("alert"),
+            "rs_rank_21d": r.get("rs_rank_21d"),
+            "change_pct": r.get("change_pct"),
+        }
+        for r in sorted(ready, key=lambda x: x["symbol"])
+    ]
+
     return {
         "count": len(symbols),
         "ready_count": len(ready),
         "symbols": rows,
         "tape": by_day,
         "alerts": alerts,
+        "heatmap": heatmap,
         "top_gainer": by_day[0] if by_day else None,
         "top_loser": by_day[-1] if by_day else None,
         "strongest_rs": ranked[0] if ranked else None,

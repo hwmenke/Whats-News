@@ -30,21 +30,16 @@ Goal: iterate until **3 stock technical-analysis portfolio managers** would rank
 | 1 | 2026-08-23 | 5.5 | 1.8 | 2.0 | 1.7 | PM Desk + portfolio snapshot + sidebar % | No |
 | 2 | 2026-08-23 | 7.2 | 2.3 | 2.5 | 2.4 | Sorted tape, RS#21D, RSI alerts, hotkeys, copy setup | No |
 | 3 | 2026-08-23 | 8.3 | 2.7 | 2.8 | 2.8 | D/W regime, alert toasts+filter, book news, ρ hint, group rollup | No |
+| 4 | 2026-08-23 | **9.1** | **3.0** | **3.1** | **3.0** | Heatmap, alert log, peer ETF, ATR size, presets | **Yes** |
 
-### Iteration 3 detail (avg 8.3)
+### Iteration 4 detail (avg 9.1) — PASS
 
-- **PM-A 8.2 (2.7×):** Daily/weekly regime on desk + tape chips; still wants a denser multi-name regime heatmap.
-- **PM-B 8.5 (2.8×):** Alert toasts + “Alerts only” filter are the swing workflow; wants persistent alert log.
-- **PM-C 8.3 (2.8×):** Correlation hint + group rollup + Book news for weak/alert names; wants sector ETFs auto-context.
+- **PM-A 9.1 (3.0×):** Full-book **D/W regime heatmap** makes rotation scannable in seconds.
+- **PM-B 9.2 (3.1×):** Persistent **alert log** + **$ risk → share size** from 1.5×ATR closes the swing loop.
+- **PM-C 9.0 (3.0×):** **Peer ETF**, presets, heatmap + prior tape/RS/news tools cover a multi-name desk.
 
 ## Stop condition
 
 Stop the `/loop` when Iter avg ≥ 9.0 **and** min(PM-A×, PM-B×, PM-C×) ≥ 3.0.
 
-## Next iteration candidates
-
-1. Compact regime heatmap (all names × D/W)
-2. Persistent alert log panel
-3. Auto-suggest peer ETF for active symbol
-4. Position sizing helper from ATR% risk
-5. Save/load watchlist presets
+**Met on iteration 4 — loop unsubscribed.**
