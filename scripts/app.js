@@ -19,6 +19,7 @@ let state = {
     portfolioMeta: null,
     tapeMode: 'all',   // 'all' | 'breakout' | 'alerts'
     seenAlerts: new Set(),
+    deskOnly: true,    // sidebar: hide univ:* archive tickers
     checklist: { regime: false, stop: false, size: false, plan: false },
     stopMode: 'atr',   // 'atr' | 'box' | 'user'
     riskBox: null,     // last-applied { entry, stop, target } for the active symbol
@@ -166,12 +167,26 @@ function toggleSidebar() {
 // ── Symbol Watchlist ─────────────────────────────────────────
 async function loadSymbols() {
     try {
-        state.symbols = await apiFetch(`${API}/symbols`);
+        const url = state.deskOnly ? `${API}/symbols?desk=1` : `${API}/symbols`;
+        state.symbols = await apiFetch(url);
         renderSymbolList();
+        updateSidebarCount();
         refreshPortfolioTape(); // non-blocking enrich with % change
     } catch (e) {
         toast('Failed to load symbols: ' + e.message, 'error');
     }
+}
+
+function updateSidebarCount() {
+    const el = document.getElementById('sidebar-symbol-count');
+    if (!el) return;
+    const n = state.symbols.length;
+    el.textContent = state.deskOnly ? `${n} desk` : `${n} total`;
+}
+
+async function toggleDeskOnly(checked) {
+    state.deskOnly = checked;
+    await loadSymbols();
 }
 
 async function refreshPortfolioTape() {
@@ -761,12 +776,27 @@ function renderSymbolList() {
         // Group tag badge (click to edit inline)
         const tagBadge = document.createElement('span');
         tagBadge.className   = 'sym-tag';
-        tagBadge.textContent = tag || '+ tag';
-        tagBadge.title       = 'Click to set group';
-        tagBadge.addEventListener('click', e => {
-            e.stopPropagation();
-            startTagEdit(sym.symbol, tag, tagBadge);
-        });
+        const isUniverse = tag.startsWith('univ:');
+        tagBadge.textContent = isUniverse ? tag.replace('univ:', 'idx:') : (tag || '+ tag');
+        tagBadge.title       = isUniverse ? 'Archive index ticker — promote to desk' : 'Click to set group';
+        if (!isUniverse) {
+            tagBadge.addEventListener('click', e => {
+                e.stopPropagation();
+                startTagEdit(sym.symbol, tag, tagBadge);
+            });
+        }
+
+        if (isUniverse) {
+            const promoteBtn = document.createElement('span');
+            promoteBtn.className = 'sym-promote';
+            promoteBtn.textContent = '↑';
+            promoteBtn.title = 'Promote to trading desk';
+            promoteBtn.addEventListener('click', async e => {
+                e.stopPropagation();
+                await promoteSymbolToDesk(sym.symbol);
+            });
+            item.appendChild(promoteBtn);
+        }
 
         const removeBtn = document.createElement('span');
         removeBtn.className  = 'sym-remove';
@@ -1444,6 +1474,8 @@ async function switchTab(tabId) {
         if (state.activeSymbol) loadAdaptiveTrendData(state.activeSymbol);
     } else if (tabId === 'scanner') {
         showScannerArea();
+        if (typeof initSetupScanner === 'function') initSetupScanner();
+        loadSetupScan();
         loadScannerData();
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
@@ -2347,6 +2379,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-add-symbol').addEventListener('click', addSymbol);
     document.getElementById('btn-bulk-add').addEventListener('click', openBulkModal);
     document.getElementById('btn-refresh-all').addEventListener('click', refreshAll);
+    document.getElementById('chk-desk-only')?.addEventListener('change', e => {
+        toggleDeskOnly(e.target.checked);
+    });
     document.getElementById('new-symbol-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') addSymbol();
     });

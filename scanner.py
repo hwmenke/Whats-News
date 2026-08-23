@@ -280,7 +280,8 @@ def bulk_fetch_sp500(max_workers: int = 5, force_refresh: bool = False) -> dict:
         if not force_refresh and db.is_recently_fetched(sym):
             return ("skipped", sym, None)
         try:
-            res = db.fetch_symbol(sym)
+            import data_fetcher as fetcher
+            res = fetcher.fetch_and_store(sym)
             if "error" in res:
                 return ("failed", sym, res["error"])
             return ("success", sym, None)

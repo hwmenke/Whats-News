@@ -39,7 +39,14 @@
   <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
   <aside class="sidebar">
     <div class="sidebar-header">
-      <div class="sidebar-title">Watchlist</div>
+      <div class="sidebar-title-row">
+        <div class="sidebar-title">Watchlist</div>
+        <span id="sidebar-symbol-count" class="sidebar-count"></span>
+      </div>
+      <label class="desk-filter-toggle" title="Hide archive-only index tickers (univ:*)">
+        <input type="checkbox" id="chk-desk-only" checked />
+        Desk only
+      </label>
       <div class="add-symbol-form">
         <input
           id="new-symbol-input"
@@ -747,10 +754,49 @@
     <!-- ── Scanner Area ── -->
     <div id="scanner-area" class="scanner-container" style="display:none;">
 
+      <!-- Setup scanner (EP, Darvas, breakout queue, …) -->
+      <div class="setup-scanner-panel">
+        <div class="setup-scanner-header">
+          <strong>Setup scanner</strong>
+          <button id="btn-setup-scan" type="button" class="btn btn-primary btn-sm" onclick="loadSetupScan()">Scan setups</button>
+          <label class="setup-universe-toggle" title="Scan full archive vs desk only">
+            <input type="checkbox" id="chk-setup-universe" checked />
+            Full universe
+          </label>
+          <span id="setup-scan-meta" class="scanner-ts"></span>
+        </div>
+        <div id="setup-filter-pills" class="setup-filter-pills"></div>
+        <div id="setup-scan-loading" class="chart-loading setup-scan-loading" style="display:none;">
+          <span class="spinner"></span> Scanning setups…
+        </div>
+        <div class="scanner-table-wrap setup-table-wrap">
+          <table id="setup-scan-table" class="scanner-table setup-scan-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Setups</th>
+                <th>Chg%</th>
+                <th>Book RS</th>
+                <th>20D dist</th>
+                <th>Vol×</th>
+                <th>Regime</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="setup-scan-tbody"></tbody>
+          </table>
+        </div>
+        <div id="setup-scan-empty" class="scanner-empty" style="display:none;">
+          <p>No setups found — sync universe in <strong>Data</strong>, archive history, then scan again.</p>
+        </div>
+      </div>
+
+      <div class="scanner-section-divider" aria-hidden="true"></div>
+
       <!-- Loading overlay -->
       <div id="scanner-loading" class="chart-loading" style="display:none;">
         <span class="spinner"></span>
-        Scanning watchlist…
+        Scanning metrics…
       </div>
 
       <!-- Controls bar -->
@@ -817,6 +863,34 @@
 
       <!-- ── Right panel: settings + progress ── -->
       <div class="dm-right">
+
+        <div class="dm-universe-section">
+          <div class="dm-panel-header">US index universe (~2000 tickers)</div>
+          <p class="dm-hint">Register S&amp;P, Nasdaq, Russell lists once. <strong>Archive</strong> full history (hours). <strong>Daily refresh</strong> fetches only the last few days.</p>
+          <div id="universe-indices" class="universe-indices"><!-- rendered by data_manager.js --></div>
+          <div class="dm-field dm-field-row">
+            <label class="dm-label dm-label-inline">
+              <input id="dm-only-missing" type="checkbox" />
+              Archive only symbols missing daily data
+            </label>
+          </div>
+          <div class="dm-field-row dm-universe-fields">
+            <div class="dm-field">
+              <label class="dm-label" for="dm-overlap-days">Refresh overlap (days)</label>
+              <input id="dm-overlap-days" type="number" class="dm-input" min="1" max="30" value="5" />
+            </div>
+            <div id="universe-stats" class="universe-stats"></div>
+          </div>
+          <div class="dm-actions dm-universe-actions">
+            <button id="btn-universe-sync" type="button" class="btn btn-ghost">Sync indices</button>
+            <button id="btn-universe-archive" type="button" class="btn btn-primary">Archive history</button>
+            <button id="btn-universe-refresh" type="button" class="btn btn-ghost">Daily refresh</button>
+            <button id="btn-universe-abort" type="button" class="btn btn-danger" style="display:none;">Abort</button>
+          </div>
+        </div>
+
+        <div class="dm-section-rule" aria-hidden="true"></div>
+
         <div class="dm-panel-header">Batch Fetch Settings</div>
 
         <div class="dm-settings">
@@ -925,6 +999,7 @@
 <script src="scripts/charts.js"></script>
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
+<script src="scripts/setup_scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/app.js"></script>
 

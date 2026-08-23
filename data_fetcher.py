@@ -39,12 +39,12 @@ def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def fetch_and_store(symbol: str, period: str = "2y") -> dict:
+def fetch_and_store(symbol: str, period: str = "2y", overlap_days: int = 3) -> dict:
     """
     Download daily data from Yahoo Finance, resample to weekly,
     and upsert both into the database.
-    If data already exists in the DB, only downloads bars from last_date + 1 day
-    forward (incremental mode). Falls back to full 2y download if no data exists.
+    If data already exists in the DB, only downloads from (last_date - overlap_days)
+    forward (incremental mode). Falls back to full period download if no data exists.
     """
     sym = symbol.upper()
     print(f"++ Fetcher: Starting fetch for {sym}")
@@ -54,9 +54,9 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     last_date_str = db.get_latest_ohlcv_date(sym, "daily")
     if last_date_str:
         last_date  = datetime.date.fromisoformat(last_date_str)
-        start_date = last_date + datetime.timedelta(days=1)
+        start_date = last_date - datetime.timedelta(days=max(0, overlap_days))
         start_str  = start_date.isoformat()
-        print(f"++ Fetcher: Incremental fetch for {sym} from {start_str}")
+        print(f"++ Fetcher: Incremental fetch for {sym} from {start_str} (overlap {overlap_days}d)")
         raw = ticker.history(start=start_str, interval="1d", auto_adjust=True)
     else:
         print(f"++ Fetcher: Full {period} download for {sym}")
