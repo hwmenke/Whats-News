@@ -40,6 +40,20 @@ def news_page():
     return send_from_directory(".", "news.html")
 
 
+@app.route("/api/health")
+def health():
+    """Simple liveness check for the UI status indicator."""
+    try:
+        symbols = db.list_symbols()
+        return jsonify({
+            "ok": True,
+            "service": "whats-news",
+            "symbol_count": len(symbols),
+        })
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
 # -- Symbols --------------------------------------------------------------------
 
 @app.route("/api/symbols", methods=["GET"])
@@ -576,5 +590,6 @@ def fetch_batch():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
-    print(f"\n  Financial Dashboard running at http://localhost:{port}\n")
+    print(f"\n  Whats-News running at http://localhost:{port}")
+    print(f"  News feed:              http://localhost:{port}/news\n")
     app.run(debug=True, port=port)

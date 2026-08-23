@@ -1,71 +1,64 @@
-# 📰 Whats-News - Financial Dashboard & Watchlist News
+# Whats-News
 
-A professional-grade financial dashboard built with a Python (Flask) backend and a modern HTML/JS frontend. Features real-time data fetching from Yahoo Finance, persistent storage in SQLite, interactive technical analysis charts, and real-time news feeds for your watchlist.
+Local watchlist app: charts + analysis + **real** Yahoo Finance headlines.
+No API keys. Data stays on your computer in `finance.db`.
 
-## 🚀 Quick Start (For your friend)
+## Quick start (easiest)
 
-Follow these steps to get the dashboard running on your machine:
+In a terminal, go into this folder, then run:
 
-### 1. Clone or Download the Code
-If you have the folder, just open your terminal in that folder.
-
-### 2. Install Dependencies
-Ensure you have Python 3 installed, then run:
 ```bash
-python3 -m pip install -r requirements.txt
+chmod +x start.sh   # only needed once
+./start.sh
 ```
 
-### 3. Start the Server
-Run the following command to start the backend:
+When it says the server is running, open your browser:
+
+- **Dashboard:** http://localhost:8050  
+- **News:** http://localhost:8050/news  
+
+Stop with `Ctrl+C`.
+
+### First visit
+
+1. In the left sidebar, type `AAPL` and click **+**
+2. Click **AAPL** in the list (use **Refresh All** if the chart is empty)
+3. Open **News** in the top bar for headlines across your watchlist
+
+### Manual start (if you prefer)
+
 ```bash
+python3 -m pip install -r requirements.txt
 python3 app.py
 ```
 
-### 4. Open the Dashboard
-Open your web browser and go to:
-👉 **[http://localhost:8050](http://localhost:8050)**
+Need Python 3? Check with `python3 --version`.
 
 ---
 
-## 🛠️ Features
-- **Real-time Data**: Fetch OHLCV data for any ticker symbol via `yfinance`.
-- **Watchlist News**: Real news headlines for your watchlist symbols from Yahoo Finance.
-- **Interactive Charts**: Powered by TradingView's Lightweight Charts.
-- **Technical Analysis**: SMA, EMA, Bollinger Bands, RSI, MACD, and Volume.
-- **Daily & Weekly Views**: Toggle between daily and weekly timeframes.
-- **Persistent Storage**: All data is saved locally in an SQLite database.
+## What you get
 
-### News Feed
+- Watchlist with Yahoo Finance price history (stored in SQLite)
+- Interactive charts and technical tools
+- Watchlist-wide news page with source + time on every story
+- Scanner / stats / backtest tabs for deeper analysis
 
-Access the news page at `/news` to see real headlines for all symbols in your watchlist. The news feed:
-- Fetches real headlines from Yahoo Finance using the yfinance API
-- Displays source, publish time, and article summary for each story
-- Deduplicates articles that appear for multiple symbols
-- Shows honest status messages when news is unavailable or fetch fails
-- Requires no API keys or external configuration
+## Project layout (developers)
 
-> **Note**: The news feed shows real data from Yahoo Finance. PR #5 contains an unrelated React prototype with placeholder data and should not be confused with this implementation.
+| Path | Purpose |
+|------|---------|
+| `app.py` | Flask server (dashboard + APIs) |
+| `database.py` / `data_fetcher.py` | SQLite + Yahoo downloads |
+| `index.html` / `news.html` | UI |
+| `scripts/` | Frontend JS |
+| `tests/` | Unit tests (no live network) |
+| `start.sh` | One-command launcher |
+| `SUGGESTIONS.md` | Ideas for future improvements |
 
-## 📁 Project Structure
-- `app.py`: Flask REST API server (dashboard + news endpoints).
-- `database.py`: SQLite database manager.
-- `data_fetcher.py`: Yahoo Finance data downloader.
-- `indicators.py`: Technical analysis engine.
-- `index.html`: Main dashboard UI.
-- `news.html`: News feed page.
-- `styles/main.css`: Premium styling.
-- `scripts/app.js`: Frontend application logic.
-- `scripts/charts.js`: Chart rendering logic.
-- `tests/`: Unit tests with mocked yfinance (no network calls).
-
-## 🧪 Testing
-
-Run tests with:
 ```bash
-python3 -m unittest discover tests
+make test    # or: python3 -m unittest discover tests
 ```
 
-Tests use mocked yfinance responses to avoid network calls in CI/CD.
-
 ---
-*Built with ❤️ for financial analysis and staying informed.*
+
+*For Caspar and friends — keep it local, keep headlines real.*

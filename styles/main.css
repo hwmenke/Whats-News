@@ -97,7 +97,12 @@ html, body {
 }
 .btn-sidebar-toggle:hover { color: var(--text-primary); border-color: var(--accent); }
 
-/* Topbar navigation link */
+/* Topbar navigation */
+.topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .topbar-nav-link {
   padding: 4px 10px;
   border-radius: var(--radius-sm);
@@ -114,6 +119,48 @@ html, body {
   color: var(--text-primary);
   background: var(--bg-hover);
 }
+.topbar-nav-link.active {
+  color: var(--accent-bright);
+  background: var(--accent-glow);
+}
+
+.topbar-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  text-decoration: none;
+  margin-right: 4px;
+}
+.topbar-logo:hover { color: var(--accent-bright); }
+
+.topbar-logo .logo-icon {
+  width: 26px; height: 26px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--accent), #1d4ed8);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+}
+
+.status-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+.status-dot.ok {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse-dot 2s infinite;
+}
+.status-dot.bad {
+  background: var(--red);
+  box-shadow: 0 0 6px var(--red);
+  animation: none;
+}
 
 /* Sidebar collapsed state */
 .app.sidebar-collapsed {
@@ -124,25 +171,6 @@ html, body {
   min-width: 0;
   overflow: hidden;
   border-right: none;
-}
-
-.topbar-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.3px;
-  white-space: nowrap;
-}
-
-.topbar-logo .logo-icon {
-  width: 30px; height: 30px;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--accent), var(--purple));
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px;
 }
 
 .topbar-spacer { flex: 1; }
@@ -156,9 +184,9 @@ html, body {
 .status-dot {
   width: 8px; height: 8px;
   border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 6px var(--green);
-  animation: pulse-dot 2s infinite;
+  background: var(--text-dim);
+  box-shadow: none;
+  animation: none;
 }
 
 @keyframes pulse-dot {
@@ -571,15 +599,16 @@ html, body {
   justify-content: center;
   gap: 12px;
   color: var(--text-muted);
+  padding: 32px 20px;
 }
 
 .empty-state .empty-icon {
   font-size: 48px;
-  opacity: 0.4;
+  opacity: 0.55;
 }
 
 .empty-state h2 {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -587,9 +616,26 @@ html, body {
 .empty-state p {
   font-size: 13px;
   text-align: center;
-  max-width: 300px;
+  max-width: 420px;
   line-height: 1.6;
 }
+
+.empty-state a { color: var(--accent-bright); }
+
+.onboarding-steps {
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 18px 14px 32px;
+  margin: 4px 0 0;
+  max-width: 420px;
+}
+.onboarding-steps li { margin: 4px 0; }
+.onboarding-steps strong { color: var(--text-primary); }
 
 /* ── Toast / Notifications ───────────────────────────────── */
 .toast-container {

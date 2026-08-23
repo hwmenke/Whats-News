@@ -776,6 +776,47 @@ function showEmptyState() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+
+    const title = document.querySelector('#empty-state h2');
+    const blurb = document.querySelector('#empty-state > p');
+    const steps = document.querySelector('#empty-state .onboarding-steps');
+    if (!state.symbols.length) {
+        if (title) title.textContent = 'Welcome to Whats-News';
+        if (blurb) blurb.textContent = 'Your local watchlist for charts, analysis, and real Yahoo Finance headlines.';
+        if (steps) steps.style.display = '';
+    } else {
+        if (title) title.textContent = 'Pick a symbol';
+        if (blurb) blurb.textContent = 'Click a ticker in the watchlist sidebar to load its chart and analysis.';
+        if (steps) steps.style.display = 'none';
+    }
+}
+
+function setConnectionStatus(ok, label) {
+    const dot = document.getElementById('status-dot');
+    const text = document.getElementById('status-label');
+    if (dot) {
+        dot.classList.toggle('ok', !!ok);
+        dot.classList.toggle('bad', !ok);
+        dot.title = label || (ok ? 'Connected' : 'Disconnected');
+    }
+    if (text) text.textContent = label || (ok ? 'Online' : 'Offline');
+}
+
+async function checkHealth() {
+    try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        if (res.ok && data.ok) {
+            const n = data.symbol_count ?? 0;
+            setConnectionStatus(true, n ? `${n} symbols` : 'Online');
+            return true;
+        }
+        setConnectionStatus(false, 'Server error');
+        return false;
+    } catch (e) {
+        setConnectionStatus(false, 'Offline');
+        return false;
+    }
 }
 
 function showChartArea() {
@@ -1421,6 +1462,8 @@ async function runScanner() {
 // ── Boot ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     startClock();
+    await checkHealth();
+    setInterval(checkHealth, 30000);
 
     // Seed default KAMA periods
     DEFAULT_KAMA_PERIODS.forEach(p => addKamaPeriod(p));
