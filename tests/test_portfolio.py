@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -132,6 +133,57 @@ class PortfolioSnapshotTests(unittest.TestCase):
         db.add_symbol("ZZZ")
         res = self.client.get("/api/pm-desk/ZZZ")
         self.assertEqual(res.status_code, 404)
+
+    def test_position_size_prefers_user_stop(self):
+        # ATR path: stop distance = 1.5 × 2.0 = 3.0 → floor(100/3) = 33 shares
+        atr = portfolio.position_size(100, 2.0, 100, 1.5)
+        # Tighter user stop (distance 2.0) → more shares than ATR fallback
+        user = portfolio.position_size(100, 2.0, 100, 1.5, stop_price=98)
+        self.assertEqual(atr["stop_source"], "atr")
+        self.assertEqual(user["stop_source"], "user_stop")
+        self.assertEqual(user["stop_distance"], 2.0)
+        self.assertEqual(atr["stop_distance"], 3.0)
+        self.assertGreater(user["shares"], atr["shares"])
+
+    def test_darvas_box_and_endpoint(self):
+        self._seed("BOXA", n=80)
+        snap = portfolio.snapshot_symbol("BOXA")
+        self.assertTrue(snap["ready"])
+        self.assertIn("darvas", snap)
+        # Synthetic sine wave may or may not form a box; API must still respond.
+        res = self.client.get("/api/darvas-box/BOXA")
+        self.assertIn(res.status_code, (200, 404))
+        if res.status_code == 200:
+            body = res.get_json()
+            self.assertIn(body["state"], ("in_box", "breakout", "failed"))
+            self.assertGreater(body["top"], body["bottom"])
+
+    def test_pm_desk_user_stop_and_risk_box(self):
+        self._seed("AAPL")
+        res = self.client.get("/api/pm-desk/AAPL?risk=100&stop=user&stop_price=90&target=120")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data["size"]["stop_source"], "user_stop")
+        self.assertIn("risk_box", data)
+        self.assertEqual(data["risk_box"]["stop_mode"], "user")
+        self.assertEqual(data["risk_box"]["stop"], 90)
+        self.assertEqual(data["risk_box"]["target"], 120)
+        self.assertIsNotNone(data["risk_box"]["r_multiple"])
+
+
+class LabelHonestyTests(unittest.TestCase):
+    """Guardrail: never brand book ranks as a published RS Rating or invent EPS."""
+
+    def test_frontend_has_no_ibd_or_fake_eps(self):
+        roots = ["scripts/app.js", "scripts/charts.js", "index.html", "portfolio.py"]
+        banned = re.compile(r"\bIBD\b|\bEPS\s*Rating\b")
+        for path in roots:
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            self.assertIsNone(
+                banned.search(text),
+                msg=f"{path} must not contain banned rating branding",
+            )
 
 
 if __name__ == "__main__":

@@ -191,8 +191,8 @@ async function refreshPortfolioTape() {
     }
 }
 
-// Renders a single "Book RS #n/n" tag — never bare "RS" or "IBD" (see
-// METHODOLOGY_REVIEW.md: this is a watchlist-relative rank, not IBD RS Rating).
+// Renders a single "Book RS #n/n" tag — never bare "RS" and never an
+// industry-publication RS Rating (see METHODOLOGY_REVIEW.md: watchlist-relative only).
 function bookRsLabel(row) {
     if (!row || row.rs_rank_21d == null) return 'Book RS —';
     return `Book RS #${row.rs_rank_21d}/${row.rs_n ?? '—'}`;
@@ -1850,7 +1850,7 @@ function renderPmDesk(snap) {
     const bookRsEl = document.getElementById('pm-book-rs');
     if (bookRsEl) {
         bookRsEl.textContent = bookRsLabel(snap);
-        bookRsEl.title = 'Book RS (21D) — watchlist rank, not IBD RS Rating';
+        bookRsEl.title = 'Book RS (21D) — watchlist rank only, not a published RS Rating';
     }
 
     const peer = document.getElementById('pm-peer');

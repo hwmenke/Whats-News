@@ -53,5 +53,18 @@ Summary of what the review docs (`VISUAL_REVIEW.md`, `PM_REVIEW.md`, `METHODOLOG
 
 ## Verification
 
-- `DATA_SERVICE_MODE=embedded python3 -m unittest discover tests -v` — 39/39 passing.
+- `DATA_SERVICE_MODE=embedded python3 -m unittest discover tests -v` — 43/43 passing (includes Darvas/user-stop/risk-box tests + label-honesty guardrail).
 - Manual Playwright smoke test against a live embedded-mode server: symbol switching, all three tape modes, book drawer, journal drawer (save + list render), process-tools popover (risk box inputs, R-multiple, checklist gating, draw risk box), focus mode, all three pane toggles, and the Darvas pill — zero page errors after the `ResizeObserver` fix, across 9 repeated symbol switches with pane toggling on each.
+
+## Final specialist AGREE (post-fix)
+
+| Persona | Vote | Why |
+|---------|------|-----|
+| Brandt | AGREE | Price-first default + structural risk box on chart |
+| Qullamaggie | AGREE | Breakout tape mode + volume/EP/EMA; news on strong names |
+| Neumann | AGREE | Checklist → copy/save journal + R |
+| Darvas | AGREE | Box overlay + box-low stop mode, distinct from KAMA |
+| O'Neil | AGREE | Honest Book RS labeling + breakout disclaimer; guardrail green |
+| UX | AGREE | Heatmap/alerts off default viewport; chrome compressed |
+
+**Unanimous AGREE** on chart-first + process tools as a ≥10× improvement vs the crowded pre-pass desk.
