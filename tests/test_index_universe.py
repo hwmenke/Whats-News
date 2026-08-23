@@ -35,6 +35,21 @@ class IndexUniverseTests(unittest.TestCase):
         self.assertEqual(sorted(merged["symbols"]), ["AAPL", "GOOG", "MSFT"])
         self.assertIn("sp500", merged["symbol_indices"]["MSFT"])
 
+    @patch("index_universe._fetch_bytes")
+    def test_symbols_from_wikipedia_uses_user_agent_path(self, mock_bytes):
+        # Minimal HTML table payload
+        mock_bytes.return_value = b"<html><table><tr><th>Symbol</th></tr><tr><td>AAA</td></tr></table></html>"
+        syms = iu._symbols_from_wikipedia(
+            "https://en.wikipedia.org/wiki/test", 0, "Symbol"
+        )
+        self.assertEqual(syms, ["AAA"])
+        args, kwargs = mock_bytes.call_args
+        self.assertIn("en.wikipedia.org", args[0])
+
+    def test_dedupe_symbols_normalizes(self):
+        out = iu._dedupe_symbols(["brk.b", "BRK.B", "aapl"])
+        self.assertEqual(out, ["BRK-B", "AAPL"])
+
 
 if __name__ == "__main__":
     unittest.main()

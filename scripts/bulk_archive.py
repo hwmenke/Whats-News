@@ -52,9 +52,26 @@ def cmd_sync(indices: list[str]) -> int:
     for idx, err in merged.get("errors", {}).items():
         print(f"  !! {idx}: {err}")
 
+    if merged["total_unique"] < 500:
+        print(
+            "\nWARNING: Expected ~1500–3500 symbols. "
+            "If counts are near zero, Wikipedia may have blocked the request "
+            "(update to latest index_universe.py — uses User-Agent). "
+            "Re-run after fixing; already-registered symbols are skipped, not re-added."
+        )
+
     mapping = merged.get("symbol_indices") or {}
     result = db.add_universe_symbols(mapping)
-    print(f"Added {len(result['added'])}, skipped {len(result['skipped'])}, retagged {len(result.get('retagged', []))}")
+    total_in_db = len(db.list_symbol_codes())
+    print(
+        f"Added {len(result['added'])}, skipped {len(result['skipped'])}, "
+        f"retagged {len(result.get('retagged', []))}"
+    )
+    print(f"Total symbols in database now: {total_in_db}")
+    print(
+        "Note: --sync-indices only REGISTERS tickers (no Yahoo download). "
+        "Run --archive for full history or --refresh for daily update."
+    )
     return 0
 
 
