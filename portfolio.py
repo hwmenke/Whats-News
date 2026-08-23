@@ -140,11 +140,34 @@ def portfolio_snapshot() -> dict:
     symbols = [s["symbol"] for s in db.list_symbols()]
     rows = [snapshot_symbol(sym) for sym in symbols]
     ready = [r for r in rows if r.get("ready")]
-    gainers = sorted(ready, key=lambda r: r.get("change_pct") or 0, reverse=True)
+
+    # Relative strength rank by 21D return (1 = strongest)
+    ranked = sorted(
+        ready,
+        key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
+        reverse=True,
+    )
+    for i, row in enumerate(ranked, start=1):
+        row["rs_rank_21d"] = i
+        row["rs_n"] = len(ranked)
+
+    # Alert flags for swing PMs
+    for row in rows:
+        zone = row.get("rsi_zone")
+        row["alert"] = None
+        if zone == "overbought":
+            row["alert"] = "RSI_OB"
+        elif zone == "oversold":
+            row["alert"] = "RSI_OS"
+
+    by_day = sorted(ready, key=lambda r: r.get("change_pct") or 0, reverse=True)
     return {
         "count": len(symbols),
         "ready_count": len(ready),
         "symbols": rows,
-        "top_gainer": gainers[0] if gainers else None,
-        "top_loser": gainers[-1] if gainers else None,
+        "tape": by_day,
+        "top_gainer": by_day[0] if by_day else None,
+        "top_loser": by_day[-1] if by_day else None,
+        "strongest_rs": ranked[0] if ranked else None,
+        "weakest_rs": ranked[-1] if ranked else None,
     }

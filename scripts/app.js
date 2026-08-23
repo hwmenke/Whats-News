@@ -16,6 +16,7 @@ let state = {
     activeTab:    'charts',
     statsData:    null,
     portfolio:    {},   // symbol -> snapshot
+    portfolioMeta: null,
 };
 
 let statsCharts = {};
@@ -171,13 +172,55 @@ async function refreshPortfolioTape() {
         const map = {};
         (data.symbols || []).forEach(row => { map[row.symbol] = row; });
         state.portfolio = map;
+        state.portfolioMeta = data;
         renderSymbolList();
+        renderPortfolioTape(data);
         if (state.activeSymbol && map[state.activeSymbol]?.ready) {
             renderPmDesk(map[state.activeSymbol]);
         }
     } catch (e) {
         console.warn('Portfolio tape failed:', e);
     }
+}
+
+function renderPortfolioTape(data) {
+    const bar = document.getElementById('portfolio-tape');
+    const chips = document.getElementById('tape-chips');
+    const meta = document.getElementById('tape-meta');
+    if (!bar || !chips) return;
+
+    const tape = data.tape || [];
+    if (!tape.length) {
+        bar.style.display = 'none';
+        return;
+    }
+    bar.style.display = 'flex';
+
+    const g = data.top_gainer;
+    const l = data.top_loser;
+    const rs = data.strongest_rs;
+    let metaBits = `${data.ready_count}/${data.count} ready`;
+    if (g) metaBits += ` · ↑ ${g.symbol} ${g.change_pct >= 0 ? '+' : ''}${g.change_pct}%`;
+    if (l && l.symbol !== g?.symbol) metaBits += ` · ↓ ${l.symbol} ${l.change_pct}%`;
+    if (rs) metaBits += ` · RS#1 ${rs.symbol}`;
+    meta.textContent = metaBits;
+
+    chips.innerHTML = '';
+    tape.forEach(row => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'tape-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
+        const pos = (row.change_pct || 0) >= 0;
+        chip.innerHTML = `
+            <span>${row.symbol}</span>
+            <span class="tape-pct ${pos ? 'positive' : 'negative'}">${pos ? '+' : ''}${row.change_pct?.toFixed(1) ?? '—'}%</span>
+            <span class="tape-rs">RS ${row.rs_rank_21d ?? '—'}/${row.rs_n ?? '—'}</span>
+            ${row.alert ? `<span class="tape-alert">${row.alert}</span>` : ''}
+        `;
+        chip.title = `${row.regime || ''} · RSI ${row.rsi14 ?? '—'} (${row.rsi_zone || ''})`;
+        chip.addEventListener('click', () => selectSymbol(row.symbol));
+        chips.appendChild(chip);
+    });
 }
 
 function renderSymbolList() {
@@ -226,6 +269,24 @@ function renderSymbolList() {
             chgEl.style.color = 'var(--text-dim)';
         }
 
+        item.appendChild(ticker);
+        item.appendChild(chgEl);
+
+        if (snap?.rs_rank_21d) {
+            const rs = document.createElement('span');
+            rs.className = 'sym-rs';
+            rs.textContent = `#${snap.rs_rank_21d}`;
+            rs.title = `21D relative strength rank (${snap.rs_n} names)`;
+            item.appendChild(rs);
+        }
+        if (snap?.alert) {
+            const al = document.createElement('span');
+            al.className = 'sym-alert';
+            al.textContent = snap.alert;
+            al.title = snap.alert === 'RSI_OB' ? 'RSI overbought' : 'RSI oversold';
+            item.appendChild(al);
+        }
+
         // Group tag badge (click to edit inline)
         const tagBadge = document.createElement('span');
         tagBadge.className   = 'sym-tag';
@@ -242,8 +303,6 @@ function renderSymbolList() {
         removeBtn.title       = 'Remove';
         removeBtn.addEventListener('click', e => { e.stopPropagation(); removeSymbol(sym.symbol); });
 
-        item.appendChild(ticker);
-        item.appendChild(chgEl);
         item.appendChild(tagBadge);
         item.appendChild(removeBtn);
         item.addEventListener('click', () => selectSymbol(sym.symbol));
@@ -1299,6 +1358,73 @@ function renderPmDesk(snap) {
     } else {
         stops.textContent = '—';
     }
+
+    const rsLine = snap.rs_rank_21d
+        ? `RS #${snap.rs_rank_21d}/${snap.rs_n}`
+        : '';
+    if (rsLine) {
+        const atrEl = document.getElementById('pm-atr');
+        atrEl.title = rsLine;
+    }
+}
+
+function copySetupCard() {
+    const snap = state.portfolio[state.activeSymbol];
+    if (!snap?.ready) {
+        toast('No setup to copy — select a loaded symbol', 'warning');
+        return;
+    }
+    const lines = [
+        `${snap.symbol} setup @ ${snap.price}`,
+        `Regime: ${snap.regime} · vs KAMA20 ${snap.vs_kama20_pct ?? '—'}%`,
+        `RSI14: ${snap.rsi14 ?? '—'} (${snap.rsi_zone})`,
+        `5D / 21D: ${snap.ret_5d_pct ?? '—'}% / ${snap.ret_21d_pct ?? '—'}%`,
+        snap.rs_rank_21d ? `RS rank 21D: #${snap.rs_rank_21d}/${snap.rs_n}` : null,
+        `ATR%: ${snap.atr_pct ?? '—'} · stops 1.5×ATR L ${snap.stop_long_1_5atr} / S ${snap.stop_short_1_5atr}`,
+        snap.alert ? `Alert: ${snap.alert}` : null,
+        'Source: Whats-News PM Desk',
+    ].filter(Boolean).join('\n');
+
+    navigator.clipboard.writeText(lines).then(
+        () => toast('Setup card copied', 'success'),
+        () => toast('Clipboard failed', 'error')
+    );
+}
+
+function moveSymbolSelection(delta) {
+    if (!state.symbols.length) return;
+    const codes = state.symbols.map(s => s.symbol);
+    let idx = codes.indexOf(state.activeSymbol);
+    if (idx < 0) idx = 0;
+    else idx = (idx + delta + codes.length) % codes.length;
+    selectSymbol(codes[idx]);
+}
+
+function setupPmKeyboard() {
+    document.addEventListener('keydown', e => {
+        const tag = (e.target && e.target.tagName) || '';
+        const typing = tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable;
+        if (typing) {
+            if (e.key === 'Escape') e.target.blur();
+            return;
+        }
+        if (e.key === 'j' || e.key === 'J') { e.preventDefault(); moveSymbolSelection(1); }
+        else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); moveSymbolSelection(-1); }
+        else if (e.key === 'r' || e.key === 'R') {
+            e.preventDefault();
+            if (state.activeSymbol) fetchSymbolData(state.activeSymbol);
+            else refreshAll();
+        }
+        else if (e.key === '/') {
+            e.preventDefault();
+            const input = document.getElementById('new-symbol-input');
+            if (input) { input.focus(); input.select(); }
+        }
+        else if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            copySetupCard();
+        }
+    });
 }
 
 // ── KNN Functions ────────────────────────────────────────────
@@ -1590,6 +1716,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') closeBulkModal();
     });
+
+    document.getElementById('pm-copy-setup')?.addEventListener('click', copySetupCard);
+    setupPmKeyboard();
 
     await loadSymbols();
 

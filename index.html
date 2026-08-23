@@ -66,6 +66,12 @@
   <!-- ═══════════════════ MAIN CONTENT ═══════════════════ -->
   <main class="main">
 
+    <!-- Portfolio tape — sorted by day %, RS ranks -->
+    <div id="portfolio-tape" class="portfolio-tape" style="display:none;" aria-label="Portfolio tape">
+      <div class="tape-meta" id="tape-meta">Book tape</div>
+      <div id="tape-chips" class="tape-chips"></div>
+    </div>
+
     <!-- Symbol Header -->
     <div class="symbol-header">
       <div class="symbol-header-name">
@@ -131,6 +137,7 @@
         <span class="pm-label">1.5×ATR stops</span>
         <span id="pm-stops" class="pm-val">—</span>
       </div>
+      <button type="button" id="pm-copy-setup" class="btn btn-ghost btn-sm pm-copy-btn" title="Copy setup card to clipboard">Copy setup</button>
     </div>
 
     <!-- ═══════════════════ MAIN TABS ═══════════════════ -->

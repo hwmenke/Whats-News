@@ -28,12 +28,13 @@ Goal: iterate until **3 stock technical-analysis portfolio managers** would rank
 |------|------|-----|-------|-------|-------|-------|-------|
 | 0 | baseline | 3.0 | 1.0 | 1.0 | 1.0 | Charts exist; no tape, no risk strip | No |
 | 1 | 2026-08-23 | 5.5 | 1.8 | 2.0 | 1.7 | PM Desk + portfolio snapshot + sidebar % | No |
+| 2 | 2026-08-23 | 7.2 | 2.3 | 2.5 | 2.4 | Sorted tape, RS#21D, RSI alerts, hotkeys, copy setup | No |
 
-### Iteration 1 detail (avg 5.5)
+### Iteration 2 detail (avg 7.2)
 
-- **PM-A 5.5 (1.8×):** Regime vs KAMA20 visible; still wants relative-strength matrix / book heatmap.
-- **PM-B 6.0 (2.0×):** RSI zone + 1.5×ATR stops help; wants alerts when RSI hits OB/OS.
-- **PM-C 5.0 (1.7×):** Day % on watchlist helps; needs sorted tape + top gainer/loser banner + RS ranks.
+- **PM-A 7.0 (2.3×):** Book tape + RS ranks help momentum rotation; still missing trend heatmap / multi-TF regime grid.
+- **PM-B 7.5 (2.5×):** RSI_OB/OS badges + `c` copy setup + `j/k` speed are real; wants toast when alerts appear and alert filter.
+- **PM-C 7.2 (2.4×):** Sorted day tape + gainer/loser/RS#1 meta is usable for a small book; wants correlation / sector buckets and news tied to alert names.
 
 ## Stop condition
 
@@ -41,8 +42,8 @@ Stop the `/loop` when Iter avg ≥ 9.0 **and** min(PM-A×, PM-B×, PM-C×) ≥ 3
 
 ## Next iteration candidates
 
-1. Portfolio tape bar (sorted by day %, top gainer/loser)
-2. RSI OB/OS badge alerts on watchlist
-3. Relative strength rank (21D) across book
-4. Keyboard: `j/k` symbols, `r` refresh, `/` add
-5. One-click “setup card” copy (regime + stops + RSI)
+1. Toast + filter for RSI OB/OS alerts
+2. Multi-TF regime mini-grid (D vs W) on PM Desk
+3. News filtered to symbols currently alerting / weakest RS
+4. Simple pairwise correlation hint for top-2 names
+5. Sector/group rollup on tape

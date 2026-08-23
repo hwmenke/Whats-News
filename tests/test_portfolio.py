@@ -56,6 +56,10 @@ class PortfolioSnapshotTests(unittest.TestCase):
         data = res.get_json()
         self.assertEqual(data["count"], 2)
         self.assertEqual(data["ready_count"], 2)
+        self.assertEqual(len(data["tape"]), 2)
+        ranks = {r["symbol"]: r["rs_rank_21d"] for r in data["symbols"] if r.get("ready")}
+        self.assertEqual(sorted(ranks.values()), [1, 2])
+        self.assertIn(data["symbols"][0].get("alert"), (None, "RSI_OB", "RSI_OS"))
 
     def test_pm_desk_endpoint(self):
         self._seed("AAPL")

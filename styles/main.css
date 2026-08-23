@@ -428,6 +428,80 @@ html, body {
 
 .header-spacer { flex: 1; }
 
+/* ── Portfolio tape ───────────────────────────────────────── */
+.portfolio-tape {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.tape-meta {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.tape-chips {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.tape-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.tape-chip:hover { border-color: var(--accent); }
+.tape-chip.active { border-color: var(--accent); background: var(--accent-glow); }
+.tape-chip .tape-pct.positive { color: var(--green); }
+.tape-chip .tape-pct.negative { color: var(--red); }
+.tape-chip .tape-rs {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+.tape-chip .tape-alert {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(249, 115, 22, 0.2);
+  color: var(--orange);
+}
+
+.symbol-item .sym-alert {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--orange);
+  letter-spacing: 0.02em;
+}
+.symbol-item .sym-rs {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+.pm-copy-btn {
+  align-self: center;
+  margin-left: auto;
+  font-size: 11px;
+  padding: 4px 10px;
+}
+
 /* ── PM Desk strip ────────────────────────────────────────── */
 .pm-desk {
   display: flex;
