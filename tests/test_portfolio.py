@@ -42,6 +42,26 @@ class PortfolioSnapshotTests(unittest.TestCase):
         )
         db.upsert_ohlcv(symbol, "daily", df)
 
+    def _seed_breakout(self, symbol="EPCO", n=80):
+        """Flat-then-gap-up-on-volume series to exercise near-high/EP fields."""
+        db.add_symbol(symbol)
+        idx = pd.date_range("2024-01-01", periods=n, freq="D")
+        close = np.full(n, 50.0)
+        close[-1] = 55.0  # +10% gap day, new high
+        volume = np.full(n, 1_000_000.0)
+        volume[-1] = 3_000_000.0  # 3x average volume
+        df = pd.DataFrame(
+            {
+                "open": np.concatenate([close[:-1] - 0.1, [52.5]]),  # ~5% gap open
+                "high": close + 0.5,
+                "low": close - 0.5,
+                "close": close,
+                "volume": volume,
+            },
+            index=idx,
+        )
+        db.upsert_ohlcv(symbol, "daily", df)
+
     def test_snapshot_ready(self):
         self._seed()
         snap = portfolio.snapshot_symbol("AAPL")
@@ -49,6 +69,35 @@ class PortfolioSnapshotTests(unittest.TestCase):
         self.assertIn(snap["regime"], ("uptrend", "downtrend", "range"))
         self.assertIsNotNone(snap["rsi14"])
         self.assertIsNotNone(snap["stop_long_1_5atr"])
+
+    def test_snapshot_breakout_fields(self):
+        self._seed_breakout()
+        snap = portfolio.snapshot_symbol("EPCO")
+        self.assertTrue(snap["ready"])
+        self.assertIn("dist_20d_high_pct", snap)
+        self.assertIn("vol_ratio_5_20", snap)
+        self.assertIn("gap_pct", snap)
+        # Sitting at a fresh high, on volume, with a gap → all three flags true.
+        self.assertTrue(snap["is_near_high"])
+        self.assertTrue(snap["is_vol_surge"])
+        self.assertTrue(snap["is_ep"])
+        self.assertGreaterEqual(snap["breakout_score"], 3)
+
+    def test_breakout_queue_and_news_focus_prefer_strong_names(self):
+        self._seed_breakout("EPCO")  # near-high + vol surge + EP
+        self._seed("WEAK", n=80)     # plain uptrend, not near-high/vol-surge
+        data = portfolio.portfolio_snapshot()
+        self.assertIn("breakout_queue", data)
+        queue_syms = [r["symbol"] for r in data["breakout_queue"]]
+        self.assertIn("EPCO", queue_syms)
+        # News focus must be driven by breakout/strong names, never the
+        # weakest-RS name alone (see METHODOLOGY_REVIEW.md must-not-do #3).
+        self.assertIn("EPCO", data["news_focus"])
+        if data.get("weakest_rs"):
+            weakest_sym = data["weakest_rs"]["symbol"]
+            strongest_sym = data["strongest_rs"]["symbol"] if data.get("strongest_rs") else None
+            if weakest_sym != strongest_sym and weakest_sym not in queue_syms:
+                self.assertNotEqual(data["news_focus"][0], weakest_sym)
 
     def test_portfolio_endpoint(self):
         self._seed("AAPL")
@@ -69,6 +118,9 @@ class PortfolioSnapshotTests(unittest.TestCase):
         self.assertTrue(any(r.get("peer_etf") for r in data["symbols"] if r.get("ready")))
         ready_row = next(r for r in data["symbols"] if r.get("ready"))
         self.assertIn("size_risk_100", ready_row)
+        self.assertIn("is_near_high", ready_row)
+        self.assertIn("vol_ratio_5_20", ready_row)
+        self.assertIn("breakout_queue", data)
 
     def test_pm_desk_endpoint(self):
         self._seed("AAPL")

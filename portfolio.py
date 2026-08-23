@@ -128,10 +128,45 @@ def snapshot_symbol(symbol: str) -> dict:
     close = df["close"].astype(float)
     high = df["high"].astype(float)
     low = df["low"].astype(float)
+    open_ = df["open"].astype(float)
+    volume = df["volume"].astype(float)
     last = float(close.iloc[-1])
     prev = float(close.iloc[-2]) if len(close) > 1 else last
     chg = last - prev
     chg_pct = (chg / prev * 100) if prev else 0.0
+
+    # ── Momentum / breakout metrics (Qullamaggie loop) ──────────────
+    # Distance from N-day high, 0 = sitting at the high (near-high queue).
+    def _dist_from_high(n: int):
+        window = high.tail(min(n, len(high)))
+        hi = float(window.max()) if len(window) else None
+        return round((last / hi - 1.0) * 100, 2) if hi else None
+
+    dist_20d_high = _dist_from_high(20)
+    dist_63d_high = _dist_from_high(63)
+
+    # Volume surge: today's bar vs 20-bar average volume.
+    vol_avg20 = float(volume.tail(21).iloc[:-1].mean()) if len(volume) > 21 else (
+        float(volume.iloc[:-1].mean()) if len(volume) > 1 else None
+    )
+    vol_today = float(volume.iloc[-1])
+    vol_ratio = round(vol_today / vol_avg20, 2) if vol_avg20 and vol_avg20 > 0 else None
+
+    # Gap %: today's open vs prior close — episodic-pivot (EP) path.
+    today_open = float(open_.iloc[-1])
+    gap_pct = round((today_open / prev - 1.0) * 100, 2) if prev else None
+
+    is_near_high = dist_20d_high is not None and dist_20d_high >= -5.0
+    is_vol_surge = vol_ratio is not None and vol_ratio >= 1.5
+    is_ep = (
+        gap_pct is not None and vol_ratio is not None
+        and gap_pct >= 4.0 and vol_ratio >= 1.5
+    )
+    breakout_score = (
+        (1 if is_near_high else 0)
+        + (1 if is_vol_surge else 0)
+        + (1 if is_ep else 0)
+    )
 
     rsi14 = _last_valid(_rsi(close, 14))
     kama20 = _last_valid(_kama(close, 20))
@@ -193,6 +228,15 @@ def snapshot_symbol(symbol: str) -> dict:
         "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
         "stop_long_1_5atr": stop_long,
         "stop_short_1_5atr": stop_short,
+        # Momentum / breakout (Qullamaggie loop) — near-high, volume surge, EP/gap
+        "dist_20d_high_pct": dist_20d_high,
+        "dist_63d_high_pct": dist_63d_high,
+        "vol_ratio_5_20": vol_ratio,
+        "gap_pct": gap_pct,
+        "is_near_high": is_near_high,
+        "is_vol_surge": is_vol_surge,
+        "is_ep": is_ep,
+        "breakout_score": breakout_score,
         # last ~30 daily closes for correlation (compact)
         "closes_30": [round(float(x), 4) for x in close.tail(30).tolist()],
     }
@@ -258,6 +302,16 @@ def portfolio_snapshot() -> dict:
 
     by_day = sorted(ready, key=lambda r: r.get("change_pct") or 0, reverse=True)
 
+    # Breakout queue: near-high + volume-confirmed names (Qullamaggie loop),
+    # NOT an RSI OS/weak-RS list. Ranked by breakout_score, then closest to high.
+    breakout_queue = sorted(
+        (r for r in ready if r.get("is_near_high") or r.get("is_vol_surge")),
+        key=lambda r: (
+            -(r.get("breakout_score") or 0),
+            -(r.get("dist_20d_high_pct") if r.get("dist_20d_high_pct") is not None else -999),
+        ),
+    )[:12]
+
     # Group rollup: avg day % by group_tag
     groups = {}
     for row in ready:
@@ -275,9 +329,12 @@ def portfolio_snapshot() -> dict:
         row.pop("closes_30", None)
 
     weak = ranked[-1] if ranked else None
-    focus_news = list(dict.fromkeys(
-        alerts + ([weak["symbol"]] if weak else [])
-    ))
+
+    # Book news defaults to STRONG names — breakout queue + top RS — not
+    # RSI OS/weak-RS. See METHODOLOGY_REVIEW.md must-not-do #3.
+    strong_focus = [r["symbol"] for r in breakout_queue[:3]]
+    strong_focus += [r["symbol"] for r in ranked[:3]]
+    focus_news = list(dict.fromkeys(strong_focus))
 
     # Regime heatmap rows for PM-A
     heatmap = [
@@ -306,4 +363,5 @@ def portfolio_snapshot() -> dict:
         "correlation": corr,
         "group_rollup": group_rollup,
         "news_focus": focus_news,
+        "breakout_queue": breakout_queue,
     }

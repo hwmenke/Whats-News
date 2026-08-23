@@ -23,22 +23,27 @@ function nextKamaColor() {
 }
 
 // Overlay state
-const activeOverlays = { bb: true };
+const activeOverlays = { bb: true, ep: true };
+
+// EMA stack (Qullamaggie "optional, beside KAMA") — off by default.
+const EMA_PERIODS = [10, 21, 50];
+const EMA_COLORS = { 10: '#fbbf24', 21: '#38bdf8', 50: '#a3e635' };
+const activeEma = { 10: false, 21: false, 50: false };
 
 // ── Chart instances ─────────────────────────────────────────
 let charts = {
-    daily:  { main: null, rsi: null, macd: null, trend: null },
-    weekly: { main: null, rsi: null, macd: null, trend: null },
+    daily:  { main: null, volume: null, rsi: null, macd: null, trend: null },
+    weekly: { main: null, volume: null, rsi: null, macd: null, trend: null },
 };
 
 // ── Series references ────────────────────────────────────────
 let series = {
     daily: {
-        candle: null, bb: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, bb: {}, ema: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
     weekly: {
-        candle: null, bb: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, bb: {}, ema: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
 };
@@ -58,7 +63,15 @@ const C = {
     trend_pos:     '#22c55e',
     trend_neg:     '#ef4444',
     trend_zero:    '#4a5568',
+    vol_up:        '#22c55e66',
+    vol_down:      '#ef444466',
+    vol_surge_up:   '#f97316',
+    vol_surge_down: '#f97316',
 };
+
+// Volume-surge / EP thresholds — mirror portfolio.py so chart markers agree with the tape.
+const VOL_SURGE_RATIO = 1.5;
+const EP_GAP_PCT = 4.0;
 
 // ── Base chart options ────────────────────────────────────────
 function baseOpts() {
@@ -96,9 +109,9 @@ function baseOpts() {
 function destroyCharts() {
     ['daily', 'weekly'].forEach(freq => {
         Object.values(charts[freq]).forEach(c => { if (c) c.remove(); });
-        charts[freq] = { main: null, rsi: null, macd: null, trend: null };
+        charts[freq] = { main: null, volume: null, rsi: null, macd: null, trend: null };
         series[freq] = {
-            candle: null, bb: {}, rsi: {}, macdLine: null,
+            candle: null, volume: null, bb: {}, ema: {}, rsi: {}, macdLine: null,
             macdSig: null, macdHist: null, trend: null,
         };
         // Clear kama series refs
@@ -139,6 +152,24 @@ function buildPanel(freq) {
         });
     });
 
+    // EMA stack overlay series (10/21/50) — optional, off by default.
+    EMA_PERIODS.forEach(p => {
+        series[freq].ema[p] = charts[freq].main.addLineSeries({
+            color: EMA_COLORS[p], lineWidth: 1.5, lineStyle: 0,
+            priceLineVisible: false, lastValueVisible: false, visible: false,
+        });
+    });
+
+    // Volume chart — price/volume first. Bars color-flip on 1.5x-avg surge.
+    const volEl = document.getElementById(`${pfx}-volume`);
+    charts[freq].volume = LWC.createChart(volEl, {
+        ...baseOpts(), width: volEl.clientWidth, height: volEl.clientHeight,
+    });
+    series[freq].volume = charts[freq].volume.addHistogramSeries({
+        priceFormat: { type: 'volume' },
+        priceLineVisible: false, lastValueVisible: false,
+    });
+
     // RSI chart
     charts[freq].rsi = LWC.createChart(rsiEl, {
         ...baseOpts(), width: rsiEl.clientWidth, height: rsiEl.clientHeight,
@@ -175,7 +206,8 @@ function buildPanel(freq) {
     series[freq].trend.createPriceLine({ price: 0, color: '#30363d', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
 
     // Sync sub-charts to main
-    syncTo(charts[freq].main, charts[freq].rsi, charts[freq].macd, charts[freq].trend);
+    syncTo(charts[freq].main, charts[freq].volume, charts[freq].rsi, charts[freq].macd, charts[freq].trend);
+    syncTo(charts[freq].volume, charts[freq].main);
     syncTo(charts[freq].rsi,   charts[freq].main);
     syncTo(charts[freq].macd,  charts[freq].main);
     syncTo(charts[freq].trend, charts[freq].main);
@@ -225,14 +257,16 @@ function syncPanels() {
 // ── Resize observer ──────────────────────────────────────────
 function setupResizeObserver() {
     const pairs = [
-        ['chart-daily-main',   charts.daily.main],
-        ['chart-daily-rsi',    charts.daily.rsi],
-        ['chart-daily-macd',   charts.daily.macd],
-        ['chart-daily-trend',  charts.daily.trend],
-        ['chart-weekly-main',  charts.weekly.main],
-        ['chart-weekly-rsi',   charts.weekly.rsi],
-        ['chart-weekly-macd',  charts.weekly.macd],
-        ['chart-weekly-trend', charts.weekly.trend],
+        ['chart-daily-main',    charts.daily.main],
+        ['chart-daily-volume',  charts.daily.volume],
+        ['chart-daily-rsi',     charts.daily.rsi],
+        ['chart-daily-macd',    charts.daily.macd],
+        ['chart-daily-trend',   charts.daily.trend],
+        ['chart-weekly-main',   charts.weekly.main],
+        ['chart-weekly-volume', charts.weekly.volume],
+        ['chart-weekly-rsi',    charts.weekly.rsi],
+        ['chart-weekly-macd',   charts.weekly.macd],
+        ['chart-weekly-trend',  charts.weekly.trend],
     ];
     pairs.forEach(([id, chart]) => {
         const el = document.getElementById(id);
@@ -252,11 +286,101 @@ function toLineData(arr) {
     return arr.map(d => (d.value == null ? { time: d.date } : { time: d.date, value: d.value }));
 }
 
+// Raw OHLCV rows kept per-freq so EMA/EP/volume-surge overlays can be
+// recomputed client-side on toggle without a re-fetch.
+let rawRows = { daily: [], weekly: [] };
+
+function computeEma(closes, period) {
+    const out = new Array(closes.length).fill(null);
+    if (closes.length < period) return out;
+    const k = 2 / (period + 1);
+    let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    out[period - 1] = ema;
+    for (let i = period; i < closes.length; i++) {
+        ema = closes[i] * k + ema * (1 - k);
+        out[i] = ema;
+    }
+    return out;
+}
+
 function loadOHLCV(freq, rows) {
     if (!series[freq].candle || !rows?.length) return;
+    rawRows[freq] = rows;
+
     series[freq].candle.setData(rows.map(r => ({
         time: r.date, open: r.open, high: r.high, low: r.low, close: r.close,
     })));
+
+    // Volume — colored by direction, surge bars (>=1.5x 20-bar avg) flagged orange.
+    if (series[freq].volume) {
+        const vols = rows.map(r => r.volume || 0);
+        let surgeCount = 0;
+        const volData = rows.map((r, i) => {
+            const windowVols = vols.slice(Math.max(0, i - 20), i);
+            const avg20 = windowVols.length ? windowVols.reduce((a, b) => a + b, 0) / windowVols.length : null;
+            const isSurge = avg20 && vols[i] / avg20 >= VOL_SURGE_RATIO;
+            if (isSurge) surgeCount++;
+            const up = r.close >= r.open;
+            const color = isSurge ? (up ? C.vol_surge_up : C.vol_surge_down) : (up ? C.vol_up : C.vol_down);
+            return { time: r.date, value: r.volume || 0, color };
+        });
+        series[freq].volume.setData(volData);
+
+        const badge = document.getElementById(`chart-${freq}-vol-badge`);
+        if (badge) {
+            const last3Surges = volData.slice(-3).filter((_, i) => {
+                const idx = volData.length - 3 + i;
+                return idx >= 0 && volData[idx] && (volData[idx].color === C.vol_surge_up || volData[idx].color === C.vol_surge_down);
+            }).length;
+            if (last3Surges > 0) {
+                badge.textContent = `${last3Surges}× surge (3 bars)`;
+                badge.style.display = 'inline';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    }
+
+    // EMA stack — client-side, mirrors optional KAMA overlay.
+    const closes = rows.map(r => r.close);
+    EMA_PERIODS.forEach(p => {
+        const s = series[freq].ema[p];
+        if (!s) return;
+        const vals = computeEma(closes, p);
+        s.setData(rows.map((r, i) => (vals[i] == null ? { time: r.date } : { time: r.date, value: vals[i] })));
+    });
+
+    applyEpMarkers(freq);
+    applyOverlayVisibility(freq);
+}
+
+// EP (episodic pivot) markers: gap-up ≥4% on ≥1.5x volume — the entry path
+// that actually matters for momentum, distinct from RSI OB/OS alerts.
+function applyEpMarkers(freq) {
+    const s = series[freq].candle;
+    if (!s) return;
+    if (!activeOverlays.ep) {
+        s.setMarkers([]);
+        return;
+    }
+    const rows = rawRows[freq] || [];
+    const markers = [];
+    for (let i = 1; i < rows.length; i++) {
+        const prevClose = rows[i - 1].close;
+        const row = rows[i];
+        if (!prevClose || !row.open) continue;
+        const gapPct = (row.open / prevClose - 1) * 100;
+        const windowVols = rows.slice(Math.max(0, i - 20), i).map(r => r.volume || 0);
+        const avg20 = windowVols.length ? windowVols.reduce((a, b) => a + b, 0) / windowVols.length : null;
+        const volRatio = avg20 ? (row.volume || 0) / avg20 : null;
+        if (gapPct >= EP_GAP_PCT && volRatio != null && volRatio >= VOL_SURGE_RATIO) {
+            markers.push({
+                time: row.date, position: 'aboveBar', color: '#f97316',
+                shape: 'arrowUp', text: `EP +${gapPct.toFixed(0)}%`,
+            });
+        }
+    }
+    s.setMarkers(markers);
 }
 
 function loadIndicatorsToPanel(freq, data) {
@@ -329,12 +453,27 @@ function applyOverlayVisibility(freq) {
         const s = meta[`series_${freq}`];
         showHide(s, meta.active, meta.color, 1.5);
     });
+
+    // EMA stack (10/21/50) — optional overlay, off by default
+    EMA_PERIODS.forEach(p => {
+        showHide(series[freq].ema[p], activeEma[p], EMA_COLORS[p], 1.5);
+    });
 }
 
 function toggleOverlay(key) {
     activeOverlays[key] = !activeOverlays[key];
-    ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
+    ['daily', 'weekly'].forEach(f => {
+        applyOverlayVisibility(f);
+        if (key === 'ep') applyEpMarkers(f);
+    });
     return activeOverlays[key];
+}
+
+function toggleEma(period) {
+    const p = Number(period);
+    activeEma[p] = !activeEma[p];
+    ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
+    return activeEma[p];
 }
 
 // ── KAMA period management ────────────────────────────────────

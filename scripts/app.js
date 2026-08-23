@@ -253,19 +253,62 @@ function renderPortfolioTape(data) {
         });
     }
 
+    renderBreakoutQueue(data);
     renderRegimeHeatmap(data);
     renderAlertLog(data);
 }
 
-function renderRegimeHeatmap(data) {
-    const panels = document.getElementById('pm-panels');
-    const heat = document.getElementById('regime-heatmap');
-    if (!panels || !heat) return;
-    const rows = data.heatmap || [];
-    if (!rows.length) {
-        panels.style.display = 'none';
+// Breakout queue — near-high + volume-confirmed names. This is the
+// momentum entry loop (Qullamaggie), kept visible by default because it's
+// a book-scan tool, not a distraction from the chart.
+function renderBreakoutQueue(data) {
+    const bar = document.getElementById('breakout-queue-bar');
+    const chips = document.getElementById('breakout-queue-chips');
+    if (!bar || !chips) return;
+
+    const queue = data.breakout_queue || [];
+    if (!queue.length) {
+        bar.style.display = 'none';
         return;
     }
+    bar.style.display = 'flex';
+    chips.innerHTML = '';
+    queue.forEach(row => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'tape-chip bq-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
+        const dist = row.dist_20d_high_pct;
+        const distTxt = dist != null ? `${dist > 0 ? '+' : ''}${dist.toFixed(1)}% fr Hi` : '—';
+        const volTxt = row.vol_ratio_5_20 != null ? `Vol ${row.vol_ratio_5_20.toFixed(1)}×` : '—';
+        chip.innerHTML = `
+            <span>${row.symbol}</span>
+            <span class="tape-rs">${distTxt}</span>
+            <span class="tape-rs">${volTxt}</span>
+            ${row.is_ep ? '<span class="bq-ep-flag" title="Gap ≥4% on volume surge">EP</span>' : ''}
+        `;
+        chip.title = `${row.symbol} · ${distTxt} · ${volTxt}${row.gap_pct != null ? ` · gap ${row.gap_pct.toFixed(1)}%` : ''}`;
+        chip.addEventListener('click', () => selectSymbol(row.symbol));
+        chips.appendChild(chip);
+    });
+}
+
+function renderRegimeHeatmap(data) {
+    const wrapper = document.getElementById('pm-panels-details');
+    const panels = document.getElementById('pm-panels');
+    const heat = document.getElementById('regime-heatmap');
+    const badge = document.getElementById('pm-panels-badge');
+    if (!panels || !heat) return;
+    const rows = data.heatmap || [];
+    if (badge) {
+        const n = (data.alerts || []).length;
+        badge.textContent = String(n);
+        badge.style.display = n > 0 ? 'inline' : 'none';
+    }
+    if (!rows.length) {
+        if (wrapper) wrapper.style.display = 'none';
+        return;
+    }
+    if (wrapper) wrapper.style.display = '';
     panels.style.display = 'grid';
     heat.innerHTML = '';
     rows.forEach(r => {
@@ -319,9 +362,11 @@ function renderAlertLog(data) {
 }
 
 async function openBookNews() {
-    const focus = state.portfolioMeta?.news_focus || state.portfolioMeta?.alerts || [];
+    // news_focus is driven by breakout queue + top RS (strong names) —
+    // never RSI OS/weak-RS. See METHODOLOGY_REVIEW.md must-not-do #3.
+    const focus = state.portfolioMeta?.news_focus || [];
     if (!focus.length) {
-        toast('No alert/weak-RS names for book news yet', 'info');
+        toast('No breakout/strong-RS names for book news yet', 'info');
         switchTab('news');
         return;
     }
@@ -1917,6 +1962,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         const on = toggleOverlay('bb');
         bbPill.classList.toggle('active-bb', on);
     });
+
+    // EP markers pill (gap ≥4% on volume surge) — on by default
+    const epPill = document.getElementById('pill-ep-markers');
+    epPill?.addEventListener('click', () => {
+        const on = toggleOverlay('ep');
+        epPill.classList.toggle('active-ep', on);
+    });
+
+    // EMA stack pills (10/21/50) — optional, off by default (Qullamaggie: beside KAMA, not instead of)
+    document.querySelectorAll('[data-ema]').forEach(pill => {
+        pill.addEventListener('click', () => {
+            const p = pill.dataset.ema;
+            const on = toggleEma(p);
+            pill.classList.toggle('active-ema', on);
+            pill.style.borderColor = on ? EMA_COLORS[p] : '';
+            pill.style.color = on ? EMA_COLORS[p] : '';
+            pill.style.background = on ? EMA_COLORS[p] + '20' : '';
+        });
+    });
+
+    // Regime map / alert log — collapsed by default, persisted across reloads.
+    const pmDetails = document.getElementById('pm-panels-details');
+    if (pmDetails) {
+        pmDetails.open = localStorage.getItem('wn_pm_panels_open') === '1';
+        pmDetails.addEventListener('toggle', () => {
+            localStorage.setItem('wn_pm_panels_open', pmDetails.open ? '1' : '0');
+        });
+    }
 
     // Buttons
     document.getElementById('btn-add-symbol').addEventListener('click', addSymbol);

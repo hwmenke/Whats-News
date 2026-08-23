@@ -77,20 +77,33 @@
         <input type="checkbox" id="tape-alerts-only" />
         Alerts only
       </label>
-      <button type="button" id="tape-book-news" class="btn btn-ghost btn-sm" title="Load news for alerting / weakest RS names">Book news</button>
+      <button type="button" id="tape-book-news" class="btn btn-ghost btn-sm" title="Load news for breakout queue + top RS (strong) names">Book news</button>
       <div id="tape-chips" class="tape-chips"></div>
     </div>
 
-    <div id="pm-panels" class="pm-panels" style="display:none;">
-      <div class="pm-panel">
-        <div class="pm-panel-title">Regime map (D / W)</div>
-        <div id="regime-heatmap" class="regime-heatmap"></div>
-      </div>
-      <div class="pm-panel">
-        <div class="pm-panel-title">Alert log</div>
-        <div id="alert-log" class="alert-log"><div class="alert-log-empty">No RSI alerts</div></div>
-      </div>
+    <!-- Breakout queue — near-high + volume-confirmed names (Qullamaggie loop). Kept visible: this IS the book-scan tool. -->
+    <div id="breakout-queue-bar" class="breakout-queue-bar" style="display:none;" aria-label="Breakout queue">
+      <div class="tape-meta">Breakout queue<span class="bq-hint" title="Near 20D high (≤5%) and/or volume ≥1.5× 20-bar avg. EP = gap ≥4% on volume surge.">?</span></div>
+      <div id="breakout-queue-chips" class="tape-chips"></div>
     </div>
+
+    <!-- Regime map + alert log — decision-support, not the decision surface. Collapsed by default so it never eats chart height. -->
+    <details id="pm-panels-details" class="pm-panels-details">
+      <summary class="pm-panels-summary">
+        <span>Regime map &amp; alert log</span>
+        <span id="pm-panels-badge" class="pm-panels-badge" style="display:none;">0</span>
+      </summary>
+      <div id="pm-panels" class="pm-panels">
+        <div class="pm-panel">
+          <div class="pm-panel-title">Regime map (D / W)</div>
+          <div id="regime-heatmap" class="regime-heatmap"></div>
+        </div>
+        <div class="pm-panel">
+          <div class="pm-panel-title">Alert log</div>
+          <div id="alert-log" class="alert-log"><div class="alert-log-empty">No RSI alerts</div></div>
+        </div>
+      </div>
+    </details>
 
     <!-- Symbol Header -->
     <div class="symbol-header">
@@ -207,10 +220,17 @@
           <button id="btn-add-kama" class="btn btn-primary btn-icon" title="Add KAMA period">+</button>
         </div>
       </div>
+      <div class="indicator-toggles">
+        <span class="overlay-section-label">EMA stack</span>
+        <button id="pill-ema-10" class="ind-pill" data-ema="10" title="EMA 10 — optional, off by default (Qullamaggie)">EMA 10</button>
+        <button id="pill-ema-21" class="ind-pill" data-ema="21" title="EMA 21 — optional, off by default (Qullamaggie)">EMA 21</button>
+        <button id="pill-ema-50" class="ind-pill" data-ema="50" title="EMA 50 — optional, off by default (Qullamaggie)">EMA 50</button>
+      </div>
       <div class="tab-spacer"></div>
       <div class="indicator-toggles">
         <span class="overlay-section-label">Overlays</span>
         <button id="pill-bb" class="ind-pill active-bb">Bol. Bands</button>
+        <button id="pill-ep-markers" class="ind-pill active-ep" title="Mark gap-up + volume-surge (EP) bars on chart">EP markers</button>
       </div>
     </div>
 
@@ -243,6 +263,11 @@
           <div id="chart-daily-main" style="width:100%;height:100%;"></div>
         </div>
         <div class="chart-divider"></div>
+        <div class="chart-wrapper chart-wrapper-volume">
+          <div class="chart-label">VOLUME <span id="chart-daily-vol-badge" class="vol-surge-badge" style="display:none;"></span></div>
+          <div id="chart-daily-volume" style="width:100%;height:100%;"></div>
+        </div>
+        <div class="chart-divider"></div>
         <div class="chart-wrapper chart-wrapper-rsi">
           <div class="chart-label">RSI (7 / 14 / 21)</div>
           <div id="chart-daily-rsi" style="width:100%;height:100%;"></div>
@@ -268,6 +293,11 @@
         <div class="chart-wrapper chart-wrapper-main">
           <div class="chart-label">PRICE</div>
           <div id="chart-weekly-main" style="width:100%;height:100%;"></div>
+        </div>
+        <div class="chart-divider"></div>
+        <div class="chart-wrapper chart-wrapper-volume">
+          <div class="chart-label">VOLUME <span id="chart-weekly-vol-badge" class="vol-surge-badge" style="display:none;"></span></div>
+          <div id="chart-weekly-volume" style="width:100%;height:100%;"></div>
         </div>
         <div class="chart-divider"></div>
         <div class="chart-wrapper chart-wrapper-rsi">

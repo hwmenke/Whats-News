@@ -495,6 +495,75 @@ html, body {
   color: var(--orange);
 }
 
+/* ── Breakout queue (near-high + volume-confirmed) ───────────
+   Kept visible by default: this is the momentum book-scan tool,
+   not the regime/alert decision-support panels below. */
+.breakout-queue-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.bq-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  margin-left: 6px;
+  border-radius: 50%;
+  border: 1px solid var(--text-dim);
+  font-size: 9px;
+  color: var(--text-dim);
+  cursor: help;
+}
+.bq-chip { border-color: rgba(249, 115, 22, 0.35); }
+.bq-chip:hover { border-color: var(--orange); }
+.bq-ep-flag {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(249, 115, 22, 0.25);
+  color: var(--orange);
+  letter-spacing: 0.03em;
+}
+
+/* ── Regime map / alert log — collapsed by default (chart-first) ── */
+.pm-panels-details {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-base);
+}
+.pm-panels-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.pm-panels-summary::-webkit-details-marker { display: none; }
+.pm-panels-summary:hover { color: var(--text-muted); }
+.pm-panels-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: rgba(249, 115, 22, 0.2);
+  color: var(--orange);
+}
+.pm-panels-details[open] .pm-panels-summary { border-bottom: 1px solid var(--border); }
+
 .symbol-item .sym-alert {
   font-size: 9px;
   font-weight: 700;
@@ -720,8 +789,9 @@ html, body {
 .ind-pill:hover { border-color: var(--accent); color: var(--accent); }
 
 .ind-pill.active-bb { background: rgba(34,197,94,0.18); border-color: #22c55e; color: #22c55e; }
+.ind-pill.active-ep { background: rgba(249,115,22,0.18); border-color: #f97316; color: #f97316; }
 
-/* KAMA period active state is applied via inline style (dynamic colors) */
+/* KAMA / EMA period active state is applied via inline style (dynamic colors) */
 
 /* ── Overlay toolbar helpers ───────────────────────────────── */
 .overlay-section-label {
@@ -822,9 +892,22 @@ html, body {
   flex-shrink: 0;
 }
 
-.chart-wrapper-rsi   { height: 110px; flex-shrink: 0; }
-.chart-wrapper-macd  { height: 100px; flex-shrink: 0; }
-.chart-wrapper-trend { height: 80px;  flex-shrink: 0; }
+.chart-wrapper-volume { height: 70px;  flex-shrink: 0; }
+.chart-wrapper-rsi     { height: 110px; flex-shrink: 0; }
+.chart-wrapper-macd    { height: 100px; flex-shrink: 0; }
+.chart-wrapper-trend   { height: 80px;  flex-shrink: 0; }
+
+.vol-surge-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(249, 115, 22, 0.25);
+  color: var(--orange);
+  letter-spacing: 0.02em;
+  margin-left: 4px;
+  pointer-events: auto;
+}
 
 /* ── Empty State ──────────────────────────────────────────── */
 .empty-state {
