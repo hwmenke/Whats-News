@@ -1,71 +1,69 @@
-# 📰 Whats-News - Financial Dashboard & Watchlist News
+# 📰 Whats-News — Dashboard + Watchlist News
 
-A professional-grade financial dashboard built with a Python (Flask) backend and a modern HTML/JS frontend. Features real-time data fetching from Yahoo Finance, persistent storage in SQLite, interactive technical analysis charts, and real-time news feeds for your watchlist.
+Local financial toolkit with two processes:
 
-## 🚀 Quick Start (For your friend)
+1. **Data service** (`data_service`) — owns the SQLite watchlist + OHLCV store and Yahoo Finance downloads  
+2. **Analysis app** (`app.py`) — charts, indicators, scanner, news; pulls bars **on the fly** from the data service
 
-Follow these steps to get the dashboard running on your machine:
+## Quick Start
 
-### 1. Clone or Download the Code
-If you have the folder, just open your terminal in that folder.
-
-### 2. Install Dependencies
-Ensure you have Python 3 installed, then run:
 ```bash
 python3 -m pip install -r requirements.txt
-```
 
-### 3. Start the Server
-Run the following command to start the backend:
-```bash
+# Terminal 1 — data plane (default :8051)
+python3 -m data_service.app
+
+# Terminal 2 — analysis UI (default :8050)
 python3 app.py
 ```
 
-### 4. Open the Dashboard
-Open your web browser and go to:
-👉 **[http://localhost:8050](http://localhost:8050)**
+Open:
+- Analysis dashboard → http://localhost:8050  
+- Data service UI → http://localhost:8051  
+- Watchlist news → http://localhost:8050/news  
 
----
+### Single-process / tests
 
-## 🛠️ Features
-- **Real-time Data**: Fetch OHLCV data for any ticker symbol via `yfinance`.
-- **Watchlist News**: Real news headlines for your watchlist symbols from Yahoo Finance.
-- **Interactive Charts**: Powered by TradingView's Lightweight Charts.
-- **Technical Analysis**: SMA, EMA, Bollinger Bands, RSI, MACD, and Volume.
-- **Daily & Weekly Views**: Toggle between daily and weekly timeframes.
-- **Persistent Storage**: All data is saved locally in an SQLite database.
-
-### News Feed
-
-Access the news page at `/news` to see real headlines for all symbols in your watchlist. The news feed:
-- Fetches real headlines from Yahoo Finance using the yfinance API
-- Displays source, publish time, and article summary for each story
-- Deduplicates articles that appear for multiple symbols
-- Shows honest status messages when news is unavailable or fetch fails
-- Requires no API keys or external configuration
-
-> **Note**: The news feed shows real data from Yahoo Finance. PR #5 contains an unrelated React prototype with placeholder data and should not be confused with this implementation.
-
-## 📁 Project Structure
-- `app.py`: Flask REST API server (dashboard + news endpoints).
-- `database.py`: SQLite database manager.
-- `data_fetcher.py`: Yahoo Finance data downloader.
-- `indicators.py`: Technical analysis engine.
-- `index.html`: Main dashboard UI.
-- `news.html`: News feed page.
-- `styles/main.css`: Premium styling.
-- `scripts/app.js`: Frontend application logic.
-- `scripts/charts.js`: Chart rendering logic.
-- `tests/`: Unit tests with mocked yfinance (no network calls).
-
-## 🧪 Testing
-
-Run tests with:
 ```bash
-python3 -m unittest discover tests
+export DATA_SERVICE_MODE=embedded   # analysis talks to local database.py (no HTTP)
+python3 app.py
 ```
 
-Tests use mocked yfinance responses to avoid network calls in CI/CD.
+## Architecture
+
+```
+Browser  →  Analysis app :8050  →  Data service :8051  →  finance.db + yfinance
+                 │                      │
+         indicators/stats/         symbols, fetch,
+         scanner/news              OHLCV, batch import
+```
+
+- Analysis modules (`indicators`, `stats`, `scanner`, …) read through `market_data` → `data_client`.
+- The dashboard still exposes the same `/api/symbols`, `/api/ohlcv`, `/api/data-manager/*` routes; they proxy to the data service so the existing UI keeps working.
+- Set `DATA_SERVICE_URL` if the data service is not on `http://127.0.0.1:8051`.
+
+## Features
+- **Real-time Data**: OHLCV via `yfinance`, stored by the data service.
+- **Watchlist News**: Real Yahoo Finance headlines for watchlist symbols.
+- **Interactive Charts**: TradingView Lightweight Charts.
+- **Technical Analysis**: SMA, EMA, Bollinger, RSI, MACD, volume, adaptive trend, scanner.
+- **Data Manager**: Batch import curated ticker lists (runs on the data service; UI proxied from :8050).
+
+> News shows real Yahoo data — not the placeholder magazine from PR #5.
+
+## Project Structure
+- `data_service/` — Data management Flask app + small ops UI
+- `data_client.py` / `market_data.py` — HTTP (or embedded) access for analysis
+- `app.py` — Analysis dashboard
+- `database.py` / `data_fetcher.py` — SQLite + Yahoo download (owned by data service)
+- `index.html` / `news.html` / `styles/` / `scripts/` — frontend
+- `tests/` — unittest suite (`DATA_SERVICE_MODE=embedded`, no live network)
+
+## Testing
+
+```bash
+DATA_SERVICE_MODE=embedded python3 -m unittest discover tests
+```
 
 ---
-*Built with ❤️ for financial analysis and staying informed.*
+*Built for financial analysis and staying informed.*

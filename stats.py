@@ -4,7 +4,7 @@ stats.py - Compute statistical analysis and factor quintiles for a symbol.
 
 import numpy as np
 import pandas as pd
-import database as db
+import market_data as db
 
 KAMA_PERIODS = [10, 20, 50]
 

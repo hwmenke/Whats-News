@@ -6,7 +6,7 @@ short/medium/long regime states, and entry signals.
 
 import numpy as np
 import pandas as pd
-import database as db
+import market_data as db
 
 
 # ── JSON helpers ──────────────────────────────────────────────

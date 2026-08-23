@@ -1,4 +1,6 @@
+import os
 import unittest
+os.environ.setdefault("DATA_SERVICE_MODE", "embedded")
 from unittest.mock import patch, MagicMock
 
 import numpy as np
