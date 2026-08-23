@@ -1,15 +1,16 @@
+import os
 import unittest
+os.environ.setdefault("DATA_SERVICE_MODE", "embedded")
 from unittest.mock import patch, MagicMock
 
 import app as app_module
-import database as db
 
 
 class NewsApiTests(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
 
-    @patch("app.db.list_symbol_codes")
+    @patch("app.md.list_symbol_codes")
     def test_get_all_news_empty_watchlist(self, mock_list_symbol_codes):
         mock_list_symbol_codes.return_value = []
 
@@ -21,7 +22,7 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(data["message"], "No symbols in watchlist")
 
     @patch("app.yf.Ticker")
-    @patch("app.db.list_symbol_codes")
+    @patch("app.md.list_symbol_codes")
     def test_get_all_news_with_articles(self, mock_list_symbol_codes, mock_ticker_class):
         mock_list_symbol_codes.return_value = ["AAPL"]
         
@@ -55,7 +56,7 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(article["provider"], "Test News")
 
     @patch("app.yf.Ticker")
-    @patch("app.db.list_symbol_codes")
+    @patch("app.md.list_symbol_codes")
     def test_get_all_news_deduplicates_by_url(self, mock_list_symbol_codes, mock_ticker_class):
         mock_list_symbol_codes.return_value = ["AAPL", "MSFT"]
         
@@ -83,7 +84,7 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(data["article_count"], 1)
 
     @patch("app.yf.Ticker")
-    @patch("app.db.list_symbol_codes")
+    @patch("app.md.list_symbol_codes")
     def test_get_all_news_no_news_available(self, mock_list_symbol_codes, mock_ticker_class):
         mock_list_symbol_codes.return_value = ["AAPL"]
         
@@ -99,7 +100,7 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(len(data["articles"]), 0)
 
     @patch("app.yf.Ticker")
-    @patch("app.db.list_symbol_codes")
+    @patch("app.md.list_symbol_codes")
     def test_get_all_news_handles_errors(self, mock_list_symbol_codes, mock_ticker_class):
         mock_list_symbol_codes.return_value = ["AAPL", "INVALID"]
         

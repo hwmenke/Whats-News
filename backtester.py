@@ -6,7 +6,7 @@ Tests all fast/slow KAMA period combinations with and without trend filter.
 import numpy as np
 import pandas as pd
 import ta
-import database as db
+import market_data as db
 
 FAST_PERIODS = [5, 8, 10, 15, 20]
 SLOW_PERIODS = [20, 30, 50, 100, 200]

@@ -29,4 +29,6 @@ echo "  Press Ctrl+C to stop."
 echo ""
 
 export PORT
+# One-process default: analysis talks to local SQLite (no :8051 required).
+export DATA_SERVICE_MODE="${DATA_SERVICE_MODE:-embedded}"
 exec python app.py

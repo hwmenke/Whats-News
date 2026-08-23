@@ -19,6 +19,8 @@ When it says the server is running, open your browser:
 
 Stop with `Ctrl+C`.
 
+`start.sh` uses **embedded** data mode (one process). For the optional two-process layout, see below.
+
 ### First visit
 
 1. In the left sidebar, type `AAPL` and click **+**
@@ -29,8 +31,23 @@ Stop with `Ctrl+C`.
 
 ```bash
 python3 -m pip install -r requirements.txt
+export DATA_SERVICE_MODE=embedded
 python3 app.py
 ```
+
+### Optional: separate data service
+
+```bash
+# Terminal 1 — data plane (default :8051)
+python3 -m data_service.app
+
+# Terminal 2 — analysis UI (default :8050)
+unset DATA_SERVICE_MODE   # or DATA_SERVICE_MODE=http
+python3 app.py
+```
+
+- Data service UI → http://localhost:8051  
+- Set `DATA_SERVICE_URL` if the data service is not on `http://127.0.0.1:8051`
 
 Need Python 3? Check with `python3 --version`.
 
@@ -46,7 +63,7 @@ Need Python 3? Check with `python3 --version`.
 
 ### Scaling the watchlist
 
-SQLite stays the datastore — no extra services. The DB layer is set up so hundreds of tickers (and their OHLCV history) stay practical:
+SQLite stays the datastore. The DB layer is set up so hundreds of tickers stay practical:
 
 - **WAL journal** + busy timeout so refreshes/scanner can run alongside the UI
 - **Bulk upserts** for OHLCV (vectorized, not row-by-row)
@@ -60,17 +77,20 @@ SQLite stays the datastore — no extra services. The DB layer is set up so hund
 
 | Path | Purpose |
 |------|---------|
-| `app.py` | Flask server (dashboard + APIs) |
+| `app.py` | Analysis dashboard (charts, scanner, news, PM Desk) |
+| `data_service/` | Optional data plane (SQLite + Yahoo fetches) |
+| `data_client.py` / `market_data.py` | Embedded or HTTP access to watchlist/OHLCV |
 | `database.py` / `data_fetcher.py` | SQLite + Yahoo downloads |
 | `index.html` / `news.html` | UI |
 | `scripts/` | Frontend JS |
 | `tests/` | Unit tests (no live network) |
-| `start.sh` | One-command launcher |
+| `start.sh` | One-command launcher (embedded mode) |
 | `SUGGESTIONS.md` | Ideas for future improvements |
 | `PM_REVIEW.md` / `METHODOLOGY_REVIEW.md` | Desk review notes |
 
 ```bash
-make test    # or: python3 -m unittest discover tests
+DATA_SERVICE_MODE=embedded make test
+# or: DATA_SERVICE_MODE=embedded python3 -m unittest discover tests
 ```
 
 ---

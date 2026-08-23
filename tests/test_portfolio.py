@@ -3,6 +3,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+os.environ.setdefault("DATA_SERVICE_MODE", "embedded")
+
 import numpy as np
 import pandas as pd
 

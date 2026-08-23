@@ -6,7 +6,7 @@ Finds K most similar historical moments based on current market conditions.
 import numpy as np
 import pandas as pd
 import ta
-import database as db
+import market_data as db
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import NearestNeighbors
 

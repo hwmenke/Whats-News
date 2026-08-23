@@ -1,32 +1,48 @@
 """
-app.py - Flask REST API server for the Financial Dashboard
-Run: python app.py
+app.py - Whats-News analysis dashboard (compute layer)
+
+Reads watchlist / OHLCV on the fly from the Data Management service
+(data_service/app.py, default :8051). This process owns charts, indicators,
+scanner analytics, and news — not SQLite writes or Yahoo downloads.
+
+Run both:
+  python -m data_service.app   # data plane  :8051
+  python app.py                # analysis UI :8050
+
+Tests / single-process: DATA_SERVICE_MODE=embedded
 """
 
 import json
 import os
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
+import urllib.error
+import urllib.request
+
+from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 from flask_cors import CORS
 
-import database as db
-import data_fetcher as fetcher
+import data_client
+import market_data as md
 import indicators as ind
 import stats as stats
 import knn_model
 import backtester
 import scanner
 import adaptive_trend as adaptive
-import ticker_lists as tl
 import yfinance as yf
 import portfolio
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 
-# Initialise the database on startup
-db.init_db()
+
+def _data_error(exc):
+    if isinstance(exc, data_client.DataServiceError):
+        status = exc.status or 502
+        payload = exc.payload if isinstance(exc.payload, dict) else {"error": str(exc)}
+        if "error" not in payload:
+            payload = {**payload, "error": str(exc)}
+        return jsonify(payload), status
+    return jsonify({"error": str(exc)}), 502
 
 
 # -- Static files ---------------------------------------------------------------
@@ -43,16 +59,17 @@ def news_page():
 
 @app.route("/api/health")
 def health():
-    """Simple liveness check for the UI status indicator."""
     try:
-        symbols = db.list_symbols()
-        return jsonify({
-            "ok": True,
-            "service": "whats-news",
-            "symbol_count": len(symbols),
-        })
+        data_health = md.health()
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        data_health = {"ok": False, "error": str(exc)}
+    return jsonify({
+        "ok": True,
+        "service": "analysis",
+        "data_service": data_health,
+        "data_mode": data_client.DATA_SERVICE_MODE,
+        "data_url": data_client.DATA_SERVICE_URL,
+    })
 
 
 @app.route("/api/portfolio/snapshot", methods=["GET"])
@@ -71,8 +88,7 @@ def pm_desk(symbol):
         snap = portfolio.snapshot_symbol(symbol.upper())
         if not snap.get("ready"):
             return jsonify(snap), 404
-        # Enrich with peer ETF + default size from DB metadata
-        meta = next((s for s in db.list_symbols() if s["symbol"] == symbol.upper()), {}) or {}
+        meta = next((s for s in md.list_symbols() if s["symbol"] == symbol.upper()), {}) or {}
         snap["sector"] = meta.get("sector") or ""
         snap["peer_etf"] = portfolio.peer_etf_for(snap["sector"])
         try:
@@ -86,103 +102,106 @@ def pm_desk(symbol):
         return jsonify({"error": str(exc)}), 500
 
 
-# -- Symbols --------------------------------------------------------------------
+# -- Symbols (proxied to data service) -----------------------------------------
 
 @app.route("/api/symbols", methods=["GET"])
 def get_symbols():
-    return jsonify(db.list_symbols())
+    try:
+        return jsonify(md.list_symbols())
+    except Exception as exc:
+        return _data_error(exc)
 
 
 @app.route("/api/symbols", methods=["POST"])
 def add_symbol():
     data = request.get_json(force=True) or {}
+    try:
+        if "symbols" in data:
+            raw = data.get("symbols") or []
+            if not isinstance(raw, list):
+                return jsonify({"error": "symbols must be a list"}), 400
+            result = md.add_symbols(raw)
+            status = 201 if result.get("added") else 200
+            return jsonify({
+                "message": f"{len(result.get('added', []))} added, {len(result.get('skipped', []))} skipped",
+                **result,
+            }), status
 
-    # Bulk add: {"symbols": ["AAPL", "MSFT", ...]}
-    if "symbols" in data:
-        raw = data.get("symbols") or []
-        if not isinstance(raw, list):
-            return jsonify({"error": "symbols must be a list"}), 400
-        result = db.add_symbols(raw)
-        status = 201 if result["added"] else 200
-        return jsonify({
-            "message": f"{len(result['added'])} added, {len(result['skipped'])} skipped",
-            **result,
-        }), status
-
-    symbol = data.get("symbol", "").strip().upper()
-    if not symbol:
-        return jsonify({"error": "symbol is required"}), 400
-    added = db.add_symbol(symbol)
-    if not added:
-        return jsonify({"message": f"{symbol} already in watchlist"}), 200
-    return jsonify({"message": f"{symbol} added"}), 201
+        symbol = data.get("symbol", "").strip().upper()
+        if not symbol:
+            return jsonify({"error": "symbol is required"}), 400
+        result = md.add_symbol(symbol)
+        added = result.get("added")
+        if added is False or (added is None and "already" in result.get("message", "").lower()):
+            return jsonify(result), 200
+        return jsonify(result), 201
+    except Exception as exc:
+        return _data_error(exc)
 
 
 @app.route("/api/symbols/<string:symbol>", methods=["DELETE"])
 def delete_symbol(symbol):
-    db.remove_symbol(symbol.upper())
-    return jsonify({"message": f"{symbol.upper()} removed"})
+    try:
+        return jsonify(md.remove_symbol(symbol.upper()))
+    except Exception as exc:
+        return _data_error(exc)
 
 
 @app.route("/api/symbols/<string:symbol>/group", methods=["PUT"])
 def set_symbol_group(symbol):
-    data      = request.get_json(force=True) or {}
+    data = request.get_json(force=True) or {}
     group_tag = data.get("group_tag", "").strip()
-    db.set_symbol_group(symbol.upper(), group_tag)
-    return jsonify({"message": "ok"})
+    try:
+        return jsonify(md.set_symbol_group(symbol.upper(), group_tag))
+    except Exception as exc:
+        return _data_error(exc)
 
 
-# -- Database -------------------------------------------------------------------
+# -- Database (proxied / embedded) ---------------------------------------------
 
 @app.route("/api/db/stats", methods=["GET"])
 def db_stats():
     """Watchlist / OHLCV size snapshot for large-ticker ops."""
-    return jsonify(db.get_db_stats())
+    try:
+        return jsonify(md.get_db_stats())
+    except Exception as exc:
+        return _data_error(exc)
 
 
 @app.route("/api/db/optimize", methods=["POST"])
 def db_optimize():
     """Run ANALYZE + WAL checkpoint after big bulk loads."""
-    return jsonify(db.optimize_db())
+    try:
+        if data_client.use_embedded():
+            import database as db
+            return jsonify(db.optimize_db())
+        return jsonify(data_client._request("POST", "/api/db/optimize") or {})
+    except Exception as exc:
+        return _data_error(exc)
 
 
-# -- Data fetch -----------------------------------------------------------------
+# -- Data fetch (proxied) -------------------------------------------------------
 
 @app.route("/api/fetch/<string:symbol>", methods=["POST"])
 def fetch_symbol(symbol):
-    print(f">> API: Fetch request for {symbol}")
     try:
-        result = fetcher.fetch_and_store(symbol.upper())
+        result = md.fetch_symbol(symbol.upper())
         if "error" in result:
-            print(f"!! API: Error fetching {symbol}: {result['error']}")
             return jsonify(result), 400
-        print(f"<< API: Successfully fetched {symbol}")
         return jsonify(result)
-    except Exception as e:
-        print(f"!! API: Exception fetching {symbol}: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+    except Exception as exc:
+        return _data_error(exc)
 
 
 @app.route("/api/refresh", methods=["POST"])
 def refresh_all():
-    symbols = db.list_symbol_codes()
-    results = []
-
-    def _fetch(sym):
-        try:
-            return fetcher.fetch_and_store(sym)
-        except Exception as e:
-            return {"symbol": sym, "error": str(e)}
-
-    with ThreadPoolExecutor(max_workers=min(8, len(symbols) or 1)) as pool:
-        futures = {pool.submit(_fetch, s): s for s in symbols}
-        for future in as_completed(futures):
-            results.append(future.result())
-
-    return jsonify(results)
+    try:
+        return jsonify(md.refresh_all())
+    except Exception as exc:
+        return _data_error(exc)
 
 
-# -- OHLCV ----------------------------------------------------------------------
+# -- OHLCV (on-the-fly from data service) ---------------------------------------
 
 @app.route("/api/ohlcv/<string:symbol>", methods=["GET"])
 def get_ohlcv(symbol):
@@ -197,7 +216,13 @@ def get_ohlcv(symbol):
     if limit <= 0:
         return jsonify({"error": "limit must be a positive integer"}), 400
 
-    rows = db.get_ohlcv(symbol.upper(), freq, limit)
+    try:
+        rows = md.get_ohlcv(symbol.upper(), freq, limit)
+    except data_client.DataServiceError as exc:
+        return _data_error(exc)
+    except Exception as exc:
+        return _data_error(exc)
+
     if not rows:
         return jsonify({"error": "No data. Fetch the symbol first."}), 404
     return jsonify(rows)
@@ -304,7 +329,7 @@ def trend_scan():
     freq       = request.args.get("freq",   "daily")
     method     = request.args.get("method", "kama")
     rsi_period = int(request.args.get("rsi_period", 14))
-    symbols    = db.list_symbol_codes()
+    symbols    = md.list_symbol_codes()
     if not symbols:
         return jsonify([])
 
@@ -326,7 +351,7 @@ def trend_scan():
 
     def _one(sym):
         try:
-            ohlcv = db.get_ohlcv_df(sym, freq, limit=600)
+            ohlcv = md.get_ohlcv_df(sym, freq, limit=600)
             if ohlcv.empty or len(ohlcv) < 30:
                 return {"symbol": sym, "error": "No data — fetch first"}
 
@@ -441,7 +466,7 @@ def run_scanner():
 def get_scanner():
     """Compute multi-timeframe scanner metrics for every watched symbol."""
     try:
-        symbols = db.list_symbol_codes()
+        symbols = md.list_symbol_codes()
         if not symbols:
             return jsonify([])
         data = scanner.compute_scanner(symbols)
@@ -455,7 +480,7 @@ def get_scanner():
 @app.route("/api/news", methods=["GET"])
 def get_all_news():
     """Fetch news for all watchlist symbols using yfinance."""
-    symbols = db.list_symbol_codes()
+    symbols = md.list_symbol_codes()
     if not symbols:
         return jsonify({"articles": [], "message": "No symbols in watchlist"})
     
@@ -558,90 +583,97 @@ def get_symbol_news(symbol):
         }), 500
 
 
-# -- Data Manager ---------------------------------------------------------------
+# -- Data Manager (proxied to data service) -------------------------------------
 
 @app.route("/api/data-manager/ticker-lists", methods=["GET"])
 def get_ticker_lists():
-    """Return the curated ticker library (categories + tickers)."""
-    return jsonify(tl.TICKER_LIBRARY)
+    """Curated ticker library — served by the data service."""
+    if data_client.use_embedded():
+        import ticker_lists as tl
+        return jsonify(tl.TICKER_LIBRARY)
+    try:
+        url = f"{data_client.DATA_SERVICE_URL}/api/data-manager/ticker-lists"
+        with urllib.request.urlopen(url, timeout=30) as resp:
+            return Response(resp.read(), mimetype="application/json")
+    except Exception as exc:
+        return _data_error(data_client.DataServiceError(str(exc)))
 
 
 @app.route("/api/data-manager/fetch-batch", methods=["POST"])
 def fetch_batch():
     """
-    SSE streaming endpoint.
-    POST body: {
-        "tickers":      ["AAPL", ...],
-        "start_date":   "2000-01-01",   // optional, default 2000-01-01
-        "delay":        1.5,            // seconds between requests
-        "add_watchlist": true           // whether to add each ticker to watchlist
-    }
-    Streams SSE events:
-        data: {"type":"start",  "total": N}
-        data: {"type":"result", "index": i, "symbol": "...", "ok": bool, "msg": "..."}
-        data: {"type":"done",   "ok": N, "failed": N}
+    Proxy SSE batch fetch to the data service (or run embedded for tests).
     """
-    body        = request.get_json(force=True) or {}
-    tickers     = [t.strip().upper() for t in body.get("tickers", []) if t.strip()]
-    start_date  = body.get("start_date", "2000-01-01")
-    delay       = float(body.get("delay", 1.5))
-    add_wl      = bool(body.get("add_watchlist", True))
+    body = request.get_json(force=True) or {}
 
-    if not tickers:
-        return jsonify({"error": "tickers list is empty"}), 400
+    if data_client.use_embedded():
+        import time
+        import database as db
+        import data_fetcher as fetcher
 
-    # Clamp delay to reasonable range
-    delay = max(0.3, min(delay, 10.0))
+        tickers = [t.strip().upper() for t in body.get("tickers", []) if str(t).strip()]
+        start_date = body.get("start_date", "2000-01-01")
+        delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
+        add_wl = bool(body.get("add_watchlist", True))
+        if not tickers:
+            return jsonify({"error": "tickers list is empty"}), 400
 
-    def generate():
-        ok_count = 0
-        fail_count = 0
-        total = len(tickers)
-
-        try:
-            yield f"data: {json.dumps({'type': 'start', 'total': total})}\n\n"
-
+        def generate_embedded():
+            ok_count = fail_count = 0
+            yield f"data: {json.dumps({'type': 'start', 'total': len(tickers)})}\n\n"
             for i, sym in enumerate(tickers):
                 try:
                     if add_wl:
                         db.add_symbol(sym)
-
                     result = fetcher.fetch_full_history(sym, start=start_date)
-
                     if "error" in result:
                         fail_count += 1
-                        msg = result["error"]
-                        ok  = False
+                        ok, msg = False, result["error"]
                     else:
                         ok_count += 1
-                        msg = (f"{result.get('daily_rows', 0)}d / "
-                               f"{result.get('weekly_rows', 0)}w rows stored")
-                        ok  = True
-
+                        ok, msg = True, (
+                            f"{result.get('daily_rows', 0)}d / "
+                            f"{result.get('weekly_rows', 0)}w rows stored"
+                        )
                     yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': ok, 'msg': msg})}\n\n"
-
-                except GeneratorExit:
-                    return
                 except Exception as exc:
                     fail_count += 1
                     yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': False, 'msg': str(exc)})}\n\n"
-
-                # Rate-limiting pause (skip after last ticker)
-                if i < total - 1:
+                if i < len(tickers) - 1:
                     time.sleep(delay)
-
             yield f"data: {json.dumps({'type': 'done', 'ok': ok_count, 'failed': fail_count})}\n\n"
 
-        except GeneratorExit:
-            return
+        return Response(
+            stream_with_context(generate_embedded()),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    # Stream-proxy SSE from the data service
+    payload = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        f"{data_client.DATA_SERVICE_URL}/api/data-manager/fetch-batch",
+        data=payload,
+        headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
+        method="POST",
+    )
+
+    def generate_proxy():
+        try:
+            with urllib.request.urlopen(req, timeout=3600) as resp:
+                while True:
+                    chunk = resp.read(1024)
+                    if not chunk:
+                        break
+                    yield chunk
+        except urllib.error.URLError as exc:
+            yield f"data: {json.dumps({'type': 'result', 'index': 0, 'symbol': '?', 'ok': False, 'msg': str(exc.reason)})}\n\n".encode()
+            yield f"data: {json.dumps({'type': 'done', 'ok': 0, 'failed': 1})}\n\n".encode()
 
     return Response(
-        stream_with_context(generate()),
+        stream_with_context(generate_proxy()),
         mimetype="text/event-stream",
-        headers={
-            "Cache-Control":  "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
@@ -649,6 +681,9 @@ def fetch_batch():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
-    print(f"\n  Whats-News running at http://localhost:{port}")
-    print(f"  News feed:              http://localhost:{port}/news\n")
+    mode = data_client.DATA_SERVICE_MODE
+    url = data_client.DATA_SERVICE_URL
+    print(f"\n  Whats-News analysis at http://localhost:{port}")
+    print(f"  News feed:              http://localhost:{port}/news")
+    print(f"  Data service mode={mode} url={url}\n")
     app.run(debug=True, port=port)

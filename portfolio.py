@@ -7,7 +7,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-import database as db
+import market_data as md
 
 # Liquid peer ETFs by sector (Yahoo sector strings)
 _PEER_ETF = {
@@ -117,7 +117,7 @@ def _rsi_zone(rsi: float | None) -> str:
 
 def snapshot_symbol(symbol: str) -> dict:
     sym = symbol.upper()
-    df = db.get_ohlcv_df(sym, "daily", limit=260)
+    df = md.get_ohlcv_df(sym, "daily", limit=260)
     if df.empty or len(df) < 25:
         return {
             "symbol": sym,
@@ -158,7 +158,7 @@ def snapshot_symbol(symbol: str) -> dict:
     ret_21d = (last / float(month_ago) - 1) * 100 if month_ago else None
 
     # Weekly regime (same KAMA20 logic on weekly bars)
-    w_df = db.get_ohlcv_df(sym, "weekly", limit=80)
+    w_df = md.get_ohlcv_df(sym, "weekly", limit=80)
     regime_w = "n/a"
     vs_kama_w = None
     if not w_df.empty and len(w_df) >= 25:
@@ -220,7 +220,7 @@ def _corr_hint(ready: list) -> dict | None:
 
 
 def portfolio_snapshot() -> dict:
-    symbols_meta = {s["symbol"]: s for s in db.list_symbols()}
+    symbols_meta = {s["symbol"]: s for s in md.list_symbols()}
     symbols = list(symbols_meta.keys())
     rows = [snapshot_symbol(sym) for sym in symbols]
     ready = [r for r in rows if r.get("ready")]
