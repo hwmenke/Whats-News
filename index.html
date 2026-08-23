@@ -70,29 +70,27 @@
   <!-- ═══════════════════ MAIN CONTENT ═══════════════════ -->
   <main class="main">
 
-    <!-- Portfolio tape — sorted by day %, RS ranks -->
+    <!-- Portfolio tape — All / Breakout / Alerts share one slim chip row -->
     <div id="portfolio-tape" class="portfolio-tape" style="display:none;" aria-label="Portfolio tape">
       <div class="tape-meta" id="tape-meta">Book tape</div>
-      <label class="tape-filter" title="Show only RSI overbought/oversold names">
-        <input type="checkbox" id="tape-alerts-only" />
-        Alerts only
-      </label>
-      <button type="button" id="tape-book-news" class="btn btn-ghost btn-sm" title="Load news for breakout queue + top RS (strong) names">Book news</button>
+      <div class="tape-mode" role="tablist" aria-label="Tape filter">
+        <button type="button" class="tape-mode-btn active" data-mode="all" title="All names by day %">All</button>
+        <button type="button" class="tape-mode-btn" data-mode="breakout" title="Near 20D high and/or volume surge — book-relative, not IBD/CAN SLIM formal breakout">Breakout</button>
+        <button type="button" class="tape-mode-btn" data-mode="alerts" title="RSI overbought/oversold only">Alerts</button>
+      </div>
+      <button type="button" id="tape-book-news" class="btn btn-ghost btn-sm" title="News for breakout queue + top Book RS names">Book news</button>
+      <button type="button" id="btn-book-drawer" class="btn btn-ghost btn-sm" title="Open regime map &amp; alert log (h)">Book ▾</button>
+      <button type="button" id="btn-journal" class="btn btn-ghost btn-sm" title="Trade journal (J)">Journal</button>
       <div id="tape-chips" class="tape-chips"></div>
     </div>
 
-    <!-- Breakout queue — near-high + volume-confirmed names (Qullamaggie loop). Kept visible: this IS the book-scan tool. -->
-    <div id="breakout-queue-bar" class="breakout-queue-bar" style="display:none;" aria-label="Breakout queue">
-      <div class="tape-meta">Breakout queue<span class="bq-hint" title="Near 20D high (≤5%) and/or volume ≥1.5× 20-bar avg. EP = gap ≥4% on volume surge.">?</span></div>
-      <div id="breakout-queue-chips" class="tape-chips"></div>
-    </div>
-
-    <!-- Regime map + alert log — decision-support, not the decision surface. Collapsed by default so it never eats chart height. -->
-    <details id="pm-panels-details" class="pm-panels-details">
-      <summary class="pm-panels-summary">
-        <span>Regime map &amp; alert log</span>
+    <!-- Regime map + alert log — off default viewport; drawer, not a permanent chrome row -->
+    <aside id="book-drawer" class="book-drawer" aria-hidden="true" aria-label="Book scan drawer">
+      <div class="book-drawer-head">
+        <strong>Book scan</strong>
         <span id="pm-panels-badge" class="pm-panels-badge" style="display:none;">0</span>
-      </summary>
+        <button type="button" id="btn-book-drawer-close" class="btn btn-ghost btn-sm" title="Close">✕</button>
+      </div>
       <div id="pm-panels" class="pm-panels">
         <div class="pm-panel">
           <div class="pm-panel-title">Regime map (D / W)</div>
@@ -102,11 +100,16 @@
           <div class="pm-panel-title">Alert log</div>
           <div id="alert-log" class="alert-log"><div class="alert-log-empty">No RSI alerts</div></div>
         </div>
+        <div class="pm-panel">
+          <div class="pm-panel-title">Theme leaders (group)</div>
+          <div id="theme-leaders" class="theme-leaders"><div class="alert-log-empty">No groups yet</div></div>
+        </div>
       </div>
-    </details>
+    </aside>
+    <div id="book-drawer-backdrop" class="book-drawer-backdrop" hidden></div>
 
-    <!-- Symbol Header -->
-    <div class="symbol-header">
+    <!-- Compact command bar: symbol + glance metrics + process tools -->
+    <div class="symbol-header" id="symbol-header">
       <div class="symbol-header-name">
         <span id="sym-title" class="sym-title">--</span>
         <span id="sym-subtitle" class="sym-subtitle"></span>
@@ -117,122 +120,129 @@
         <span id="sym-change-badge" class="sym-change-badge"></span>
       </div>
 
-      <div class="ohlcv-strip">
-        <div class="ohlcv-item">
-          <span class="ohlcv-label">Open</span>
-          <span id="ohlcv-open" class="ohlcv-val">--</span>
+      <div class="ohlcv-strip ohlcv-strip-inline" title="OHLCV">
+        <span class="ohlcv-inline" id="ohlcv-inline">O — · H — · L — · C — · V —</span>
+        <span id="ohlcv-open" class="visually-hidden">--</span>
+        <span id="ohlcv-high" class="visually-hidden">--</span>
+        <span id="ohlcv-low" class="visually-hidden">--</span>
+        <span id="ohlcv-close" class="visually-hidden">--</span>
+        <span id="ohlcv-volume" class="visually-hidden">--</span>
+      </div>
+
+      <!-- Glance chips (was PM Desk strip) -->
+      <div id="pm-desk" class="pm-desk pm-desk-inline" style="display:none;" aria-label="PM technical desk">
+        <div class="pm-metric">
+          <span class="pm-label">Regime D/W</span>
+          <span id="pm-regime" class="pm-val">—</span>
         </div>
-        <div class="ohlcv-item">
-          <span class="ohlcv-label">High</span>
-          <span id="ohlcv-high" class="ohlcv-val">--</span>
+        <div class="pm-metric">
+          <span class="pm-label">RSI 14</span>
+          <span id="pm-rsi" class="pm-val">—</span>
         </div>
-        <div class="ohlcv-item">
-          <span class="ohlcv-label">Low</span>
-          <span id="ohlcv-low" class="ohlcv-val">--</span>
+        <div class="pm-metric">
+          <span class="pm-label">vs KAMA20</span>
+          <span id="pm-kama" class="pm-val">—</span>
         </div>
-        <div class="ohlcv-item">
-          <span class="ohlcv-label">Close</span>
-          <span id="ohlcv-close" class="ohlcv-val">--</span>
+        <div class="pm-metric">
+          <span class="pm-label">5D / 21D</span>
+          <span id="pm-returns" class="pm-val">—</span>
         </div>
-        <div class="ohlcv-item">
-          <span class="ohlcv-label">Volume</span>
-          <span id="ohlcv-volume" class="ohlcv-val">--</span>
+        <div class="pm-metric">
+          <span class="pm-label">Book RS</span>
+          <span id="pm-book-rs" class="pm-val" title="Book RS (21D) — watchlist rank, not IBD RS Rating">—</span>
         </div>
+        <div class="pm-metric">
+          <span class="pm-label">ATR%</span>
+          <span id="pm-atr" class="pm-val">—</span>
+        </div>
+        <div class="pm-metric">
+          <span class="pm-label">Peer ETF</span>
+          <span id="pm-peer" class="pm-val">—</span>
+        </div>
+        <div class="pm-metric">
+          <span class="pm-label">Darvas</span>
+          <span id="pm-darvas" class="pm-val" title="Box state — not a KAMA pattern">—</span>
+        </div>
+        <button type="button" id="btn-pm-tools" class="btn btn-ghost btn-sm" title="Risk box, sizing, checklist">Tools ▾</button>
       </div>
 
       <div class="header-spacer"></div>
     </div>
 
-    <!-- PM Desk — TA decision strip -->
-    <div id="pm-desk" class="pm-desk" style="display:none;" aria-label="PM technical desk">
-      <div class="pm-desk-title">PM Desk</div>
-      <div class="pm-metric">
-        <span class="pm-label">Regime D / W</span>
-        <span id="pm-regime" class="pm-val">—</span>
+    <!-- Process tools popover: risk box, stop source, checklist, copy/journal -->
+    <div id="pm-tools-popover" class="pm-tools-popover" hidden>
+      <div class="pm-tools-row">
+        <label>Entry <input id="pm-entry-input" type="number" step="0.01" /></label>
+        <label>Stop <input id="pm-stop-input" type="number" step="0.01" /></label>
+        <label>Target <input id="pm-target-input" type="number" step="0.01" /></label>
+        <span id="pm-r-mult" class="pm-val" title="R-multiple">R —</span>
       </div>
-      <div class="pm-metric">
-        <span class="pm-label">RSI 14</span>
-        <span id="pm-rsi" class="pm-val">—</span>
+      <div class="pm-tools-row">
+        <span class="pm-label">Stop source</span>
+        <label class="tape-filter"><input type="radio" name="stop-mode" value="atr" checked /> 1.5×ATR</label>
+        <label class="tape-filter"><input type="radio" name="stop-mode" value="box" /> Box low</label>
+        <label class="tape-filter"><input type="radio" name="stop-mode" value="user" /> User stop</label>
+        <label class="pm-label">$ risk <input id="pm-risk-input" type="number" min="10" step="10" value="100" /></label>
+        <span id="pm-size" class="pm-val">—</span>
+        <span id="pm-stops" class="pm-val visually-hidden">—</span>
       </div>
-      <div class="pm-metric">
-        <span class="pm-label">vs KAMA20</span>
-        <span id="pm-kama" class="pm-val">—</span>
+      <div class="pm-checklist" id="pm-checklist">
+        <label><input type="checkbox" data-check="regime" /> Regime aligned</label>
+        <label><input type="checkbox" data-check="stop" /> Stop set</label>
+        <label><input type="checkbox" data-check="size" /> Size confirmed</label>
+        <label><input type="checkbox" data-check="plan" /> Plan written</label>
       </div>
-      <div class="pm-metric">
-        <span class="pm-label">5D / 21D</span>
-        <span id="pm-returns" class="pm-val">—</span>
+      <div class="pm-tools-row">
+        <button type="button" id="pm-apply-risk-box" class="btn btn-ghost btn-sm">Draw risk box</button>
+        <button type="button" id="pm-copy-setup" class="btn btn-ghost btn-sm pm-copy-btn" disabled title="Complete checklist first">Copy setup</button>
+        <button type="button" id="pm-save-journal" class="btn btn-primary btn-sm" disabled title="Complete checklist first">Save to journal</button>
       </div>
-      <div class="pm-metric">
-        <span class="pm-label">ATR%</span>
-        <span id="pm-atr" class="pm-val">—</span>
-      </div>
-      <div class="pm-metric">
-        <span class="pm-label">Peer ETF</span>
-        <span id="pm-peer" class="pm-val">—</span>
-      </div>
-      <div class="pm-metric pm-metric-wide">
-        <span class="pm-label">Size @ $ risk</span>
-        <span class="pm-size-row">
-          <input id="pm-risk-input" type="number" min="10" step="10" value="100" title="Dollars risked at 1.5×ATR stop" />
-          <span id="pm-size" class="pm-val">—</span>
-        </span>
-      </div>
-      <div class="pm-metric pm-metric-wide">
-        <span class="pm-label">1.5×ATR stops</span>
-        <span id="pm-stops" class="pm-val">—</span>
-      </div>
-      <button type="button" id="pm-copy-setup" class="btn btn-ghost btn-sm pm-copy-btn" title="Copy setup card to clipboard">Copy setup</button>
     </div>
 
-    <!-- ═══════════════════ MAIN TABS ═══════════════════ -->
-    <nav class="main-nav-tabs">
-      <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')">
-        <span class="tab-icon">📈</span> Charts
-      </button>
-      <button id="tab-news" class="tab-btn" onclick="switchTab('news')">
-        <span class="tab-icon">📰</span> News
-      </button>
-      <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">
-        <span class="tab-icon">📊</span> Statistics
-      </button>
-      <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">
-        <span class="tab-icon">🤖</span> KNN Lookalike
-      </button>
-      <button id="tab-backtest" class="tab-btn" onclick="switchTab('backtest')">
-        <span class="tab-icon">⚙️</span> Backtest
-      </button>
-      <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">
-        <span class="tab-icon">🎯</span> Adaptive Trend
-      </button>
-      <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">
-        <span class="tab-icon">📡</span> Scanner
-      </button>
-      <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
-        <span class="tab-icon">🗄️</span> Data Manager
-      </button>
-    </nav>
-    <div class="tab-bar">
-      <div class="indicator-toggles">
+    <!-- Journal drawer -->
+    <aside id="journal-drawer" class="book-drawer journal-drawer" aria-hidden="true">
+      <div class="book-drawer-head">
+        <strong>Trade journal</strong>
+        <button type="button" id="btn-journal-close" class="btn btn-ghost btn-sm">✕</button>
+      </div>
+      <div id="journal-list" class="journal-list"><div class="alert-log-empty">No setups saved yet</div></div>
+    </aside>
+
+    <!-- Merged nav + indicator toggles (one chrome row) -->
+    <nav class="main-nav-tabs" aria-label="Views">
+      <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')">Charts</button>
+      <button id="tab-news" class="tab-btn" onclick="switchTab('news')" title="This symbol">News</button>
+      <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">Stats</button>
+      <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">KNN</button>
+      <button id="tab-backtest" class="tab-btn" onclick="switchTab('backtest')">Backtest</button>
+      <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">Trend</button>
+      <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
+      <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">Data</button>
+      <div class="tab-spacer"></div>
+      <div id="chart-overlays-bar" class="indicator-toggles chart-overlays-bar">
+        <span class="overlay-section-label">Panes</span>
+        <button id="pill-pane-rsi" class="ind-pill" title="RSI pane — off by default (price-first)">RSI</button>
+        <button id="pill-pane-macd" class="ind-pill" title="MACD pane — off by default">MACD</button>
+        <button id="pill-pane-trend" class="ind-pill" title="Trend score — off by default">Trend</button>
         <span class="overlay-section-label">KAMA</span>
         <div id="kama-pills"></div>
         <div class="kama-add-form">
           <input id="kama-period-input" type="number" min="2" max="500" placeholder="Period" class="kama-input" />
           <button id="btn-add-kama" class="btn btn-primary btn-icon" title="Add KAMA period">+</button>
         </div>
-      </div>
-      <div class="indicator-toggles">
-        <span class="overlay-section-label">EMA stack</span>
-        <button id="pill-ema-10" class="ind-pill" data-ema="10" title="EMA 10 — optional, off by default (Qullamaggie)">EMA 10</button>
-        <button id="pill-ema-21" class="ind-pill" data-ema="21" title="EMA 21 — optional, off by default (Qullamaggie)">EMA 21</button>
-        <button id="pill-ema-50" class="ind-pill" data-ema="50" title="EMA 50 — optional, off by default (Qullamaggie)">EMA 50</button>
-      </div>
-      <div class="tab-spacer"></div>
-      <div class="indicator-toggles">
+        <span class="overlay-section-label">EMA</span>
+        <button id="pill-ema-10" class="ind-pill" data-ema="10" title="EMA 10 — optional">10</button>
+        <button id="pill-ema-21" class="ind-pill" data-ema="21" title="EMA 21 — optional">21</button>
+        <button id="pill-ema-50" class="ind-pill" data-ema="50" title="EMA 50 — optional">50</button>
         <span class="overlay-section-label">Overlays</span>
-        <button id="pill-bb" class="ind-pill active-bb">Bol. Bands</button>
-        <button id="pill-ep-markers" class="ind-pill active-ep" title="Mark gap-up + volume-surge (EP) bars on chart">EP markers</button>
+        <button id="pill-bb" class="ind-pill active-bb">BB</button>
+        <button id="pill-ep-markers" class="ind-pill active-ep" title="EP gap+volume markers">EP</button>
+        <button id="pill-darvas" class="ind-pill active-darvas" title="Darvas box high/low">Box</button>
+        <button id="pill-focus" class="ind-pill" title="Focus mode (f) — hide tape">Focus</button>
       </div>
-    </div>
+    </nav>
+    <!-- Legacy tab-bar stub kept empty for any leftover selectors -->
+    <div class="tab-bar" id="legacy-tab-bar" hidden></div>
 
     <!-- ── Empty State / First-run guide ── -->
     <div id="empty-state" class="empty-state" style="display:flex;">
@@ -267,18 +277,18 @@
           <div class="chart-label">VOLUME <span id="chart-daily-vol-badge" class="vol-surge-badge" style="display:none;"></span></div>
           <div id="chart-daily-volume" style="width:100%;height:100%;"></div>
         </div>
-        <div class="chart-divider"></div>
-        <div class="chart-wrapper chart-wrapper-rsi">
+        <div class="chart-divider chart-divider-rsi"></div>
+        <div class="chart-wrapper chart-wrapper-rsi pane-optional" data-pane="rsi" hidden>
           <div class="chart-label">RSI (7 / 14 / 21)</div>
           <div id="chart-daily-rsi" style="width:100%;height:100%;"></div>
         </div>
-        <div class="chart-divider"></div>
-        <div class="chart-wrapper chart-wrapper-macd">
+        <div class="chart-divider chart-divider-macd"></div>
+        <div class="chart-wrapper chart-wrapper-macd pane-optional" data-pane="macd" hidden>
           <div class="chart-label">MACD (12/26/9)</div>
           <div id="chart-daily-macd" style="width:100%;height:100%;"></div>
         </div>
-        <div class="chart-divider"></div>
-        <div class="chart-wrapper chart-wrapper-trend">
+        <div class="chart-divider chart-divider-trend"></div>
+        <div class="chart-wrapper chart-wrapper-trend pane-optional" data-pane="trend" hidden>
           <div class="chart-label">TREND SCORE</div>
           <div id="chart-daily-trend" style="width:100%;height:100%;"></div>
         </div>
@@ -299,18 +309,18 @@
           <div class="chart-label">VOLUME <span id="chart-weekly-vol-badge" class="vol-surge-badge" style="display:none;"></span></div>
           <div id="chart-weekly-volume" style="width:100%;height:100%;"></div>
         </div>
-        <div class="chart-divider"></div>
-        <div class="chart-wrapper chart-wrapper-rsi">
+        <div class="chart-divider chart-divider-rsi"></div>
+        <div class="chart-wrapper chart-wrapper-rsi pane-optional" data-pane="rsi" hidden>
           <div class="chart-label">RSI (7 / 14 / 21)</div>
           <div id="chart-weekly-rsi" style="width:100%;height:100%;"></div>
         </div>
-        <div class="chart-divider"></div>
-        <div class="chart-wrapper chart-wrapper-macd">
+        <div class="chart-divider chart-divider-macd"></div>
+        <div class="chart-wrapper chart-wrapper-macd pane-optional" data-pane="macd" hidden>
           <div class="chart-label">MACD (12/26/9)</div>
           <div id="chart-weekly-macd" style="width:100%;height:100%;"></div>
         </div>
-        <div class="chart-divider"></div>
-        <div class="chart-wrapper chart-wrapper-trend">
+        <div class="chart-divider chart-divider-trend"></div>
+        <div class="chart-wrapper chart-wrapper-trend pane-optional" data-pane="trend" hidden>
           <div class="chart-label">TREND SCORE</div>
           <div id="chart-weekly-trend" style="width:100%;height:100%;"></div>
         </div>

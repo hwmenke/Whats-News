@@ -37,17 +37,106 @@ def peer_etf_for(sector: str | None) -> str:
     return _PEER_ETF.get(str(sector).strip(), "SPY")
 
 
-def position_size(price, atr, risk_dollars: float = 100.0, atr_mult: float = 1.5) -> dict:
-    """Shares such that atr_mult×ATR move ≈ risk_dollars."""
-    if not price or not atr or atr <= 0 or risk_dollars <= 0:
-        return {"shares": None, "risk_dollars": risk_dollars, "stop_distance": None, "notional": None}
-    stop_distance = float(atr) * atr_mult
-    shares = int(risk_dollars // stop_distance) if stop_distance else 0
+def position_size(
+    price,
+    atr,
+    risk_dollars: float = 100.0,
+    atr_mult: float = 1.5,
+    *,
+    stop_price: float | None = None,
+) -> dict:
+    """Shares such that stop distance ≈ risk_dollars.
+
+    Prefer a user/structural stop (`stop_price`). Fall back to atr_mult×ATR
+    when no stop is provided (Brandt / Neumann risk box).
+    """
+    if not price or risk_dollars <= 0:
+        return {
+            "shares": None,
+            "risk_dollars": risk_dollars,
+            "stop_distance": None,
+            "notional": None,
+            "stop_source": None,
+        }
+    stop_source = "atr"
+    if stop_price is not None and float(stop_price) > 0:
+        stop_distance = abs(float(price) - float(stop_price))
+        stop_source = "user_stop"
+    elif atr and atr > 0:
+        stop_distance = float(atr) * atr_mult
+        stop_source = "atr"
+    else:
+        return {
+            "shares": None,
+            "risk_dollars": risk_dollars,
+            "stop_distance": None,
+            "notional": None,
+            "stop_source": None,
+        }
+    shares = int(risk_dollars // stop_distance) if stop_distance > 0 else 0
     return {
         "shares": shares,
         "risk_dollars": risk_dollars,
         "stop_distance": round(stop_distance, 2),
         "notional": round(shares * float(price), 2) if shares else 0.0,
+        "stop_source": stop_source,
+    }
+
+
+def darvas_box(df: pd.DataFrame, lookback: int = 20, confirm: int = 3) -> dict | None:
+    """Detect a simple Darvas-style consolidation box on OHLCV.
+
+    Box top = rolling N-bar high that held for `confirm` bars without a new high.
+    Box low = lowest low during that hold window. State is in_box / breakout / failed.
+    Never conflated with KAMA/RSI (see METHODOLOGY_REVIEW.md).
+    """
+    if df is None or df.empty or len(df) < lookback + confirm + 2:
+        return None
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+    close = df["close"].astype(float)
+    # Find last bar where a lookback-high held for `confirm` bars
+    roll_hi = high.rolling(lookback).max()
+    box_top = None
+    box_low = None
+    since_idx = None
+    for i in range(len(df) - confirm - 1, lookback - 1, -1):
+        top = float(roll_hi.iloc[i])
+        if pd.isna(top):
+            continue
+        window = high.iloc[i + 1 : i + 1 + confirm]
+        if len(window) < confirm:
+            continue
+        if float(window.max()) <= top + 1e-9:
+            # Confirmed: no new high for `confirm` bars after the pivot
+            hold = df.iloc[max(0, i - lookback + 1) : i + 1 + confirm]
+            box_top = top
+            box_low = float(hold["low"].astype(float).min())
+            since_idx = i - lookback + 1
+            break
+    if box_top is None or box_low is None or box_top <= box_low:
+        return None
+    last = float(close.iloc[-1])
+    if last > box_top:
+        state = "breakout"
+    elif last < box_low:
+        state = "failed"
+    else:
+        state = "in_box"
+    since = None
+    try:
+        since = str(df.index[max(0, since_idx)].date()) if since_idx is not None else None
+    except Exception:
+        since = None
+    height = box_top - box_low
+    return {
+        "top": round(box_top, 2),
+        "bottom": round(box_low, 2),
+        "height": round(height, 2),
+        "state": state,
+        "since": since,
+        "target": round(box_top + height, 2),  # 1× measured move
+        "pct_to_top": round((last / box_top - 1.0) * 100, 2) if box_top else None,
     }
 
 
@@ -237,6 +326,7 @@ def snapshot_symbol(symbol: str) -> dict:
         "is_vol_surge": is_vol_surge,
         "is_ep": is_ep,
         "breakout_score": breakout_score,
+        "darvas": darvas_box(df),
         # last ~30 daily closes for correlation (compact)
         "closes_30": [round(float(x), 4) for x in close.tail(30).tolist()],
     }

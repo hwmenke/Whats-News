@@ -17,9 +17,15 @@ let state = {
     statsData:    null,
     portfolio:    {},   // symbol -> snapshot
     portfolioMeta: null,
-    tapeAlertsOnly: false,
+    tapeMode: 'all',   // 'all' | 'breakout' | 'alerts'
     seenAlerts: new Set(),
+    checklist: { regime: false, stop: false, size: false, plan: false },
+    stopMode: 'atr',   // 'atr' | 'box' | 'user'
+    riskBox: null,     // last-applied { entry, stop, target } for the active symbol
 };
+
+const JOURNAL_KEY = 'whats-news-journal';
+const PANES_KEY   = 'whats-news-panes';
 
 let statsCharts = {};
 let backtestEquityChart = null;
@@ -185,6 +191,13 @@ async function refreshPortfolioTape() {
     }
 }
 
+// Renders a single "Book RS #n/n" tag — never bare "RS" or "IBD" (see
+// METHODOLOGY_REVIEW.md: this is a watchlist-relative rank, not IBD RS Rating).
+function bookRsLabel(row) {
+    if (!row || row.rs_rank_21d == null) return 'Book RS —';
+    return `Book RS #${row.rs_rank_21d}/${row.rs_n ?? '—'}`;
+}
+
 function renderPortfolioTape(data) {
     const bar = document.getElementById('portfolio-tape');
     const chips = document.getElementById('tape-chips');
@@ -214,7 +227,7 @@ function renderPortfolioTape(data) {
     let metaBits = `${data.ready_count}/${data.count} ready`;
     if (g) metaBits += ` · ↑ ${g.symbol} ${g.change_pct >= 0 ? '+' : ''}${g.change_pct}%`;
     if (l && l.symbol !== g?.symbol) metaBits += ` · ↓ ${l.symbol} ${l.change_pct}%`;
-    if (rs) metaBits += ` · RS#1 ${rs.symbol}`;
+    if (rs) metaBits += ` · Book RS #1 ${rs.symbol}`;
     if (data.correlation) {
         const c = data.correlation;
         metaBits += ` · ρ ${c.pair[0]}/${c.pair[1]} ${c.corr_30d} (${c.note})`;
@@ -225,54 +238,53 @@ function renderPortfolioTape(data) {
     }
     meta.textContent = metaBits;
 
-    const tape = state.tapeAlertsOnly
-        ? tapeAll.filter(r => r.alert)
-        : tapeAll;
-
     chips.innerHTML = '';
-    if (!tape.length) {
-        chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No alerting names</span>';
+
+    if (state.tapeMode === 'breakout') {
+        renderBreakoutChips(data, chips);
+    } else if (state.tapeMode === 'alerts') {
+        renderAlertChips(data, chips);
     } else {
-        tape.forEach(row => {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'tape-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
-            const pos = (row.change_pct || 0) >= 0;
-            const dw = row.regime_weekly && row.regime_weekly !== 'n/a'
-                ? ` D:${row.regime?.[0] || '?'} W:${row.regime_weekly[0]}`
-                : '';
-            chip.innerHTML = `
-                <span>${row.symbol}</span>
-                <span class="tape-pct ${pos ? 'positive' : 'negative'}">${pos ? '+' : ''}${row.change_pct?.toFixed(1) ?? '—'}%</span>
-                <span class="tape-rs">RS ${row.rs_rank_21d ?? '—'}/${row.rs_n ?? '—'}${dw}</span>
-                ${row.alert ? `<span class="tape-alert">${row.alert}</span>` : ''}
-            `;
-            chip.title = `D ${row.regime || ''} / W ${row.regime_weekly || ''} · RSI ${row.rsi14 ?? '—'}`;
-            chip.addEventListener('click', () => selectSymbol(row.symbol));
-            chips.appendChild(chip);
-        });
+        renderAllChips(tapeAll, chips);
     }
 
-    renderBreakoutQueue(data);
     renderRegimeHeatmap(data);
     renderAlertLog(data);
 }
 
-// Breakout queue — near-high + volume-confirmed names. This is the
-// momentum entry loop (Qullamaggie), kept visible by default because it's
-// a book-scan tool, not a distraction from the chart.
-function renderBreakoutQueue(data) {
-    const bar = document.getElementById('breakout-queue-bar');
-    const chips = document.getElementById('breakout-queue-chips');
-    if (!bar || !chips) return;
-
-    const queue = data.breakout_queue || [];
-    if (!queue.length) {
-        bar.style.display = 'none';
+function renderAllChips(tapeAll, chips) {
+    if (!tapeAll.length) {
+        chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No names yet</span>';
         return;
     }
-    bar.style.display = 'flex';
-    chips.innerHTML = '';
+    tapeAll.forEach(row => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'tape-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
+        const pos = (row.change_pct || 0) >= 0;
+        const dw = row.regime_weekly && row.regime_weekly !== 'n/a'
+            ? ` D:${row.regime?.[0] || '?'} W:${row.regime_weekly[0]}`
+            : '';
+        chip.innerHTML = `
+            <span>${row.symbol}</span>
+            <span class="tape-pct ${pos ? 'positive' : 'negative'}">${pos ? '+' : ''}${row.change_pct?.toFixed(1) ?? '—'}%</span>
+            <span class="tape-rs">${bookRsLabel(row)}${dw}</span>
+            ${row.alert ? `<span class="tape-alert">${row.alert}</span>` : ''}
+        `;
+        chip.title = `D ${row.regime || ''} / W ${row.regime_weekly || ''} · RSI ${row.rsi14 ?? '—'}`;
+        chip.addEventListener('click', () => selectSymbol(row.symbol));
+        chips.appendChild(chip);
+    });
+}
+
+// Breakout chips — near-high + volume-confirmed names (Qullamaggie loop),
+// with an EP flag and distance-from-high, shown when tape mode = "breakout".
+function renderBreakoutChips(data, chips) {
+    const queue = data.breakout_queue || [];
+    if (!queue.length) {
+        chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No breakout names</span>';
+        return;
+    }
     queue.forEach(row => {
         const chip = document.createElement('button');
         chip.type = 'button';
@@ -292,40 +304,89 @@ function renderBreakoutQueue(data) {
     });
 }
 
+// Alerts chips — RSI overbought/oversold names only, shown when tape mode = "alerts".
+function renderAlertChips(data, chips) {
+    const alertRows = (data.tape || data.symbols || []).filter(r => r.alert);
+    if (!alertRows.length) {
+        chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No alerting names</span>';
+        return;
+    }
+    alertRows.forEach(row => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'tape-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
+        chip.innerHTML = `
+            <span>${row.symbol}</span>
+            <span class="tape-alert">${row.alert}</span>
+            <span class="tape-rs">RSI ${row.rsi14 ?? '—'}</span>
+        `;
+        chip.title = `${row.symbol} · ${row.alert} · RSI ${row.rsi14 ?? '—'}`;
+        chip.addEventListener('click', () => selectSymbol(row.symbol));
+        chips.appendChild(chip);
+    });
+}
+
+function setTapeMode(mode) {
+    state.tapeMode = mode;
+    document.querySelectorAll('.tape-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
+}
+
 function renderRegimeHeatmap(data) {
-    const wrapper = document.getElementById('pm-panels-details');
-    const panels = document.getElementById('pm-panels');
     const heat = document.getElementById('regime-heatmap');
     const badge = document.getElementById('pm-panels-badge');
-    if (!panels || !heat) return;
-    const rows = data.heatmap || [];
     if (badge) {
         const n = (data.alerts || []).length;
         badge.textContent = String(n);
         badge.style.display = n > 0 ? 'inline' : 'none';
     }
-    if (!rows.length) {
-        if (wrapper) wrapper.style.display = 'none';
+    if (heat) {
+        const rows = data.heatmap || [];
+        heat.innerHTML = '';
+        if (!rows.length) {
+            heat.innerHTML = '<div class="alert-log-empty">No symbols yet</div>';
+        } else {
+            rows.forEach(r => {
+                const cell = document.createElement('button');
+                cell.type = 'button';
+                cell.className = 'heat-cell';
+                cell.innerHTML = `
+                  <span class="heat-sym">${r.symbol}</span>
+                  <span class="heat-dots">
+                    <span class="heat-dot ${r.regime || ''}" title="Daily ${r.regime || 'n/a'}"></span>
+                    <span class="heat-dot ${r.regime_weekly || ''}" title="Weekly ${r.regime_weekly || 'n/a'}"></span>
+                  </span>
+                `;
+                cell.title = `${r.symbol} D:${r.regime} W:${r.regime_weekly} · day ${r.change_pct ?? '—'}%`;
+                cell.addEventListener('click', () => selectSymbol(r.symbol));
+                heat.appendChild(cell);
+            });
+        }
+    }
+    renderThemeLeaders(data);
+}
+
+// Theme leaders — group rollup (avg day % by group_tag), shown in the book drawer.
+function renderThemeLeaders(data) {
+    const el = document.getElementById('theme-leaders');
+    if (!el) return;
+    const groups = data.group_rollup || [];
+    if (!groups.length) {
+        el.innerHTML = '<div class="alert-log-empty">No groups yet</div>';
         return;
     }
-    if (wrapper) wrapper.style.display = '';
-    panels.style.display = 'grid';
-    heat.innerHTML = '';
-    rows.forEach(r => {
-        const cell = document.createElement('button');
-        cell.type = 'button';
-        cell.className = 'heat-cell';
-        cell.innerHTML = `
-          <span class="heat-sym">${r.symbol}</span>
-          <span class="heat-dots">
-            <span class="heat-dot ${r.regime || ''}" title="Daily ${r.regime || 'n/a'}"></span>
-            <span class="heat-dot ${r.regime_weekly || ''}" title="Weekly ${r.regime_weekly || 'n/a'}"></span>
-          </span>
+    el.innerHTML = groups.map(g => {
+        const pos = (g.avg_change_pct || 0) >= 0;
+        return `
+          <div class="theme-leader-item">
+            <span class="theme-leader-name">${g.group}</span>
+            <span class="theme-leader-n">${g.n}</span>
+            <span class="tape-pct ${pos ? 'positive' : 'negative'}">${pos ? '+' : ''}${g.avg_change_pct}%</span>
+          </div>
         `;
-        cell.title = `${r.symbol} D:${r.regime} W:${r.regime_weekly} · day ${r.change_pct ?? '—'}%`;
-        cell.addEventListener('click', () => selectSymbol(r.symbol));
-        heat.appendChild(cell);
-    });
+    }).join('');
 }
 
 function renderAlertLog(data) {
@@ -359,6 +420,207 @@ function renderAlertLog(data) {
     log.querySelectorAll('.alert-log-item').forEach(el => {
         el.addEventListener('click', () => selectSymbol(el.dataset.sym));
     });
+}
+
+// ── Book drawer (regime heatmap / alert log / theme leaders) ───────────
+function openBookDrawer() {
+    const drawer = document.getElementById('book-drawer');
+    const backdrop = document.getElementById('book-drawer-backdrop');
+    if (!drawer) return;
+    closePmToolsPopover();
+    drawer.classList.add('open');
+    drawer.setAttribute('aria-hidden', 'false');
+    if (backdrop) backdrop.hidden = false;
+}
+
+function closeBookDrawer() {
+    const drawer = document.getElementById('book-drawer');
+    const backdrop = document.getElementById('book-drawer-backdrop');
+    if (!drawer) return;
+    drawer.classList.remove('open');
+    drawer.setAttribute('aria-hidden', 'true');
+    if (backdrop) backdrop.hidden = true;
+}
+
+function toggleBookDrawer() {
+    const drawer = document.getElementById('book-drawer');
+    if (!drawer) return;
+    if (drawer.classList.contains('open')) closeBookDrawer();
+    else openBookDrawer();
+}
+
+// ── Trade journal drawer (localStorage-backed) ─────────────────────────
+function openJournal() {
+    const drawer = document.getElementById('journal-drawer');
+    if (!drawer) return;
+    closePmToolsPopover();
+    drawer.classList.add('open');
+    drawer.setAttribute('aria-hidden', 'false');
+    renderJournal();
+}
+
+function closeJournal() {
+    const drawer = document.getElementById('journal-drawer');
+    if (!drawer) return;
+    drawer.classList.remove('open');
+    drawer.setAttribute('aria-hidden', 'true');
+}
+
+function toggleJournal() {
+    const drawer = document.getElementById('journal-drawer');
+    if (!drawer) return;
+    if (drawer.classList.contains('open')) closeJournal();
+    else openJournal();
+}
+
+function loadJournalEntries() {
+    try {
+        const raw = JSON.parse(localStorage.getItem(JOURNAL_KEY) || '[]');
+        return Array.isArray(raw) ? raw : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveJournalEntries(entries) {
+    localStorage.setItem(JOURNAL_KEY, JSON.stringify(entries));
+}
+
+function saveToJournal() {
+    const snap = state.portfolio[state.activeSymbol];
+    if (!snap?.ready) {
+        toast('No setup to save — select a loaded symbol', 'warning');
+        return;
+    }
+    const entry = {
+        id: `${snap.symbol}-${Date.now()}`,
+        symbol: snap.symbol,
+        date: new Date().toISOString(),
+        entry: state.riskBox?.entry ?? snap.price ?? null,
+        stop: state.riskBox?.stop ?? snap.stop_long_1_5atr ?? null,
+        target: state.riskBox?.target ?? null,
+        r_multiple: computeRMultiple(),
+        book_rs: bookRsLabel(snap),
+        darvas_state: snap.darvas?.state || null,
+        closed: false,
+        result_r: null,
+    };
+    const entries = loadJournalEntries();
+    entries.unshift(entry);
+    saveJournalEntries(entries);
+    renderJournal();
+    toast(`${snap.symbol} setup saved to journal`, 'success');
+}
+
+function closeJournalEntry(id) {
+    const entries = loadJournalEntries();
+    const entry = entries.find(e => e.id === id);
+    if (!entry) return;
+    const input = prompt(`Close ${entry.symbol} — result in R-multiples:`, entry.result_r ?? '');
+    if (input === null) return;
+    const r = parseFloat(input);
+    entry.closed = true;
+    entry.result_r = Number.isFinite(r) ? r : null;
+    saveJournalEntries(entries);
+    renderJournal();
+}
+
+function deleteJournalEntry(id) {
+    const entries = loadJournalEntries().filter(e => e.id !== id);
+    saveJournalEntries(entries);
+    renderJournal();
+}
+
+function renderJournal() {
+    const list = document.getElementById('journal-list');
+    if (!list) return;
+    const entries = loadJournalEntries();
+    if (!entries.length) {
+        list.innerHTML = '<div class="alert-log-empty">No setups saved yet</div>';
+        return;
+    }
+    const fmt = v => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
+    list.innerHTML = entries.map(e => `
+      <div class="journal-item ${e.closed ? 'journal-item-closed' : ''}" data-id="${e.id}">
+        <div class="journal-item-head">
+          <span class="journal-sym">${e.symbol}</span>
+          <span class="journal-date">${(e.date || '').slice(0, 10)}</span>
+        </div>
+        <div class="journal-item-body">
+          <span>Entry ${fmt(e.entry)} · Stop ${fmt(e.stop)} · Target ${fmt(e.target)}</span>
+          <span>R ${e.r_multiple ?? '—'}${e.closed ? ` · Closed @ ${e.result_r ?? '—'}R` : ''}</span>
+        </div>
+        <div class="journal-item-actions">
+          <button type="button" class="btn btn-ghost btn-sm journal-close-btn" data-id="${e.id}">${e.closed ? 'Edit result' : 'Close'}</button>
+          <button type="button" class="btn btn-ghost btn-sm journal-del-btn" data-id="${e.id}">Delete</button>
+        </div>
+      </div>
+    `).join('');
+    list.querySelectorAll('.journal-close-btn').forEach(btn => {
+        btn.addEventListener('click', () => closeJournalEntry(btn.dataset.id));
+    });
+    list.querySelectorAll('.journal-del-btn').forEach(btn => {
+        btn.addEventListener('click', () => deleteJournalEntry(btn.dataset.id));
+    });
+}
+
+// ── PM tools popover (risk box, checklist, copy/journal) ───────────────
+function togglePmToolsPopover() {
+    const pop = document.getElementById('pm-tools-popover');
+    if (!pop) return;
+    pop.hidden = !pop.hidden;
+}
+
+function closePmToolsPopover() {
+    const pop = document.getElementById('pm-tools-popover');
+    if (pop) pop.hidden = true;
+}
+
+// ── Checklist gate — copy/save only unlock once all 4 boxes are checked ─
+function syncChecklist() {
+    const boxes = document.querySelectorAll('#pm-checklist input[type="checkbox"]');
+    boxes.forEach(box => { state.checklist[box.dataset.check] = box.checked; });
+    const allChecked = Object.values(state.checklist).every(Boolean);
+    const copyBtn = document.getElementById('pm-copy-setup');
+    const saveBtn = document.getElementById('pm-save-journal');
+    if (copyBtn) {
+        copyBtn.disabled = !allChecked;
+        copyBtn.title = allChecked ? 'Copy setup card' : 'Complete checklist first';
+    }
+    if (saveBtn) {
+        saveBtn.disabled = !allChecked;
+        saveBtn.title = allChecked ? 'Save to journal' : 'Complete checklist first';
+    }
+}
+
+function computeRMultiple() {
+    const entry = parseFloat(document.getElementById('pm-entry-input')?.value);
+    const stop = parseFloat(document.getElementById('pm-stop-input')?.value);
+    const target = parseFloat(document.getElementById('pm-target-input')?.value);
+    if (!Number.isFinite(entry) || !Number.isFinite(stop) || !Number.isFinite(target)) return null;
+    const risk = Math.abs(entry - stop);
+    if (risk < 1e-9) return null;
+    return Math.round(((target - entry) / risk) * 100) / 100;
+}
+
+function updateRMultiple() {
+    const r = computeRMultiple();
+    const el = document.getElementById('pm-r-mult');
+    if (el) el.textContent = r != null ? `R ${r}` : 'R —';
+}
+
+function applyRiskBoxFromInputs() {
+    const entry = parseFloat(document.getElementById('pm-entry-input')?.value);
+    const stop = parseFloat(document.getElementById('pm-stop-input')?.value);
+    const target = parseFloat(document.getElementById('pm-target-input')?.value);
+    if (!Number.isFinite(entry) || !Number.isFinite(stop)) {
+        toast('Enter entry and stop first', 'warning');
+        return;
+    }
+    state.riskBox = { entry, stop, target: Number.isFinite(target) ? target : null };
+    updateRMultiple();
+    window.applyRiskBox?.(entry, stop, Number.isFinite(target) ? target : null);
+    toast('Risk box drawn on daily + weekly', 'success');
 }
 
 async function openBookNews() {
@@ -1000,6 +1262,16 @@ async function loadChartData(symbol) {
 
         initCharts();
 
+        // Fresh symbol → clear any previously-drawn risk box so a stale
+        // entry/stop/target from the last name doesn't linger on the chart.
+        window.clearRiskBox?.();
+        state.riskBox = null;
+        ['pm-entry-input', 'pm-stop-input', 'pm-target-input'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        updateRMultiple();
+
         loadOHLCV('daily',  dailyOhlcv);
         loadOHLCV('weekly', weeklyOhlcv);
         loadIndicatorsToPanel('daily',  dailyInd);
@@ -1148,7 +1420,6 @@ async function switchTab(tabId) {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
-    document.querySelector('.tab-bar').style.display           = 'none';
 
     if (tabId === 'charts') {
         showChartArea();
@@ -1190,7 +1461,6 @@ function showStatsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
-    document.querySelector('.tab-bar').style.display           = 'none';
 }
 
 function showChartArea() {
@@ -1203,7 +1473,6 @@ function showChartArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
-    document.querySelector('.tab-bar').style.display           = 'flex';
 }
 
 function showTrendArea() {
@@ -1216,7 +1485,6 @@ function showTrendArea() {
     document.getElementById('trend-area').style.display        = 'flex';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
-    document.querySelector('.tab-bar').style.display           = 'none';
 }
 
 function showScannerArea() {
@@ -1229,7 +1497,6 @@ function showScannerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'flex';
     document.getElementById('data-manager-area').style.display = 'none';
-    document.querySelector('.tab-bar').style.display           = 'none';
 }
 
 function showDataManagerArea() {
@@ -1242,7 +1509,6 @@ function showDataManagerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'flex';
-    document.querySelector('.tab-bar').style.display           = 'none';
 }
 
 function showNewsArea() {
@@ -1255,7 +1521,6 @@ function showNewsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
-    document.querySelector('.tab-bar').style.display           = 'flex';
 }
 
 // ── Stats Rendering ───────────────────────────────────────────
@@ -1488,6 +1753,8 @@ function updateSymbolHeader(symbol, last, prev) {
             const el = document.getElementById(`ohlcv-${k}`);
             if (el) el.textContent = '--';
         });
+        const inlineEl = document.getElementById('ohlcv-inline');
+        if (inlineEl) inlineEl.textContent = 'O — · H — · L — · C — · V —';
         loadPmDesk(symbol);
         return;
     }
@@ -1511,6 +1778,12 @@ function updateSymbolHeader(symbol, last, prev) {
     set('ohlcv-low',    `$${fmt(last.low)}`);
     set('ohlcv-close',  `$${fmt(last.close)}`);
     set('ohlcv-volume', fmtVol(last.volume));
+
+    const inlineEl = document.getElementById('ohlcv-inline');
+    if (inlineEl) {
+        inlineEl.textContent = `O $${fmt(last.open)} · H $${fmt(last.high)} · L $${fmt(last.low)} · C $${fmt(last.close)} · V ${fmtVol(last.volume)}`;
+    }
+
     loadPmDesk(symbol);
 }
 
@@ -1520,7 +1793,15 @@ async function loadPmDesk(symbol) {
     try {
         const riskEl = document.getElementById('pm-risk-input');
         const risk = riskEl ? riskEl.value : 100;
-        const snap = await apiFetch(`${API}/pm-desk/${symbol}?risk=${encodeURIComponent(risk)}`);
+        const params = new URLSearchParams({ risk: risk ?? 100 });
+        params.set('stop', state.stopMode);
+        if (state.stopMode === 'user') {
+            const stopPrice = document.getElementById('pm-stop-input')?.value;
+            if (stopPrice) params.set('stop_price', stopPrice);
+        }
+        const targetVal = document.getElementById('pm-target-input')?.value;
+        if (targetVal) params.set('target', targetVal);
+        const snap = await apiFetch(`${API}/pm-desk/${symbol}?${params.toString()}`);
         state.portfolio[symbol] = { ...(state.portfolio[symbol] || {}), ...snap };
         renderPmDesk(snap);
     } catch (e) {
@@ -1565,7 +1846,12 @@ function renderPmDesk(snap) {
 
     const atrEl = document.getElementById('pm-atr');
     atrEl.textContent = snap.atr_pct != null ? `${snap.atr_pct}%` : '—';
-    if (snap.rs_rank_21d) atrEl.title = `RS #${snap.rs_rank_21d}/${snap.rs_n}`;
+
+    const bookRsEl = document.getElementById('pm-book-rs');
+    if (bookRsEl) {
+        bookRsEl.textContent = bookRsLabel(snap);
+        bookRsEl.title = 'Book RS (21D) — watchlist rank, not IBD RS Rating';
+    }
 
     const peer = document.getElementById('pm-peer');
     if (peer) {
@@ -1573,20 +1859,48 @@ function renderPmDesk(snap) {
         peer.title = snap.sector ? `Sector: ${snap.sector}` : 'Default peer';
     }
 
+    const darvasEl = document.getElementById('pm-darvas');
+    if (darvasEl) {
+        const box = snap.darvas;
+        if (box?.state) {
+            darvasEl.textContent = `${box.state} ${box.bottom}–${box.top}`;
+            darvasEl.title = `Box state — not a KAMA pattern. Since ${box.since || '—'} · target ${box.target ?? '—'}`;
+        } else {
+            darvasEl.textContent = '—';
+        }
+    }
+    // Darvas box is structural/automatic (unlike the discretionary risk box) —
+    // draw it whenever fresh PM desk data arrives, gated by the Box pill toggle.
+    window.applyDarvasBox?.(snap.darvas || null);
+
     const sizeEl = document.getElementById('pm-size');
     const size = snap.size || snap.size_risk_100;
     if (sizeEl && size?.shares != null) {
         sizeEl.textContent = `${size.shares} sh · $${size.notional}`;
-        sizeEl.title = `Stop distance ${size.stop_distance} (1.5×ATR)`;
+        sizeEl.title = `Stop distance ${size.stop_distance} (${size.stop_source || 'atr'})`;
     } else if (sizeEl) {
         sizeEl.textContent = '—';
     }
 
     const stops = document.getElementById('pm-stops');
-    if (snap.stop_long_1_5atr != null && snap.stop_short_1_5atr != null) {
-        stops.textContent = `L ${snap.stop_long_1_5atr} · S ${snap.stop_short_1_5atr}`;
-    } else {
-        stops.textContent = '—';
+    if (stops) {
+        if (snap.stop_long_1_5atr != null && snap.stop_short_1_5atr != null) {
+            stops.textContent = `L ${snap.stop_long_1_5atr} · S ${snap.stop_short_1_5atr}`;
+        } else {
+            stops.textContent = '—';
+        }
+    }
+
+    // Pre-fill risk box inputs from the server-computed risk_box (entry/stop/target)
+    // the first time we see them for this symbol, so the popover starts primed.
+    if (snap.risk_box) {
+        const entryInput = document.getElementById('pm-entry-input');
+        const stopInput = document.getElementById('pm-stop-input');
+        const targetInput = document.getElementById('pm-target-input');
+        if (entryInput && !entryInput.value && snap.risk_box.entry != null) entryInput.value = snap.risk_box.entry;
+        if (stopInput && !stopInput.value && snap.risk_box.stop != null) stopInput.value = snap.risk_box.stop;
+        if (targetInput && !targetInput.value && snap.risk_box.target != null) targetInput.value = snap.risk_box.target;
+        updateRMultiple();
     }
 }
 
@@ -1596,16 +1910,28 @@ function copySetupCard() {
         toast('No setup to copy — select a loaded symbol', 'warning');
         return;
     }
+    const allChecked = Object.values(state.checklist).every(Boolean);
+    const entry = parseFloat(document.getElementById('pm-entry-input')?.value);
+    const stop = parseFloat(document.getElementById('pm-stop-input')?.value);
+    const target = parseFloat(document.getElementById('pm-target-input')?.value);
+    const r = computeRMultiple();
+    const box = snap.darvas;
+
     const lines = [
         `${snap.symbol} setup @ ${snap.price}`,
         `Regime D/W: ${snap.regime} / ${snap.regime_weekly || 'n/a'} · vs KAMA20 ${snap.vs_kama20_pct ?? '—'}%`,
         `RSI14: ${snap.rsi14 ?? '—'} (${snap.rsi_zone})`,
         `5D / 21D: ${snap.ret_5d_pct ?? '—'}% / ${snap.ret_21d_pct ?? '—'}%`,
-        snap.rs_rank_21d ? `RS rank 21D: #${snap.rs_rank_21d}/${snap.rs_n}` : null,
+        `${bookRsLabel(snap)}`,
         snap.peer_etf ? `Peer ETF: ${snap.peer_etf}` : null,
+        (Number.isFinite(entry) || Number.isFinite(stop) || Number.isFinite(target))
+            ? `Risk box: entry ${Number.isFinite(entry) ? entry : '—'} · stop ${Number.isFinite(stop) ? stop : '—'} · target ${Number.isFinite(target) ? target : '—'} · R ${r ?? '—'}`
+            : null,
+        box?.state ? `Darvas: ${box.state} ${box.bottom}–${box.top} (since ${box.since || '—'})` : null,
         snap.size?.shares != null ? `Size @ $${snap.size.risk_dollars} risk: ${snap.size.shares} sh ($${snap.size.notional})` : null,
         `ATR%: ${snap.atr_pct ?? '—'} · stops 1.5×ATR L ${snap.stop_long_1_5atr} / S ${snap.stop_short_1_5atr}`,
         snap.alert ? `Alert: ${snap.alert}` : null,
+        `Checklist: ${allChecked ? 'complete' : 'incomplete'}`,
         'Source: Whats-News PM Desk',
     ].filter(Boolean).join('\n');
 
@@ -1670,6 +1996,14 @@ async function loadWatchlistPreset() {
     }
 }
 
+function toggleFocusMode(force) {
+    const on = force ?? !document.body.classList.contains('focus-mode');
+    document.body.classList.toggle('focus-mode', on);
+    document.getElementById('pill-focus')?.classList.toggle('active', on);
+    window.resizeAllCharts?.();
+    return on;
+}
+
 function setupPmKeyboard() {
     document.addEventListener('keydown', e => {
         const tag = (e.target && e.target.tagName) || '';
@@ -1678,8 +2012,16 @@ function setupPmKeyboard() {
             if (e.key === 'Escape') e.target.blur();
             return;
         }
-        if (e.key === 'j' || e.key === 'J') { e.preventDefault(); moveSymbolSelection(1); }
+        // Shift+J → toggle trade journal drawer (plain j/k stay reserved for list nav).
+        if (e.shiftKey && (e.key === 'J' || e.key === 'j')) {
+            e.preventDefault();
+            toggleJournal();
+            return;
+        }
+        if (e.key === 'j') { e.preventDefault(); moveSymbolSelection(1); }
         else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); moveSymbolSelection(-1); }
+        else if (e.key === 'h' || e.key === 'H') { e.preventDefault(); toggleBookDrawer(); }
+        else if (e.key === 'f') { e.preventDefault(); toggleFocusMode(); }
         else if (e.key === 'r' || e.key === 'R') {
             e.preventDefault();
             if (state.activeSymbol) fetchSymbolData(state.activeSymbol);
@@ -1690,9 +2032,14 @@ function setupPmKeyboard() {
             const input = document.getElementById('new-symbol-input');
             if (input) { input.focus(); input.select(); }
         }
-        else if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey) {
+        else if (e.key === 'c' && !e.metaKey && !e.ctrlKey) {
             e.preventDefault();
             copySetupCard();
+        }
+        else if (e.key === 'Escape') {
+            closeBookDrawer();
+            closeJournal();
+            closePmToolsPopover();
         }
     });
 }
@@ -1982,14 +2329,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    // Regime map / alert log — collapsed by default, persisted across reloads.
-    const pmDetails = document.getElementById('pm-panels-details');
-    if (pmDetails) {
-        pmDetails.open = localStorage.getItem('wn_pm_panels_open') === '1';
-        pmDetails.addEventListener('toggle', () => {
-            localStorage.setItem('wn_pm_panels_open', pmDetails.open ? '1' : '0');
-        });
-    }
+    // Darvas box overlay pill — on by default (structural, not KAMA)
+    const darvasPill = document.getElementById('pill-darvas');
+    darvasPill?.addEventListener('click', () => {
+        const on = toggleOverlay('darvas');
+        darvasPill.classList.toggle('active-darvas', on);
+    });
+
+    // Indicator pane pills (RSI / MACD / Trend) — off by default, price-first.
+    // Persisted to localStorage so the layout survives reloads.
+    setupPaneToggles();
+
+    // Focus mode pill — hides the portfolio tape for a chart-only view.
+    document.getElementById('pill-focus')?.addEventListener('click', () => toggleFocusMode());
 
     // Buttons
     document.getElementById('btn-add-symbol').addEventListener('click', addSymbol);
@@ -2015,12 +2367,57 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.key === 'Escape') closeBulkModal();
     });
 
-    document.getElementById('pm-copy-setup')?.addEventListener('click', copySetupCard);
-    document.getElementById('tape-alerts-only')?.addEventListener('change', e => {
-        state.tapeAlertsOnly = !!e.target.checked;
-        if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
+    // Tape mode segmented control — All / Breakout / Alerts
+    document.querySelectorAll('.tape-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => setTapeMode(btn.dataset.mode));
     });
     document.getElementById('tape-book-news')?.addEventListener('click', openBookNews);
+
+    // Book drawer (regime heatmap / alert log / theme leaders)
+    document.getElementById('btn-book-drawer')?.addEventListener('click', toggleBookDrawer);
+    document.getElementById('btn-book-drawer-close')?.addEventListener('click', closeBookDrawer);
+    document.getElementById('book-drawer-backdrop')?.addEventListener('click', closeBookDrawer);
+
+    // Trade journal drawer
+    document.getElementById('btn-journal')?.addEventListener('click', toggleJournal);
+    document.getElementById('btn-journal-close')?.addEventListener('click', closeJournal);
+
+    // PM tools popover (risk box, stop mode, checklist, copy/journal)
+    document.getElementById('btn-pm-tools')?.addEventListener('click', e => {
+        e.stopPropagation();
+        togglePmToolsPopover();
+    });
+    // Click outside the popover (and its trigger) closes it — it has no
+    // backdrop, so without this it stays open and blocks the pills beneath it.
+    document.addEventListener('click', e => {
+        const pop = document.getElementById('pm-tools-popover');
+        if (!pop || pop.hidden) return;
+        if (pop.contains(e.target) || e.target.closest('#btn-pm-tools')) return;
+        closePmToolsPopover();
+    });
+
+    ['pm-entry-input', 'pm-stop-input', 'pm-target-input'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', updateRMultiple);
+    });
+
+    document.querySelectorAll('input[name="stop-mode"]').forEach(radio => {
+        radio.addEventListener('change', e => {
+            if (!e.target.checked) return;
+            state.stopMode = e.target.value;
+            if (state.activeSymbol) loadPmDesk(state.activeSymbol);
+        });
+    });
+
+    document.getElementById('pm-apply-risk-box')?.addEventListener('click', applyRiskBoxFromInputs);
+
+    document.querySelectorAll('#pm-checklist input[type="checkbox"]').forEach(box => {
+        box.addEventListener('change', syncChecklist);
+    });
+    syncChecklist();
+
+    document.getElementById('pm-copy-setup')?.addEventListener('click', copySetupCard);
+    document.getElementById('pm-save-journal')?.addEventListener('click', saveToJournal);
+
     document.getElementById('btn-preset-save')?.addEventListener('click', saveWatchlistPreset);
     document.getElementById('btn-preset-load')?.addEventListener('click', loadWatchlistPreset);
     document.getElementById('pm-risk-input')?.addEventListener('change', () => {
@@ -2036,3 +2433,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         showEmptyState();
     }
 });
+
+// ── Indicator pane visibility (RSI / MACD / Trend) — persisted, price-first ──
+function loadSavedPanes() {
+    try {
+        const raw = JSON.parse(localStorage.getItem(PANES_KEY) || '{}');
+        return (raw && typeof raw === 'object') ? raw : {};
+    } catch {
+        return {};
+    }
+}
+
+function savePane(name, visible) {
+    const panes = loadSavedPanes();
+    panes[name] = visible;
+    localStorage.setItem(PANES_KEY, JSON.stringify(panes));
+}
+
+function setPaneVisible(name, visible) {
+    if (typeof window.setIndicatorPane === 'function') {
+        window.setIndicatorPane(name, visible);
+    } else {
+        document.querySelectorAll(`.pane-optional[data-pane="${name}"]`).forEach(el => { el.hidden = !visible; });
+        document.querySelectorAll(`.chart-divider-${name}`).forEach(el => { el.hidden = !visible; });
+        window.resizeAllCharts?.();
+    }
+    const pill = document.getElementById(`pill-pane-${name}`);
+    if (pill) pill.classList.toggle('active', visible);
+    savePane(name, visible);
+}
+
+function setupPaneToggles() {
+    const panes = ['rsi', 'macd', 'trend'];
+    const saved = loadSavedPanes();
+    panes.forEach(name => {
+        const pill = document.getElementById(`pill-pane-${name}`);
+        if (!pill) return;
+        pill.addEventListener('click', () => {
+            const nowVisible = !pill.classList.contains('active');
+            setPaneVisible(name, nowVisible);
+        });
+        // Default: all optional panes hidden (price-first) unless a prior
+        // session explicitly turned one on.
+        if (saved[name]) setPaneVisible(name, true);
+    });
+}

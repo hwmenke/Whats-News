@@ -23,7 +23,22 @@ function nextKamaColor() {
 }
 
 // Overlay state
-const activeOverlays = { bb: true, ep: true };
+const activeOverlays = { bb: true, ep: true, darvas: true };
+
+// Persisted indicator-pane visibility key — mirrors scripts/app.js.
+const PANES_STORAGE_KEY = 'whats-news-panes';
+
+// Risk box (entry/stop/target) and Darvas box price lines — kept separate
+// from the KAMA/BB/EMA overlay series since they're structural levels, not
+// indicators, and are drawn via createPriceLine rather than a line series.
+let riskLines = { daily: [], weekly: [] };
+let darvasLines = { daily: [] };
+let lastDarvasBox = null;
+
+// Live ResizeObservers — tracked so destroyCharts() can disconnect them
+// before the charts they reference get remove()'d (stale observers firing
+// chart.resize() on a disposed chart throws "Object is disposed").
+let resizeObservers = [];
 
 // EMA stack (Qullamaggie "optional, beside KAMA") — off by default.
 const EMA_PERIODS = [10, 21, 50];
@@ -107,6 +122,11 @@ function baseOpts() {
 
 // ── Destroy all charts ────────────────────────────────────────
 function destroyCharts() {
+    // Stale ResizeObservers from a prior initCharts() call would otherwise
+    // keep firing chart.resize() against instances we're about to remove()
+    // below, throwing "Object is disposed" — disconnect them first.
+    resizeObservers.forEach(ro => ro.disconnect());
+    resizeObservers = [];
     ['daily', 'weekly'].forEach(freq => {
         Object.values(charts[freq]).forEach(c => { if (c) c.remove(); });
         charts[freq] = { main: null, volume: null, rsi: null, macd: null, trend: null };
@@ -119,6 +139,9 @@ function destroyCharts() {
             p[`series_${freq}`] = null;
         });
     });
+    // Price lines die with their chart — drop the stale references.
+    riskLines = { daily: [], weekly: [] };
+    darvasLines = { daily: [] };
 }
 
 // ── Build one panel (daily or weekly) ────────────────────────
@@ -219,6 +242,7 @@ function initCharts() {
     buildPanel('weekly');
     syncPanels();
     setupResizeObserver();
+    applySavedPaneVisibility();
 }
 
 // ── Within-panel sync (same freq → logical range by bar index) ──
@@ -254,9 +278,10 @@ function syncPanels() {
     });
 }
 
-// ── Resize observer ──────────────────────────────────────────
-function setupResizeObserver() {
-    const pairs = [
+// ── Chart element/instance pairs — shared by the resize observer,
+//    manual resizeAllCharts(), and anything else that needs to iterate. ──
+function chartResizePairs() {
+    return [
         ['chart-daily-main',    charts.daily.main],
         ['chart-daily-volume',  charts.daily.volume],
         ['chart-daily-rsi',     charts.daily.rsi],
@@ -268,15 +293,35 @@ function setupResizeObserver() {
         ['chart-weekly-macd',   charts.weekly.macd],
         ['chart-weekly-trend',  charts.weekly.trend],
     ];
-    pairs.forEach(([id, chart]) => {
+}
+
+// ── Resize observer ──────────────────────────────────────────
+function setupResizeObserver() {
+    chartResizePairs().forEach(([id, chart]) => {
         const el = document.getElementById(id);
         if (!el || !chart) return;
-        new ResizeObserver(entries => {
+        const ro = new ResizeObserver(entries => {
             for (const e of entries) {
                 const { width, height } = e.contentRect;
-                chart.resize(width, height);
+                try { chart.resize(width, height); } catch (_) { /* chart disposed */ }
             }
-        }).observe(el);
+        });
+        ro.observe(el);
+        resizeObservers.push(ro);
+    });
+}
+
+// Manual resize pass — used right after toggling pane/focus-mode visibility,
+// where a hidden→visible flex change may not always fire a ResizeObserver
+// callback in every browser before the next paint.
+function resizeAllCharts() {
+    chartResizePairs().forEach(([id, chart]) => {
+        const el = document.getElementById(id);
+        if (!el || !chart) return;
+        const rect = el.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+            try { chart.resize(rect.width, rect.height); } catch (_) { /* chart disposed */ }
+        }
     });
 }
 
@@ -466,7 +511,91 @@ function toggleOverlay(key) {
         applyOverlayVisibility(f);
         if (key === 'ep') applyEpMarkers(f);
     });
+    if (key === 'darvas') applyDarvasBox(lastDarvasBox);
     return activeOverlays[key];
+}
+
+// ── Risk box (entry / stop / target) — daily + weekly candle series ────
+function clearRiskBox() {
+    ['daily', 'weekly'].forEach(freq => {
+        const s = series[freq].candle;
+        if (s) riskLines[freq].forEach(line => { try { s.removePriceLine(line); } catch (_) {} });
+        riskLines[freq] = [];
+    });
+}
+
+function applyRiskBox(entry, stop, target) {
+    clearRiskBox();
+    ['daily', 'weekly'].forEach(freq => {
+        const s = series[freq].candle;
+        if (!s) return;
+        const lines = [];
+        if (entry != null && Number.isFinite(entry)) {
+            lines.push(s.createPriceLine({
+                price: entry, color: '#22c55e', lineWidth: 2,
+                lineStyle: LWC.LineStyle.Solid, axisLabelVisible: true, title: 'Entry',
+            }));
+        }
+        if (stop != null && Number.isFinite(stop)) {
+            lines.push(s.createPriceLine({
+                price: stop, color: '#ef4444', lineWidth: 2,
+                lineStyle: LWC.LineStyle.Solid, axisLabelVisible: true, title: 'Stop',
+            }));
+        }
+        if (target != null && Number.isFinite(target)) {
+            lines.push(s.createPriceLine({
+                price: target, color: '#3b82f6', lineWidth: 2,
+                lineStyle: LWC.LineStyle.Solid, axisLabelVisible: true, title: 'Target',
+            }));
+        }
+        riskLines[freq] = lines;
+    });
+}
+
+// ── Darvas box — top/bottom dashed orange, daily main only ─────────────
+function clearDarvasBox() {
+    const s = series.daily.candle;
+    if (s) darvasLines.daily.forEach(line => { try { s.removePriceLine(line); } catch (_) {} });
+    darvasLines.daily = [];
+}
+
+function applyDarvasBox(box) {
+    lastDarvasBox = box || null;
+    clearDarvasBox();
+    if (!lastDarvasBox || !activeOverlays.darvas) return;
+    const s = series.daily.candle;
+    if (!s) return;
+    const lines = [];
+    if (lastDarvasBox.top != null) {
+        lines.push(s.createPriceLine({
+            price: lastDarvasBox.top, color: '#f97316', lineWidth: 1,
+            lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'Box top',
+        }));
+    }
+    if (lastDarvasBox.bottom != null) {
+        lines.push(s.createPriceLine({
+            price: lastDarvasBox.bottom, color: '#f97316', lineWidth: 1,
+            lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'Box bottom',
+        }));
+    }
+    darvasLines.daily = lines;
+}
+
+// ── Indicator pane visibility (RSI / MACD / Trend) — hides both the chart
+//    wrapper and its divider, on both daily + weekly, then resizes. ──────
+function setIndicatorPane(pane, visible) {
+    document.querySelectorAll(`.pane-optional[data-pane="${pane}"]`).forEach(el => { el.hidden = !visible; });
+    document.querySelectorAll(`.chart-divider-${pane}`).forEach(el => { el.hidden = !visible; });
+    const pill = document.getElementById(`pill-pane-${pane}`);
+    if (pill) pill.classList.toggle('active', visible);
+    resizeAllCharts();
+}
+
+function applySavedPaneVisibility() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(PANES_STORAGE_KEY) || '{}') || {}; } catch (_) { saved = {}; }
+    // Default: every optional pane stays hidden — price-first, chart-first.
+    ['rsi', 'macd', 'trend'].forEach(pane => setIndicatorPane(pane, !!saved[pane]));
 }
 
 function toggleEma(period) {
@@ -528,3 +657,10 @@ function fitContent() {
     // Fitting both independently would leave them showing different periods.
     if (charts.daily.main) charts.daily.main.timeScale().fitContent();
 }
+
+// ── Public API for app.js (process-tools popover, pane pills, focus mode) ──
+window.applyRiskBox      = applyRiskBox;
+window.clearRiskBox      = clearRiskBox;
+window.applyDarvasBox    = applyDarvasBox;
+window.setIndicatorPane  = setIndicatorPane;
+window.resizeAllCharts   = resizeAllCharts;

@@ -101,9 +101,68 @@ def pm_desk(symbol):
             risk = float(request.args.get("risk", 100))
         except (TypeError, ValueError):
             risk = 100.0
-        snap["size"] = portfolio.position_size(snap.get("price"), snap.get("atr14"), risk, 1.5)
+        stop_mode = (request.args.get("stop") or "atr").strip().lower()
+        stop_price = None
+        if stop_mode == "box":
+            box = snap.get("darvas") or {}
+            stop_price = box.get("bottom")
+        elif stop_mode == "user":
+            try:
+                stop_price = float(request.args.get("stop_price"))
+            except (TypeError, ValueError):
+                stop_price = None
+        snap["size"] = portfolio.position_size(
+            snap.get("price"),
+            snap.get("atr14"),
+            risk,
+            1.5,
+            stop_price=stop_price,
+        )
+        # Structural risk box: entry / stop / target for chart overlays
+        entry = snap.get("price")
+        if stop_mode == "user" and stop_price:
+            stop = stop_price
+        elif stop_mode == "box" and stop_price:
+            stop = stop_price
+        else:
+            stop = snap.get("stop_long_1_5atr")
+        target = None
+        try:
+            t = request.args.get("target")
+            if t is not None and str(t).strip() != "":
+                target = float(t)
+        except (TypeError, ValueError):
+            target = None
+        if target is None and snap.get("darvas"):
+            target = snap["darvas"].get("target")
+        r_mult = None
+        if entry and stop and target and abs(entry - stop) > 1e-9:
+            r_mult = round((target - entry) / abs(entry - stop), 2)
+        snap["risk_box"] = {
+            "entry": entry,
+            "stop": stop,
+            "target": target,
+            "r_multiple": r_mult,
+            "stop_mode": stop_mode,
+        }
         snap.pop("closes_30", None)
         return jsonify(snap)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/darvas-box/<string:symbol>", methods=["GET"])
+def darvas_box_api(symbol):
+    """Darvas box levels for chart overlay — distinct from KAMA/RSI."""
+    try:
+        freq = request.args.get("freq", "daily")
+        if freq not in ("daily", "weekly"):
+            return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        df = md.get_ohlcv_df(symbol.upper(), freq, limit=260)
+        box = portfolio.darvas_box(df)
+        if not box:
+            return jsonify({"symbol": symbol.upper(), "ready": False, "error": "No box"}), 404
+        return jsonify({"symbol": symbol.upper(), "ready": True, "freq": freq, **box})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
