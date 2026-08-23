@@ -63,9 +63,15 @@ def health():
         data_health = md.health()
     except Exception as exc:
         data_health = {"ok": False, "error": str(exc)}
+    try:
+        symbol_count = len(md.list_symbols())
+    except Exception:
+        symbol_count = None
     return jsonify({
         "ok": True,
-        "service": "analysis",
+        "service": "whats-news",
+        "layer": "analysis",
+        "symbol_count": symbol_count,
         "data_service": data_health,
         "data_mode": data_client.DATA_SERVICE_MODE,
         "data_url": data_client.DATA_SERVICE_URL,
