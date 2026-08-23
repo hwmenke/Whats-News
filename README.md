@@ -33,7 +33,19 @@ Open your web browser and go to:
 - **Interactive Charts**: Powered by TradingView's Lightweight Charts.
 - **Technical Analysis**: SMA, EMA, Bollinger Bands, RSI, MACD, and Volume.
 - **Daily & Weekly Views**: Toggle between daily and weekly timeframes.
-- **Persistent Storage**: All data is saved locally in an SQLite database.
+- **Persistent Storage**: All data is saved locally in an SQLite database tuned for large watchlists (WAL mode, bulk upserts, indexes).
+
+### Scaling the watchlist
+
+SQLite stays the datastore — no extra services. The DB layer is set up so hundreds of tickers (and their OHLCV history) stay practical:
+
+- **WAL journal** + busy timeout so refreshes/scanner can run alongside the UI
+- **Bulk upserts** for OHLCV (vectorized, not row-by-row)
+- **Indexes** on `(symbol, freq, date)` and watchlist grouping
+- **Bulk add**: `POST /api/symbols` with `{"symbols": ["AAPL", "MSFT", ...]}`
+- **Stats / optimize**: `GET /api/db/stats`, `POST /api/db/optimize` after large imports
+
+`finance.db` (and WAL sidecars) stay gitignored — never commit the database file.
 
 ### News Feed
 

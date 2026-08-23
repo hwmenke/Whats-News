@@ -11,6 +11,12 @@ env/
 # Database
 finance.db
 finance.db-journal
+finance.db-wal
+finance.db-shm
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 
 # IDEs
 .vscode/

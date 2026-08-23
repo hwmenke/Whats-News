@@ -49,7 +49,20 @@ def get_symbols():
 
 @app.route("/api/symbols", methods=["POST"])
 def add_symbol():
-    data   = request.get_json(force=True)
+    data = request.get_json(force=True) or {}
+
+    # Bulk add: {"symbols": ["AAPL", "MSFT", ...]}
+    if "symbols" in data:
+        raw = data.get("symbols") or []
+        if not isinstance(raw, list):
+            return jsonify({"error": "symbols must be a list"}), 400
+        result = db.add_symbols(raw)
+        status = 201 if result["added"] else 200
+        return jsonify({
+            "message": f"{len(result['added'])} added, {len(result['skipped'])} skipped",
+            **result,
+        }), status
+
     symbol = data.get("symbol", "").strip().upper()
     if not symbol:
         return jsonify({"error": "symbol is required"}), 400
@@ -73,6 +86,20 @@ def set_symbol_group(symbol):
     return jsonify({"message": "ok"})
 
 
+# -- Database -------------------------------------------------------------------
+
+@app.route("/api/db/stats", methods=["GET"])
+def db_stats():
+    """Watchlist / OHLCV size snapshot for large-ticker ops."""
+    return jsonify(db.get_db_stats())
+
+
+@app.route("/api/db/optimize", methods=["POST"])
+def db_optimize():
+    """Run ANALYZE + WAL checkpoint after big bulk loads."""
+    return jsonify(db.optimize_db())
+
+
 # -- Data fetch -----------------------------------------------------------------
 
 @app.route("/api/fetch/<string:symbol>", methods=["POST"])
@@ -92,7 +119,7 @@ def fetch_symbol(symbol):
 
 @app.route("/api/refresh", methods=["POST"])
 def refresh_all():
-    symbols = db.list_symbols()
+    symbols = db.list_symbol_codes()
     results = []
 
     def _fetch(sym):
@@ -102,7 +129,7 @@ def refresh_all():
             return {"symbol": sym, "error": str(e)}
 
     with ThreadPoolExecutor(max_workers=min(8, len(symbols) or 1)) as pool:
-        futures = {pool.submit(_fetch, s["symbol"]): s["symbol"] for s in symbols}
+        futures = {pool.submit(_fetch, s): s for s in symbols}
         for future in as_completed(futures):
             results.append(future.result())
 
@@ -231,7 +258,7 @@ def trend_scan():
     freq       = request.args.get("freq",   "daily")
     method     = request.args.get("method", "kama")
     rsi_period = int(request.args.get("rsi_period", 14))
-    symbols    = [s["symbol"] for s in db.list_symbols()]
+    symbols    = db.list_symbol_codes()
     if not symbols:
         return jsonify([])
 
@@ -368,7 +395,7 @@ def run_scanner():
 def get_scanner():
     """Compute multi-timeframe scanner metrics for every watched symbol."""
     try:
-        symbols = [s['symbol'] for s in db.list_symbols()]
+        symbols = db.list_symbol_codes()
         if not symbols:
             return jsonify([])
         data = scanner.compute_scanner(symbols)
@@ -382,7 +409,7 @@ def get_scanner():
 @app.route("/api/news", methods=["GET"])
 def get_all_news():
     """Fetch news for all watchlist symbols using yfinance."""
-    symbols = [s["symbol"] for s in db.list_symbols()]
+    symbols = db.list_symbol_codes()
     if not symbols:
         return jsonify({"articles": [], "message": "No symbols in watchlist"})
     
