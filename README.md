@@ -86,7 +86,7 @@ SQLite stays the datastore. The DB layer is set up so hundreds of tickers stay p
 | `tests/` | Unit tests (no live network) |
 | `start.sh` | One-command launcher (embedded mode) |
 | `SUGGESTIONS.md` | Ideas for future improvements |
-| `PM_REVIEW.md` / `METHODOLOGY_REVIEW.md` | Desk review notes |
+| `PM_REVIEW.md` / `METHODOLOGY_REVIEW.md` / `VISUAL_REVIEW.md` | Desk review notes |
 
 ```bash
 DATA_SERVICE_MODE=embedded make test
