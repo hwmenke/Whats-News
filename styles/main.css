@@ -428,6 +428,57 @@ html, body {
 
 .header-spacer { flex: 1; }
 
+/* ── PM Desk strip ────────────────────────────────────────── */
+.pm-desk {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 20px;
+  background: linear-gradient(180deg, rgba(59,130,246,0.06), transparent);
+  border-bottom: 1px solid var(--border);
+}
+.pm-desk-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-bright);
+  align-self: center;
+  margin-right: 6px;
+  white-space: nowrap;
+}
+.pm-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 72px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+.pm-metric-wide { min-width: 140px; }
+.pm-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+.pm-val {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.pm-val.regime-uptrend { color: var(--green); }
+.pm-val.regime-downtrend { color: var(--red); }
+.pm-val.regime-range { color: var(--yellow); }
+.pm-val.zone-overbought, .pm-val.zone-oversold { color: var(--orange); }
+.pm-val.zone-bullish { color: var(--green); }
+.pm-val.zone-bearish { color: var(--red); }
+
 /* ── Tab Bar ──────────────────────────────────────────────── */
 .tab-bar {
   display: flex;

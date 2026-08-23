@@ -20,6 +20,7 @@ import scanner
 import adaptive_trend as adaptive
 import ticker_lists as tl
 import yfinance as yf
+import portfolio
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -52,6 +53,27 @@ def health():
         })
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/portfolio/snapshot", methods=["GET"])
+def portfolio_snapshot():
+    """Watchlist tape: day change, RSI, regime vs KAMA — for PM desk."""
+    try:
+        return jsonify(portfolio.portfolio_snapshot())
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/pm-desk/<string:symbol>", methods=["GET"])
+def pm_desk(symbol):
+    """Single-name TA decision strip for portfolio managers."""
+    try:
+        snap = portfolio.snapshot_symbol(symbol.upper())
+        if not snap.get("ready"):
+            return jsonify(snap), 404
+        return jsonify(snap)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 # -- Symbols --------------------------------------------------------------------

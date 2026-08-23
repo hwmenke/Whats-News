@@ -15,6 +15,7 @@ let state = {
     loading:      false,
     activeTab:    'charts',
     statsData:    null,
+    portfolio:    {},   // symbol -> snapshot
 };
 
 let statsCharts = {};
@@ -158,8 +159,24 @@ async function loadSymbols() {
     try {
         state.symbols = await apiFetch(`${API}/symbols`);
         renderSymbolList();
+        refreshPortfolioTape(); // non-blocking enrich with % change
     } catch (e) {
         toast('Failed to load symbols: ' + e.message, 'error');
+    }
+}
+
+async function refreshPortfolioTape() {
+    try {
+        const data = await apiFetch(`${API}/portfolio/snapshot`);
+        const map = {};
+        (data.symbols || []).forEach(row => { map[row.symbol] = row; });
+        state.portfolio = map;
+        renderSymbolList();
+        if (state.activeSymbol && map[state.activeSymbol]?.ready) {
+            renderPmDesk(map[state.activeSymbol]);
+        }
+    } catch (e) {
+        console.warn('Portfolio tape failed:', e);
     }
 }
 
@@ -196,6 +213,19 @@ function renderSymbolList() {
         ticker.className = 'sym-ticker';
         ticker.textContent = sym.symbol;
 
+        const snap = state.portfolio[sym.symbol];
+        const chgEl = document.createElement('span');
+        chgEl.className = 'sym-change';
+        if (snap?.ready && snap.change_pct != null) {
+            const pos = snap.change_pct >= 0;
+            chgEl.textContent = `${pos ? '+' : ''}${snap.change_pct.toFixed(1)}%`;
+            chgEl.classList.add(pos ? 'positive' : 'negative');
+            chgEl.title = snap.regime ? `Regime: ${snap.regime}` : '';
+        } else {
+            chgEl.textContent = snap?.error ? '—' : '…';
+            chgEl.style.color = 'var(--text-dim)';
+        }
+
         // Group tag badge (click to edit inline)
         const tagBadge = document.createElement('span');
         tagBadge.className   = 'sym-tag';
@@ -213,6 +243,7 @@ function renderSymbolList() {
         removeBtn.addEventListener('click', e => { e.stopPropagation(); removeSymbol(sym.symbol); });
 
         item.appendChild(ticker);
+        item.appendChild(chgEl);
         item.appendChild(tagBadge);
         item.appendChild(removeBtn);
         item.addEventListener('click', () => selectSymbol(sym.symbol));
@@ -776,6 +807,8 @@ function showEmptyState() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    const pm = document.getElementById('pm-desk');
+    if (pm) pm.style.display = 'none';
 
     const title = document.querySelector('#empty-state h2');
     const blurb = document.querySelector('#empty-state > p');
@@ -1187,6 +1220,7 @@ function updateSymbolHeader(symbol, last, prev) {
             const el = document.getElementById(`ohlcv-${k}`);
             if (el) el.textContent = '--';
         });
+        loadPmDesk(symbol);
         return;
     }
 
@@ -1209,6 +1243,62 @@ function updateSymbolHeader(symbol, last, prev) {
     set('ohlcv-low',    `$${fmt(last.low)}`);
     set('ohlcv-close',  `$${fmt(last.close)}`);
     set('ohlcv-volume', fmtVol(last.volume));
+    loadPmDesk(symbol);
+}
+
+async function loadPmDesk(symbol) {
+    const desk = document.getElementById('pm-desk');
+    if (!desk || !symbol) return;
+    try {
+        const snap = await apiFetch(`${API}/pm-desk/${symbol}`);
+        state.portfolio[symbol] = snap;
+        renderPmDesk(snap);
+    } catch (e) {
+        desk.style.display = 'none';
+    }
+}
+
+function renderPmDesk(snap) {
+    const desk = document.getElementById('pm-desk');
+    if (!desk || !snap?.ready) {
+        if (desk) desk.style.display = 'none';
+        return;
+    }
+    desk.style.display = 'flex';
+
+    const regimeEl = document.getElementById('pm-regime');
+    regimeEl.textContent = snap.regime || '—';
+    regimeEl.className = `pm-val regime-${snap.regime || 'n/a'}`;
+
+    const rsiEl = document.getElementById('pm-rsi');
+    rsiEl.textContent = snap.rsi14 != null
+        ? `${snap.rsi14} (${snap.rsi_zone})`
+        : '—';
+    rsiEl.className = `pm-val zone-${snap.rsi_zone || 'n/a'}`;
+
+    const kamaEl = document.getElementById('pm-kama');
+    if (snap.vs_kama20_pct != null) {
+        const pos = snap.vs_kama20_pct >= 0;
+        kamaEl.textContent = `${pos ? '+' : ''}${snap.vs_kama20_pct}%`;
+        kamaEl.className = `pm-val ${pos ? 'positive' : 'negative'}`;
+    } else {
+        kamaEl.textContent = '—';
+        kamaEl.className = 'pm-val';
+    }
+
+    const retEl = document.getElementById('pm-returns');
+    const fmtR = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v}%`;
+    retEl.textContent = `${fmtR(snap.ret_5d_pct)} / ${fmtR(snap.ret_21d_pct)}`;
+
+    document.getElementById('pm-atr').textContent =
+        snap.atr_pct != null ? `${snap.atr_pct}%` : '—';
+
+    const stops = document.getElementById('pm-stops');
+    if (snap.stop_long_1_5atr != null && snap.stop_short_1_5atr != null) {
+        stops.textContent = `L ${snap.stop_long_1_5atr} · S ${snap.stop_short_1_5atr}`;
+    } else {
+        stops.textContent = '—';
+    }
 }
 
 // ── KNN Functions ────────────────────────────────────────────
