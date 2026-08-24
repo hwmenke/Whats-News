@@ -7,6 +7,7 @@ let _setupFilter = null;
 let _setupFamily = null;
 let _setupStage = null;
 let _setupBadge = null;
+let _scannerType = 'all';
 let _setupCatalog = {};
 let _setupFamilies = {};
 let _badgeCatalog = {};
@@ -15,12 +16,103 @@ let _stageCounts = {};
 let _badgeCounts = {};
 let _lastSetupResults = [];
 
+/** Named scanner types → query / client filter presets */
+const SCANNER_TYPES = [
+    { id: 'all', label: 'All', blurb: 'Every hit' },
+    { id: 'ep', label: 'EP', blurb: 'Gap + volume', setup: 'EP', badge: 'SB4' },
+    { id: 'near_high', label: 'Near high', blurb: 'Breakout queue', setup: 'BREAKOUT_QUEUE' },
+    { id: 'qulla', label: 'Qulla', blurb: 'Near high + vol', family: 'qullamaggie', setup: 'QULLA_BREAKOUT' },
+    { id: 'darvas', label: 'Darvas', blurb: 'Box breakout', family: 'darvas', setup: 'DARVAS_BREAKOUT', badge: 'DB' },
+    { id: 'stage2', label: 'Stage 2', blurb: 'Advancing', family: 'stage', stage: 2, badge: '2B' },
+    { id: 'stage2a', label: 'Early 2A', blurb: 'Fresh Stage 2', setup: 'STAGE_2_EARLY', badge: '2A' },
+    { id: 'minervini', label: 'Minervini', blurb: 'Trend Template', family: 'minervini', setup: 'MINERVINI_TT', badge: 'MM' },
+    { id: 'stockbee', label: 'Stockbee', blurb: 'EP / RE / EMA', family: 'stockbee' },
+    { id: 'rs_leaders', label: 'RS leaders', blurb: 'Top Book RS', max_rs: 30, min_rts: 70 },
+    { id: 'rsi_ext', label: 'RSI extremes', blurb: 'OB or OS', setup: 'RSI_OB' },
+    { id: 'vol_surge', label: 'Vol surge', blurb: '≥1.5× volume', setup: 'VOL_SURGE', min_vol: 1.5 },
+    { id: 'dual_up', label: 'Dual up', blurb: 'D+W uptrend', dual_up: true, regime: 'uptrend' },
+    { id: 'strike', label: 'Strike zone', blurb: 'Near pivot', strike: true, badge: '52W' },
+];
+
+function collectAdvFilters() {
+    const num = id => {
+        const el = document.getElementById(id);
+        if (!el || el.value === '' || el.value == null) return null;
+        const v = parseFloat(el.value);
+        return Number.isFinite(v) ? v : null;
+    };
+    return {
+        min_change: num('flt-min-change'),
+        max_change: num('flt-max-change'),
+        min_vol: num('flt-min-vol'),
+        max_rs: num('flt-max-rs'),
+        min_rts: num('flt-min-rts'),
+        regime: document.getElementById('flt-regime')?.value || '',
+        strike: !!document.getElementById('flt-strike')?.checked,
+        dual_up: !!document.getElementById('flt-dual-up')?.checked,
+    };
+}
+
+function applyScannerType(typeId) {
+    _scannerType = typeId || 'all';
+    const t = SCANNER_TYPES.find(x => x.id === _scannerType) || SCANNER_TYPES[0];
+
+    _setupFamily = t.family || null;
+    _setupStage = t.stage != null ? t.stage : null;
+    _setupFilter = t.setup || null;
+    _setupBadge = t.badge || null;
+
+    // Seed advanced filter inputs from type defaults (only when empty-ish)
+    const setIf = (id, val) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (val == null || val === false || val === '') {
+            if (el.type === 'checkbox') el.checked = false;
+            else el.value = '';
+            return;
+        }
+        if (el.type === 'checkbox') el.checked = !!val;
+        else el.value = val;
+    };
+    // Always sync type-driven toggles
+    if (t.min_vol != null) setIf('flt-min-vol', t.min_vol);
+    if (t.max_rs != null) setIf('flt-max-rs', t.max_rs);
+    if (t.min_rts != null) setIf('flt-min-rts', t.min_rts);
+    if (t.regime) setIf('flt-regime', t.regime);
+    if (t.strike != null) setIf('flt-strike', t.strike);
+    if (t.dual_up != null) setIf('flt-dual-up', t.dual_up);
+
+    // RSI extremes: client will also keep RSI_OS via post-filter
+    renderScannerTypeCards();
+    renderSetupFamilyCards();
+    renderSetupStagePills();
+    renderSetupBadgePills();
+    renderSetupFilterPills();
+    loadSetupScan();
+}
+
+function renderScannerTypeCards() {
+    const wrap = document.getElementById('scanner-type-cards');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    SCANNER_TYPES.forEach(t => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'scanner-type-card' + (_scannerType === t.id ? ' selected' : '');
+        btn.innerHTML = `<strong>${t.label}</strong><span>${t.blurb}</span>`;
+        btn.title = t.blurb;
+        btn.addEventListener('click', () => applyScannerType(t.id));
+        wrap.appendChild(btn);
+    });
+}
+
 async function initSetupScanner() {
     try {
         const data = await apiFetch(`${API}/setups/families`);
         _setupCatalog = data.setups || {};
         _setupFamilies = data.families || {};
         _badgeCatalog = data.badges || {};
+        renderScannerTypeCards();
         renderSetupFamilyCards();
         renderSetupStagePills();
         renderSetupBadgePills();
@@ -29,12 +121,27 @@ async function initSetupScanner() {
         try {
             const data = await apiFetch(`${API}/setups/catalog`);
             _setupCatalog = data.setups || {};
+            renderScannerTypeCards();
             renderSetupFilterPills();
         } catch (e2) {
             console.warn('Setup catalog failed:', e2);
         }
     }
     document.getElementById('btn-metrics-refresh')?.addEventListener('click', refreshMetricsCache);
+    document.getElementById('btn-setup-filters-apply')?.addEventListener('click', () => loadSetupScan());
+    document.getElementById('btn-setup-filters-clear')?.addEventListener('click', () => {
+        ['flt-min-change', 'flt-max-change', 'flt-min-vol', 'flt-max-rs', 'flt-min-rts'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const reg = document.getElementById('flt-regime');
+        if (reg) reg.value = '';
+        const st = document.getElementById('flt-strike');
+        if (st) st.checked = false;
+        const du = document.getElementById('flt-dual-up');
+        if (du) du.checked = false;
+        applyScannerType('all');
+    });
     refreshMetricsStatus();
 }
 
@@ -341,12 +448,24 @@ async function loadSetupScan() {
     if (btn) { btn.disabled = true; btn.textContent = 'Scanning…'; }
 
     try {
-        let url = `${API}/setups/scan?limit=300`;
+        let url = `${API}/setups/scan?limit=400`;
         if (_setupFilter) url += `&setup=${encodeURIComponent(_setupFilter)}`;
         if (_setupFamily) url += `&family=${encodeURIComponent(_setupFamily)}`;
         if (_setupStage != null) url += `&stage=${_setupStage}`;
         if (_setupBadge) url += `&badge=${encodeURIComponent(_setupBadge)}`;
         url += `&universe=${universe ? '1' : '0'}`;
+
+        const adv = collectAdvFilters();
+        if (adv.min_change != null) url += `&min_change=${adv.min_change}`;
+        if (adv.max_change != null) url += `&max_change=${adv.max_change}`;
+        if (adv.min_vol != null) url += `&min_vol=${adv.min_vol}`;
+        if (adv.max_rs != null) url += `&max_rs=${adv.max_rs}`;
+        if (adv.min_rts != null) url += `&min_rts=${adv.min_rts}`;
+        if (adv.regime) url += `&regime=${encodeURIComponent(adv.regime)}`;
+        if (adv.strike) url += `&strike=1`;
+        if (adv.dual_up) url += `&dual_up=1`;
+        // RSI extremes type: include both OB and OS via special flag
+        if (_scannerType === 'rsi_ext') url += `&rsi_extreme=1`;
 
         const data = await apiFetch(url);
         if (data.families) _setupFamilies = data.families;
@@ -356,21 +475,23 @@ async function loadSetupScan() {
         _stageCounts = data.stage_counts || {};
         _badgeCounts = data.badge_counts || {};
         _lastSetupResults = data.results || [];
+        renderScannerTypeCards();
         renderSetupFamilyCards();
         renderSetupStagePills();
         renderSetupBadgePills();
         renderSetupScanTable(_lastSetupResults);
         if (meta) {
+            const typeBit = _scannerType && _scannerType !== 'all' ? ` · ${_scannerType}` : '';
             const badgeBit = _setupBadge ? ` · ${_setupBadge}` : '';
             const cacheBit = data.from_cache ? ' · cached' : ' · live';
-            meta.textContent = `${data.count || 0} hits${badgeBit}${cacheBit} · scanned ${data.scanned || 0}`;
+            meta.textContent = `${data.count || 0} hits${typeBit}${badgeBit}${cacheBit} · scanned ${data.scanned || 0}`;
         }
         refreshMetricsStatus();
     } catch (e) {
         toast('Setup scan failed: ' + e.message, 'error');
     } finally {
         if (loadEl) loadEl.style.display = 'none';
-        if (btn) { btn.disabled = false; btn.textContent = 'Scan setups'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Scan'; }
     }
 }
 

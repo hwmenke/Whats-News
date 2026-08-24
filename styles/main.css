@@ -1064,6 +1064,16 @@ html, body {
   gap: 0;
 }
 
+/* Resizable daily / weekly split */
+.chart-panel.chart-panel-daily {
+  flex: 0 0 var(--daily-chart-pct, 50%);
+  max-width: var(--daily-chart-pct, 50%);
+}
+.chart-panel.chart-panel-weekly {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* ── Side-by-side panels (Daily / Weekly) ─────────────────── */
 .chart-panel {
   flex: 1;
@@ -3237,10 +3247,144 @@ html, body {
 body.hide-tape #portfolio-tape { display: none !important; }
 body.hide-weekly #chart-panel-weekly,
 body.hide-weekly #chart-panel-divider { display: none !important; }
+body.hide-weekly #chart-panel-daily {
+  flex: 1 1 auto !important;
+  max-width: none !important;
+}
 body.hide-volume .chart-wrapper-volume { display: none !important; }
 body.hide-pm #pm-desk { display: none !important; }
 body.hide-overlays #chart-overlays-bar { display: none !important; }
+body.hide-sidebar .sidebar,
+body.hide-sidebar #sidebar-resize-handle { display: none !important; }
+body.hide-sidebar .app { grid-template-columns: 0 1fr !important; }
+body.hide-header #symbol-header { display: none !important; }
+body.hide-setups #setup-scanner-panel,
+body.hide-setups #setup-resize-handle { display: none !important; }
+body.hide-heatmap #metric-scanner-panel { display: none !important; }
 
+/* Layout splitters */
+.desk-splitter-v {
+  width: 5px !important;
+  cursor: col-resize;
+  background: var(--border);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+  transition: background 0.12s;
+}
+.desk-splitter-v:hover,
+.desk-splitter-v.dragging {
+  background: var(--accent-bright);
+}
+.desk-splitter-h {
+  height: 6px !important;
+  cursor: row-resize;
+  background: var(--border);
+  flex-shrink: 0;
+  transition: background 0.12s;
+}
+.desk-splitter-h:hover,
+.desk-splitter-h.dragging {
+  background: var(--accent-bright);
+}
+.sidebar { position: relative; }
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  width: 5px !important;
+  z-index: 20;
+}
+body.is-resizing,
+body.is-resizing * {
+  cursor: inherit !important;
+  user-select: none !important;
+}
+.setup-scanner-panel {
+  height: var(--setup-panel-h, 420px);
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.setup-scanner-panel .setup-table-wrap {
+  flex: 1;
+  overflow: auto;
+  max-height: none;
+}
+.metric-scanner-panel {
+  flex: 1;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.scanner-section-title {
+  font-size: 12px;
+  margin-right: 8px;
+}
+.scanner-type-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 8px;
+}
+.scanner-type-card {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  text-align: left;
+  min-width: 88px;
+}
+.scanner-type-card strong {
+  display: block;
+  font-size: 11px;
+}
+.scanner-type-card span {
+  display: block;
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.25;
+  margin-top: 2px;
+}
+.scanner-type-card:hover { border-color: var(--accent); }
+.scanner-type-card.selected {
+  border-color: var(--accent-bright);
+  background: rgba(20, 184, 166, 0.1);
+}
+.setup-adv-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+  padding: 0 14px 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.setup-flt-input {
+  width: 64px;
+  margin-left: 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+}
+.setup-flt-select {
+  margin-left: 4px;
+  min-width: 100px;
+  font-size: 11px;
+}
+.setup-flt-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 /* ── Empty-state guide cards ─────────────────────────────────── */
 .empty-state {
   flex-direction: column;

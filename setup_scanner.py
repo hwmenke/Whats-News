@@ -244,18 +244,48 @@ def _filter_and_rollup(
     limit: int = 500,
     min_score: int = 0,
     from_cache: bool = False,
+    min_change: Optional[float] = None,
+    max_change: Optional[float] = None,
+    min_vol: Optional[float] = None,
+    max_rs: Optional[int] = None,
+    min_rts: Optional[int] = None,
+    regime: Optional[str] = None,
+    strike: bool = False,
+    dual_up: bool = False,
+    rsi_extreme: bool = False,
 ) -> dict:
     filtered = []
     for row in results:
         if not row:
             continue
-        if setup_filter and setup_filter not in row.get("setups", []):
+        if rsi_extreme:
+            setups = row.get("setups") or []
+            if "RSI_OB" not in setups and "RSI_OS" not in setups:
+                continue
+        elif setup_filter and setup_filter not in row.get("setups", []):
             continue
         if family and family not in row.get("families", []):
             continue
         if stage is not None and row.get("stage") != stage:
             continue
         if row.get("setup_score", 0) < min_score:
+            continue
+        chg = row.get("change_pct")
+        if min_change is not None and (chg is None or chg < min_change):
+            continue
+        if max_change is not None and (chg is None or chg > max_change):
+            continue
+        vol = row.get("vol_ratio_5_20")
+        if min_vol is not None and (vol is None or vol < min_vol):
+            continue
+        rs = row.get("rs_rank_21d")
+        if max_rs is not None and (rs is None or rs > max_rs):
+            continue
+        if regime and row.get("regime") != regime:
+            continue
+        if dual_up and not (
+            row.get("regime") == "uptrend" and row.get("regime_weekly") == "uptrend"
+        ):
             continue
         filtered.append(row)
 
@@ -268,8 +298,6 @@ def _filter_and_rollup(
     )
 
     ready = [r for r in filtered if r.get("ready")]
-    # Re-rank RS within the filtered set only when live-computed;
-    # cache rows already have book-wide RS from precompute.
     if not from_cache:
         ranked = sorted(
             ready,
@@ -291,6 +319,17 @@ def _filter_and_rollup(
         for c in r.get("badge_codes") or []:
             if c in badge_counts:
                 badge_counts[c] += 1
+
+    if min_rts is not None:
+        filtered = [
+            r for r in filtered
+            if r.get("rts") is not None and r.get("rts") >= min_rts
+        ]
+        ready = [r for r in filtered if r.get("ready")]
+
+    if strike:
+        filtered = [r for r in filtered if r.get("strike_zone")]
+        ready = [r for r in filtered if r.get("ready")]
 
     if badge:
         badge_u = badge.upper()
@@ -339,6 +378,15 @@ def scan_setups(
     min_score: int = 0,
     use_cache: bool = True,
     live: bool = False,
+    min_change: Optional[float] = None,
+    max_change: Optional[float] = None,
+    min_vol: Optional[float] = None,
+    max_rs: Optional[int] = None,
+    min_rts: Optional[int] = None,
+    regime: Optional[str] = None,
+    strike: bool = False,
+    dual_up: bool = False,
+    rsi_extreme: bool = False,
 ) -> dict:
     """
     Scan symbols for setup tags / families / stage / badges.
@@ -351,24 +399,36 @@ def scan_setups(
     else:
         symbols = [s.upper() for s in symbols]
 
+    filter_kw = dict(
+        setup_filter=setup_filter,
+        family=family,
+        stage=stage,
+        badge=badge,
+        limit=limit,
+        min_score=min_score,
+        min_change=min_change,
+        max_change=max_change,
+        min_vol=min_vol,
+        max_rs=max_rs,
+        min_rts=min_rts,
+        regime=regime,
+        strike=strike,
+        dual_up=dual_up,
+        rsi_extreme=rsi_extreme,
+    )
+
     if use_cache and not live:
         try:
             import desk_metrics
             cached = desk_metrics.load_cached_rows(symbols, ready_only=False)
-            # If we have decent coverage, serve cache (even partial)
             if cached and len(cached) >= max(1, int(0.5 * len(symbols))):
                 by_sym = {r["symbol"]: r for r in cached if r.get("symbol")}
                 results = [by_sym[s] for s in symbols if s in by_sym]
                 return _filter_and_rollup(
                     results,
                     symbols_scanned=len(symbols),
-                    setup_filter=setup_filter,
-                    family=family,
-                    stage=stage,
-                    badge=badge,
-                    limit=limit,
-                    min_score=min_score,
                     from_cache=True,
+                    **filter_kw,
                 )
         except Exception:
             pass
@@ -384,11 +444,6 @@ def scan_setups(
     return _filter_and_rollup(
         results,
         symbols_scanned=len(symbols),
-        setup_filter=setup_filter,
-        family=family,
-        stage=stage,
-        badge=badge,
-        limit=limit,
-        min_score=min_score,
         from_cache=False,
+        **filter_kw,
     )

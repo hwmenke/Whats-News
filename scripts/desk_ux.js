@@ -49,11 +49,11 @@ const DESK_GUIDE_PAGES = [
     {
         title: '4 · Clean chart view',
         body: `
-          <p>Use the <strong>View</strong> pills (Tape · Weekly · Vol · PM · Overlays) to hide chrome.</p>
+          <p>Use the <strong>View</strong> pills to hide chrome — Tape · Weekly · Vol · PM · Overlays · Sidebar · Header · Setups · Heatmap.</p>
           <ul>
             <li><strong>Focus</strong> (or press <kbd>f</kbd>) — chart only</li>
+            <li>Drag the sidebar edge, chart divider, or setups handle to <strong>resize</strong></li>
             <li>Panes: turn on RSI / MACD / Trend only when needed</li>
-            <li>Overlays: BB · EP · Box stay on for breakout work</li>
           </ul>
         `,
         action: { label: 'Open Charts', run: () => switchTab('charts') },
@@ -92,14 +92,29 @@ function applyViewToggle(name, visible) {
     document.body.classList.toggle(`hide-${name}`, !visible);
     const pill = document.querySelector(`.view-pill[data-view="${name}"]`);
     if (pill) pill.classList.toggle('active', visible);
-    if (name === 'weekly' || name === 'volume') {
+    if (name === 'weekly' || name === 'volume' || name === 'sidebar' || name === 'header') {
         window.resizeAllCharts?.();
+    }
+    if (name === 'sidebar') {
+        const app = document.querySelector('.app');
+        // hide-sidebar fully removes it; don't fight collapse class
+        if (!visible && app) app.classList.add('sidebar-collapsed');
     }
 }
 
 function setupViewToggles() {
     const prefs = loadViewPrefs();
-    const defaults = { tape: true, weekly: true, volume: true, pm: true, overlays: true };
+    const defaults = {
+        tape: true,
+        weekly: true,
+        volume: true,
+        pm: true,
+        overlays: true,
+        sidebar: true,
+        header: true,
+        setups: true,
+        heatmap: true,
+    };
     Object.keys(defaults).forEach(name => {
         const on = prefs[name] !== undefined ? prefs[name] : defaults[name];
         applyViewToggle(name, on);

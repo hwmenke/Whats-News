@@ -237,11 +237,16 @@
       <div class="tab-spacer"></div>
       <div class="view-toggles" aria-label="Show or hide desk features">
         <span class="overlay-section-label">View</span>
+        <button type="button" class="ind-pill view-pill active" data-view="sidebar" title="Show / hide watchlist sidebar">Sidebar</button>
+        <button type="button" class="ind-pill view-pill active" data-view="header" title="Show / hide symbol header">Header</button>
         <button type="button" id="pill-view-tape" class="ind-pill view-pill active" data-view="tape" title="Show / hide portfolio tape">Tape</button>
         <button type="button" id="pill-view-weekly" class="ind-pill view-pill active" data-view="weekly" title="Show / hide weekly chart panel">Weekly</button>
         <button type="button" id="pill-view-volume" class="ind-pill view-pill active" data-view="volume" title="Show / hide volume panes">Vol</button>
         <button type="button" id="pill-view-pm" class="ind-pill view-pill active" data-view="pm" title="Show / hide PM metrics strip">PM</button>
         <button type="button" id="pill-view-overlays" class="ind-pill view-pill active" data-view="overlays" title="Show / hide overlay pills row">Overlays</button>
+        <button type="button" class="ind-pill view-pill active" data-view="setups" title="Show / hide Setups board (Scanner)">Setups</button>
+        <button type="button" class="ind-pill view-pill active" data-view="heatmap" title="Show / hide metric heatmap scanner">Heatmap</button>
+        <button type="button" id="btn-layout-reset" class="btn btn-ghost btn-sm" title="Reset panel sizes">Reset size</button>
         <button type="button" id="btn-desk-guide" class="btn btn-ghost btn-sm" title="Step-by-step guide (?)">Guide</button>
       </div>
       <div id="chart-overlays-bar" class="indicator-toggles chart-overlays-bar">
@@ -332,7 +337,7 @@
       </div>
 
       <!-- ── Daily Panel ── -->
-      <div class="chart-panel">
+      <div class="chart-panel chart-panel-daily" id="chart-panel-daily">
         <div class="panel-header">Daily</div>
         <div class="chart-wrapper chart-wrapper-main">
           <div class="chart-label">PRICE</div>
@@ -814,10 +819,10 @@
     <div id="scanner-area" class="scanner-container" style="display:none;">
 
       <!-- Setup scanner — named methodology board -->
-      <div class="setup-scanner-panel">
+      <div class="setup-scanner-panel" id="setup-scanner-panel">
         <div class="setup-scanner-header">
           <strong>Setups board</strong>
-          <button id="btn-setup-scan" type="button" class="btn btn-primary btn-sm" onclick="loadSetupScan()">Scan setups</button>
+          <button id="btn-setup-scan" type="button" class="btn btn-primary btn-sm" onclick="loadSetupScan()">Scan</button>
           <button id="btn-metrics-refresh" type="button" class="btn btn-ghost btn-sm" title="Precompute setups/badges into cache for a fast dashboard">Precompute</button>
           <label class="setup-universe-toggle" title="Scan full archive vs desk only">
             <input type="checkbox" id="chk-setup-universe" checked />
@@ -826,7 +831,26 @@
           <span id="setup-metrics-status" class="scanner-ts" title="Metrics cache coverage"></span>
           <span id="setup-scan-meta" class="scanner-ts"></span>
         </div>
-        <p class="setup-board-blurb">Badges: <strong>KQ</strong> Qulla · <strong>MM</strong> Minervini · <strong>SB4/SBW/SB9</strong> Stockbee · <strong>DB</strong> Darvas · <strong>ON</strong> O’Neil · <strong>2A/2B</strong> Stage. Click a badge to filter — <em>Apply as list</em> builds a smart watchlist.</p>
+        <div id="scanner-type-cards" class="scanner-type-cards" aria-label="Scanner types"></div>
+        <div id="setup-adv-filters" class="setup-adv-filters" aria-label="Scanner filters">
+          <label>Chg% ≥ <input type="number" id="flt-min-change" class="setup-flt-input" step="0.5" placeholder="—" /></label>
+          <label>Chg% ≤ <input type="number" id="flt-max-change" class="setup-flt-input" step="0.5" placeholder="—" /></label>
+          <label>Vol× ≥ <input type="number" id="flt-min-vol" class="setup-flt-input" step="0.1" min="0" placeholder="—" /></label>
+          <label>Book RS ≤ <input type="number" id="flt-max-rs" class="setup-flt-input" step="1" min="1" placeholder="—" /></label>
+          <label>RTS ≥ <input type="number" id="flt-min-rts" class="setup-flt-input" step="1" min="1" max="99" placeholder="—" /></label>
+          <label>Regime
+            <select id="flt-regime" class="dm-select setup-flt-select">
+              <option value="">Any</option>
+              <option value="uptrend">Uptrend</option>
+              <option value="range">Range</option>
+              <option value="downtrend">Downtrend</option>
+            </select>
+          </label>
+          <label class="setup-flt-check"><input type="checkbox" id="flt-strike" /> Strike zone</label>
+          <label class="setup-flt-check"><input type="checkbox" id="flt-dual-up" /> D+W up</label>
+          <button type="button" id="btn-setup-filters-apply" class="btn btn-ghost btn-sm">Apply filters</button>
+          <button type="button" id="btn-setup-filters-clear" class="btn btn-ghost btn-sm">Clear</button>
+        </div>
         <div id="setup-family-cards" class="setup-family-cards"></div>
         <div id="setup-stage-pills" class="setup-stage-pills"></div>
         <div id="setup-badge-pills" class="setup-badge-pills"></div>
@@ -857,8 +881,9 @@
         </div>
       </div>
 
-      <div class="scanner-section-divider" aria-hidden="true"></div>
+      <div class="scanner-section-divider" id="setup-resize-handle" aria-hidden="true"></div>
 
+      <div id="metric-scanner-panel" class="metric-scanner-panel">
       <!-- Loading overlay -->
       <div id="scanner-loading" class="chart-loading" style="display:none;">
         <span class="spinner"></span>
@@ -868,6 +893,7 @@
       <!-- Controls bar -->
       <div class="scanner-controls">
         <div class="scanner-controls-left">
+          <strong class="scanner-section-title">Metric heatmap</strong>
           <button id="btn-scan" class="btn btn-primary" onclick="loadScannerData()">⟳ Scan All</button>
           <span id="scanner-ts" class="scanner-ts"></span>
         </div>
@@ -894,6 +920,7 @@
         <div class="empty-icon">📡</div>
         <p>No symbols in watchlist, or data not yet fetched.<br>Add tickers, then click <strong>⟳ Scan All</strong>.</p>
       </div>
+      </div><!-- #metric-scanner-panel -->
 
     </div><!-- #scanner-area -->
 
@@ -1143,6 +1170,7 @@
 <script src="scripts/setup_scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/watchlist_filters.js"></script>
+<script src="scripts/desk_layout.js"></script>
 <script src="scripts/desk_ux.js"></script>
 <script src="scripts/app.js"></script>
 

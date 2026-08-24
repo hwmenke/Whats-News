@@ -2585,6 +2585,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (typeof initSmartListsUi === 'function') initSmartListsUi();
     if (typeof setupViewToggles === 'function') setupViewToggles();
+    if (typeof initDeskLayout === 'function') initDeskLayout();
     if (typeof initDeskGuide === 'function') initDeskGuide();
 
     await loadSymbols();

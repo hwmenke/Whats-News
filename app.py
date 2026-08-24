@@ -652,6 +652,25 @@ def setups_scan():
         symbols = None
         if not universe_only:
             symbols = [s["symbol"] for s in md.list_desk_symbols()]
+
+        def _f(name):
+            raw = request.args.get(name)
+            if raw is None or raw == "":
+                return None
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                return None
+
+        def _i(name):
+            raw = request.args.get(name)
+            if raw is None or raw == "":
+                return None
+            try:
+                return int(float(raw))
+            except (TypeError, ValueError):
+                return None
+
         return jsonify(
             setup_scanner.scan_setups(
                 symbols=symbols,
@@ -663,6 +682,15 @@ def setups_scan():
                 min_score=min_score,
                 use_cache=not live,
                 live=live,
+                min_change=_f("min_change"),
+                max_change=_f("max_change"),
+                min_vol=_f("min_vol"),
+                max_rs=_i("max_rs"),
+                min_rts=_i("min_rts"),
+                regime=(request.args.get("regime") or None),
+                strike=request.args.get("strike", "").lower() in ("1", "true", "yes"),
+                dual_up=request.args.get("dual_up", "").lower() in ("1", "true", "yes"),
+                rsi_extreme=request.args.get("rsi_extreme", "").lower() in ("1", "true", "yes"),
             )
         )
     except Exception as exc:
