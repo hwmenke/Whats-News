@@ -19,5 +19,6 @@ setup design, or scanner change, consult the relevant agent files under `.cursor
 2. **Price + volume first** — don’t invent fundamentals the DB doesn’t store.
 3. **No IBD RS / fake EPS** — Book RS only.
 4. Prefer implementing scanner families in `setup_scanner.py` + `ta_templates.py`.
+5. Watchlist generation uses compact badges in `methodology_badges.py` (KQ/MM/SB4/…).
 
 When multiple agents disagree, prefer: (1) label honesty, (2) risk definition, (3) chart-first UI.

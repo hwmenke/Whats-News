@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 import market_data as md
+import methodology_badges
 import portfolio
 import stage_analysis
 import ta_templates
@@ -155,6 +156,15 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
         if sb.get("tags"):
             families.append("stockbee")
 
+        # Momentum extras for SBW / SB9 / 52W badges (one OHLCV read)
+        mx = methodology_badges.momentum_extras(symbol)
+        ret_5d = snap.get("ret_5d_pct")
+        if ret_5d is None:
+            ret_5d = mx.get("ret_5d_pct")
+        vs_52 = tt.get("vs_52w_high_pct") if tt.get("ready") else None
+        if vs_52 is None:
+            vs_52 = mx.get("vs_52w_high_pct")
+
         zone = snap.get("rsi_zone")
         if zone == "overbought":
             setups.append("RSI_OB")
@@ -205,6 +215,13 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             "minervini_score": tt.get("score") if tt.get("ready") else None,
             "minervini_pass": tt.get("pass") if tt.get("ready") else None,
             "stockbee_tags": sb.get("tags") if sb.get("ready") else [],
+            "ret_5d_pct": ret_5d,
+            "ret_9m_pct": mx.get("ret_9m_pct"),
+            "vs_52w_high_pct": vs_52,
+            "is_near_high": bool(snap.get("is_near_high")),
+            "is_vol_surge": bool(snap.get("is_vol_surge")),
+            "is_ep": bool(snap.get("is_ep")),
+            "early_stage2": bool(st.get("early_stage2")),
         }
     except Exception as exc:
         return {
@@ -221,11 +238,12 @@ def scan_setups(
     setup_filter: Optional[str] = None,
     family: Optional[str] = None,
     stage: Optional[int] = None,
+    badge: Optional[str] = None,
     limit: int = 500,
     min_score: int = 0,
 ) -> dict:
     """
-    Scan symbols with stored OHLCV for setup tags / families / stage.
+    Scan symbols with stored OHLCV for setup tags / families / stage / badges.
     """
     if symbols is None:
         symbols = md.list_symbols_with_ohlcv("daily", min_bars=30)
@@ -267,10 +285,26 @@ def scan_setups(
         row["rs_rank_21d"] = i
         row["rs_n"] = len(ranked)
 
+    # Badge pass (needs Book RS ranks for ON / 97C / RTS)
+    badge_counts = {k: 0 for k in methodology_badges.BADGE_CATALOG}
+    for r in ready:
+        bd = methodology_badges.badges_for_row(r, fetch_extras=False)
+        r["badges"] = bd["badges"]
+        r["badge_codes"] = bd["codes"]
+        r["rts"] = bd["rts"]
+        r["strike_zone"] = bd["strike_zone"]
+        for c in bd["codes"]:
+            if c in badge_counts:
+                badge_counts[c] += 1
+
+    if badge:
+        badge_u = badge.upper()
+        results = [r for r in results if badge_u in (r.get("badge_codes") or [])]
+        ready = [r for r in results if r.get("ready")]
+
     if limit and len(results) > limit:
         results = results[:limit]
 
-    # Family rollup counts (pre-limit on full matched set is approximate)
     family_counts = {k: 0 for k in SETUP_FAMILIES}
     stage_counts = {1: 0, 2: 0, 3: 0, 4: 0}
     for r in ready:
@@ -287,10 +321,13 @@ def scan_setups(
         "setup_filter": setup_filter,
         "family": family,
         "stage": stage,
+        "badge": badge,
         "results": results,
         "setup_catalog": SETUP_IDS,
         "families": SETUP_FAMILIES,
         "family_counts": family_counts,
         "stage_counts": stage_counts,
         "stage_labels": stage_analysis.STAGE_LABELS,
+        "badge_catalog": methodology_badges.BADGE_CATALOG,
+        "badge_counts": badge_counts,
     }

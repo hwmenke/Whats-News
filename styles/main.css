@@ -2811,6 +2811,78 @@ html, body {
 .setup-fam.tone-darvas { color: #c084fc; border-color: #a855f755; }
 .setup-fam.tone-brandt { color: #60a5fa; border-color: #3b82f655; }
 .setup-fam.tone-stage { color: #2dd4bf; border-color: #14b8a655; }
+.setup-badge-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 8px;
+  align-items: center;
+}
+.setup-badge-apply { margin-left: 6px; }
+.setup-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  max-width: 280px;
+}
+.meth-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  line-height: 1.4;
+}
+.meth-badge.tone-kq { color: #fbbf24; border-color: #f59e0b66; background: rgba(245, 158, 11, 0.12); }
+.meth-badge.tone-mm { color: #fde047; border-color: #eab30866; background: rgba(234, 179, 8, 0.14); }
+.meth-badge.tone-on { color: #93c5fd; border-color: #3b82f666; background: rgba(59, 130, 246, 0.12); }
+.meth-badge.tone-db { color: #86efac; border-color: #22c55e66; background: rgba(34, 197, 94, 0.12); }
+.meth-badge.tone-sb { color: #5eead4; border-color: #14b8a666; background: rgba(20, 184, 166, 0.14); }
+.meth-badge.tone-hi { color: #fcd34d; border-color: #f59e0b55; background: rgba(245, 158, 11, 0.1); }
+.meth-badge.tone-stage { color: #2dd4bf; border-color: #14b8a655; background: rgba(20, 184, 166, 0.1); }
+.meth-badge.tone-rts { color: #a3e635; border-color: #84cc1655; background: rgba(132, 204, 22, 0.12); }
+.meth-badge.tone-def { color: var(--text-dim); }
+.meth-rts {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 3px;
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+  border: 1px solid #22c55e55;
+}
+.meth-sz {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+  border: 1px solid #22c55e44;
+}
+.setup-rts { font-variant-numeric: tabular-nums; color: #4ade80; font-weight: 600; }
+.smart-preset-card.tone-kq { border-left: 3px solid #f59e0b; }
+.smart-preset-card.tone-mm { border-left: 3px solid #eab308; }
+.smart-preset-card.tone-sb { border-left: 3px solid #14b8a6; }
+.smart-preset-card.tone-db { border-left: 3px solid #22c55e; }
+.smart-preset-card.tone-on { border-left: 3px solid #3b82f6; }
+.smart-preset-card.tone-stage { border-left: 3px solid #2dd4bf; }
+.spc-badge { margin-left: 2px; transform: scale(0.92); }
 .setup-stage.stage-1 { color: #94a3b8; }
 .setup-stage.stage-2 { color: #22c55e; font-weight: 600; }
 .setup-stage.stage-3 { color: #f59e0b; font-weight: 600; }

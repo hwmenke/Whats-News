@@ -627,10 +627,11 @@ def setups_catalog():
 
 @app.route("/api/setups/scan", methods=["GET"])
 def setups_scan():
-    """Scan stored universe for named trading setups / families / stage."""
+    """Scan stored universe for named trading setups / families / stage / badges."""
     try:
         setup_filter = request.args.get("setup") or None
         family = request.args.get("family") or None
+        badge = request.args.get("badge") or None
         stage_raw = request.args.get("stage")
         stage = None
         if stage_raw is not None and str(stage_raw).strip() != "":
@@ -656,6 +657,7 @@ def setups_scan():
                 setup_filter=setup_filter,
                 family=family,
                 stage=stage,
+                badge=badge,
                 limit=limit,
                 min_score=min_score,
             )
@@ -670,7 +672,14 @@ def setups_families():
         "families": setup_scanner.SETUP_FAMILIES,
         "setups": setup_scanner.SETUP_IDS,
         "stage_labels": __import__("stage_analysis").STAGE_LABELS,
+        "badges": __import__("methodology_badges").BADGE_CATALOG,
     })
+
+
+@app.route("/api/badges/catalog", methods=["GET"])
+def badges_catalog():
+    import methodology_badges
+    return jsonify(methodology_badges.catalog_for_api())
 
 
 @app.route("/api/templates/<string:symbol>", methods=["GET"])

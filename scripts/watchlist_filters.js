@@ -88,6 +88,14 @@ function renderSmartListPresets() {
         preset_minervini_pivot: { tone: 'minervini', blurb: 'VCP + near 20D high' },
         preset_stockbee_ep: { tone: 'stockbee', blurb: 'Gap + volume EP' },
         preset_stockbee_re: { tone: 'stockbee', blurb: 'TR ≫ ATR day' },
+        badge_kq: { tone: 'kq', blurb: 'Qullamaggie momentum badge' },
+        badge_mm: { tone: 'mm', blurb: 'Minervini Trend Template' },
+        badge_sb4: { tone: 'sb', blurb: '≥4% day / gap' },
+        badge_sbw: { tone: 'sb', blurb: '≥20% ~week' },
+        badge_sb9: { tone: 'sb', blurb: '≥100% ~9M' },
+        badge_db: { tone: 'db', blurb: 'Darvas box breakout' },
+        badge_on: { tone: 'on', blurb: 'Stage 2 + near high + RS' },
+        badge_2a: { tone: 'stage', blurb: 'Early Stage 2' },
     };
 
     (_filterCatalog.presets || []).forEach(p => {
@@ -139,8 +147,13 @@ async function previewSmartList() {
                     ? `${row.change_pct >= 0 ? '+' : ''}${row.change_pct.toFixed(1)}%`
                     : '';
                 chip.innerHTML = `<span class="spc-sym">${row.symbol}</span>`
-                    + (chg ? `<span class="spc-chg ${row.change_pct >= 0 ? 'pos' : 'neg'}">${chg}</span>` : '');
-                chip.title = (row.setups || []).join(', ') || row.symbol;
+                    + (chg ? `<span class="spc-chg ${row.change_pct >= 0 ? 'pos' : 'neg'}">${chg}</span>` : '')
+                    + ((row.badge_codes || []).slice(0, 4).map(c =>
+                        `<span class="meth-badge tone-def spc-badge">${c}</span>`).join(''));
+                chip.title = [
+                    (row.badge_codes || []).join(' '),
+                    (row.setups || []).join(', '),
+                ].filter(Boolean).join(' · ') || row.symbol;
                 chip.addEventListener('click', () => {
                     closeSmartListsModal();
                     switchTab('charts');
@@ -308,6 +321,21 @@ async function applySmartList() {
     if (typeof applySmartListToSidebar === 'function') {
         await applySmartListToSidebar(payload);
     }
+}
+
+async function applySmartListById(id) {
+    loadSmartListsFromStorage();
+    const list = _smartLists.find(l => l.id === id);
+    if (!list) {
+        toast('List not found', 'warning');
+        return;
+    }
+    _editingId = id;
+    setActiveSmartListId(id);
+    if (typeof applySmartListToSidebar === 'function') {
+        await applySmartListToSidebar(list);
+    }
+    renderSmartListPills();
 }
 
 function deleteSmartList() {

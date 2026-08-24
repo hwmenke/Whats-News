@@ -106,6 +106,7 @@ python3 scripts/bulk_archive.py --refresh --overlap-days 5 --delay 0.8
 | `index_universe.py` / `scripts/bulk_archive.py` | US index lists + bulk archive CLI |
 | `setup_scanner.py` | Setup families (Qullamaggie, Minervini, Stockbee, Darvas, Brandt, Stage) |
 | `ta_templates.py` | Mechanical Minervini Trend Template + Stockbee EP/RE/EMA |
+| `methodology_badges.py` | Compact badges (KQ/MM/SB4/SBW/SB9/DB/ON/2A/2B) for watchlists |
 | `.cursor/agents/` | TA specialist agent prompts (Minervini, Stockbee, …) |
 | `index.html` / `news.html` | UI |
 | `scripts/` | Frontend JS |

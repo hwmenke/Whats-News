@@ -69,6 +69,10 @@ FILTER_CATALOG: List[dict] = [
     {"id": "stage", "label": "Weinstein stage (1–4)", "group": "Setups", "type": "number", "ops": ["eq", "in"]},
     {"id": "minervini_pass", "label": "Minervini Trend Template pass", "group": "Setups", "type": "bool", "ops": ["is_true", "is_false"]},
     {"id": "minervini_score", "label": "Minervini TT score (0–8)", "group": "Setups", "type": "number", "ops": ["gt", "gte", "lt", "lte", "eq"]},
+    {"id": "badge", "label": "Methodology badge", "group": "Badges", "type": "badge", "ops": ["has_badge"],
+     "values": ["KQ", "MM", "ON", "DB", "SB4", "SBW", "SB9", "52W", "2A", "2B", "97C"]},
+    {"id": "rts", "label": "Book RTS (0–99)", "group": "Badges", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
+    {"id": "strike_zone", "label": "Strike zone (near pivot)", "group": "Badges", "type": "bool", "ops": ["is_true", "is_false"]},
     # Technical
     {"id": "atr_pct", "label": "ATR %", "group": "Technical", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
     {"id": "d_atr_pct", "label": "ATR % (scanner)", "group": "Technical", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
@@ -170,6 +174,54 @@ PRESET_LISTS: List[dict] = [
         "rules": [{"field": "setup", "op": "has_setup", "value": "STOCKBEE_RE"}],
         "match": "all",
     },
+    {
+        "id": "badge_kq",
+        "name": "KQ · Qullamaggie",
+        "rules": [{"field": "badge", "op": "has_badge", "value": "KQ"}],
+        "match": "all",
+    },
+    {
+        "id": "badge_mm",
+        "name": "MM · Minervini",
+        "rules": [{"field": "badge", "op": "has_badge", "value": "MM"}],
+        "match": "all",
+    },
+    {
+        "id": "badge_sb4",
+        "name": "SB4 · 4% day",
+        "rules": [{"field": "badge", "op": "has_badge", "value": "SB4"}],
+        "match": "all",
+    },
+    {
+        "id": "badge_sbw",
+        "name": "SBW · 20% week",
+        "rules": [{"field": "badge", "op": "has_badge", "value": "SBW"}],
+        "match": "all",
+    },
+    {
+        "id": "badge_sb9",
+        "name": "SB9 · 9M mover",
+        "rules": [{"field": "badge", "op": "has_badge", "value": "SB9"}],
+        "match": "all",
+    },
+    {
+        "id": "badge_db",
+        "name": "DB · Darvas breakout",
+        "rules": [{"field": "badge", "op": "has_badge", "value": "DB"}],
+        "match": "all",
+    },
+    {
+        "id": "badge_on",
+        "name": "ON · O'Neil proxy",
+        "rules": [{"field": "badge", "op": "has_badge", "value": "ON"}],
+        "match": "all",
+    },
+    {
+        "id": "badge_2a",
+        "name": "2A · Early Stage 2",
+        "rules": [{"field": "badge", "op": "has_badge", "value": "2A"}],
+        "match": "all",
+    },
 ]
 
 
@@ -242,6 +294,7 @@ def enrich_row(sym: str, meta: dict) -> dict:
         row["minervini_pass"] = bool(tt.get("pass")) if tt.get("ready") else False
         row["minervini_score"] = tt.get("score") if tt.get("ready") else None
         row["minervini_tags"] = tt.get("tags") or []
+        row["vs_52w_high_pct"] = tt.get("vs_52w_high_pct")
         sb = ta_templates.stockbee_momentum(sym)
         row["stockbee_tags"] = sb.get("tags") or []
     except Exception:
@@ -250,6 +303,19 @@ def enrich_row(sym: str, meta: dict) -> dict:
         row["minervini_tags"] = []
         row["stockbee_tags"] = []
     row["setups"] = _setups_from_row(row)
+    try:
+        import methodology_badges
+        mx = methodology_badges.momentum_extras(sym)
+        if row.get("ret_5d_pct") is None:
+            row["ret_5d_pct"] = mx.get("ret_5d_pct")
+        row["ret_9m_pct"] = mx.get("ret_9m_pct")
+        if row.get("vs_52w_high_pct") is None:
+            row["vs_52w_high_pct"] = mx.get("vs_52w_high_pct")
+    except Exception:
+        pass
+    # Badges need Book RS — filled after ranking in apply_filter
+    row["badge_codes"] = []
+    row["badges"] = []
     return row
 
 
@@ -273,6 +339,9 @@ def _compare(op: str, field_val: Any, rule_val: Any) -> bool:
     if op == "has_setup":
         setups = field_val if isinstance(field_val, list) else []
         return str(rule_val) in setups
+    if op == "has_badge":
+        codes = field_val if isinstance(field_val, list) else []
+        return str(rule_val).upper() in [str(c).upper() for c in codes]
     if op == "startswith":
         return str(field_val or "").startswith(str(rule_val or ""))
     if op == "contains":
@@ -328,6 +397,8 @@ def _row_matches(row: dict, rules: List[dict], match: str) -> bool:
         val = rule.get("value")
         if field == "setup":
             fv = row.get("setups")
+        elif field == "badge":
+            fv = row.get("badge_codes")
         elif field == "darvas_state":
             fv = row.get("darvas_state")
         else:
@@ -370,11 +441,20 @@ def apply_filter(
         row["rs_rank_21d"] = i
         row["rs_n"] = len(ranked)
 
+    import methodology_badges
+    for row in ready:
+        bd = methodology_badges.badges_for_row(row, fetch_extras=False)
+        row["badges"] = bd["badges"]
+        row["badge_codes"] = bd["codes"]
+        row["rts"] = bd["rts"]
+        row["strike_zone"] = bd["strike_zone"]
+
     rules = rules or []
     matched = [r for r in rows if _row_matches(r, rules, match)]
     matched.sort(
         key=lambda r: (
             -(r.get("breakout_score") or 0),
+            -(len(r.get("badge_codes") or [])),
             -(r.get("change_pct") or 0),
             r.get("symbol") or "",
         )
@@ -390,6 +470,10 @@ def apply_filter(
             "price": r.get("price"),
             "change_pct": r.get("change_pct"),
             "setups": r.get("setups"),
+            "badges": r.get("badges"),
+            "badge_codes": r.get("badge_codes"),
+            "rts": r.get("rts"),
+            "strike_zone": r.get("strike_zone"),
             "regime": r.get("regime"),
             "rsi14": r.get("rsi14"),
             "rs_rank_21d": r.get("rs_rank_21d"),
@@ -398,6 +482,7 @@ def apply_filter(
             "vol_ratio_5_20": r.get("vol_ratio_5_20"),
             "sector": r.get("sector"),
             "group_tag": r.get("group_tag"),
+            "stage": r.get("stage"),
         })
 
     return {
@@ -423,4 +508,5 @@ def catalog_for_api() -> dict:
         "groups": groups,
         "sectors": sectors,
         "presets": PRESET_LISTS,
+        "badge_catalog": __import__("methodology_badges").BADGE_CATALOG,
     }

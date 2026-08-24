@@ -1,26 +1,31 @@
 /**
- * setup_scanner.js — Named setups board
- * (Qullamaggie / Minervini / Stockbee / Darvas / Brandt / Stage)
+ * setup_scanner.js — Named setups board + methodology badges
+ * (KQ / MM / SB4 / SBW / SB9 / DB / ON / 2A / 2B …)
  */
 
 let _setupFilter = null;
 let _setupFamily = null;
 let _setupStage = null;
+let _setupBadge = null;
 let _setupCatalog = {};
 let _setupFamilies = {};
+let _badgeCatalog = {};
 let _familyCounts = {};
 let _stageCounts = {};
+let _badgeCounts = {};
+let _lastSetupResults = [];
 
 async function initSetupScanner() {
     try {
         const data = await apiFetch(`${API}/setups/families`);
         _setupCatalog = data.setups || {};
         _setupFamilies = data.families || {};
+        _badgeCatalog = data.badges || {};
         renderSetupFamilyCards();
         renderSetupStagePills();
+        renderSetupBadgePills();
         renderSetupFilterPills();
     } catch (e) {
-        // Fallback to catalog-only
         try {
             const data = await apiFetch(`${API}/setups/catalog`);
             _setupCatalog = data.setups || {};
@@ -46,6 +51,7 @@ function renderSetupFamilyCards() {
         _setupFilter = null;
         renderSetupFamilyCards();
         renderSetupStagePills();
+        renderSetupBadgePills();
         renderSetupFilterPills();
         loadSetupScan();
     });
@@ -63,9 +69,11 @@ function renderSetupFamilyCards() {
         card.addEventListener('click', () => {
             _setupFamily = id;
             _setupFilter = null;
+            _setupBadge = null;
             if (id !== 'stage') _setupStage = null;
             renderSetupFamilyCards();
             renderSetupStagePills();
+            renderSetupBadgePills();
             renderSetupFilterPills();
             loadSetupScan();
         });
@@ -112,6 +120,97 @@ function renderSetupStagePills() {
     });
 }
 
+function renderSetupBadgePills() {
+    const wrap = document.getElementById('setup-badge-pills');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    wrap.style.display = 'flex';
+
+    const label = document.createElement('span');
+    label.className = 'overlay-section-label';
+    label.textContent = 'Badges';
+    wrap.appendChild(label);
+
+    const all = document.createElement('button');
+    all.type = 'button';
+    all.className = 'ind-pill setup-pill' + (!_setupBadge ? ' setup-pill-on' : '');
+    all.textContent = 'All';
+    all.addEventListener('click', () => {
+        _setupBadge = null;
+        renderSetupBadgePills();
+        loadSetupScan();
+    });
+    wrap.appendChild(all);
+
+    const order = ['KQ', 'MM', 'ON', 'DB', 'SB4', 'SBW', 'SB9', '52W', '2A', '2B', '97C'];
+    order.forEach(code => {
+        const meta = _badgeCatalog[code];
+        if (!meta && !Object.keys(_badgeCatalog).length) {
+            // catalog not loaded yet — still show codes
+        } else if (!meta) {
+            return;
+        }
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        const n = _badgeCounts[code];
+        const tone = (meta && meta.tone) || 'def';
+        btn.className = `ind-pill setup-pill meth-badge tone-${tone}` + (_setupBadge === code ? ' setup-pill-on' : '');
+        btn.textContent = code + (n != null ? ` ${n}` : '');
+        btn.title = meta ? `${code}: ${meta.label} — ${meta.blurb}` : code;
+        btn.addEventListener('click', () => {
+            _setupBadge = code;
+            _setupFilter = null;
+            renderSetupBadgePills();
+            renderSetupFilterPills();
+            loadSetupScan();
+        });
+        wrap.appendChild(btn);
+    });
+
+    if (_setupBadge) {
+        const apply = document.createElement('button');
+        apply.type = 'button';
+        apply.className = 'btn btn-primary btn-sm setup-badge-apply';
+        apply.textContent = `Apply ${_setupBadge} as list →`;
+        apply.title = 'Save & apply a smart list for this badge';
+        apply.addEventListener('click', () => applyBadgeAsSmartList(_setupBadge));
+        wrap.appendChild(apply);
+    }
+}
+
+function applyBadgeAsSmartList(code) {
+    const meta = _badgeCatalog[code] || { label: code, blurb: '' };
+    const list = {
+        id: `badge_${code.toLowerCase()}_${Date.now()}`,
+        name: `${code} · ${meta.label || code}`,
+        scope: document.getElementById('chk-setup-universe')?.checked ? 'with_data' : 'desk',
+        match: 'all',
+        rules: [{ field: 'badge', op: 'has_badge', value: code }],
+    };
+    try {
+        const raw = JSON.parse(localStorage.getItem('whats-news-smart-lists') || '[]');
+        const lists = Array.isArray(raw) ? raw : [];
+        // Replace prior list with same badge name prefix
+        const filtered = lists.filter(l => !(l.name || '').startsWith(`${code} ·`));
+        filtered.unshift(list);
+        localStorage.setItem('whats-news-smart-lists', JSON.stringify(filtered.slice(0, 40)));
+        localStorage.setItem('whats-news-active-smart-list', list.id);
+        if (typeof loadSmartListsFromStorage === 'function') loadSmartListsFromStorage();
+        if (typeof setActiveSmartListId === 'function') setActiveSmartListId(list.id);
+        if (typeof applySmartListById === 'function') {
+            applySmartListById(list.id);
+        } else if (typeof openSmartListsModal === 'function') {
+            openSmartListsModal();
+            toast(`${code} list saved — open Lists to apply`, 'success');
+            return;
+        }
+        toast(`${code} watchlist applied (${meta.label || code})`, 'success');
+        if (typeof renderSmartListPills === 'function') renderSmartListPills();
+    } catch (e) {
+        toast('Could not save badge list: ' + e.message, 'error');
+    }
+}
+
 function renderSetupFilterPills() {
     const wrap = document.getElementById('setup-filter-pills');
     if (!wrap) return;
@@ -148,6 +247,20 @@ function renderSetupFilterPills() {
     });
 }
 
+function renderMethBadgesHtml(row) {
+    const parts = [];
+    (row.badges || []).forEach(b => {
+        parts.push(`<span class="meth-badge tone-${b.tone}" title="${b.title || b.label}">${b.id}</span>`);
+    });
+    if (row.rts != null) {
+        parts.push(`<span class="meth-rts" title="Book Relative Trend Strength (from Book RS)">${row.rts}</span>`);
+    }
+    if (row.strike_zone) {
+        parts.push(`<span class="meth-sz" title="Strike zone — near 20D high / pivot">SZ</span>`);
+    }
+    return parts.join('') || '—';
+}
+
 function renderSetupScanTable(results) {
     const tbody = document.getElementById('setup-scan-tbody');
     const empty = document.getElementById('setup-scan-empty');
@@ -168,16 +281,12 @@ function renderSetupScanTable(results) {
         tr.className = 'setup-scan-row';
         tr.dataset.symbol = row.symbol;
 
-        const setups = (row.setups || []).map(s =>
-            `<span class="setup-tag">${s}</span>`
-        ).join('');
-
-        const fams = (row.families || []).map(f =>
-            `<span class="setup-fam tone-${f}">${f}</span>`
-        ).join(' ');
-
         const stageCls = row.stage ? `stage-${row.stage}` : '';
-        const stageTxt = row.stage_label || (row.stage ? `S${row.stage}` : '—');
+        let stageTxt = '—';
+        if ((row.badge_codes || []).includes('2A')) stageTxt = '2A';
+        else if ((row.badge_codes || []).includes('2B')) stageTxt = '2B';
+        else if (row.stage_label) stageTxt = row.stage_label.replace('Stage ', 'S');
+        else if (row.stage) stageTxt = `S${row.stage}`;
 
         const chg = row.change_pct != null
             ? `${row.change_pct >= 0 ? '+' : ''}${row.change_pct.toFixed(1)}%`
@@ -186,12 +295,13 @@ function renderSetupScanTable(results) {
         const rs = row.rs_rank_21d != null ? `#${row.rs_rank_21d}/${row.rs_n ?? '—'}` : '—';
         const dist = row.dist_20d_high_pct != null ? `${row.dist_20d_high_pct.toFixed(1)}%` : '—';
         const vol = row.vol_ratio_5_20 != null ? row.vol_ratio_5_20.toFixed(2) : '—';
+        const rts = row.rts != null ? row.rts : '—';
 
         tr.innerHTML = `
             <td class="setup-sym">${row.symbol}</td>
-            <td class="setup-fams">${fams || '—'}</td>
+            <td class="setup-badges">${renderMethBadgesHtml(row)}</td>
             <td class="setup-stage ${stageCls}">${stageTxt}</td>
-            <td class="setup-tags">${setups || '—'}</td>
+            <td class="setup-rts">${rts}</td>
             <td class="${chgCls}">${chg}</td>
             <td>${rs}</td>
             <td>${dist}</td>
@@ -233,18 +343,24 @@ async function loadSetupScan() {
         if (_setupFilter) url += `&setup=${encodeURIComponent(_setupFilter)}`;
         if (_setupFamily) url += `&family=${encodeURIComponent(_setupFamily)}`;
         if (_setupStage != null) url += `&stage=${_setupStage}`;
+        if (_setupBadge) url += `&badge=${encodeURIComponent(_setupBadge)}`;
         url += `&universe=${universe ? '1' : '0'}`;
 
         const data = await apiFetch(url);
         if (data.families) _setupFamilies = data.families;
         if (data.setup_catalog) _setupCatalog = data.setup_catalog;
+        if (data.badge_catalog) _badgeCatalog = data.badge_catalog;
         _familyCounts = data.family_counts || {};
         _stageCounts = data.stage_counts || {};
+        _badgeCounts = data.badge_counts || {};
+        _lastSetupResults = data.results || [];
         renderSetupFamilyCards();
         renderSetupStagePills();
-        renderSetupScanTable(data.results || []);
+        renderSetupBadgePills();
+        renderSetupScanTable(_lastSetupResults);
         if (meta) {
-            meta.textContent = `${data.count || 0} hits · scanned ${data.scanned || 0}`;
+            const badgeBit = _setupBadge ? ` · ${_setupBadge}` : '';
+            meta.textContent = `${data.count || 0} hits${badgeBit} · scanned ${data.scanned || 0}`;
         }
     } catch (e) {
         toast('Setup scan failed: ' + e.message, 'error');

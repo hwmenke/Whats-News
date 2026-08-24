@@ -37,12 +37,12 @@ const DESK_GUIDE_PAGES = [
         body: `
           <p>Open the <strong>Scanner</strong> tab → <strong>Setups board</strong>.</p>
           <ol>
-            <li>Pick a family: <strong>Qullamaggie</strong> · <strong>Minervini</strong> · <strong>Stockbee</strong> · <strong>Darvas</strong> · <strong>Brandt</strong> · <strong>Stage</strong></li>
+            <li>Pick a family or a <strong>badge</strong>: KQ · MM · SB4/SBW/SB9 · DB · ON · 2A/2B</li>
             <li>Stage pills: S1 basing · S2 advancing · S3 topping · S4 declining</li>
             <li>Click a row → chart opens; weekly <strong>30W</strong> SMA shows for stage</li>
-            <li><strong>+ Desk</strong> promotes a name to your trading list</li>
+            <li><strong>Apply as list</strong> turns the active badge into a smart watchlist</li>
           </ol>
-          <p class="guide-tip">Minervini / Stockbee tags are mechanical book rules — not licensed SEPA or Market Monitor signals.</p>
+          <p class="guide-tip">Badges are mechanical book codes (not licensed SEPA / Market Monitor / IBD).</p>
         `,
         action: { label: 'Open Scanner', run: () => switchTab('scanner') },
     },
