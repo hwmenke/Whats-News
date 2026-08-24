@@ -2151,6 +2151,8 @@ function setupPmKeyboard() {
             closeBookDrawer();
             closeJournal();
             closePmToolsPopover();
+            if (typeof closeDeskGuide === 'function') closeDeskGuide();
+            if (typeof closeSmartListsModal === 'function') closeSmartListsModal();
         }
     });
 }
@@ -2540,6 +2542,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupPmKeyboard();
 
     if (typeof initSmartListsUi === 'function') initSmartListsUi();
+    if (typeof setupViewToggles === 'function') setupViewToggles();
+    if (typeof initDeskGuide === 'function') initDeskGuide();
 
     await loadSymbols();
 

@@ -231,6 +231,15 @@
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">Data</button>
       <div class="tab-spacer"></div>
+      <div class="view-toggles" aria-label="Show or hide desk features">
+        <span class="overlay-section-label">View</span>
+        <button type="button" id="pill-view-tape" class="ind-pill view-pill active" data-view="tape" title="Show / hide portfolio tape">Tape</button>
+        <button type="button" id="pill-view-weekly" class="ind-pill view-pill active" data-view="weekly" title="Show / hide weekly chart panel">Weekly</button>
+        <button type="button" id="pill-view-volume" class="ind-pill view-pill active" data-view="volume" title="Show / hide volume panes">Vol</button>
+        <button type="button" id="pill-view-pm" class="ind-pill view-pill active" data-view="pm" title="Show / hide PM metrics strip">PM</button>
+        <button type="button" id="pill-view-overlays" class="ind-pill view-pill active" data-view="overlays" title="Show / hide overlay pills row">Overlays</button>
+        <button type="button" id="btn-desk-guide" class="btn btn-ghost btn-sm" title="Step-by-step guide (?)">Guide</button>
+      </div>
       <div id="chart-overlays-bar" class="indicator-toggles chart-overlays-bar">
         <span class="overlay-section-label">Panes</span>
         <button id="pill-pane-rsi" class="ind-pill" title="RSI pane — off by default (price-first)">RSI</button>
@@ -258,14 +267,54 @@
 
     <!-- ── Empty State / First-run guide ── -->
     <div id="empty-state" class="empty-state" style="display:flex;">
-      <div class="empty-icon">📰</div>
-      <h2>Welcome to Whats-News</h2>
-      <p>Your local watchlist for charts, analysis, and real Yahoo Finance headlines.</p>
-      <ol class="onboarding-steps">
-        <li>Type a ticker in the sidebar (try <strong>AAPL</strong>) and press <strong>+</strong></li>
-        <li>Click the symbol, then use <strong>Refresh</strong> if the chart is empty</li>
-        <li>Open <a href="/news">News</a> for headlines across your whole watchlist</li>
-      </ol>
+      <div class="guide-hero">
+        <p class="guide-kicker">Whats-News desk</p>
+        <h2>From 2000+ tickers to a clean setup list</h2>
+        <p class="guide-lead">Follow these steps once. After that: refresh → Lists → chart.</p>
+      </div>
+      <div class="guide-steps" id="desk-guide-steps">
+        <button type="button" class="guide-step" data-guide="data">
+          <span class="guide-num">1</span>
+          <span class="guide-step-body">
+            <strong>Data</strong>
+            <span>Archive once, then daily refresh</span>
+          </span>
+        </button>
+        <button type="button" class="guide-step" data-guide="lists">
+          <span class="guide-num">2</span>
+          <span class="guide-step-body">
+            <strong>Lists</strong>
+            <span>Filter EP / near high / Darvas</span>
+          </span>
+        </button>
+        <button type="button" class="guide-step" data-guide="scanner">
+          <span class="guide-num">3</span>
+          <span class="guide-step-body">
+            <strong>Scanner</strong>
+            <span>Scan setups across the universe</span>
+          </span>
+        </button>
+        <button type="button" class="guide-step" data-guide="chart">
+          <span class="guide-num">4</span>
+          <span class="guide-step-body">
+            <strong>Charts</strong>
+            <span>Price + Box + EP — hide noise</span>
+          </span>
+        </button>
+        <button type="button" class="guide-step" data-guide="deep">
+          <span class="guide-num">5</span>
+          <span class="guide-step-body">
+            <strong>Deep dive</strong>
+            <span>Trend · KNN · Statistics</span>
+          </span>
+        </button>
+      </div>
+      <div class="guide-actions">
+        <button type="button" class="btn btn-primary" onclick="switchTab('data-manager')">Open Data tab</button>
+        <button type="button" class="btn btn-ghost" id="btn-open-lists-from-guide">Open Lists</button>
+        <button type="button" class="btn btn-ghost" id="btn-open-full-guide">Full walkthrough</button>
+      </div>
+      <p class="guide-hint">Or type a ticker on the left (e.g. <strong>AAPL</strong>) and press <strong>+</strong>.</p>
     </div>
 
     <!-- ── Chart Area ── -->
@@ -307,10 +356,10 @@
       </div>
 
       <!-- ── Panel Divider ── -->
-      <div class="panel-divider"></div>
+      <div class="panel-divider" id="chart-panel-divider"></div>
 
       <!-- ── Weekly Panel ── -->
-      <div class="chart-panel">
+      <div class="chart-panel chart-panel-weekly" id="chart-panel-weekly">
         <div class="panel-header">Weekly</div>
         <div class="chart-wrapper chart-wrapper-main">
           <div class="chart-label">PRICE</div>
@@ -969,15 +1018,22 @@
   <div class="bulk-modal-card smart-lists-card" role="dialog" aria-modal="true">
     <div class="bulk-modal-header">
       <span>Smart lists</span>
+      <div class="smart-flow-steps" aria-hidden="true">
+        <span class="smart-flow-step">1 Pick</span>
+        <span class="smart-flow-step">2 Preview</span>
+        <span class="smart-flow-step">3 Apply</span>
+      </div>
       <button class="bulk-modal-close" onclick="closeSmartListsModal()" title="Close">×</button>
     </div>
     <div class="smart-lists-body">
       <aside class="smart-lists-sidebar">
-        <div class="smart-lists-sidebar-head">Saved lists</div>
+        <div class="smart-lists-sidebar-head">Saved</div>
         <div id="smart-lists-nav" class="smart-lists-nav"></div>
         <button type="button" id="btn-new-smart-list" class="btn btn-ghost btn-sm">+ New list</button>
       </aside>
       <div class="smart-lists-editor">
+        <p class="smart-lists-blurb">Click a preset card, or build rules. Preview shows matching tickers as chips — then apply to the sidebar.</p>
+        <div id="smart-list-presets" class="smart-list-presets"></div>
         <div class="smart-lists-editor-head">
           <input id="smart-list-name" type="text" class="smart-list-name-input" placeholder="List name" />
           <select id="smart-list-scope" class="dm-select smart-list-scope">
@@ -992,17 +1048,41 @@
             <input type="radio" name="smart-match" value="any" /> Any rule
           </label>
         </div>
-        <div id="smart-list-presets" class="smart-list-presets"></div>
         <div id="smart-list-rules" class="smart-list-rules"></div>
         <button type="button" id="btn-add-rule" class="btn btn-ghost btn-sm">+ Add rule</button>
+        <div class="smart-preview-panel">
+          <div class="smart-preview-head">
+            <strong>Matches</strong>
+            <span id="smart-list-preview" class="smart-list-preview">Preview to see chips</span>
+          </div>
+          <div id="smart-preview-chips" class="smart-preview-chips"></div>
+        </div>
         <div class="smart-lists-actions">
-          <button type="button" id="btn-preview-smart-list" class="btn btn-ghost btn-sm">Preview count</button>
-          <span id="smart-list-preview" class="smart-list-preview"></span>
-          <button type="button" id="btn-save-smart-list" class="btn btn-primary btn-sm">Save list</button>
-          <button type="button" id="btn-apply-smart-list" class="btn btn-primary btn-sm">Apply to watchlist</button>
+          <button type="button" id="btn-preview-smart-list" class="btn btn-ghost btn-sm">Preview</button>
+          <button type="button" id="btn-save-smart-list" class="btn btn-ghost btn-sm">Save</button>
+          <button type="button" id="btn-apply-smart-list" class="btn btn-primary btn-sm">Apply to watchlist →</button>
           <button type="button" id="btn-delete-smart-list" class="btn btn-danger btn-sm">Delete</button>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Desk Guide Walkthrough ══════════════════════════════════ -->
+<div id="desk-guide-modal" class="bulk-modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeDeskGuide()">
+  <div class="bulk-modal-card desk-guide-card" role="dialog" aria-modal="true">
+    <div class="bulk-modal-header">
+      <span>How to use the desk</span>
+      <button class="bulk-modal-close" onclick="closeDeskGuide()" title="Close">×</button>
+    </div>
+    <div class="desk-guide-body" id="desk-guide-body">
+      <!-- filled by JS -->
+    </div>
+    <div class="desk-guide-footer">
+      <button type="button" id="btn-guide-prev" class="btn btn-ghost btn-sm">← Back</button>
+      <span id="desk-guide-progress" class="desk-guide-progress"></span>
+      <button type="button" id="btn-guide-next" class="btn btn-primary btn-sm">Next →</button>
     </div>
   </div>
 </div>
@@ -1051,6 +1131,7 @@
 <script src="scripts/setup_scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/watchlist_filters.js"></script>
+<script src="scripts/desk_ux.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

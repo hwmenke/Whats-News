@@ -70,21 +70,88 @@ function renderSmartListsNav() {
 function renderSmartListPresets() {
     const wrap = document.getElementById('smart-list-presets');
     if (!wrap || !_filterCatalog) return;
-    wrap.innerHTML = '<span class="overlay-section-label">Presets</span>';
+    wrap.innerHTML = '';
+
+    const PRESET_META = {
+        preset_ep: { tone: 'ep', blurb: 'Gap ≥4% on volume' },
+        preset_near_high: { tone: 'near', blurb: 'Within 5% of 20D high' },
+        preset_breakout_queue: { tone: 'bo', blurb: 'Near high or vol surge' },
+        preset_darvas_break: { tone: 'box', blurb: 'Close above box top' },
+        preset_rsi_os: { tone: 'rsi', blurb: 'RSI oversold zone' },
+        preset_uptrend_near_high: { tone: 'trend', blurb: 'KAMA up + near high' },
+        preset_vol_surge: { tone: 'vol', blurb: '≥1.5× avg volume' },
+        preset_strong_rs: { tone: 'rs', blurb: 'Book RS rank ≤20' },
+    };
+
     (_filterCatalog.presets || []).forEach(p => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'ind-pill setup-pill';
-        b.textContent = p.name;
-        b.addEventListener('click', () => {
+        const meta = PRESET_META[p.id] || { tone: 'def', blurb: '' };
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = `smart-preset-card tone-${meta.tone}` + (_editingId === p.id ? ' selected' : '');
+        card.innerHTML = `
+            <strong>${p.name}</strong>
+            <span>${meta.blurb}</span>`;
+        card.addEventListener('click', () => {
             _editingId = p.id;
             document.getElementById('smart-list-name').value = p.name;
             document.querySelector('input[name="smart-match"][value="' + (p.match || 'all') + '"]').checked = true;
             renderSmartListRules(p.rules || []);
             renderSmartListsNav();
+            renderSmartListPresets();
+            previewSmartList();
         });
-        wrap.appendChild(b);
+        wrap.appendChild(card);
     });
+}
+
+async function previewSmartList() {
+    const payload = currentListPayload();
+    const prev = document.getElementById('smart-list-preview');
+    const chips = document.getElementById('smart-preview-chips');
+    if (prev) prev.textContent = 'Scanning…';
+    if (chips) chips.innerHTML = '';
+    try {
+        const res = await apiFetch(`${API}/watchlist/apply-filter`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                rules: payload.rules,
+                match: payload.match,
+                scope: payload.scope,
+                limit: 2000,
+            }),
+        });
+        if (prev) prev.textContent = `${res.count} matches · scanned ${res.scanned}`;
+        if (chips) {
+            const show = (res.results || []).slice(0, 60);
+            show.forEach(row => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'smart-preview-chip';
+                const chg = row.change_pct != null
+                    ? `${row.change_pct >= 0 ? '+' : ''}${row.change_pct.toFixed(1)}%`
+                    : '';
+                chip.innerHTML = `<span class="spc-sym">${row.symbol}</span>`
+                    + (chg ? `<span class="spc-chg ${row.change_pct >= 0 ? 'pos' : 'neg'}">${chg}</span>` : '');
+                chip.title = (row.setups || []).join(', ') || row.symbol;
+                chip.addEventListener('click', () => {
+                    closeSmartListsModal();
+                    switchTab('charts');
+                    selectSymbol(row.symbol);
+                });
+                chips.appendChild(chip);
+            });
+            if ((res.count || 0) > 60) {
+                const more = document.createElement('span');
+                more.className = 'smart-preview-more';
+                more.textContent = `+${res.count - 60} more`;
+                chips.appendChild(more);
+            }
+        }
+    } catch (e) {
+        if (prev) prev.textContent = 'Error';
+        toast(e.message, 'error');
+    }
 }
 
 function newSmartList() {
@@ -213,28 +280,6 @@ function currentListPayload() {
         match,
         rules: collectRulesFromDom(),
     };
-}
-
-async function previewSmartList() {
-    const payload = currentListPayload();
-    const prev = document.getElementById('smart-list-preview');
-    if (prev) prev.textContent = '…';
-    try {
-        const res = await apiFetch(`${API}/watchlist/apply-filter`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                rules: payload.rules,
-                match: payload.match,
-                scope: payload.scope,
-                limit: 2000,
-            }),
-        });
-        if (prev) prev.textContent = `${res.count} matches (scanned ${res.scanned})`;
-    } catch (e) {
-        if (prev) prev.textContent = 'Error';
-        toast(e.message, 'error');
-    }
 }
 
 function saveSmartList() {
