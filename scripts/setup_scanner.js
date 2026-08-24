@@ -1,5 +1,6 @@
 /**
- * setup_scanner.js — Named setups board (Qullamaggie / Darvas / Brandt / Stage)
+ * setup_scanner.js — Named setups board
+ * (Qullamaggie / Minervini / Stockbee / Darvas / Brandt / Stage)
  */
 
 let _setupFilter = null;

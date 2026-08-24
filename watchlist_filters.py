@@ -62,8 +62,13 @@ FILTER_CATALOG: List[dict] = [
      "values": ["EP", "NEAR_HIGH", "VOL_SURGE", "BREAKOUT_QUEUE", "QULLA_BREAKOUT",
                 "DARVAS_BOX", "DARVAS_BREAKOUT", "DARVAS_FAIL",
                 "BRANDT_RISK_BOX", "BRANDT_RANGE",
-                "STAGE_1", "STAGE_2", "STAGE_3", "STAGE_4", "RSI_OB", "RSI_OS"]},
+                "STAGE_1", "STAGE_2", "STAGE_2_EARLY", "STAGE_3", "STAGE_4",
+                "MINERVINI_TT", "MINERVINI_VCP", "MINERVINI_PIVOT",
+                "STOCKBEE_EP", "STOCKBEE_RE", "STOCKBEE_EMA", "STOCKBEE_ANT",
+                "RSI_OB", "RSI_OS"]},
     {"id": "stage", "label": "Weinstein stage (1–4)", "group": "Setups", "type": "number", "ops": ["eq", "in"]},
+    {"id": "minervini_pass", "label": "Minervini Trend Template pass", "group": "Setups", "type": "bool", "ops": ["is_true", "is_false"]},
+    {"id": "minervini_score", "label": "Minervini TT score (0–8)", "group": "Setups", "type": "number", "ops": ["gt", "gte", "lt", "lte", "eq"]},
     # Technical
     {"id": "atr_pct", "label": "ATR %", "group": "Technical", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
     {"id": "d_atr_pct", "label": "ATR % (scanner)", "group": "Technical", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
@@ -141,6 +146,30 @@ PRESET_LISTS: List[dict] = [
         "rules": [{"field": "setup", "op": "has_setup", "value": "STAGE_1"}],
         "match": "all",
     },
+    {
+        "id": "preset_minervini_tt",
+        "name": "Minervini Trend Template",
+        "rules": [{"field": "setup", "op": "has_setup", "value": "MINERVINI_TT"}],
+        "match": "all",
+    },
+    {
+        "id": "preset_minervini_pivot",
+        "name": "Minervini VCP pivot",
+        "rules": [{"field": "setup", "op": "has_setup", "value": "MINERVINI_PIVOT"}],
+        "match": "all",
+    },
+    {
+        "id": "preset_stockbee_ep",
+        "name": "Stockbee EP",
+        "rules": [{"field": "setup", "op": "has_setup", "value": "STOCKBEE_EP"}],
+        "match": "all",
+    },
+    {
+        "id": "preset_stockbee_re",
+        "name": "Stockbee range expansion",
+        "rules": [{"field": "setup", "op": "has_setup", "value": "STOCKBEE_RE"}],
+        "match": "all",
+    },
 ]
 
 
@@ -178,6 +207,12 @@ def _setups_from_row(row: dict) -> List[str]:
         setups.append(f"STAGE_{stage_n}")
     if row.get("early_stage2"):
         setups.append("STAGE_2_EARLY")
+    for t in row.get("minervini_tags") or []:
+        if t not in setups:
+            setups.append(t)
+    for t in row.get("stockbee_tags") or []:
+        if t not in setups:
+            setups.append(t)
     return setups
 
 
@@ -201,6 +236,19 @@ def enrich_row(sym: str, meta: dict) -> dict:
         row["vs_sma30_pct"] = st.get("vs_sma30_pct")
     except Exception:
         row["stage"] = 0
+    try:
+        import ta_templates
+        tt = ta_templates.minervini_trend_template(sym)
+        row["minervini_pass"] = bool(tt.get("pass")) if tt.get("ready") else False
+        row["minervini_score"] = tt.get("score") if tt.get("ready") else None
+        row["minervini_tags"] = tt.get("tags") or []
+        sb = ta_templates.stockbee_momentum(sym)
+        row["stockbee_tags"] = sb.get("tags") or []
+    except Exception:
+        row["minervini_pass"] = False
+        row["minervini_score"] = None
+        row["minervini_tags"] = []
+        row["stockbee_tags"] = []
     row["setups"] = _setups_from_row(row)
     return row
 

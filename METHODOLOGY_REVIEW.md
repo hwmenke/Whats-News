@@ -61,6 +61,13 @@ Whats-News is a strong **local risk + book-scan desk** (tape, D/W regime, RS-in-
 | Boxes (Darvas) | Box breakout / fail | Box overlay |
 | Growth (O’Neil) | Book RS + M clock + vol@high | Bases later; fundamentals only if real |
 
+## TA specialist agents (repo)
+
+Cursor agent prompts live in `.cursor/agents/` (Minervini, Stockbee, Qullamaggie, Darvas,
+Brandt, Stage/Jacobs, O’Neil). Scanner families **Minervini** / **Stockbee** are wired in
+`ta_templates.py` + `setup_scanner.py` as **mechanical book tags only** — never licensed
+SEPA, Stockbee Market Monitor, IBD RS, or Factor signals.
+
 ---
 
 *Synthesized for Caspar’s Whats-News. Full specialist write-ups were produced by the five agents linked above.*

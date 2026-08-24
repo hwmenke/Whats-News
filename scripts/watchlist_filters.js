@@ -84,6 +84,10 @@ function renderSmartListPresets() {
         preset_stage2: { tone: 'rs', blurb: 'Above rising 30W MA' },
         preset_stage2_early: { tone: 'near', blurb: 'Fresh Stage 2 breakout' },
         preset_stage1: { tone: 'def', blurb: 'Basing around 30W MA' },
+        preset_minervini_tt: { tone: 'minervini', blurb: 'Trend Template ≥7/8' },
+        preset_minervini_pivot: { tone: 'minervini', blurb: 'VCP + near 20D high' },
+        preset_stockbee_ep: { tone: 'stockbee', blurb: 'Gap + volume EP' },
+        preset_stockbee_re: { tone: 'stockbee', blurb: 'TR ≫ ATR day' },
     };
 
     (_filterCatalog.presets || []).forEach(p => {

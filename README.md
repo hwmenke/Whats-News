@@ -104,7 +104,9 @@ python3 scripts/bulk_archive.py --refresh --overlap-days 5 --delay 0.8
 | `data_client.py` / `market_data.py` | Embedded or HTTP access to watchlist/OHLCV |
 | `database.py` / `data_fetcher.py` | SQLite + Yahoo downloads |
 | `index_universe.py` / `scripts/bulk_archive.py` | US index lists + bulk archive CLI |
-| `setup_scanner.py` | Setup tags (EP, Darvas, breakout queue) |
+| `setup_scanner.py` | Setup families (Qullamaggie, Minervini, Stockbee, Darvas, Brandt, Stage) |
+| `ta_templates.py` | Mechanical Minervini Trend Template + Stockbee EP/RE/EMA |
+| `.cursor/agents/` | TA specialist agent prompts (Minervini, Stockbee, …) |
 | `index.html` / `news.html` | UI |
 | `scripts/` | Frontend JS |
 | `tests/` | Unit tests (no live network) |

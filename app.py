@@ -673,6 +673,20 @@ def setups_families():
     })
 
 
+@app.route("/api/templates/<string:symbol>", methods=["GET"])
+def templates_symbol(symbol):
+    """Mechanical Minervini Trend Template + Stockbee flags for one symbol."""
+    try:
+        import ta_templates
+        return jsonify({
+            "symbol": symbol.upper(),
+            "minervini": ta_templates.minervini_trend_template(symbol),
+            "stockbee": ta_templates.stockbee_momentum(symbol),
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/watchlist/filter-catalog", methods=["GET"])
 def watchlist_filter_catalog():
     try:

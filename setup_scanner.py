@@ -2,12 +2,11 @@
 setup_scanner.py — Named methodology setups + tags.
 
 Families (honest, mechanical — not licensed signals):
-  - Qullamaggie: EP, near-high, volume surge, breakout queue
-  - Darvas: box / breakout / fail
-  - Brandt: structural risk box available, range vs trend context
-  - Stage: Weinstein-style 1–4 via weekly SMA(30) (Jacobs-adjacent language)
+  - Qullamaggie, Darvas, Brandt, Stage (Weinstein/Jacobs-style)
+  - Minervini: Trend Template / VCP / pivot
+  - Stockbee: EP / range expansion / 9–20 EMA / anticipation
 
-Never claim IBD RS / CAN SLIM / official Factor or Jacobs classifications.
+Never claim IBD RS / CAN SLIM / official Factor, SEPA, or Stockbee MM signals.
 """
 
 from __future__ import annotations
@@ -18,10 +17,11 @@ from typing import Optional
 import market_data as md
 import portfolio
 import stage_analysis
+import ta_templates
 
 
 SETUP_IDS = {
-    "EP": "Gap ≥4% on ≥1.5× volume (Qullamaggie EP path)",
+    "EP": "Gap ≥4% on ≥1.5× volume (EP path)",
     "NEAR_HIGH": "Within 5% of 20-day high",
     "VOL_SURGE": "Volume ≥1.5× 20-bar average",
     "BREAKOUT_QUEUE": "Near high and/or volume surge",
@@ -36,16 +36,32 @@ SETUP_IDS = {
     "STAGE_2_EARLY": "Early Stage 2 · fresh breakout from base",
     "STAGE_3": "Stage 3 · Topping risk",
     "STAGE_4": "Stage 4 · Declining",
+    "MINERVINI_TT": "Minervini Trend Template (≥7/8 book checks)",
+    "MINERVINI_VCP": "Volatility contraction (ATR dry-up)",
+    "MINERVINI_PIVOT": "VCP + near 20D high (pivot pressure)",
+    "STOCKBEE_EP": "Stockbee-style EP (gap + volume)",
+    "STOCKBEE_RE": "Range expansion day (TR ≫ ATR)",
+    "STOCKBEE_EMA": "Close > EMA9 > EMA20",
+    "STOCKBEE_ANT": "Anticipation coil after strength",
     "RSI_OB": "RSI overbought (swing alert)",
     "RSI_OS": "RSI oversold (swing alert)",
 }
 
-# Visual board families
 SETUP_FAMILIES = {
     "qullamaggie": {
         "label": "Qullamaggie",
         "blurb": "EP · near high · volume · breakout queue",
         "tags": ["EP", "NEAR_HIGH", "VOL_SURGE", "BREAKOUT_QUEUE", "QULLA_BREAKOUT"],
+    },
+    "minervini": {
+        "label": "Minervini",
+        "blurb": "Trend Template · VCP · pivot",
+        "tags": ["MINERVINI_TT", "MINERVINI_VCP", "MINERVINI_PIVOT"],
+    },
+    "stockbee": {
+        "label": "Stockbee",
+        "blurb": "EP · range expansion · 9/20 EMA · anticipation",
+        "tags": ["STOCKBEE_EP", "STOCKBEE_RE", "STOCKBEE_EMA", "STOCKBEE_ANT"],
     },
     "darvas": {
         "label": "Darvas",
@@ -125,6 +141,20 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             if "stage" not in families:
                 families.append("stage")
 
+        # ── Minervini (Trend Template / VCP) ──────────────────────────
+        tt = ta_templates.minervini_trend_template(symbol)
+        for tag in tt.get("tags") or []:
+            setups.append(tag)
+        if tt.get("tags"):
+            families.append("minervini")
+
+        # ── Stockbee (EP / RE / EMA / anticipation) ───────────────────
+        sb = ta_templates.stockbee_momentum(symbol)
+        for tag in sb.get("tags") or []:
+            setups.append(tag)
+        if sb.get("tags"):
+            families.append("stockbee")
+
         zone = snap.get("rsi_zone")
         if zone == "overbought":
             setups.append("RSI_OB")
@@ -136,6 +166,12 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             score += 2
         if "QULLA_BREAKOUT" in setups:
             score += 2
+        if "MINERVINI_TT" in setups:
+            score += 2
+        if "MINERVINI_PIVOT" in setups:
+            score += 1
+        if "STOCKBEE_EP" in setups or "STOCKBEE_RE" in setups:
+            score += 1
         if stage_n == 2:
             score += 1
         if state == "in_box" and snap.get("dist_20d_high_pct") is not None:
@@ -166,6 +202,9 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             "stage_label": st.get("stage_label"),
             "vs_sma30_pct": st.get("vs_sma30_pct"),
             "sma30_slope_pct": st.get("sma30_slope_pct"),
+            "minervini_score": tt.get("score") if tt.get("ready") else None,
+            "minervini_pass": tt.get("pass") if tt.get("ready") else None,
+            "stockbee_tags": sb.get("tags") if sb.get("ready") else [],
         }
     except Exception as exc:
         return {

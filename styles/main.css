@@ -2782,6 +2782,8 @@ html, body {
   color: var(--accent-bright);
 }
 .setup-family-card.tone-qullamaggie { border-left: 3px solid #f59e0b; }
+.setup-family-card.tone-minervini { border-left: 3px solid #10b981; }
+.setup-family-card.tone-stockbee { border-left: 3px solid #ef4444; }
 .setup-family-card.tone-darvas { border-left: 3px solid #a855f7; }
 .setup-family-card.tone-brandt { border-left: 3px solid #3b82f6; }
 .setup-family-card.tone-stage { border-left: 3px solid #14b8a6; }
@@ -2804,6 +2806,8 @@ html, body {
   border: 1px solid var(--border);
 }
 .setup-fam.tone-qullamaggie { color: #f59e0b; border-color: #f59e0b55; }
+.setup-fam.tone-minervini { color: #34d399; border-color: #10b98155; }
+.setup-fam.tone-stockbee { color: #f87171; border-color: #ef444455; }
 .setup-fam.tone-darvas { color: #c084fc; border-color: #a855f755; }
 .setup-fam.tone-brandt { color: #60a5fa; border-color: #3b82f655; }
 .setup-fam.tone-stage { color: #2dd4bf; border-color: #14b8a655; }
@@ -3059,6 +3063,8 @@ html, body {
 .smart-preset-card.tone-trend { border-left: 3px solid #3b82f6; }
 .smart-preset-card.tone-vol { border-left: 3px solid #eab308; }
 .smart-preset-card.tone-rs { border-left: 3px solid #14b8a6; }
+.smart-preset-card.tone-minervini { border-left: 3px solid #10b981; }
+.smart-preset-card.tone-stockbee { border-left: 3px solid #ef4444; }
 .smart-flow-steps {
   display: flex;
   gap: 8px;
