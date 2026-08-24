@@ -42,7 +42,7 @@ const DESK_GUIDE_PAGES = [
             <li>Click a row → chart opens; weekly <strong>30W</strong> SMA shows for stage</li>
             <li><strong>Apply as list</strong> turns the active badge into a smart watchlist</li>
           </ol>
-          <p class="guide-tip">Badges are mechanical book codes (not licensed SEPA / Market Monitor / IBD).</p>
+          <p class="guide-tip">After archiving prices, click <strong>Precompute</strong> once — Setups / Lists / desk tape then read the cache (fast).</p>
         `,
         action: { label: 'Open Scanner', run: () => switchTab('scanner') },
     },
