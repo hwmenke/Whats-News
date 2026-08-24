@@ -33,14 +33,16 @@ const DESK_GUIDE_PAGES = [
         action: { label: 'Open Lists', run: () => typeof openSmartListsModal === 'function' && openSmartListsModal() },
     },
     {
-        title: '3 · Scan setups',
+        title: '3 · Scan named setups',
         body: `
-          <p>Open the <strong>Scanner</strong> tab.</p>
+          <p>Open the <strong>Scanner</strong> tab → <strong>Setups board</strong>.</p>
           <ol>
-            <li>Top: <strong>Setup scanner</strong> — filter EP / Darvas / Breakout</li>
-            <li>Click a row → chart opens</li>
+            <li>Pick a family: <strong>Qullamaggie</strong> · <strong>Darvas</strong> · <strong>Brandt</strong> · <strong>Stage</strong></li>
+            <li>Stage pills: S1 basing · S2 advancing · S3 topping · S4 declining</li>
+            <li>Click a row → chart opens; weekly <strong>30W</strong> SMA shows for stage</li>
             <li><strong>+ Desk</strong> promotes a name to your trading list</li>
           </ol>
+          <p class="guide-tip">Stage labels use weekly SMA(30) — Weinstein / Jacobs-style book rules, not discretionary calls.</p>
         `,
         action: { label: 'Open Scanner', run: () => switchTab('scanner') },
     },
