@@ -4,6 +4,8 @@ portfolio.py — Fast watchlist / PM-desk snapshots for technical analysis.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import numpy as np
 import pandas as pd
 
@@ -204,7 +206,11 @@ def _rsi_zone(rsi: float | None) -> str:
     return "neutral"
 
 
-def snapshot_symbol(symbol: str) -> dict:
+def snapshot_symbol(
+    symbol: str,
+    light: bool = False,
+    include_scanner: bool = False,
+) -> dict:
     sym = symbol.upper()
     df = md.get_ohlcv_df(sym, "daily", limit=260)
     if df.empty or len(df) < 25:
@@ -281,24 +287,26 @@ def snapshot_symbol(symbol: str) -> dict:
     ret_5d = (last / float(week_ago) - 1) * 100 if week_ago else None
     ret_21d = (last / float(month_ago) - 1) * 100 if month_ago else None
 
-    # Weekly regime (same KAMA20 logic on weekly bars)
-    w_df = md.get_ohlcv_df(sym, "weekly", limit=80)
     regime_w = "n/a"
     vs_kama_w = None
-    if not w_df.empty and len(w_df) >= 25:
-        w_close = w_df["close"].astype(float)
-        w_last = float(w_close.iloc[-1])
-        w_kama = _last_valid(_kama(w_close, 20))
-        if w_kama and w_kama > 0:
-            vs_kama_w = (w_last / w_kama - 1.0) * 100
-            if vs_kama_w >= 1.0:
-                regime_w = "uptrend"
-            elif vs_kama_w <= -1.0:
-                regime_w = "downtrend"
-            else:
-                regime_w = "range"
+    if not light:
+        w_df = md.get_ohlcv_df(sym, "weekly", limit=80)
+        if not w_df.empty and len(w_df) >= 25:
+            w_close = w_df["close"].astype(float)
+            w_last = float(w_close.iloc[-1])
+            w_kama = _last_valid(_kama(w_close, 20))
+            if w_kama and w_kama > 0:
+                vs_kama_w = (w_last / w_kama - 1.0) * 100
+                if vs_kama_w >= 1.0:
+                    regime_w = "uptrend"
+                elif vs_kama_w <= -1.0:
+                    regime_w = "downtrend"
+                else:
+                    regime_w = "range"
 
-    return {
+    darvas = darvas_box(df) if not light else None
+
+    row = {
         "symbol": sym,
         "ready": True,
         "price": round(last, 2),
@@ -317,7 +325,6 @@ def snapshot_symbol(symbol: str) -> dict:
         "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
         "stop_long_1_5atr": stop_long,
         "stop_short_1_5atr": stop_short,
-        # Momentum / breakout (Qullamaggie loop) — near-high, volume surge, EP/gap
         "dist_20d_high_pct": dist_20d_high,
         "dist_63d_high_pct": dist_63d_high,
         "vol_ratio_5_20": vol_ratio,
@@ -326,10 +333,23 @@ def snapshot_symbol(symbol: str) -> dict:
         "is_vol_surge": is_vol_surge,
         "is_ep": is_ep,
         "breakout_score": breakout_score,
-        "darvas": darvas_box(df),
-        # last ~30 daily closes for correlation (compact)
-        "closes_30": [round(float(x), 4) for x in close.tail(30).tolist()],
+        "darvas": darvas,
     }
+
+    if not light:
+        row["closes_30"] = [round(float(x), 4) for x in close.tail(30).tolist()]
+
+    if include_scanner and len(df) >= 22:
+        try:
+            import scanner as scan_mod
+            tf = scan_mod._compute_tf(df, 252)
+            if tf:
+                for key, val in tf.items():
+                    row[f"d_{key}"] = val
+        except Exception:
+            pass
+
+    return row
 
 
 def _corr_hint(ready: list) -> dict | None:
@@ -353,10 +373,39 @@ def _corr_hint(ready: list) -> dict | None:
     }
 
 
-def portfolio_snapshot() -> dict:
+def portfolio_snapshot(
+    scope: str = "all",
+    light: bool = False,
+    symbols: list[str] | None = None,
+    max_workers: int = 8,
+) -> dict:
     symbols_meta = {s["symbol"]: s for s in md.list_symbols()}
-    symbols = list(symbols_meta.keys())
-    rows = [snapshot_symbol(sym) for sym in symbols]
+
+    if symbols:
+        sym_list = [s.upper() for s in symbols]
+    elif scope == "desk":
+        sym_list = [s["symbol"] for s in md.list_desk_symbols()]
+    elif scope == "with_data":
+        sym_list = md.list_symbols_with_ohlcv("daily", min_bars=30)
+    else:
+        sym_list = list(symbols_meta.keys())
+
+    include_scanner = not light
+
+    def _snap(sym: str) -> dict:
+        return snapshot_symbol(sym, light=light, include_scanner=include_scanner)
+
+    workers = min(max_workers, max(1, len(sym_list)))
+    if workers <= 1 or len(sym_list) <= 3:
+        rows = [_snap(sym) for sym in sym_list]
+    else:
+        rows = []
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_snap, sym): sym for sym in sym_list}
+            for fut in as_completed(futures):
+                rows.append(fut.result())
+        rows.sort(key=lambda r: r.get("symbol") or "")
+
     ready = [r for r in rows if r.get("ready")]
 
     # Attach group tags for rollups
@@ -440,8 +489,10 @@ def portfolio_snapshot() -> dict:
     ]
 
     return {
-        "count": len(symbols),
+        "count": len(sym_list),
         "ready_count": len(ready),
+        "scope": scope,
+        "light": light,
         "symbols": rows,
         "tape": by_day,
         "alerts": alerts,

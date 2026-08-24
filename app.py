@@ -31,6 +31,7 @@ import adaptive_trend as adaptive
 import yfinance as yf
 import portfolio
 import setup_scanner
+import watchlist_filters
 import index_universe
 
 app = Flask(__name__, static_folder=".", static_url_path="")
@@ -84,7 +85,24 @@ def health():
 def portfolio_snapshot():
     """Watchlist tape: day change, RSI, regime vs KAMA — for PM desk."""
     try:
-        return jsonify(portfolio.portfolio_snapshot())
+        full = request.args.get("full", "").lower() in ("1", "true", "yes")
+        desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+        light = request.args.get("light", "1").lower() in ("1", "true", "yes")
+        scope = request.args.get("scope", "desk" if desk and not full else "all")
+        if full:
+            scope = request.args.get("scope", "all")
+            light = False
+        try:
+            max_workers = int(request.args.get("workers", 8))
+        except (TypeError, ValueError):
+            max_workers = 8
+        return jsonify(
+            portfolio.portfolio_snapshot(
+                scope=scope,
+                light=light and not full,
+                max_workers=max(1, min(max_workers, 16)),
+            )
+        )
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -605,6 +623,38 @@ def setups_scan():
                 setup_filter=setup_filter,
                 limit=limit,
                 min_score=min_score,
+            )
+        )
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/watchlist/filter-catalog", methods=["GET"])
+def watchlist_filter_catalog():
+    try:
+        return jsonify(watchlist_filters.catalog_for_api())
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/watchlist/apply-filter", methods=["POST"])
+def watchlist_apply_filter():
+    """Run smart-list rules against stored universe."""
+    try:
+        body = request.get_json(force=True) or {}
+        rules = body.get("rules") or []
+        match = body.get("match") or "all"
+        scope = body.get("scope") or "with_data"
+        try:
+            limit = int(body.get("limit", 500))
+        except (TypeError, ValueError):
+            limit = 500
+        return jsonify(
+            watchlist_filters.apply_filter(
+                rules=rules,
+                match=match,
+                scope=scope,
+                limit=limit,
             )
         )
     except Exception as exc:

@@ -47,6 +47,10 @@
         <input type="checkbox" id="chk-desk-only" checked />
         Desk only
       </label>
+      <div class="sidebar-list-bar">
+        <button type="button" id="btn-smart-lists" class="btn btn-ghost btn-sm" title="Smart lists &amp; filters">Lists ▾</button>
+        <div id="smart-list-pills" class="smart-list-pills"></div>
+      </div>
       <div class="add-symbol-form">
         <input
           id="new-symbol-input"
@@ -64,6 +68,7 @@
     <div id="symbol-list" class="symbol-list">
       <!-- Rendered by app.js -->
     </div>
+    <div id="symbol-list-hint" class="symbol-list-hint" style="display:none;"></div>
 
     <div class="sidebar-actions">
       <div class="preset-row">
@@ -958,6 +963,50 @@
 <!-- Toast container -->
 <div id="toast-container" class="toast-container"></div>
 
+<!-- ══ Smart Lists Modal ═══════════════════════════════════════ -->
+<div id="smart-lists-modal" class="bulk-modal-overlay smart-lists-modal" style="display:none;"
+     onclick="if(event.target===this)closeSmartListsModal()">
+  <div class="bulk-modal-card smart-lists-card" role="dialog" aria-modal="true">
+    <div class="bulk-modal-header">
+      <span>Smart lists</span>
+      <button class="bulk-modal-close" onclick="closeSmartListsModal()" title="Close">×</button>
+    </div>
+    <div class="smart-lists-body">
+      <aside class="smart-lists-sidebar">
+        <div class="smart-lists-sidebar-head">Saved lists</div>
+        <div id="smart-lists-nav" class="smart-lists-nav"></div>
+        <button type="button" id="btn-new-smart-list" class="btn btn-ghost btn-sm">+ New list</button>
+      </aside>
+      <div class="smart-lists-editor">
+        <div class="smart-lists-editor-head">
+          <input id="smart-list-name" type="text" class="smart-list-name-input" placeholder="List name" />
+          <select id="smart-list-scope" class="dm-select smart-list-scope">
+            <option value="with_data" selected>Universe (with data)</option>
+            <option value="desk">Desk only</option>
+            <option value="all">All registered</option>
+          </select>
+          <label class="smart-match-label">
+            <input type="radio" name="smart-match" value="all" checked /> All rules
+          </label>
+          <label class="smart-match-label">
+            <input type="radio" name="smart-match" value="any" /> Any rule
+          </label>
+        </div>
+        <div id="smart-list-presets" class="smart-list-presets"></div>
+        <div id="smart-list-rules" class="smart-list-rules"></div>
+        <button type="button" id="btn-add-rule" class="btn btn-ghost btn-sm">+ Add rule</button>
+        <div class="smart-lists-actions">
+          <button type="button" id="btn-preview-smart-list" class="btn btn-ghost btn-sm">Preview count</button>
+          <span id="smart-list-preview" class="smart-list-preview"></span>
+          <button type="button" id="btn-save-smart-list" class="btn btn-primary btn-sm">Save list</button>
+          <button type="button" id="btn-apply-smart-list" class="btn btn-primary btn-sm">Apply to watchlist</button>
+          <button type="button" id="btn-delete-smart-list" class="btn btn-danger btn-sm">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ══ Bulk Add Modal ══════════════════════════════════════════ -->
 <div id="bulk-modal" class="bulk-modal-overlay" style="display:none;"
      onclick="if(event.target===this)closeBulkModal()">
@@ -1001,6 +1050,7 @@
 <script src="scripts/scanner.js"></script>
 <script src="scripts/setup_scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
+<script src="scripts/watchlist_filters.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

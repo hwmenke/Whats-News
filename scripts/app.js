@@ -20,6 +20,8 @@ let state = {
     tapeMode: 'all',   // 'all' | 'breakout' | 'alerts'
     seenAlerts: new Set(),
     deskOnly: true,    // sidebar: hide univ:* archive tickers
+    smartListSymbols: null, // Set of symbols when smart list active
+    activeSmartList: null,
     checklist: { regime: false, stop: false, size: false, plan: false },
     stopMode: 'atr',   // 'atr' | 'box' | 'user'
     riskBox: null,     // last-applied { entry, stop, target } for the active symbol
@@ -47,9 +49,7 @@ function toast(message, type = 'info', duration = 3500) {
 
 // ── API helpers ──────────────────────────────────────────────
 async function apiFetch(url, opts = {}) {
-    console.log(`>> API Fetch: ${url}`, opts.method || 'GET');
     const res  = await fetch(url, opts);
-    console.log(`<< API Response: ${res.status} ${res.statusText}`);
     const data = await res.json();
     if (!res.ok) {
         console.error('!! API Error:', data.error || `HTTP ${res.status}`);
@@ -189,9 +189,21 @@ async function toggleDeskOnly(checked) {
     await loadSymbols();
 }
 
-async function refreshPortfolioTape() {
+async function refreshPortfolioTape(opts = {}) {
     try {
-        const data = await apiFetch(`${API}/portfolio/snapshot`);
+        const full = opts.full === true;
+        const n = state.symbols.length;
+        const params = new URLSearchParams();
+        if (full) {
+            params.set('full', '1');
+            params.set('scope', state.deskOnly ? 'desk' : 'all');
+        } else if (state.deskOnly || n > 80) {
+            params.set('desk', '1');
+            params.set('light', '1');
+        }
+        const q = params.toString();
+        const url = `${API}/portfolio/snapshot` + (q ? `?${q}` : '');
+        const data = await apiFetch(url);
         const map = {};
         (data.symbols || []).forEach(row => { map[row.symbol] = row; });
         state.portfolio = map;
@@ -446,6 +458,7 @@ function openBookDrawer() {
     drawer.classList.add('open');
     drawer.setAttribute('aria-hidden', 'false');
     if (backdrop) backdrop.hidden = false;
+    refreshPortfolioTape({ full: true });
 }
 
 function closeBookDrawer() {
@@ -711,16 +724,47 @@ async function openBookNews() {
 
 function renderSymbolList() {
     const list = document.getElementById('symbol-list');
+    const hint = document.getElementById('symbol-list-hint');
     list.innerHTML = '';
 
-    if (!state.symbols.length) {
-        list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No symbols yet.</div>';
+    let items = state.symbols;
+    if (state.smartListSymbols) {
+        const allowed = state.smartListSymbols instanceof Set
+            ? state.smartListSymbols
+            : new Set(state.smartListSymbols);
+        items = items.filter(sym => allowed.has(sym.symbol));
+    }
+
+    const RENDER_CAP = 400;
+    let capped = false;
+    if (!state.smartListSymbols && items.length > RENDER_CAP) {
+        capped = true;
+        items = items.slice(0, RENDER_CAP);
+    }
+
+    if (hint) {
+        if (capped) {
+            hint.style.display = 'block';
+            hint.textContent = `Showing ${RENDER_CAP} of ${state.symbols.length} — use Lists to narrow`;
+        } else if (state.smartListSymbols && state.activeSmartList) {
+            hint.style.display = 'block';
+            hint.textContent = `Smart list: ${state.activeSmartList.name} (${items.length})`;
+        } else {
+            hint.style.display = 'none';
+        }
+    }
+
+    if (!items.length) {
+        const msg = state.symbols.length
+            ? 'No symbols match this filter.'
+            : 'No symbols yet.';
+        list.innerHTML = `<div style="padding:14px;color:var(--text-dim);font-size:12px;">${msg}</div>`;
         return;
     }
 
     // Group symbols by group_tag
     let lastGroup = undefined;
-    state.symbols.forEach(sym => {
+    items.forEach(sym => {
         const tag = sym.group_tag || '';
 
         // Render group header when group changes
@@ -1046,6 +1090,41 @@ async function refreshAll() {
         btn.disabled = false;
         btn.innerHTML = '⟳ Refresh All';
     }
+}
+
+async function applySmartListToSidebar(list) {
+    try {
+        const res = await apiFetch(`${API}/watchlist/apply-filter`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                rules: list.rules || [],
+                match: list.match || 'all',
+                scope: list.scope || 'with_data',
+                limit: 2000,
+            }),
+        });
+        state.smartListSymbols = new Set(res.symbols || []);
+        state.activeSmartList = list;
+        if (state.deskOnly) {
+            state.deskOnly = false;
+            const chk = document.getElementById('chk-desk-only');
+            if (chk) chk.checked = false;
+            await loadSymbols();
+        } else {
+            renderSymbolList();
+        }
+        if (typeof renderSmartListPills === 'function') renderSmartListPills();
+        toast(`List applied: ${res.count} symbols`, 'success');
+    } catch (e) {
+        toast('Apply list failed: ' + e.message, 'error');
+    }
+}
+
+function clearSmartListSidebar() {
+    state.smartListSymbols = null;
+    state.activeSmartList = null;
+    renderSymbolList();
 }
 
 // ── Symbol selection & chart loading ─────────────────────────
@@ -2459,6 +2538,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (state.activeSymbol) loadPmDesk(state.activeSymbol);
     });
     setupPmKeyboard();
+
+    if (typeof initSmartListsUi === 'function') initSmartListsUi();
 
     await loadSymbols();
 
