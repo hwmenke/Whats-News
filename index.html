@@ -818,10 +818,12 @@
         <div class="setup-scanner-header">
           <strong>Setups board</strong>
           <button id="btn-setup-scan" type="button" class="btn btn-primary btn-sm" onclick="loadSetupScan()">Scan setups</button>
+          <button id="btn-metrics-refresh" type="button" class="btn btn-ghost btn-sm" title="Precompute setups/badges into cache for a fast dashboard">Precompute</button>
           <label class="setup-universe-toggle" title="Scan full archive vs desk only">
             <input type="checkbox" id="chk-setup-universe" checked />
             Full universe
           </label>
+          <span id="setup-metrics-status" class="scanner-ts" title="Metrics cache coverage"></span>
           <span id="setup-scan-meta" class="scanner-ts"></span>
         </div>
         <p class="setup-board-blurb">Badges: <strong>KQ</strong> Qulla · <strong>MM</strong> Minervini · <strong>SB4/SBW/SB9</strong> Stockbee · <strong>DB</strong> Darvas · <strong>ON</strong> O’Neil · <strong>2A/2B</strong> Stage. Click a badge to filter — <em>Apply as list</em> builds a smart watchlist.</p>

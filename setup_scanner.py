@@ -233,41 +233,33 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
         }
 
 
-def scan_setups(
-    symbols: Optional[list[str]] = None,
+def _filter_and_rollup(
+    results: list[dict],
+    *,
+    symbols_scanned: int,
     setup_filter: Optional[str] = None,
     family: Optional[str] = None,
     stage: Optional[int] = None,
     badge: Optional[str] = None,
     limit: int = 500,
     min_score: int = 0,
+    from_cache: bool = False,
 ) -> dict:
-    """
-    Scan symbols with stored OHLCV for setup tags / families / stage / badges.
-    """
-    if symbols is None:
-        symbols = md.list_symbols_with_ohlcv("daily", min_bars=30)
-    else:
-        symbols = [s.upper() for s in symbols]
+    filtered = []
+    for row in results:
+        if not row:
+            continue
+        if setup_filter and setup_filter not in row.get("setups", []):
+            continue
+        if family and family not in row.get("families", []):
+            continue
+        if stage is not None and row.get("stage") != stage:
+            continue
+        if row.get("setup_score", 0) < min_score:
+            continue
+        filtered.append(row)
 
-    results: list[dict] = []
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        futures = {pool.submit(_scan_one_setup, sym): sym for sym in symbols}
-        for fut in as_completed(futures):
-            row = fut.result()
-            if not row:
-                continue
-            if setup_filter and setup_filter not in row.get("setups", []):
-                continue
-            if family and family not in row.get("families", []):
-                continue
-            if stage is not None and row.get("stage") != stage:
-                continue
-            if row.get("setup_score", 0) < min_score:
-                continue
-            results.append(row)
-
-    results.sort(
+    filtered.sort(
         key=lambda r: (
             -(r.get("setup_score") or 0),
             -(r.get("change_pct") or 0),
@@ -275,35 +267,38 @@ def scan_setups(
         )
     )
 
-    ready = [r for r in results if r.get("ready")]
-    ranked = sorted(
-        ready,
-        key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
-        reverse=True,
-    )
-    for i, row in enumerate(ranked, start=1):
-        row["rs_rank_21d"] = i
-        row["rs_n"] = len(ranked)
+    ready = [r for r in filtered if r.get("ready")]
+    # Re-rank RS within the filtered set only when live-computed;
+    # cache rows already have book-wide RS from precompute.
+    if not from_cache:
+        ranked = sorted(
+            ready,
+            key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
+            reverse=True,
+        )
+        for i, row in enumerate(ranked, start=1):
+            row["rs_rank_21d"] = i
+            row["rs_n"] = len(ranked)
 
-    # Badge pass (needs Book RS ranks for ON / 97C / RTS)
     badge_counts = {k: 0 for k in methodology_badges.BADGE_CATALOG}
     for r in ready:
-        bd = methodology_badges.badges_for_row(r, fetch_extras=False)
-        r["badges"] = bd["badges"]
-        r["badge_codes"] = bd["codes"]
-        r["rts"] = bd["rts"]
-        r["strike_zone"] = bd["strike_zone"]
-        for c in bd["codes"]:
+        if not r.get("badge_codes"):
+            bd = methodology_badges.badges_for_row(r, fetch_extras=False)
+            r["badges"] = bd["badges"]
+            r["badge_codes"] = bd["codes"]
+            r["rts"] = bd["rts"]
+            r["strike_zone"] = bd["strike_zone"]
+        for c in r.get("badge_codes") or []:
             if c in badge_counts:
                 badge_counts[c] += 1
 
     if badge:
         badge_u = badge.upper()
-        results = [r for r in results if badge_u in (r.get("badge_codes") or [])]
-        ready = [r for r in results if r.get("ready")]
+        filtered = [r for r in filtered if badge_u in (r.get("badge_codes") or [])]
+        ready = [r for r in filtered if r.get("ready")]
 
-    if limit and len(results) > limit:
-        results = results[:limit]
+    if limit and len(filtered) > limit:
+        filtered = filtered[:limit]
 
     family_counts = {k: 0 for k in SETUP_FAMILIES}
     stage_counts = {1: 0, 2: 0, 3: 0, 4: 0}
@@ -316,13 +311,13 @@ def scan_setups(
             stage_counts[st] += 1
 
     return {
-        "count": len(results),
-        "scanned": len(symbols),
+        "count": len(filtered),
+        "scanned": symbols_scanned,
         "setup_filter": setup_filter,
         "family": family,
         "stage": stage,
         "badge": badge,
-        "results": results,
+        "results": filtered,
         "setup_catalog": SETUP_IDS,
         "families": SETUP_FAMILIES,
         "family_counts": family_counts,
@@ -330,4 +325,70 @@ def scan_setups(
         "stage_labels": stage_analysis.STAGE_LABELS,
         "badge_catalog": methodology_badges.BADGE_CATALOG,
         "badge_counts": badge_counts,
+        "from_cache": from_cache,
     }
+
+
+def scan_setups(
+    symbols: Optional[list[str]] = None,
+    setup_filter: Optional[str] = None,
+    family: Optional[str] = None,
+    stage: Optional[int] = None,
+    badge: Optional[str] = None,
+    limit: int = 500,
+    min_score: int = 0,
+    use_cache: bool = True,
+    live: bool = False,
+) -> dict:
+    """
+    Scan symbols for setup tags / families / stage / badges.
+
+    Default: serve precomputed `symbol_metrics` (fast dashboard).
+    Pass live=True or use_cache=False to recompute on the fly.
+    """
+    if symbols is None:
+        symbols = md.list_symbols_with_ohlcv("daily", min_bars=30)
+    else:
+        symbols = [s.upper() for s in symbols]
+
+    if use_cache and not live:
+        try:
+            import desk_metrics
+            cached = desk_metrics.load_cached_rows(symbols, ready_only=False)
+            # If we have decent coverage, serve cache (even partial)
+            if cached and len(cached) >= max(1, int(0.5 * len(symbols))):
+                by_sym = {r["symbol"]: r for r in cached if r.get("symbol")}
+                results = [by_sym[s] for s in symbols if s in by_sym]
+                return _filter_and_rollup(
+                    results,
+                    symbols_scanned=len(symbols),
+                    setup_filter=setup_filter,
+                    family=family,
+                    stage=stage,
+                    badge=badge,
+                    limit=limit,
+                    min_score=min_score,
+                    from_cache=True,
+                )
+        except Exception:
+            pass
+
+    results: list[dict] = []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(_scan_one_setup, sym): sym for sym in symbols}
+        for fut in as_completed(futures):
+            row = fut.result()
+            if row:
+                results.append(row)
+
+    return _filter_and_rollup(
+        results,
+        symbols_scanned=len(symbols),
+        setup_filter=setup_filter,
+        family=family,
+        stage=stage,
+        badge=badge,
+        limit=limit,
+        min_score=min_score,
+        from_cache=False,
+    )

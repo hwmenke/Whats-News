@@ -116,6 +116,36 @@ def init_db():
             ON symbols(last_fetch)
         """)
 
+        # Precomputed desk / scanner metrics (dashboard cache)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS symbol_metrics (
+                symbol       TEXT PRIMARY KEY,
+                ready        INTEGER NOT NULL DEFAULT 0,
+                as_of        TEXT,
+                updated_at   TEXT    NOT NULL,
+                price        REAL,
+                change_pct   REAL,
+                ret_5d_pct   REAL,
+                ret_21d_pct  REAL,
+                ret_9m_pct   REAL,
+                stage        INTEGER,
+                setup_score  INTEGER,
+                payload      TEXT    NOT NULL
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_metrics_score
+            ON symbol_metrics(setup_score DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_metrics_ret21
+            ON symbol_metrics(ret_21d_pct DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_metrics_updated
+            ON symbol_metrics(updated_at)
+        """)
+
 
 # ── Symbol CRUD ────────────────────────────────────────────────────────────────
 
@@ -423,6 +453,22 @@ def get_db_stats() -> dict:
         weekly_count = conn.execute(
             "SELECT COUNT(*) AS n FROM ohlcv WHERE freq = 'weekly'"
         ).fetchone()["n"]
+        metrics_count = 0
+        metrics_ready = 0
+        metrics_updated = None
+        try:
+            metrics_count = conn.execute(
+                "SELECT COUNT(*) AS n FROM symbol_metrics"
+            ).fetchone()["n"]
+            metrics_ready = conn.execute(
+                "SELECT COUNT(*) AS n FROM symbol_metrics WHERE ready = 1"
+            ).fetchone()["n"]
+            row = conn.execute(
+                "SELECT MAX(updated_at) AS d FROM symbol_metrics"
+            ).fetchone()
+            metrics_updated = row["d"] if row else None
+        except sqlite3.OperationalError:
+            pass
         journal = conn.execute("PRAGMA journal_mode").fetchone()[0]
         page_count = conn.execute("PRAGMA page_count").fetchone()[0]
         page_size = conn.execute("PRAGMA page_size").fetchone()[0]
@@ -442,11 +488,149 @@ def get_db_stats() -> dict:
         "ohlcv_rows": ohlcv_count,
         "daily_rows": daily_count,
         "weekly_rows": weekly_count,
+        "metrics_count": metrics_count,
+        "metrics_ready": metrics_ready,
+        "metrics_updated_at": metrics_updated,
         "size_bytes": size_bytes,
         "size_mb": round(size_bytes / (1024 * 1024), 2),
         "page_count": page_count,
         "page_size": page_size,
     }
+
+
+def upsert_symbol_metrics(rows: list) -> int:
+    """
+    Bulk upsert precomputed metrics.
+    Each row: {symbol, ready, as_of, price, change_pct, ret_5d_pct, ret_21d_pct,
+               ret_9m_pct, stage, setup_score, payload(dict|str)}
+    """
+    import json
+
+    if not rows:
+        return 0
+    now = datetime.now(timezone.utc).isoformat()
+    n = 0
+    with connection() as conn:
+        for r in rows:
+            sym = str(r.get("symbol") or "").upper()
+            if not sym:
+                continue
+            payload = r.get("payload")
+            if isinstance(payload, dict):
+                payload = json.dumps(payload, default=str)
+            elif payload is None:
+                payload = "{}"
+            conn.execute(
+                """
+                INSERT INTO symbol_metrics (
+                    symbol, ready, as_of, updated_at, price, change_pct,
+                    ret_5d_pct, ret_21d_pct, ret_9m_pct, stage, setup_score, payload
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(symbol) DO UPDATE SET
+                    ready=excluded.ready,
+                    as_of=excluded.as_of,
+                    updated_at=excluded.updated_at,
+                    price=excluded.price,
+                    change_pct=excluded.change_pct,
+                    ret_5d_pct=excluded.ret_5d_pct,
+                    ret_21d_pct=excluded.ret_21d_pct,
+                    ret_9m_pct=excluded.ret_9m_pct,
+                    stage=excluded.stage,
+                    setup_score=excluded.setup_score,
+                    payload=excluded.payload
+                """,
+                (
+                    sym,
+                    1 if r.get("ready") else 0,
+                    r.get("as_of"),
+                    r.get("updated_at") or now,
+                    r.get("price"),
+                    r.get("change_pct"),
+                    r.get("ret_5d_pct"),
+                    r.get("ret_21d_pct"),
+                    r.get("ret_9m_pct"),
+                    r.get("stage"),
+                    r.get("setup_score"),
+                    payload,
+                ),
+            )
+            n += 1
+    return n
+
+
+def get_symbol_metrics(symbol: str) -> dict | None:
+    import json
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM symbol_metrics WHERE symbol = ?",
+            (symbol.upper(),),
+        ).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    try:
+        d["payload"] = json.loads(d.get("payload") or "{}")
+    except Exception:
+        d["payload"] = {}
+    return d
+
+
+def get_symbol_metrics_many(symbols: list[str] | None = None, ready_only: bool = True) -> list[dict]:
+    """Return metrics rows (payload already decoded)."""
+    import json
+    with connection() as conn:
+        if symbols:
+            out = []
+            chunk = 400
+            syms = [s.upper() for s in symbols]
+            for i in range(0, len(syms), chunk):
+                part = syms[i:i + chunk]
+                placeholders = ",".join("?" * len(part))
+                sql = f"SELECT * FROM symbol_metrics WHERE symbol IN ({placeholders})"
+                if ready_only:
+                    sql += " AND ready = 1"
+                rows = conn.execute(sql, part).fetchall()
+                out.extend(dict(r) for r in rows)
+        else:
+            sql = "SELECT * FROM symbol_metrics"
+            if ready_only:
+                sql += " WHERE ready = 1"
+            rows = conn.execute(sql).fetchall()
+            out = [dict(r) for r in rows]
+
+    for d in out:
+        try:
+            d["payload"] = json.loads(d.get("payload") or "{}")
+        except Exception:
+            d["payload"] = {}
+    return out
+
+
+def metrics_status() -> dict:
+    with connection() as conn:
+        try:
+            total = conn.execute("SELECT COUNT(*) AS n FROM symbol_metrics").fetchone()["n"]
+            ready = conn.execute(
+                "SELECT COUNT(*) AS n FROM symbol_metrics WHERE ready = 1"
+            ).fetchone()["n"]
+            updated = conn.execute(
+                "SELECT MAX(updated_at) AS d FROM symbol_metrics"
+            ).fetchone()["d"]
+        except sqlite3.OperationalError:
+            return {"total": 0, "ready": 0, "updated_at": None}
+    return {"total": total, "ready": ready, "updated_at": updated}
+
+
+def clear_symbol_metrics(symbol: str | None = None) -> int:
+    with connection() as conn:
+        if symbol:
+            cur = conn.execute(
+                "DELETE FROM symbol_metrics WHERE symbol = ?",
+                (symbol.upper(),),
+            )
+        else:
+            cur = conn.execute("DELETE FROM symbol_metrics")
+        return cur.rowcount or 0
 
 
 def optimize_db():

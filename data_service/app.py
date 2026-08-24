@@ -205,6 +205,40 @@ def db_optimize():
     return jsonify({"message": "optimize not available in this database build"})
 
 
+# -- Precomputed metrics cache --------------------------------------------------
+
+@app.route("/api/metrics/status", methods=["GET"])
+def metrics_status():
+    return jsonify(db.metrics_status())
+
+
+@app.route("/api/metrics/upsert", methods=["POST"])
+def metrics_upsert():
+    body = request.get_json(force=True) or {}
+    rows = body.get("rows") or []
+    if not isinstance(rows, list):
+        return jsonify({"error": "rows must be a list"}), 400
+    written = db.upsert_symbol_metrics(rows)
+    return jsonify({"written": written, "status": db.metrics_status()})
+
+
+@app.route("/api/metrics/query", methods=["POST"])
+def metrics_query():
+    body = request.get_json(force=True) or {}
+    symbols = body.get("symbols")
+    ready_only = bool(body.get("ready_only", True))
+    rows = db.get_symbol_metrics_many(symbols, ready_only=ready_only)
+    return jsonify({"count": len(rows), "rows": rows})
+
+
+@app.route("/api/metrics/<string:symbol>", methods=["GET"])
+def metrics_one(symbol):
+    row = db.get_symbol_metrics(symbol)
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(row)
+
+
 # -- Curated lists + batch fetch ------------------------------------------------
 
 @app.route("/api/data-manager/ticker-lists", methods=["GET"])

@@ -648,6 +648,7 @@ def setups_scan():
         except (TypeError, ValueError):
             min_score = 0
         universe_only = request.args.get("universe", "1").lower() in ("1", "true", "yes")
+        live = request.args.get("live", "").lower() in ("1", "true", "yes")
         symbols = None
         if not universe_only:
             symbols = [s["symbol"] for s in md.list_desk_symbols()]
@@ -660,6 +661,8 @@ def setups_scan():
                 badge=badge,
                 limit=limit,
                 min_score=min_score,
+                use_cache=not live,
+                live=live,
             )
         )
     except Exception as exc:
@@ -692,6 +695,34 @@ def templates_symbol(symbol):
             "minervini": ta_templates.minervini_trend_template(symbol),
             "stockbee": ta_templates.stockbee_momentum(symbol),
         })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/metrics/status", methods=["GET"])
+def metrics_status_api():
+    try:
+        import desk_metrics
+        return jsonify(desk_metrics.cache_coverage())
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/metrics/refresh", methods=["POST"])
+def metrics_refresh_api():
+    """Precompute symbol_metrics for dashboard (sync; optional limit)."""
+    try:
+        body = request.get_json(force=True) or {}
+        limit = int(body.get("limit", 0) or 0)
+        workers = int(body.get("workers", 8) or 8)
+        symbols = body.get("symbols")
+        import desk_metrics
+        result = desk_metrics.refresh_symbols(
+            symbols=symbols,
+            max_workers=max(1, min(workers, 16)),
+            limit=limit,
+        )
+        return jsonify(result)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -806,6 +837,13 @@ def universe_archive():
         if ok_count:
             db.optimize_db()
         yield f"data: {json.dumps({'type': 'done', 'ok': ok_count, 'failed': fail_count})}\n\n"
+        try:
+            import desk_metrics
+            yield f"data: {json.dumps({'type': 'metrics_start'})}\n\n"
+            m = desk_metrics.refresh_symbols(max_workers=8)
+            yield f"data: {json.dumps({'type': 'metrics_done', 'ok': m.get('ok'), 'failed': m.get('failed'), 'total': m.get('total')})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'metrics_done', 'error': str(exc)})}\n\n"
 
     return Response(
         stream_with_context(generate()),
@@ -859,6 +897,14 @@ def universe_refresh():
             if i < len(tickers) - 1:
                 time.sleep(delay)
         yield f"data: {json.dumps({'type': 'done', 'ok': ok_count, 'failed': fail_count, 'skipped': skip_count})}\n\n"
+        # Rebuild desk metrics cache after price refresh
+        try:
+            import desk_metrics
+            yield f"data: {json.dumps({'type': 'metrics_start'})}\n\n"
+            m = desk_metrics.refresh_symbols(max_workers=8)
+            yield f"data: {json.dumps({'type': 'metrics_done', 'ok': m.get('ok'), 'failed': m.get('failed'), 'total': m.get('total')})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'metrics_done', 'error': str(exc)})}\n\n"
 
     return Response(
         stream_with_context(generate()),

@@ -378,6 +378,7 @@ def portfolio_snapshot(
     light: bool = False,
     symbols: list[str] | None = None,
     max_workers: int = 8,
+    use_cache: bool = True,
 ) -> dict:
     symbols_meta = {s["symbol"]: s for s in md.list_symbols()}
 
@@ -390,42 +391,64 @@ def portfolio_snapshot(
     else:
         sym_list = list(symbols_meta.keys())
 
-    include_scanner = not light
+    from_cache = False
+    rows: list[dict] = []
 
-    def _snap(sym: str) -> dict:
-        return snapshot_symbol(sym, light=light, include_scanner=include_scanner)
+    # Fast path: precomputed metrics (desk tape / light views)
+    if use_cache and light:
+        try:
+            import desk_metrics
+            cached = desk_metrics.load_cached_rows(sym_list, ready_only=False)
+            if cached and len(cached) >= max(1, int(0.4 * len(sym_list))):
+                by_sym = {r["symbol"]: r for r in cached if r.get("symbol")}
+                for sym in sym_list:
+                    if sym in by_sym:
+                        rows.append(dict(by_sym[sym]))
+                    else:
+                        rows.append({"symbol": sym, "ready": False, "error": "metrics miss"})
+                from_cache = True
+        except Exception:
+            rows = []
+            from_cache = False
 
-    workers = min(max_workers, max(1, len(sym_list)))
-    if workers <= 1 or len(sym_list) <= 3:
-        rows = [_snap(sym) for sym in sym_list]
-    else:
-        rows = []
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_snap, sym): sym for sym in sym_list}
-            for fut in as_completed(futures):
-                rows.append(fut.result())
-        rows.sort(key=lambda r: r.get("symbol") or "")
+    if not from_cache:
+        include_scanner = not light
+
+        def _snap(sym: str) -> dict:
+            return snapshot_symbol(sym, light=light, include_scanner=include_scanner)
+
+        workers = min(max_workers, max(1, len(sym_list)))
+        if workers <= 1 or len(sym_list) <= 3:
+            rows = [_snap(sym) for sym in sym_list]
+        else:
+            rows = []
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(_snap, sym): sym for sym in sym_list}
+                for fut in as_completed(futures):
+                    rows.append(fut.result())
+            rows.sort(key=lambda r: r.get("symbol") or "")
 
     ready = [r for r in rows if r.get("ready")]
 
     # Attach group tags for rollups
     for row in rows:
         meta = symbols_meta.get(row["symbol"], {})
-        row["group_tag"] = (meta.get("group_tag") or "").strip()
-        row["sector"] = meta.get("sector") or ""
+        row["group_tag"] = (meta.get("group_tag") or row.get("group_tag") or "").strip()
+        row["sector"] = meta.get("sector") or row.get("sector") or ""
         row["peer_etf"] = peer_etf_for(row["sector"])
-        if row.get("ready"):
+        if row.get("ready") and row.get("size_risk_100") is None:
             row["size_risk_100"] = position_size(row.get("price"), row.get("atr14"), 100.0, 1.5)
 
-    # Relative strength rank by 21D return (1 = strongest)
+    # Relative strength rank by 21D return (1 = strongest) — skip if cache already ranked
     ranked = sorted(
         ready,
         key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
         reverse=True,
     )
-    for i, row in enumerate(ranked, start=1):
-        row["rs_rank_21d"] = i
-        row["rs_n"] = len(ranked)
+    if not from_cache or any(r.get("rs_rank_21d") is None for r in ready):
+        for i, row in enumerate(ranked, start=1):
+            row["rs_rank_21d"] = i
+            row["rs_n"] = len(ranked)
 
     # Alert flags for swing PMs
     alerts = []
@@ -493,6 +516,7 @@ def portfolio_snapshot(
         "ready_count": len(ready),
         "scope": scope,
         "light": light,
+        "from_cache": from_cache,
         "symbols": rows,
         "tape": by_day,
         "alerts": alerts,

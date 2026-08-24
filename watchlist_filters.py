@@ -413,41 +413,66 @@ def apply_filter(
     scope: str = "with_data",
     limit: int = 500,
     max_workers: int = 12,
+    use_cache: bool = True,
 ) -> dict:
     symbols_meta = {s["symbol"]: s for s in md.list_symbols()}
     sym_list = _resolve_scope(scope)
-
-    workers = min(max_workers, max(1, len(sym_list)))
-
-    def _one(sym: str) -> dict:
-        return enrich_row(sym, symbols_meta.get(sym, {}))
-
+    from_cache = False
     rows: List[dict] = []
-    if workers <= 1 or len(sym_list) <= 4:
-        rows = [_one(s) for s in sym_list]
-    else:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_one, s): s for s in sym_list}
-            for fut in as_completed(futures):
-                rows.append(fut.result())
 
-    ready = [r for r in rows if r.get("ready")]
-    ranked = sorted(
-        ready,
-        key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
-        reverse=True,
-    )
-    for i, row in enumerate(ranked, start=1):
-        row["rs_rank_21d"] = i
-        row["rs_n"] = len(ranked)
+    if use_cache:
+        try:
+            import desk_metrics
+            cached = desk_metrics.load_cached_rows(sym_list, ready_only=False)
+            if cached and len(cached) >= max(1, int(0.5 * len(sym_list))):
+                by_sym = {r["symbol"]: r for r in cached if r.get("symbol")}
+                for sym in sym_list:
+                    if sym not in by_sym:
+                        continue
+                    row = dict(by_sym[sym])
+                    meta = symbols_meta.get(sym, {})
+                    row["group_tag"] = (meta.get("group_tag") or row.get("group_tag") or "").strip()
+                    row["sector"] = (meta.get("sector") or row.get("sector") or "").strip()
+                    row["name"] = (meta.get("name") or "").strip()
+                    tag = row["group_tag"]
+                    row["index_tag"] = tag if tag.startswith("univ:") else ""
+                    rows.append(row)
+                from_cache = True
+        except Exception:
+            rows = []
+            from_cache = False
 
-    import methodology_badges
-    for row in ready:
-        bd = methodology_badges.badges_for_row(row, fetch_extras=False)
-        row["badges"] = bd["badges"]
-        row["badge_codes"] = bd["codes"]
-        row["rts"] = bd["rts"]
-        row["strike_zone"] = bd["strike_zone"]
+    if not from_cache:
+        workers = min(max_workers, max(1, len(sym_list)))
+
+        def _one(sym: str) -> dict:
+            return enrich_row(sym, symbols_meta.get(sym, {}))
+
+        if workers <= 1 or len(sym_list) <= 4:
+            rows = [_one(s) for s in sym_list]
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(_one, s): s for s in sym_list}
+                for fut in as_completed(futures):
+                    rows.append(fut.result())
+
+        ready = [r for r in rows if r.get("ready")]
+        ranked = sorted(
+            ready,
+            key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
+            reverse=True,
+        )
+        for i, row in enumerate(ranked, start=1):
+            row["rs_rank_21d"] = i
+            row["rs_n"] = len(ranked)
+
+        import methodology_badges
+        for row in ready:
+            bd = methodology_badges.badges_for_row(row, fetch_extras=False)
+            row["badges"] = bd["badges"]
+            row["badge_codes"] = bd["codes"]
+            row["rts"] = bd["rts"]
+            row["strike_zone"] = bd["strike_zone"]
 
     rules = rules or []
     matched = [r for r in rows if _row_matches(r, rules, match)]
@@ -491,6 +516,7 @@ def apply_filter(
         "scope": scope,
         "symbols": [r["symbol"] for r in matched],
         "results": slim,
+        "from_cache": from_cache,
     }
 
 

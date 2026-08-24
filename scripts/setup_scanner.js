@@ -34,6 +34,8 @@ async function initSetupScanner() {
             console.warn('Setup catalog failed:', e2);
         }
     }
+    document.getElementById('btn-metrics-refresh')?.addEventListener('click', refreshMetricsCache);
+    refreshMetricsStatus();
 }
 
 function renderSetupFamilyCards() {
@@ -360,13 +362,58 @@ async function loadSetupScan() {
         renderSetupScanTable(_lastSetupResults);
         if (meta) {
             const badgeBit = _setupBadge ? ` · ${_setupBadge}` : '';
-            meta.textContent = `${data.count || 0} hits${badgeBit} · scanned ${data.scanned || 0}`;
+            const cacheBit = data.from_cache ? ' · cached' : ' · live';
+            meta.textContent = `${data.count || 0} hits${badgeBit}${cacheBit} · scanned ${data.scanned || 0}`;
         }
+        refreshMetricsStatus();
     } catch (e) {
         toast('Setup scan failed: ' + e.message, 'error');
     } finally {
         if (loadEl) loadEl.style.display = 'none';
         if (btn) { btn.disabled = false; btn.textContent = 'Scan setups'; }
+    }
+}
+
+async function refreshMetricsStatus() {
+    const el = document.getElementById('setup-metrics-status');
+    if (!el) return;
+    try {
+        const s = await apiFetch(`${API}/metrics/status`);
+        const pct = s.coverage_pct != null ? `${s.coverage_pct}%` : '—';
+        el.textContent = `Cache ${s.cached || 0}/${s.universe || 0} (${pct})`;
+        el.title = s.updated_at
+            ? `Metrics updated ${s.updated_at}`
+            : 'Run Precompute after archiving prices';
+    } catch {
+        el.textContent = '';
+    }
+}
+
+async function refreshMetricsCache() {
+    const btn = document.getElementById('btn-metrics-refresh');
+    const loadEl = document.getElementById('setup-scan-loading');
+    if (btn) { btn.disabled = true; btn.textContent = 'Precomputing…'; }
+    if (loadEl) {
+        loadEl.style.display = 'flex';
+        loadEl.innerHTML = '<span class="spinner"></span> Precomputing desk metrics…';
+    }
+    try {
+        const res = await apiFetch(`${API}/metrics/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workers: 8 }),
+        });
+        toast(`Cached ${res.ok || 0}/${res.total || 0} symbols`, 'success');
+        await refreshMetricsStatus();
+        await loadSetupScan();
+    } catch (e) {
+        toast('Precompute failed: ' + e.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Precompute'; }
+        if (loadEl) {
+            loadEl.style.display = 'none';
+            loadEl.innerHTML = '<span class="spinner"></span> Scanning setups…';
+        }
     }
 }
 

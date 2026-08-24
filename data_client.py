@@ -238,3 +238,38 @@ def promote_to_desk(symbol: str) -> dict:
         ok = db.promote_to_desk(symbol)
         return {"symbol": symbol.upper(), "promoted": ok}
     return _request("POST", f"/api/symbols/{urllib.parse.quote(symbol.upper())}/promote")
+
+
+# ── Precomputed metrics cache ────────────────────────────────────────────────
+
+def upsert_symbol_metrics(rows: list) -> int:
+    if use_embedded():
+        import database as db
+        return db.upsert_symbol_metrics(rows)
+    data = _request("POST", "/api/metrics/upsert", body={"rows": rows}, timeout=300.0) or {}
+    return int(data.get("written") or 0)
+
+
+def get_symbol_metrics(symbol: str) -> Optional[dict]:
+    if use_embedded():
+        import database as db
+        return db.get_symbol_metrics(symbol)
+    return _request("GET", f"/api/metrics/{urllib.parse.quote(symbol.upper())}")
+
+
+def get_symbol_metrics_many(symbols: Optional[list] = None, ready_only: bool = True) -> list:
+    if use_embedded():
+        import database as db
+        return db.get_symbol_metrics_many(symbols, ready_only=ready_only)
+    body = {"ready_only": ready_only}
+    if symbols is not None:
+        body["symbols"] = list(symbols)
+    data = _request("POST", "/api/metrics/query", body=body, timeout=120.0) or {}
+    return data.get("rows") or []
+
+
+def metrics_status() -> dict:
+    if use_embedded():
+        import database as db
+        return db.metrics_status()
+    return _request("GET", "/api/metrics/status") or {}
