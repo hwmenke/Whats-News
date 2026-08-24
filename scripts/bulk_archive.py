@@ -12,6 +12,9 @@ Examples:
   # Daily refresh — only last few days per symbol (run after market close)
   python scripts/bulk_archive.py --refresh --overlap-days 5 --delay 0.8
 
+  # Precompute setups / badges / stage into symbol_metrics (fast dashboard)
+  python scripts/bulk_archive.py --precompute
+
   # Archive only symbols missing daily data
   python scripts/bulk_archive.py --archive --only-missing
 """
@@ -121,6 +124,18 @@ def cmd_refresh(delay: float, overlap_days: int, only_missing: bool, limit: int)
     return 0 if fail == 0 else 1
 
 
+def cmd_precompute(workers: int, limit: int) -> int:
+    db.init_db()
+    import desk_metrics
+    print(f"Precomputing desk metrics (workers={workers}) …")
+    result = desk_metrics.refresh_symbols(max_workers=workers, limit=limit)
+    print(
+        f"Done. ok={result.get('ok')} failed={result.get('failed')} "
+        f"total={result.get('total')} updated_at={result.get('updated_at')}"
+    )
+    return 0 if (result.get("failed") or 0) == 0 else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Whats-News bulk archive / refresh")
     parser.add_argument(
@@ -131,11 +146,13 @@ def main() -> int:
     )
     parser.add_argument("--archive", action="store_true", help="Download full history")
     parser.add_argument("--refresh", action="store_true", help="Incremental refresh only")
+    parser.add_argument("--precompute", action="store_true", help="Build symbol_metrics cache for dashboard")
     parser.add_argument("--start", default="2000-01-01", help="Archive start date")
     parser.add_argument("--delay", type=float, default=1.5, help="Seconds between Yahoo calls")
     parser.add_argument("--overlap-days", type=int, default=5, help="Refresh overlap window")
     parser.add_argument("--only-missing", action="store_true", help="Archive symbols without daily data")
     parser.add_argument("--limit", type=int, default=0, help="Max symbols to process (0 = all)")
+    parser.add_argument("--workers", type=int, default=8, help="Precompute worker threads")
     args = parser.parse_args()
 
     if args.sync_indices:
@@ -146,6 +163,9 @@ def main() -> int:
 
     if args.refresh:
         return cmd_refresh(args.delay, args.overlap_days, args.only_missing, args.limit)
+
+    if args.precompute:
+        return cmd_precompute(max(1, min(args.workers, 16)), args.limit)
 
     parser.print_help()
     return 1
