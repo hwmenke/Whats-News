@@ -2811,6 +2811,15 @@ html, body {
 .setup-stage.stage-2 { color: #22c55e; font-weight: 600; }
 .setup-stage.stage-3 { color: #f59e0b; font-weight: 600; }
 .setup-stage.stage-4 { color: #ef4444; font-weight: 600; }
+.ind-pill.active-stage {
+  background: rgba(20, 184, 166, 0.2);
+  border-color: #14b8a6;
+  color: #2dd4bf;
+}
+.pm-val.stage-1 { color: #94a3b8; }
+.pm-val.stage-2 { color: #22c55e; font-weight: 600; }
+.pm-val.stage-3 { color: #f59e0b; font-weight: 600; }
+.pm-val.stage-4 { color: #ef4444; font-weight: 600; }
 .setup-scanner-header {
   display: flex;
   align-items: center;

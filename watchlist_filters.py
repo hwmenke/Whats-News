@@ -123,6 +123,24 @@ PRESET_LISTS: List[dict] = [
         "rules": [{"field": "rs_rank_21d", "op": "lte", "value": 20}],
         "match": "all",
     },
+    {
+        "id": "preset_stage2",
+        "name": "Stage 2 advancing",
+        "rules": [{"field": "setup", "op": "has_setup", "value": "STAGE_2"}],
+        "match": "all",
+    },
+    {
+        "id": "preset_stage2_early",
+        "name": "Early Stage 2 breakout",
+        "rules": [{"field": "setup", "op": "has_setup", "value": "STAGE_2_EARLY"}],
+        "match": "all",
+    },
+    {
+        "id": "preset_stage1",
+        "name": "Stage 1 basing",
+        "rules": [{"field": "setup", "op": "has_setup", "value": "STAGE_1"}],
+        "match": "all",
+    },
 ]
 
 
@@ -136,19 +154,30 @@ def _setups_from_row(row: dict) -> List[str]:
         setups.append("VOL_SURGE")
     if row.get("is_near_high") or row.get("is_vol_surge"):
         setups.append("BREAKOUT_QUEUE")
+    if row.get("is_near_high") and row.get("is_vol_surge"):
+        setups.append("QULLA_BREAKOUT")
     box = row.get("darvas") or {}
     st = box.get("state")
     if st == "in_box":
         setups.append("DARVAS_BOX")
+        setups.append("BRANDT_RISK_BOX")
     elif st == "breakout":
         setups.append("DARVAS_BREAKOUT")
+        setups.append("BRANDT_RISK_BOX")
     elif st == "failed":
         setups.append("DARVAS_FAIL")
+    if row.get("regime") == "range" and "BRANDT_RISK_BOX" not in setups:
+        setups.append("BRANDT_RANGE")
     zone = row.get("rsi_zone")
     if zone == "overbought":
         setups.append("RSI_OB")
     elif zone == "oversold":
         setups.append("RSI_OS")
+    stage_n = row.get("stage")
+    if stage_n in (1, 2, 3, 4):
+        setups.append(f"STAGE_{stage_n}")
+    if row.get("early_stage2"):
+        setups.append("STAGE_2_EARLY")
     return setups
 
 
@@ -163,6 +192,15 @@ def enrich_row(sym: str, meta: dict) -> dict:
     row["peer_etf"] = portfolio.peer_etf_for(row["sector"])
     box = row.get("darvas") or {}
     row["darvas_state"] = box.get("state")
+    try:
+        import stage_analysis
+        st = stage_analysis.classify_stage(sym)
+        row["stage"] = st.get("stage")
+        row["stage_label"] = st.get("stage_label")
+        row["early_stage2"] = st.get("early_stage2")
+        row["vs_sma30_pct"] = st.get("vs_sma30_pct")
+    except Exception:
+        row["stage"] = 0
     row["setups"] = _setups_from_row(row)
     return row
 

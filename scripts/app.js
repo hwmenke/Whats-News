@@ -1898,6 +1898,24 @@ function updateSymbolHeader(symbol, last, prev) {
     loadPmDesk(symbol);
 }
 
+async function loadStageOverlay(symbol) {
+    try {
+        const data = await apiFetch(`${API}/stage/${encodeURIComponent(symbol)}?series=1`);
+        if (data.sma30_series) {
+            window.applyStageSma?.(data.sma30_series);
+        }
+        // Keep PM stage chip in sync if this fetch is richer than snapshot
+        const stageEl = document.getElementById('pm-stage');
+        if (stageEl && data.stage) {
+            stageEl.textContent = `S${data.stage}`;
+            stageEl.className = `pm-val stage-${data.stage}`;
+            stageEl.title = `${data.stage_label || ''} — ${data.stage_blurb || ''} · vs 30W ${data.vs_sma30_pct ?? '—'}% · ${data.stage_action || ''}`;
+        }
+    } catch (e) {
+        console.warn('Stage overlay failed:', e);
+    }
+}
+
 async function loadPmDesk(symbol) {
     const desk = document.getElementById('pm-desk');
     if (!desk || !symbol) return;
@@ -1983,6 +2001,22 @@ function renderPmDesk(snap) {
     // Darvas box is structural/automatic (unlike the discretionary risk box) —
     // draw it whenever fresh PM desk data arrives, gated by the Box pill toggle.
     window.applyDarvasBox?.(snap.darvas || null);
+
+    const stageEl = document.getElementById('pm-stage');
+    if (stageEl) {
+        if (snap.stage) {
+            stageEl.textContent = `S${snap.stage}`;
+            stageEl.className = `pm-val stage-${snap.stage}`;
+            stageEl.title = `${snap.stage_label || ''} — ${snap.stage_blurb || ''} · vs 30W ${snap.vs_sma30_pct ?? '—'}% · ${snap.stage_action || ''}`;
+        } else {
+            stageEl.textContent = '—';
+            stageEl.className = 'pm-val';
+        }
+    }
+    // Load weekly SMA30 series for stage overlay when PM desk refreshes
+    if (snap.symbol && typeof loadStageOverlay === 'function') {
+        loadStageOverlay(snap.symbol);
+    }
 
     const sizeEl = document.getElementById('pm-size');
     const size = snap.size || snap.size_risk_100;
@@ -2447,6 +2481,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     darvasPill?.addEventListener('click', () => {
         const on = toggleOverlay('darvas');
         darvasPill.classList.toggle('active-darvas', on);
+    });
+
+    // Weekly 30W SMA (stage analysis) — on by default on weekly panel
+    const stagePill = document.getElementById('pill-stage-ma');
+    stagePill?.addEventListener('click', () => {
+        const on = toggleOverlay('stage');
+        stagePill.classList.toggle('active-stage', on);
+        if (on && state.activeSymbol) loadStageOverlay(state.activeSymbol);
     });
 
     // Indicator pane pills (RSI / MACD / Trend) — off by default, price-first.

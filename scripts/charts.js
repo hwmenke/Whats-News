@@ -23,7 +23,7 @@ function nextKamaColor() {
 }
 
 // Overlay state
-const activeOverlays = { bb: true, ep: true, darvas: true };
+const activeOverlays = { bb: true, ep: true, darvas: true, stage: true };
 
 // Persisted indicator-pane visibility key — mirrors scripts/app.js.
 const PANES_STORAGE_KEY = 'whats-news-panes';
@@ -34,6 +34,8 @@ const PANES_STORAGE_KEY = 'whats-news-panes';
 let riskLines = { daily: [], weekly: [] };
 let darvasLines = { daily: [] };
 let lastDarvasBox = null;
+let stageSmaSeries = null; // weekly SMA30 line for stage analysis
+let lastStageSmaData = [];
 
 // Live ResizeObservers — tracked so destroyCharts() can disconnect them
 // before the charts they reference get remove()'d (stale observers firing
@@ -142,7 +144,7 @@ function destroyCharts() {
     // Price lines die with their chart — drop the stale references.
     riskLines = { daily: [], weekly: [] };
     darvasLines = { daily: [] };
-}
+    stageSmaSeries = null;
 
 // ── Build one panel (daily or weekly) ────────────────────────
 function buildPanel(freq) {
@@ -512,7 +514,43 @@ function toggleOverlay(key) {
         if (key === 'ep') applyEpMarkers(f);
     });
     if (key === 'darvas') applyDarvasBox(lastDarvasBox);
+    if (key === 'stage') applyStageSma(lastStageSmaData);
     return activeOverlays[key];
+}
+
+function ensureStageSmaSeries() {
+    if (stageSmaSeries || !charts.weekly?.main) return;
+    stageSmaSeries = charts.weekly.main.addLineSeries({
+        color: '#14b8a6',
+        lineWidth: 2,
+        lineStyle: LWC.LineStyle.Solid,
+        title: '30W SMA',
+        priceLineVisible: false,
+        lastValueVisible: true,
+    });
+}
+
+function applyStageSma(points) {
+    lastStageSmaData = points || [];
+    ensureStageSmaSeries();
+    if (!stageSmaSeries) return;
+    if (!activeOverlays.stage || !lastStageSmaData.length) {
+        stageSmaSeries.setData([]);
+        stageSmaSeries.applyOptions({ visible: false });
+        return;
+    }
+    const data = lastStageSmaData
+        .filter(p => p.time && p.value != null)
+        .map(p => ({ time: p.time, value: p.value }));
+    stageSmaSeries.setData(data);
+    stageSmaSeries.applyOptions({ visible: true, color: '#14b8a6', lineWidth: 2 });
+}
+
+function clearStageSma() {
+    lastStageSmaData = [];
+    if (stageSmaSeries) {
+        try { stageSmaSeries.setData([]); } catch (_) {}
+    }
 }
 
 // ── Risk box (entry / stop / target) — daily + weekly candle series ────
@@ -662,5 +700,7 @@ function fitContent() {
 window.applyRiskBox      = applyRiskBox;
 window.clearRiskBox      = clearRiskBox;
 window.applyDarvasBox    = applyDarvasBox;
+window.applyStageSma     = applyStageSma;
+window.clearStageSma     = clearStageSma;
 window.setIndicatorPane  = setIndicatorPane;
 window.resizeAllCharts   = resizeAllCharts;

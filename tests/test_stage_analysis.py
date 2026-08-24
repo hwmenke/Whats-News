@@ -69,6 +69,15 @@ class StageAnalysisTests(unittest.TestCase):
         self.assertTrue(out["ready"])
         self.assertEqual(out["stage"], 4)
 
+    def test_early_stage2_flag(self):
+        # Flat then rise above MA — should often mark early stage 2 or stage 2
+        closes = list(np.full(40, 50.0)) + list(np.linspace(50, 70, 20))
+        self._seed_weekly("BRK", closes)
+        out = stage_analysis.classify_stage("BRK")
+        self.assertTrue(out["ready"])
+        self.assertIn(out["stage"], (1, 2))
+        self.assertIn("stage_action", out)
+
     def test_setup_families_in_scan(self):
         closes = list(np.linspace(40, 100, 60))
         self._seed_weekly("ADV", closes)

@@ -81,6 +81,9 @@ function renderSmartListPresets() {
         preset_uptrend_near_high: { tone: 'trend', blurb: 'KAMA up + near high' },
         preset_vol_surge: { tone: 'vol', blurb: '≥1.5× avg volume' },
         preset_strong_rs: { tone: 'rs', blurb: 'Book RS rank ≤20' },
+        preset_stage2: { tone: 'rs', blurb: 'Above rising 30W MA' },
+        preset_stage2_early: { tone: 'near', blurb: 'Fresh Stage 2 breakout' },
+        preset_stage1: { tone: 'def', blurb: 'Basing around 30W MA' },
     };
 
     (_filterCatalog.presets || []).forEach(p => {

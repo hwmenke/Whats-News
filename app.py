@@ -166,7 +166,32 @@ def pm_desk(symbol):
             "stop_mode": stop_mode,
         }
         snap.pop("closes_30", None)
+        # Stage analysis (Weinstein / Jacobs-style weekly SMA30)
+        try:
+            import stage_analysis
+            st = stage_analysis.classify_stage(symbol, include_series=False)
+            snap["stage"] = st.get("stage")
+            snap["stage_label"] = st.get("stage_label")
+            snap["stage_blurb"] = st.get("stage_blurb")
+            snap["stage_action"] = st.get("stage_action")
+            snap["vs_sma30_pct"] = st.get("vs_sma30_pct")
+            snap["sma30"] = st.get("sma30")
+            snap["early_stage2"] = st.get("early_stage2")
+            snap["vol_confirm"] = st.get("vol_confirm")
+        except Exception:
+            pass
         return jsonify(snap)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/stage/<string:symbol>", methods=["GET"])
+def stage_api(symbol):
+    """Weinstein-style stage 1–4 + optional weekly SMA30 series for chart overlay."""
+    try:
+        import stage_analysis
+        include = request.args.get("series", "1").lower() in ("1", "true", "yes")
+        return jsonify(stage_analysis.classify_stage(symbol.upper(), include_series=include))
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 

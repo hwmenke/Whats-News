@@ -33,6 +33,7 @@ SETUP_IDS = {
     "BRANDT_RANGE": "Daily range regime — wait for structure",
     "STAGE_1": "Stage 1 · Basing (weekly SMA30)",
     "STAGE_2": "Stage 2 · Advancing",
+    "STAGE_2_EARLY": "Early Stage 2 · fresh breakout from base",
     "STAGE_3": "Stage 3 · Topping risk",
     "STAGE_4": "Stage 4 · Declining",
     "RSI_OB": "RSI overbought (swing alert)",
@@ -59,7 +60,7 @@ SETUP_FAMILIES = {
     "stage": {
         "label": "Stage (1–4)",
         "blurb": "Weinstein-style weekly SMA30 stages",
-        "tags": ["STAGE_1", "STAGE_2", "STAGE_3", "STAGE_4"],
+        "tags": ["STAGE_1", "STAGE_2", "STAGE_2_EARLY", "STAGE_3", "STAGE_4"],
     },
 }
 
@@ -119,6 +120,10 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
         if stage_n in (1, 2, 3, 4):
             setups.append(f"STAGE_{stage_n}")
             families.append("stage")
+        if st.get("early_stage2"):
+            setups.append("STAGE_2_EARLY")
+            if "stage" not in families:
+                families.append("stage")
 
         zone = snap.get("rsi_zone")
         if zone == "overbought":
