@@ -602,9 +602,17 @@ def setups_catalog():
 
 @app.route("/api/setups/scan", methods=["GET"])
 def setups_scan():
-    """Scan stored universe for named trading setups."""
+    """Scan stored universe for named trading setups / families / stage."""
     try:
         setup_filter = request.args.get("setup") or None
+        family = request.args.get("family") or None
+        stage_raw = request.args.get("stage")
+        stage = None
+        if stage_raw is not None and str(stage_raw).strip() != "":
+            try:
+                stage = int(stage_raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "stage must be 1–4"}), 400
         try:
             limit = int(request.args.get("limit", 250))
         except (TypeError, ValueError):
@@ -621,12 +629,23 @@ def setups_scan():
             setup_scanner.scan_setups(
                 symbols=symbols,
                 setup_filter=setup_filter,
+                family=family,
+                stage=stage,
                 limit=limit,
                 min_score=min_score,
             )
         )
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/setups/families", methods=["GET"])
+def setups_families():
+    return jsonify({
+        "families": setup_scanner.SETUP_FAMILIES,
+        "setups": setup_scanner.SETUP_IDS,
+        "stage_labels": __import__("stage_analysis").STAGE_LABELS,
+    })
 
 
 @app.route("/api/watchlist/filter-catalog", methods=["GET"])

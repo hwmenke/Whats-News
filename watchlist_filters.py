@@ -59,7 +59,11 @@ FILTER_CATALOG: List[dict] = [
     {"id": "breakout_score", "label": "Breakout score", "group": "Setups", "type": "number", "ops": ["gt", "gte", "eq"]},
     {"id": "darvas_state", "label": "Darvas state", "group": "Setups", "type": "enum", "ops": ["eq", "ne"], "values": ["in_box", "breakout", "failed"]},
     {"id": "setup", "label": "Setup tag", "group": "Setups", "type": "setup", "ops": ["has_setup"],
-     "values": ["EP", "NEAR_HIGH", "VOL_SURGE", "BREAKOUT_QUEUE", "DARVAS_BOX", "DARVAS_BREAKOUT", "DARVAS_FAIL", "RSI_OB", "RSI_OS"]},
+     "values": ["EP", "NEAR_HIGH", "VOL_SURGE", "BREAKOUT_QUEUE", "QULLA_BREAKOUT",
+                "DARVAS_BOX", "DARVAS_BREAKOUT", "DARVAS_FAIL",
+                "BRANDT_RISK_BOX", "BRANDT_RANGE",
+                "STAGE_1", "STAGE_2", "STAGE_3", "STAGE_4", "RSI_OB", "RSI_OS"]},
+    {"id": "stage", "label": "Weinstein stage (1–4)", "group": "Setups", "type": "number", "ops": ["eq", "in"]},
     # Technical
     {"id": "atr_pct", "label": "ATR %", "group": "Technical", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
     {"id": "d_atr_pct", "label": "ATR % (scanner)", "group": "Technical", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},

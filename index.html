@@ -808,10 +808,10 @@
     <!-- ── Scanner Area ── -->
     <div id="scanner-area" class="scanner-container" style="display:none;">
 
-      <!-- Setup scanner (EP, Darvas, breakout queue, …) -->
+      <!-- Setup scanner — named methodology board -->
       <div class="setup-scanner-panel">
         <div class="setup-scanner-header">
-          <strong>Setup scanner</strong>
+          <strong>Setups board</strong>
           <button id="btn-setup-scan" type="button" class="btn btn-primary btn-sm" onclick="loadSetupScan()">Scan setups</button>
           <label class="setup-universe-toggle" title="Scan full archive vs desk only">
             <input type="checkbox" id="chk-setup-universe" checked />
@@ -819,6 +819,9 @@
           </label>
           <span id="setup-scan-meta" class="scanner-ts"></span>
         </div>
+        <p class="setup-board-blurb">Named playbooks — Qullamaggie · Darvas · Brandt · Stage 1–4 (weekly SMA30). Mechanical labels, not licensed signals.</p>
+        <div id="setup-family-cards" class="setup-family-cards"></div>
+        <div id="setup-stage-pills" class="setup-stage-pills"></div>
         <div id="setup-filter-pills" class="setup-filter-pills"></div>
         <div id="setup-scan-loading" class="chart-loading setup-scan-loading" style="display:none;">
           <span class="spinner"></span> Scanning setups…
@@ -828,12 +831,13 @@
             <thead>
               <tr>
                 <th>Symbol</th>
+                <th>Family</th>
+                <th>Stage</th>
                 <th>Setups</th>
                 <th>Chg%</th>
                 <th>Book RS</th>
                 <th>20D dist</th>
                 <th>Vol×</th>
-                <th>Regime</th>
                 <th></th>
               </tr>
             </thead>

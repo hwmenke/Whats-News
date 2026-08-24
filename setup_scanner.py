@@ -1,7 +1,13 @@
 """
-setup_scanner.py — Scan stored universe for trading setups (not generic metrics only).
+setup_scanner.py — Named methodology setups + tags.
 
-Setups are honest labels from portfolio/darvas metrics — not IBD/CAN SLIM claims.
+Families (honest, mechanical — not licensed signals):
+  - Qullamaggie: EP, near-high, volume surge, breakout queue
+  - Darvas: box / breakout / fail
+  - Brandt: structural risk box available, range vs trend context
+  - Stage: Weinstein-style 1–4 via weekly SMA(30) (Jacobs-adjacent language)
+
+Never claim IBD RS / CAN SLIM / official Factor or Jacobs classifications.
 """
 
 from __future__ import annotations
@@ -11,33 +17,69 @@ from typing import Optional
 
 import market_data as md
 import portfolio
+import stage_analysis
 
 
 SETUP_IDS = {
-    "EP": "Gap ≥4% on ≥1.5× volume (episodic pivot path)",
+    "EP": "Gap ≥4% on ≥1.5× volume (Qullamaggie EP path)",
     "NEAR_HIGH": "Within 5% of 20-day high",
     "VOL_SURGE": "Volume ≥1.5× 20-bar average",
-    "BREAKOUT_QUEUE": "Near high and/or volume surge (momentum tape rule)",
+    "BREAKOUT_QUEUE": "Near high and/or volume surge",
+    "QULLA_BREAKOUT": "Near high + volume surge (momentum breakout)",
     "DARVAS_BOX": "Inside Darvas-style consolidation box",
-    "DARVAS_BREAKOUT": "Close above box top",
-    "DARVAS_FAIL": "Close below box low",
+    "DARVAS_BREAKOUT": "Close above Darvas box top",
+    "DARVAS_FAIL": "Close below Darvas box low",
+    "BRANDT_RISK_BOX": "Structural box levels for risk (entry/stop/target path)",
+    "BRANDT_RANGE": "Daily range regime — wait for structure",
+    "STAGE_1": "Stage 1 · Basing (weekly SMA30)",
+    "STAGE_2": "Stage 2 · Advancing",
+    "STAGE_3": "Stage 3 · Topping risk",
+    "STAGE_4": "Stage 4 · Declining",
     "RSI_OB": "RSI overbought (swing alert)",
     "RSI_OS": "RSI oversold (swing alert)",
+}
+
+# Visual board families
+SETUP_FAMILIES = {
+    "qullamaggie": {
+        "label": "Qullamaggie",
+        "blurb": "EP · near high · volume · breakout queue",
+        "tags": ["EP", "NEAR_HIGH", "VOL_SURGE", "BREAKOUT_QUEUE", "QULLA_BREAKOUT"],
+    },
+    "darvas": {
+        "label": "Darvas",
+        "blurb": "Box · breakout · fail",
+        "tags": ["DARVAS_BOX", "DARVAS_BREAKOUT", "DARVAS_FAIL"],
+    },
+    "brandt": {
+        "label": "Brandt",
+        "blurb": "Risk box · range wait (structure first)",
+        "tags": ["BRANDT_RISK_BOX", "BRANDT_RANGE"],
+    },
+    "stage": {
+        "label": "Stage (1–4)",
+        "blurb": "Weinstein-style weekly SMA30 stages",
+        "tags": ["STAGE_1", "STAGE_2", "STAGE_3", "STAGE_4"],
+    },
 }
 
 
 def _scan_one_setup(symbol: str) -> Optional[dict]:
     try:
-        snap = portfolio.snapshot_symbol(symbol.upper())
+        snap = portfolio.snapshot_symbol(symbol.upper(), light=False)
         if not snap.get("ready"):
             return {
                 "symbol": symbol.upper(),
                 "ready": False,
                 "error": snap.get("error", "No data"),
                 "setups": [],
+                "families": [],
             }
 
         setups: list[str] = []
+        families: list[str] = []
+
+        # ── Qullamaggie path ──────────────────────────────────────────
         if snap.get("is_ep"):
             setups.append("EP")
         if snap.get("is_near_high"):
@@ -46,7 +88,12 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             setups.append("VOL_SURGE")
         if snap.get("is_near_high") or snap.get("is_vol_surge"):
             setups.append("BREAKOUT_QUEUE")
+        if snap.get("is_near_high") and snap.get("is_vol_surge"):
+            setups.append("QULLA_BREAKOUT")
+        if any(t in setups for t in ("EP", "NEAR_HIGH", "VOL_SURGE", "BREAKOUT_QUEUE", "QULLA_BREAKOUT")):
+            families.append("qullamaggie")
 
+        # ── Darvas ────────────────────────────────────────────────────
         box = snap.get("darvas") or {}
         state = box.get("state")
         if state == "in_box":
@@ -55,6 +102,23 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             setups.append("DARVAS_BREAKOUT")
         elif state == "failed":
             setups.append("DARVAS_FAIL")
+        if state in ("in_box", "breakout", "failed"):
+            families.append("darvas")
+
+        # ── Brandt (structural risk / range) ──────────────────────────
+        if state in ("in_box", "breakout") and box.get("top") and box.get("bottom"):
+            setups.append("BRANDT_RISK_BOX")
+            families.append("brandt")
+        if snap.get("regime") == "range" and "brandt" not in families:
+            setups.append("BRANDT_RANGE")
+            families.append("brandt")
+
+        # ── Stage analysis ────────────────────────────────────────────
+        st = stage_analysis.classify_stage(symbol)
+        stage_n = st.get("stage") or 0
+        if stage_n in (1, 2, 3, 4):
+            setups.append(f"STAGE_{stage_n}")
+            families.append("stage")
 
         zone = snap.get("rsi_zone")
         if zone == "overbought":
@@ -65,6 +129,10 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
         score = snap.get("breakout_score") or 0
         if state == "breakout":
             score += 2
+        if "QULLA_BREAKOUT" in setups:
+            score += 2
+        if stage_n == 2:
+            score += 1
         if state == "in_box" and snap.get("dist_20d_high_pct") is not None:
             if snap["dist_20d_high_pct"] >= -2:
                 score += 1
@@ -75,6 +143,7 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             "price": snap.get("price"),
             "change_pct": snap.get("change_pct"),
             "setups": setups,
+            "families": families,
             "setup_count": len(setups),
             "setup_score": score,
             "rs_rank_21d": snap.get("rs_rank_21d"),
@@ -88,6 +157,10 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             "darvas_state": state,
             "darvas_top": box.get("top"),
             "darvas_bottom": box.get("bottom"),
+            "stage": stage_n,
+            "stage_label": st.get("stage_label"),
+            "vs_sma30_pct": st.get("vs_sma30_pct"),
+            "sma30_slope_pct": st.get("sma30_slope_pct"),
         }
     except Exception as exc:
         return {
@@ -95,18 +168,20 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             "ready": False,
             "error": str(exc),
             "setups": [],
+            "families": [],
         }
 
 
 def scan_setups(
     symbols: Optional[list[str]] = None,
     setup_filter: Optional[str] = None,
+    family: Optional[str] = None,
+    stage: Optional[int] = None,
     limit: int = 500,
     min_score: int = 0,
 ) -> dict:
     """
-    Scan symbols with stored OHLCV for setup tags.
-    Default symbol list: all names with ≥30 daily bars in DB.
+    Scan symbols with stored OHLCV for setup tags / families / stage.
     """
     if symbols is None:
         symbols = md.list_symbols_with_ohlcv("daily", min_bars=30)
@@ -121,6 +196,10 @@ def scan_setups(
             if not row:
                 continue
             if setup_filter and setup_filter not in row.get("setups", []):
+                continue
+            if family and family not in row.get("families", []):
+                continue
+            if stage is not None and row.get("stage") != stage:
                 continue
             if row.get("setup_score", 0) < min_score:
                 continue
@@ -147,10 +226,27 @@ def scan_setups(
     if limit and len(results) > limit:
         results = results[:limit]
 
+    # Family rollup counts (pre-limit on full matched set is approximate)
+    family_counts = {k: 0 for k in SETUP_FAMILIES}
+    stage_counts = {1: 0, 2: 0, 3: 0, 4: 0}
+    for r in ready:
+        for f in r.get("families") or []:
+            if f in family_counts:
+                family_counts[f] += 1
+        st = r.get("stage")
+        if st in stage_counts:
+            stage_counts[st] += 1
+
     return {
         "count": len(results),
         "scanned": len(symbols),
         "setup_filter": setup_filter,
+        "family": family,
+        "stage": stage,
         "results": results,
         "setup_catalog": SETUP_IDS,
+        "families": SETUP_FAMILIES,
+        "family_counts": family_counts,
+        "stage_counts": stage_counts,
+        "stage_labels": stage_analysis.STAGE_LABELS,
     }
