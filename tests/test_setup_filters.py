@@ -76,6 +76,23 @@ class SetupFilterExtrasTests(unittest.TestCase):
         self.assertEqual(out["count"], 1)
         self.assertEqual(out["results"][0]["symbol"], "A")
 
+    def test_triage_sort_prefers_rts(self):
+        rows = self._rows()
+        rows[0]["setup_score"] = 2
+        rows[1]["setup_score"] = 2
+        rows[1]["rts"] = 90
+        rows[1]["change_pct"] = 0
+        out = ss._filter_and_rollup(rows, symbols_scanned=2, from_cache=True)
+        self.assertEqual(out["results"][0]["symbol"], "B")
+
+    def test_tight_coil_in_catalog(self):
+        self.assertIn("TIGHT_COIL", ss.SETUP_IDS)
+        self.assertIn("TIGHT_COIL", ss.SETUP_FAMILIES["stockbee"]["tags"])
+
+    def test_r_to_box(self):
+        self.assertEqual(ss._r_to_box(100, 85, 10), 1.0)
+        self.assertIsNone(ss._r_to_box(100, 85, None))
+
 
 if __name__ == "__main__":
     unittest.main()

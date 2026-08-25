@@ -167,6 +167,14 @@ def refresh_all():
 
 # -- OHLCV ----------------------------------------------------------------------
 
+@app.route("/api/ohlcv/max-date", methods=["GET"])
+def ohlcv_max_date():
+    freq = request.args.get("freq", "daily")
+    if freq not in ("daily", "weekly"):
+        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    return jsonify({"freq": freq, "date": db.get_max_ohlcv_date(freq)})
+
+
 @app.route("/api/ohlcv/<string:symbol>", methods=["GET"])
 def get_ohlcv(symbol):
     freq = request.args.get("freq", "daily")

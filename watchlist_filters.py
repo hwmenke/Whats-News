@@ -175,6 +175,12 @@ PRESET_LISTS: List[dict] = [
         "match": "all",
     },
     {
+        "id": "preset_tight_coil",
+        "name": "Tight coil",
+        "rules": [{"field": "setup", "op": "has_setup", "value": "TIGHT_COIL"}],
+        "match": "all",
+    },
+    {
         "id": "badge_kq",
         "name": "KQ · Qullamaggie",
         "rules": [{"field": "badge", "op": "has_badge", "value": "KQ"}],
@@ -265,6 +271,11 @@ def _setups_from_row(row: dict) -> List[str]:
     for t in row.get("stockbee_tags") or []:
         if t not in setups:
             setups.append(t)
+    if "TIGHT_COIL" not in setups and (
+        "STOCKBEE_ANT" in setups
+        or ("MINERVINI_VCP" in setups and row.get("is_near_high") and row.get("vol_dry"))
+    ):
+        setups.append("TIGHT_COIL")
     return setups
 
 

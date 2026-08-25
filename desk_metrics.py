@@ -15,6 +15,9 @@ import data_client as dc
 import methodology_badges
 import setup_scanner
 
+# Serve cache when at least this fraction of the requested universe is ready.
+CACHE_COVERAGE_MIN = setup_scanner.CACHE_COVERAGE_MIN
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -25,13 +28,14 @@ def compute_one(symbol: str) -> dict:
     row = setup_scanner._scan_one_setup(symbol)
     if not row:
         row = {"symbol": symbol.upper(), "ready": False, "error": "empty", "setups": [], "families": []}
-    as_of = None
-    try:
-        as_of = dc.get_ohlcv(symbol, "daily", limit=1)
-        if as_of:
-            as_of = as_of[-1].get("date")
-    except Exception:
-        as_of = None
+    as_of = row.get("as_of")
+    if not as_of:
+        try:
+            bars = dc.get_ohlcv(symbol, "daily", limit=1)
+            if bars:
+                as_of = bars[-1].get("date")
+        except Exception:
+            as_of = None
 
     payload = dict(row)
     # RS / badges filled in finalize_batch
@@ -181,11 +185,120 @@ def load_cached_rows(
         p.setdefault("ret_9m_pct", r.get("ret_9m_pct"))
         p.setdefault("stage", r.get("stage"))
         p.setdefault("setup_score", r.get("setup_score"))
+        p.setdefault("as_of", r.get("as_of"))
         p["metrics_updated_at"] = r.get("updated_at")
         p["metrics_as_of"] = r.get("as_of")
         p["from_cache"] = True
         out.append(p)
     return out
+
+
+def freshness_meta(rows: Optional[list[dict]] = None) -> dict:
+    """
+    Compare cache as_of vs latest daily bar in the archive.
+    Honest: this is bar-date freshness, not a licensed market-timing product.
+    """
+    as_ofs = []
+    if rows:
+        as_ofs = [r.get("as_of") or r.get("metrics_as_of") for r in rows if r.get("as_of") or r.get("metrics_as_of")]
+    cache_as_of = max(as_ofs) if as_ofs else None
+    if not cache_as_of:
+        try:
+            cache_as_of = (dc.metrics_status() or {}).get("as_of")
+        except Exception:
+            cache_as_of = None
+    bars_as_of = None
+    try:
+        bars_as_of = dc.get_max_ohlcv_date("daily")
+    except Exception:
+        bars_as_of = None
+
+    stale = bool(cache_as_of and bars_as_of and str(cache_as_of)[:10] < str(bars_as_of)[:10])
+    if not cache_as_of:
+        freshness = "empty"
+    elif stale:
+        freshness = "stale"
+    else:
+        freshness = "fresh"
+    return {
+        "as_of": cache_as_of,
+        "bars_as_of": bars_as_of,
+        "stale": stale,
+        "freshness": freshness,
+    }
+
+
+def market_context(rows: Optional[list[dict]] = None) -> dict:
+    """
+    Book market context ("the M") from precomputed rows.
+
+    Mechanical breadth of *this* cached universe — not Stockbee Market Monitor,
+    IBD market direction, or any licensed timing product.
+    """
+    if rows is None:
+        rows = load_cached_rows(ready_only=True)
+    ready = [r for r in rows if r.get("ready")]
+    n = len(ready)
+    if not n:
+        return {
+            "n": 0,
+            "regime": "empty",
+            "label": "No cache",
+            "blurb": "Precompute after archiving prices.",
+            "pct_uptrend": None,
+            "pct_dual_up": None,
+            "pct_stage2": None,
+            "pct_ep": None,
+            "pct_positive": None,
+            "pct_strike": None,
+        }
+
+    def pct(pred) -> float:
+        return round(100.0 * sum(1 for r in ready if pred(r)) / n, 1)
+
+    pct_up = pct(lambda r: r.get("regime") == "uptrend")
+    pct_down = pct(lambda r: r.get("regime") == "downtrend")
+    pct_dual = pct(
+        lambda r: r.get("regime") == "uptrend" and r.get("regime_weekly") == "uptrend"
+    )
+    pct_s2 = pct(lambda r: r.get("stage") == 2)
+    pct_s4 = pct(lambda r: r.get("stage") == 4)
+    pct_ep = pct(lambda r: r.get("is_ep") or "EP" in (r.get("setups") or []))
+    pct_pos = pct(lambda r: (r.get("change_pct") or 0) > 0)
+    pct_strike = pct(lambda r: bool(r.get("strike_zone")))
+    pct_coil = pct(lambda r: "TIGHT_COIL" in (r.get("setups") or []))
+
+    # Honest book heuristic — labels the *sample*, not the market.
+    if pct_dual >= 35 and pct_s2 >= 30 and pct_up >= 45:
+        regime, label = "constructive", "Constructive"
+        blurb = "Breadth: dual-up + Stage 2 majority in this archive."
+    elif pct_down >= 45 or pct_s2 < 15 or pct_s4 >= 35:
+        regime, label = "defensive", "Defensive"
+        blurb = "Breadth: downtrend / Stage 4 heavy — fewer new longs."
+    else:
+        regime, label = "mixed", "Mixed"
+        blurb = "Breadth split — stock-pick, don't assume a trend day."
+
+    fresh = freshness_meta(ready)
+    return {
+        "n": n,
+        "regime": regime,
+        "label": label,
+        "blurb": blurb,
+        "honest": "Book breadth of cached universe — not a licensed Market Monitor.",
+        "pct_uptrend": pct_up,
+        "pct_downtrend": pct_down,
+        "pct_dual_up": pct_dual,
+        "pct_stage2": pct_s2,
+        "pct_stage4": pct_s4,
+        "pct_ep": pct_ep,
+        "pct_positive": pct_pos,
+        "pct_strike": pct_strike,
+        "pct_coil": pct_coil,
+        "as_of": fresh.get("as_of"),
+        "stale": fresh.get("stale"),
+        "freshness": fresh.get("freshness"),
+    }
 
 
 def cache_coverage(symbols: Optional[list[str]] = None) -> dict:
@@ -196,11 +309,15 @@ def cache_coverage(symbols: Optional[list[str]] = None) -> dict:
         universe = [s.upper() for s in symbols]
     cached = {r["symbol"] for r in dc.get_symbol_metrics_many(universe, ready_only=True)}
     missing = [s for s in universe if s not in cached]
+    coverage_pct = round(100.0 * len(cached) / len(universe), 1) if universe else 0.0
+    fresh = freshness_meta()
     return {
         **status,
         "universe": len(universe),
         "cached": len(cached),
         "missing": len(missing),
-        "coverage_pct": round(100.0 * len(cached) / len(universe), 1) if universe else 0.0,
+        "coverage_pct": coverage_pct,
+        "coverage_ok": coverage_pct >= (CACHE_COVERAGE_MIN * 100),
         "missing_sample": missing[:20],
+        **fresh,
     }

@@ -78,6 +78,16 @@ class TaTemplatesTests(unittest.TestCase):
         self.assertIn("STOCKBEE_EMA", out["tags"])
         self.assertIn("STOCKBEE_RE", out["tags"])
 
+    def test_templates_accept_preloaded_df(self):
+        df = _uptrend_frame()
+        with patch("ta_templates.md.get_ohlcv_df") as mocked:
+            out = ta_templates.minervini_trend_template("MNVI", df=df)
+        mocked.assert_not_called()
+        self.assertTrue(out["ready"])
+
+    def test_tight_coil_in_setup_ids(self):
+        self.assertIn("TIGHT_COIL", setup_scanner.SETUP_IDS)
+
     def test_setup_families_include_minervini_stockbee(self):
         self.assertIn("minervini", setup_scanner.SETUP_FAMILIES)
         self.assertIn("stockbee", setup_scanner.SETUP_FAMILIES)

@@ -82,6 +82,59 @@ class SymbolMetricsDbTests(unittest.TestCase):
         self.assertIn("KQ", rows[0]["payload"]["badge_codes"])
 
 
+class MarketContextTests(unittest.TestCase):
+    def test_constructive_and_defensive(self):
+        constructive = [
+            {
+                "symbol": f"U{i}",
+                "ready": True,
+                "regime": "uptrend",
+                "regime_weekly": "uptrend",
+                "stage": 2,
+                "change_pct": 1.0,
+                "is_ep": False,
+                "setups": [],
+                "strike_zone": True,
+            }
+            for i in range(10)
+        ]
+        ctx = desk_metrics.market_context(constructive)
+        self.assertEqual(ctx["n"], 10)
+        self.assertEqual(ctx["regime"], "constructive")
+        self.assertGreaterEqual(ctx["pct_dual_up"], 90)
+        self.assertIn("licensed", (ctx.get("honest") or "").lower())
+
+        defensive = [
+            {
+                "symbol": f"D{i}",
+                "ready": True,
+                "regime": "downtrend",
+                "regime_weekly": "downtrend",
+                "stage": 4,
+                "change_pct": -1.0,
+                "is_ep": False,
+                "setups": [],
+            }
+            for i in range(10)
+        ]
+        dctx = desk_metrics.market_context(defensive)
+        self.assertEqual(dctx["regime"], "defensive")
+
+    def test_freshness_stale_when_bars_newer(self):
+        rows = [{"as_of": "2024-01-01", "ready": True}]
+        with patch("desk_metrics.dc.get_max_ohlcv_date", return_value="2024-01-10"):
+            meta = desk_metrics.freshness_meta(rows)
+        self.assertTrue(meta["stale"])
+        self.assertEqual(meta["freshness"], "stale")
+
+    def test_freshness_fresh_when_caught_up(self):
+        rows = [{"as_of": "2024-01-10", "ready": True}]
+        with patch("desk_metrics.dc.get_max_ohlcv_date", return_value="2024-01-10"):
+            meta = desk_metrics.freshness_meta(rows)
+        self.assertFalse(meta["stale"])
+        self.assertEqual(meta["freshness"], "fresh")
+
+
 class DeskMetricsCacheServeTests(unittest.TestCase):
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -129,6 +182,8 @@ class DeskMetricsCacheServeTests(unittest.TestCase):
         self.assertEqual(out["count"], 1)
         self.assertEqual(out["results"][0]["symbol"], "HOT")
         self.assertIn("KQ", out["results"][0].get("badge_codes") or [])
+        self.assertIn("market_context", out)
+        self.assertIn("cache", out)
 
 
 if __name__ == "__main__":

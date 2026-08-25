@@ -2163,6 +2163,20 @@ function setupPmKeyboard() {
             toggleJournal();
             return;
         }
+        if ((e.key === 'j' || e.key === 'k' || e.key === 'K') && typeof isScannerTabOpen === 'function' && isScannerTabOpen()) {
+            e.preventDefault();
+            if (e.key === 'j') moveSetupRow(1);
+            else moveSetupRow(-1);
+            return;
+        }
+        if (e.key === 'Enter' && typeof isScannerTabOpen === 'function' && isScannerTabOpen() && typeof openSetupRow === 'function') {
+            if (openSetupRow()) { e.preventDefault(); return; }
+        }
+        if (!e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            if (e.key === '1' && typeof applyWorkspace === 'function') { e.preventDefault(); applyWorkspace('scan'); return; }
+            if (e.key === '2' && typeof applyWorkspace === 'function') { e.preventDefault(); applyWorkspace('chart'); return; }
+            if (e.key === '3' && typeof applyWorkspace === 'function') { e.preventDefault(); applyWorkspace('review'); return; }
+        }
         if (e.key === 'j') { e.preventDefault(); moveSymbolSelection(1); }
         else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); moveSymbolSelection(-1); }
         else if (e.key === 'h' || e.key === 'H') { e.preventDefault(); toggleBookDrawer(); }

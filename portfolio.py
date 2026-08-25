@@ -210,10 +210,13 @@ def snapshot_symbol(
     symbol: str,
     light: bool = False,
     include_scanner: bool = False,
+    df=None,
+    weekly_df=None,
 ) -> dict:
     sym = symbol.upper()
-    df = md.get_ohlcv_df(sym, "daily", limit=260)
-    if df.empty or len(df) < 25:
+    if df is None:
+        df = md.get_ohlcv_df(sym, "daily", limit=260)
+    if df is None or df.empty or len(df) < 25:
         return {
             "symbol": sym,
             "ready": False,
@@ -287,11 +290,17 @@ def snapshot_symbol(
     ret_5d = (last / float(week_ago) - 1) * 100 if week_ago else None
     ret_21d = (last / float(month_ago) - 1) * 100 if month_ago else None
 
+    as_of = None
+    try:
+        as_of = pd.Timestamp(df.index[-1]).strftime("%Y-%m-%d")
+    except Exception:
+        as_of = str(df.index[-1])[:10] if len(df) else None
+
     regime_w = "n/a"
     vs_kama_w = None
     if not light:
-        w_df = md.get_ohlcv_df(sym, "weekly", limit=80)
-        if not w_df.empty and len(w_df) >= 25:
+        w_df = weekly_df if weekly_df is not None else md.get_ohlcv_df(sym, "weekly", limit=80)
+        if w_df is not None and not w_df.empty and len(w_df) >= 25:
             w_close = w_df["close"].astype(float)
             w_last = float(w_close.iloc[-1])
             w_kama = _last_valid(_kama(w_close, 20))
@@ -309,6 +318,7 @@ def snapshot_symbol(
     row = {
         "symbol": sym,
         "ready": True,
+        "as_of": as_of,
         "price": round(last, 2),
         "change": round(chg, 2),
         "change_pct": round(chg_pct, 2),

@@ -439,6 +439,16 @@ def get_latest_ohlcv_date(symbol: str, freq: str = "daily"):
     return row["d"] if row and row["d"] else None
 
 
+def get_max_ohlcv_date(freq: str = "daily"):
+    """Latest bar date across the whole archive (for cache staleness)."""
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT MAX(date) AS d FROM ohlcv WHERE freq = ?",
+            (freq,),
+        ).fetchone()
+    return row["d"] if row and row["d"] else None
+
+
 def get_db_stats() -> dict:
     """
     Lightweight health snapshot for large watchlists.
@@ -616,9 +626,12 @@ def metrics_status() -> dict:
             updated = conn.execute(
                 "SELECT MAX(updated_at) AS d FROM symbol_metrics"
             ).fetchone()["d"]
+            as_of = conn.execute(
+                "SELECT MAX(as_of) AS d FROM symbol_metrics WHERE ready = 1"
+            ).fetchone()["d"]
         except sqlite3.OperationalError:
-            return {"total": 0, "ready": 0, "updated_at": None}
-    return {"total": total, "ready": ready, "updated_at": updated}
+            return {"total": 0, "ready": 0, "updated_at": None, "as_of": None}
+    return {"total": total, "ready": ready, "updated_at": updated, "as_of": as_of}
 
 
 def clear_symbol_metrics(symbol: str | None = None) -> int:

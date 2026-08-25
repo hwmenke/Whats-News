@@ -273,3 +273,11 @@ def metrics_status() -> dict:
         import database as db
         return db.metrics_status()
     return _request("GET", "/api/metrics/status") or {}
+
+
+def get_max_ohlcv_date(freq: str = "daily"):
+    if use_embedded():
+        import database as db
+        return db.get_max_ohlcv_date(freq)
+    data = _request("GET", "/api/ohlcv/max-date", query={"freq": freq}) or {}
+    return data.get("date")

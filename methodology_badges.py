@@ -104,10 +104,11 @@ def _ret_from_df(df, bars: int) -> Optional[float]:
     return ((last / prev) - 1.0) * 100.0
 
 
-def momentum_extras(symbol: str) -> dict:
-    """Extra returns for SBW / SB9 / 52W."""
+def momentum_extras(symbol: str, df=None) -> dict:
+    """Extra returns for SBW / SB9 / 52W. Pass `df` to skip a second OHLCV load."""
     sym = symbol.upper()
-    df = md.get_ohlcv_df(sym, "daily", limit=220)
+    if df is None:
+        df = md.get_ohlcv_df(sym, "daily", limit=220)
     if df is None or df.empty or len(df) < 30:
         return {"ready": False}
     close = df["close"].astype(float)

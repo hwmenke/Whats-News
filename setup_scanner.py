@@ -11,6 +11,7 @@ Never claim IBD RS / CAN SLIM / official Factor, SEPA, or Stockbee MM signals.
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
@@ -19,6 +20,11 @@ import methodology_badges
 import portfolio
 import stage_analysis
 import ta_templates
+
+log = logging.getLogger(__name__)
+
+# Serve cache when at least this fraction of the requested universe is ready.
+CACHE_COVERAGE_MIN = 0.5
 
 
 SETUP_IDS = {
@@ -44,6 +50,7 @@ SETUP_IDS = {
     "STOCKBEE_RE": "Range expansion day (TR ≫ ATR)",
     "STOCKBEE_EMA": "Close > EMA9 > EMA20",
     "STOCKBEE_ANT": "Anticipation coil after strength",
+    "TIGHT_COIL": "Near high + dry volume / VCP / anticipation (triage)",
     "RSI_OB": "RSI overbought (swing alert)",
     "RSI_OS": "RSI oversold (swing alert)",
 }
@@ -62,7 +69,7 @@ SETUP_FAMILIES = {
     "stockbee": {
         "label": "Stockbee",
         "blurb": "EP · range expansion · 9/20 EMA · anticipation",
-        "tags": ["STOCKBEE_EP", "STOCKBEE_RE", "STOCKBEE_EMA", "STOCKBEE_ANT"],
+        "tags": ["STOCKBEE_EP", "STOCKBEE_RE", "STOCKBEE_EMA", "STOCKBEE_ANT", "TIGHT_COIL"],
     },
     "darvas": {
         "label": "Darvas",
@@ -82,12 +89,26 @@ SETUP_FAMILIES = {
 }
 
 
+def _r_to_box(price, box_low, atr) -> Optional[float]:
+    """How many 1.5×ATR units from price down to the Darvas/box low."""
+    if price is None or box_low is None or atr is None or atr <= 0:
+        return None
+    dist = float(price) - float(box_low)
+    unit = 1.5 * float(atr)
+    if unit <= 0:
+        return None
+    return round(dist / unit, 2)
+
+
 def _scan_one_setup(symbol: str) -> Optional[dict]:
     try:
-        snap = portfolio.snapshot_symbol(symbol.upper(), light=False)
+        sym = symbol.upper()
+        daily = md.get_ohlcv_df(sym, "daily", limit=280)
+        weekly = md.get_ohlcv_df(sym, "weekly", limit=160)
+        snap = portfolio.snapshot_symbol(sym, light=False, df=daily, weekly_df=weekly)
         if not snap.get("ready"):
             return {
-                "symbol": symbol.upper(),
+                "symbol": sym,
                 "ready": False,
                 "error": snap.get("error", "No data"),
                 "setups": [],
@@ -132,7 +153,7 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             families.append("brandt")
 
         # ── Stage analysis ────────────────────────────────────────────
-        st = stage_analysis.classify_stage(symbol)
+        st = stage_analysis.classify_stage(sym, df=weekly)
         stage_n = st.get("stage") or 0
         if stage_n in (1, 2, 3, 4):
             setups.append(f"STAGE_{stage_n}")
@@ -143,21 +164,29 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
                 families.append("stage")
 
         # ── Minervini (Trend Template / VCP) ──────────────────────────
-        tt = ta_templates.minervini_trend_template(symbol)
+        tt = ta_templates.minervini_trend_template(sym, df=daily)
         for tag in tt.get("tags") or []:
             setups.append(tag)
         if tt.get("tags"):
             families.append("minervini")
 
         # ── Stockbee (EP / RE / EMA / anticipation) ───────────────────
-        sb = ta_templates.stockbee_momentum(symbol)
+        sb = ta_templates.stockbee_momentum(sym, df=daily)
         for tag in sb.get("tags") or []:
             setups.append(tag)
         if sb.get("tags"):
             families.append("stockbee")
 
-        # Momentum extras for SBW / SB9 / 52W badges (one OHLCV read)
-        mx = methodology_badges.momentum_extras(symbol)
+        vol_dry = bool(tt.get("vol_dry"))
+        if "STOCKBEE_ANT" in setups or (
+            tt.get("vcp") and snap.get("is_near_high") and vol_dry
+        ):
+            setups.append("TIGHT_COIL")
+            if "stockbee" not in families:
+                families.append("stockbee")
+
+        # Momentum extras for SBW / SB9 / 52W badges (reuse daily bars)
+        mx = methodology_badges.momentum_extras(sym, df=daily)
         ret_5d = snap.get("ret_5d_pct")
         if ret_5d is None:
             ret_5d = mx.get("ret_5d_pct")
@@ -182,15 +211,22 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             score += 1
         if "STOCKBEE_EP" in setups or "STOCKBEE_RE" in setups:
             score += 1
+        if "TIGHT_COIL" in setups:
+            score += 1
         if stage_n == 2:
             score += 1
         if state == "in_box" and snap.get("dist_20d_high_pct") is not None:
             if snap["dist_20d_high_pct"] >= -2:
                 score += 1
 
+        atr = snap.get("atr14")
+        stop = snap.get("stop_long_1_5atr")
+        r_box = _r_to_box(snap.get("price"), box.get("bottom"), atr)
+
         return {
             "symbol": snap["symbol"],
             "ready": True,
+            "as_of": snap.get("as_of"),
             "price": snap.get("price"),
             "change_pct": snap.get("change_pct"),
             "setups": setups,
@@ -222,6 +258,17 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             "is_vol_surge": bool(snap.get("is_vol_surge")),
             "is_ep": bool(snap.get("is_ep")),
             "early_stage2": bool(st.get("early_stage2")),
+            "atr14": atr,
+            "atr_pct": snap.get("atr_pct"),
+            "stop_long_1_5atr": stop,
+            "rsi14": snap.get("rsi14"),
+            "rsi_zone": zone,
+            "vol_dry": vol_dry,
+            "r_to_box": r_box,
+            "ep_quality": (
+                "strong" if (snap.get("gap_pct") or 0) >= 4 and (snap.get("vol_ratio_5_20") or 0) >= 2
+                else ("soft" if snap.get("is_ep") else None)
+            ),
         }
     except Exception as exc:
         return {
@@ -292,6 +339,7 @@ def _filter_and_rollup(
     filtered.sort(
         key=lambda r: (
             -(r.get("setup_score") or 0),
+            -(r.get("rts") if r.get("rts") is not None else -1),
             -(r.get("change_pct") or 0),
             r.get("symbol") or "",
         )
@@ -421,17 +469,28 @@ def scan_setups(
         try:
             import desk_metrics
             cached = desk_metrics.load_cached_rows(symbols, ready_only=False)
-            if cached and len(cached) >= max(1, int(0.5 * len(symbols))):
+            ready_n = sum(1 for r in cached if r.get("ready"))
+            coverage = (ready_n / len(symbols)) if symbols else 0.0
+            if cached and coverage >= CACHE_COVERAGE_MIN:
                 by_sym = {r["symbol"]: r for r in cached if r.get("symbol")}
                 results = [by_sym[s] for s in symbols if s in by_sym]
-                return _filter_and_rollup(
+                out = _filter_and_rollup(
                     results,
                     symbols_scanned=len(symbols),
                     from_cache=True,
                     **filter_kw,
                 )
+                out["market_context"] = desk_metrics.market_context(results)
+                out["cache"] = {
+                    "coverage_pct": round(100.0 * coverage, 1),
+                    "ready": ready_n,
+                    "requested": len(symbols),
+                    "min_coverage": CACHE_COVERAGE_MIN,
+                    **desk_metrics.freshness_meta(results),
+                }
+                return out
         except Exception:
-            pass
+            log.exception("metrics cache serve failed; falling back to live scan")
 
     results: list[dict] = []
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -441,9 +500,16 @@ def scan_setups(
             if row:
                 results.append(row)
 
-    return _filter_and_rollup(
+    out = _filter_and_rollup(
         results,
         symbols_scanned=len(symbols),
         from_cache=False,
         **filter_kw,
     )
+    try:
+        import desk_metrics
+        out["market_context"] = desk_metrics.market_context(results)
+    except Exception:
+        out["market_context"] = None
+    out["cache"] = {"coverage_pct": 0, "ready": 0, "requested": len(symbols), "freshness": "live"}
+    return out

@@ -38,6 +38,7 @@ const DESK_GUIDE_PAGES = [
           <p>Open the <strong>Scanner</strong> tab → <strong>Setups board</strong>.</p>
           <ol>
             <li>Pick a family or a <strong>badge</strong>: KQ · MM · SB4/SBW/SB9 · DB · ON · 2A/2B</li>
+            <li>The <strong>M</strong> strip is book breadth of the cached universe — not a licensed Market Monitor</li>
             <li>Stage pills: S1 basing · S2 advancing · S3 topping · S4 declining</li>
             <li>Click a row → chart opens; weekly <strong>30W</strong> SMA shows for stage</li>
             <li><strong>Apply as list</strong> turns the active badge into a smart watchlist</li>
@@ -49,10 +50,11 @@ const DESK_GUIDE_PAGES = [
     {
         title: '4 · Clean chart view',
         body: `
-          <p>Use the <strong>View</strong> pills to hide chrome — Tape · Weekly · Vol · PM · Overlays · Sidebar · Header · Setups · Heatmap.</p>
+          <p>Use the <strong>Scan / Chart / Review</strong> workspace pills (keys <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>), or the <strong>View</strong> pills to hide chrome — Tape · Weekly · Vol · PM · Overlays · Sidebar · Header · Setups · Heatmap.</p>
           <ul>
             <li><strong>Focus</strong> (or press <kbd>f</kbd>) — chart only</li>
             <li>Drag the sidebar edge, chart divider, or setups handle to <strong>resize</strong></li>
+            <li>Scanner: <kbd>j</kbd>/<kbd>k</kbd> walk rows, <kbd>Enter</kbd> opens the chart</li>
             <li>Panes: turn on RSI / MACD / Trend only when needed</li>
           </ul>
         `,
@@ -130,6 +132,64 @@ function setupViewToggles() {
             saveViewPrefs(p);
         });
     });
+    setupWorkspacePresets();
+}
+
+const WORKSPACE_PRESETS = {
+    scan: {
+        label: 'Scan',
+        tab: 'scanner',
+        views: {
+            sidebar: true, header: false, tape: false, weekly: false, volume: false,
+            pm: false, overlays: false, setups: true, heatmap: false,
+        },
+    },
+    chart: {
+        label: 'Chart',
+        tab: 'charts',
+        views: {
+            sidebar: true, header: true, tape: true, weekly: true, volume: true,
+            pm: true, overlays: true, setups: false, heatmap: false,
+        },
+    },
+    review: {
+        label: 'Review',
+        tab: 'charts',
+        views: {
+            sidebar: true, header: true, tape: true, weekly: true, volume: false,
+            pm: true, overlays: true, setups: true, heatmap: false,
+        },
+    },
+};
+
+function applyWorkspace(id) {
+    const ws = WORKSPACE_PRESETS[id];
+    if (!ws) return;
+    const prefs = loadViewPrefs();
+    Object.entries(ws.views).forEach(([name, on]) => {
+        applyViewToggle(name, on);
+        prefs[name] = on;
+    });
+    saveViewPrefs(prefs);
+    document.querySelectorAll('.workspace-pill').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.workspace === id);
+    });
+    try { localStorage.setItem('whats-news-workspace', id); } catch { /* ignore */ }
+    if (typeof switchTab === 'function' && ws.tab) switchTab(ws.tab);
+    window.resizeAllCharts?.();
+}
+
+function setupWorkspacePresets() {
+    document.querySelectorAll('.workspace-pill[data-workspace]').forEach(btn => {
+        btn.addEventListener('click', () => applyWorkspace(btn.dataset.workspace));
+    });
+    let saved = null;
+    try { saved = localStorage.getItem('whats-news-workspace'); } catch { saved = null; }
+    if (saved && WORKSPACE_PRESETS[saved]) {
+        document.querySelectorAll('.workspace-pill').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.workspace === saved);
+        });
+    }
 }
 
 function openDeskGuide(page = 0) {

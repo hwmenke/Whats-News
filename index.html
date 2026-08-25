@@ -236,6 +236,10 @@
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">Data</button>
       <div class="tab-spacer"></div>
       <div class="view-toggles" aria-label="Show or hide desk features">
+        <span class="overlay-section-label">Desk</span>
+        <button type="button" class="ind-pill workspace-pill" data-workspace="scan" title="Scanner-first workspace (1)">Scan</button>
+        <button type="button" class="ind-pill workspace-pill" data-workspace="chart" title="Chart-first workspace (2)">Chart</button>
+        <button type="button" class="ind-pill workspace-pill" data-workspace="review" title="Chart + setups review (3)">Review</button>
         <span class="overlay-section-label">View</span>
         <button type="button" class="ind-pill view-pill active" data-view="sidebar" title="Show / hide watchlist sidebar">Sidebar</button>
         <button type="button" class="ind-pill view-pill active" data-view="header" title="Show / hide symbol header">Header</button>
@@ -828,11 +832,23 @@
             <input type="checkbox" id="chk-setup-universe" checked />
             Full universe
           </label>
+          <button type="button" id="btn-setup-chrome" class="btn btn-ghost btn-sm" title="Show family / badge / tag pills">More ▾</button>
+          <button type="button" id="btn-setup-filters-toggle" class="btn btn-ghost btn-sm" title="Numeric filters">Filters ▾</button>
           <span id="setup-metrics-status" class="scanner-ts" title="Metrics cache coverage"></span>
           <span id="setup-scan-meta" class="scanner-ts"></span>
+          <span class="setup-kbd-hint" title="When Scanner is open">j/k · Enter</span>
+        </div>
+        <div id="market-context-strip" class="market-context-strip" hidden title="Book breadth of the cached universe — not a licensed Market Monitor">
+          <span id="mc-regime" class="mc-regime">M —</span>
+          <span id="mc-up" class="mc-stat">Up —</span>
+          <span id="mc-dual" class="mc-stat">D+W —</span>
+          <span id="mc-s2" class="mc-stat">S2 —</span>
+          <span id="mc-ep" class="mc-stat">EP —</span>
+          <span id="mc-pos" class="mc-stat">Day+ —</span>
+          <span id="mc-honest" class="mc-honest">book breadth</span>
         </div>
         <div id="scanner-type-cards" class="scanner-type-cards" aria-label="Scanner types"></div>
-        <div id="setup-adv-filters" class="setup-adv-filters" aria-label="Scanner filters">
+        <div id="setup-adv-filters" class="setup-adv-filters" hidden aria-label="Scanner filters">
           <label>Chg% ≥ <input type="number" id="flt-min-change" class="setup-flt-input" step="0.5" placeholder="—" /></label>
           <label>Chg% ≤ <input type="number" id="flt-max-change" class="setup-flt-input" step="0.5" placeholder="—" /></label>
           <label>Vol× ≥ <input type="number" id="flt-min-vol" class="setup-flt-input" step="0.1" min="0" placeholder="—" /></label>
@@ -851,10 +867,12 @@
           <button type="button" id="btn-setup-filters-apply" class="btn btn-ghost btn-sm">Apply filters</button>
           <button type="button" id="btn-setup-filters-clear" class="btn btn-ghost btn-sm">Clear</button>
         </div>
+        <div id="setup-chrome" class="setup-chrome" hidden>
         <div id="setup-family-cards" class="setup-family-cards"></div>
         <div id="setup-stage-pills" class="setup-stage-pills"></div>
         <div id="setup-badge-pills" class="setup-badge-pills"></div>
         <div id="setup-filter-pills" class="setup-filter-pills"></div>
+        </div>
         <div id="setup-scan-loading" class="chart-loading setup-scan-loading" style="display:none;">
           <span class="spinner"></span> Scanning setups…
         </div>
@@ -862,14 +880,16 @@
           <table id="setup-scan-table" class="scanner-table setup-scan-table">
             <thead>
               <tr>
-                <th>Symbol</th>
-                <th>Badges</th>
-                <th>Stage</th>
-                <th>RTS</th>
-                <th>Chg%</th>
-                <th>Book RS</th>
-                <th>20D dist</th>
-                <th>Vol×</th>
+                <th data-sort="symbol">Symbol</th>
+                <th data-sort="badges">Badges</th>
+                <th data-sort="stage">Stage</th>
+                <th data-sort="rts">RTS</th>
+                <th data-sort="change_pct">Chg%</th>
+                <th data-sort="rs_rank_21d">Book RS</th>
+                <th data-sort="dist_20d_high_pct">20D dist</th>
+                <th data-sort="vol_ratio_5_20">Vol×</th>
+                <th data-sort="atr_pct">ATR%</th>
+                <th data-sort="stop_long_1_5atr">Stop</th>
                 <th></th>
               </tr>
             </thead>

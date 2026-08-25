@@ -755,6 +755,62 @@ def metrics_refresh_api():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/metrics/refresh/stream", methods=["POST"])
+def metrics_refresh_stream():
+    """SSE progress for precompute — same work as POST /api/metrics/refresh."""
+    body = request.get_json(silent=True) or {}
+    limit = int(body.get("limit", 0) or 0)
+    workers = int(body.get("workers", 8) or 8)
+    symbols = body.get("symbols")
+
+    def generate():
+        import desk_metrics
+        from queue import Queue
+        from threading import Thread
+
+        q = Queue()
+        yield f"data: {json.dumps({'type': 'start'})}\n\n"
+
+        def progress_cb(done, total, sym, ok):
+            q.put({"type": "progress", "done": done, "total": total, "symbol": sym, "ok": ok})
+
+        def run():
+            try:
+                result = desk_metrics.refresh_symbols(
+                    symbols=symbols,
+                    max_workers=max(1, min(workers, 16)),
+                    limit=limit,
+                    progress_cb=progress_cb,
+                )
+                q.put({"type": "done", **{k: result.get(k) for k in ("ok", "failed", "total", "written", "updated_at")}})
+            except Exception as exc:
+                q.put({"type": "done", "error": str(exc)})
+            q.put(None)
+
+        Thread(target=run, daemon=True).start()
+        while True:
+            ev = q.get()
+            if ev is None:
+                break
+            yield f"data: {json.dumps(ev, default=str)}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.route("/api/metrics/context", methods=["GET"])
+def metrics_context_api():
+    """Book market breadth from the metrics cache (not a licensed Market Monitor)."""
+    try:
+        import desk_metrics
+        return jsonify(desk_metrics.market_context())
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/watchlist/filter-catalog", methods=["GET"])
 def watchlist_filter_catalog():
     try:

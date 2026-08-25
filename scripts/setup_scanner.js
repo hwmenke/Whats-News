@@ -15,23 +15,34 @@ let _familyCounts = {};
 let _stageCounts = {};
 let _badgeCounts = {};
 let _lastSetupResults = [];
+let _setupSort = { key: 'setup_score', dir: -1 };
+let _setupRowIdx = -1;
+let _setupChromeOpen = false;
+let _setupFiltersOpen = false;
 
 /** Named scanner types → query / client filter presets */
 const SCANNER_TYPES = [
-    { id: 'all', label: 'All', blurb: 'Every hit' },
-    { id: 'ep', label: 'EP', blurb: 'Gap + volume', setup: 'EP', badge: 'SB4' },
-    { id: 'near_high', label: 'Near high', blurb: 'Breakout queue', setup: 'BREAKOUT_QUEUE' },
-    { id: 'qulla', label: 'Qulla', blurb: 'Near high + vol', family: 'qullamaggie', setup: 'QULLA_BREAKOUT' },
-    { id: 'darvas', label: 'Darvas', blurb: 'Box breakout', family: 'darvas', setup: 'DARVAS_BREAKOUT', badge: 'DB' },
-    { id: 'stage2', label: 'Stage 2', blurb: 'Advancing', family: 'stage', stage: 2, badge: '2B' },
-    { id: 'stage2a', label: 'Early 2A', blurb: 'Fresh Stage 2', setup: 'STAGE_2_EARLY', badge: '2A' },
-    { id: 'minervini', label: 'Minervini', blurb: 'Trend Template', family: 'minervini', setup: 'MINERVINI_TT', badge: 'MM' },
-    { id: 'stockbee', label: 'Stockbee', blurb: 'EP / RE / EMA', family: 'stockbee' },
-    { id: 'rs_leaders', label: 'RS leaders', blurb: 'Top Book RS', max_rs: 30, min_rts: 70 },
-    { id: 'rsi_ext', label: 'RSI extremes', blurb: 'OB or OS', setup: 'RSI_OB' },
-    { id: 'vol_surge', label: 'Vol surge', blurb: '≥1.5× volume', setup: 'VOL_SURGE', min_vol: 1.5 },
-    { id: 'dual_up', label: 'Dual up', blurb: 'D+W uptrend', dual_up: true, regime: 'uptrend' },
-    { id: 'strike', label: 'Strike zone', blurb: 'Near pivot', strike: true, badge: '52W' },
+    { id: 'all', label: 'All', blurb: 'Every hit', group: 'flow' },
+    { id: 'ep', label: 'EP', blurb: 'Gap + volume', setup: 'EP', badge: 'SB4', group: 'flow' },
+    { id: 'near_high', label: 'Near high', blurb: 'Breakout queue', setup: 'BREAKOUT_QUEUE', group: 'flow' },
+    { id: 'vol_surge', label: 'Vol surge', blurb: '≥1.5× volume', setup: 'VOL_SURGE', min_vol: 1.5, group: 'flow' },
+    { id: 'coil', label: 'Tight coil', blurb: 'Near high + dry vol', setup: 'TIGHT_COIL', group: 'flow' },
+    { id: 'qulla', label: 'Qulla', blurb: 'Near high + vol', family: 'qullamaggie', setup: 'QULLA_BREAKOUT', group: 'method' },
+    { id: 'darvas', label: 'Darvas', blurb: 'Box breakout', family: 'darvas', setup: 'DARVAS_BREAKOUT', badge: 'DB', group: 'method' },
+    { id: 'minervini', label: 'Minervini', blurb: 'Trend Template', family: 'minervini', setup: 'MINERVINI_TT', badge: 'MM', group: 'method' },
+    { id: 'stockbee', label: 'Stockbee', blurb: 'EP / RE / EMA', family: 'stockbee', group: 'method' },
+    { id: 'stage2', label: 'Stage 2', blurb: 'Advancing', family: 'stage', stage: 2, badge: '2B', group: 'method' },
+    { id: 'stage2a', label: 'Early 2A', blurb: 'Fresh Stage 2', setup: 'STAGE_2_EARLY', badge: '2A', group: 'method' },
+    { id: 'rs_leaders', label: 'RS leaders', blurb: 'Top Book RS', max_rs: 30, min_rts: 70, group: 'quality' },
+    { id: 'dual_up', label: 'Dual up', blurb: 'D+W uptrend', dual_up: true, regime: 'uptrend', group: 'quality' },
+    { id: 'strike', label: 'Strike zone', blurb: 'Near pivot', strike: true, badge: '52W', group: 'quality' },
+    { id: 'rsi_ext', label: 'RSI extremes', blurb: 'OB or OS', setup: 'RSI_OB', group: 'quality' },
+];
+
+const SCANNER_GROUPS = [
+    { id: 'flow', label: 'Flow' },
+    { id: 'method', label: 'Method' },
+    { id: 'quality', label: 'Quality' },
 ];
 
 function collectAdvFilters() {
@@ -95,16 +106,26 @@ function renderScannerTypeCards() {
     const wrap = document.getElementById('scanner-type-cards');
     if (!wrap) return;
     wrap.innerHTML = '';
-    SCANNER_TYPES.forEach(t => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'scanner-type-card' + (_scannerType === t.id ? ' selected' : '');
-        btn.innerHTML = `<strong>${t.label}</strong><span>${t.blurb}</span>`;
-        btn.title = t.blurb;
-        btn.addEventListener('click', () => applyScannerType(t.id));
-        wrap.appendChild(btn);
+    SCANNER_GROUPS.forEach(g => {
+        const types = SCANNER_TYPES.filter(t => t.group === g.id);
+        if (!types.length) return;
+        const lab = document.createElement('span');
+        lab.className = 'overlay-section-label scanner-group-label';
+        lab.textContent = g.label;
+        wrap.appendChild(lab);
+        types.forEach(t => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'scanner-type-card compact' + (_scannerType === t.id ? ' selected' : '');
+            btn.innerHTML = `<strong>${t.label}</strong>`;
+            btn.title = t.blurb;
+            btn.addEventListener('click', () => applyScannerType(t.id));
+            wrap.appendChild(btn);
+        });
     });
 }
+
+let _setupScannerBound = false;
 
 async function initSetupScanner() {
     try {
@@ -127,6 +148,11 @@ async function initSetupScanner() {
             console.warn('Setup catalog failed:', e2);
         }
     }
+    if (_setupScannerBound) {
+        refreshMetricsStatus();
+        return;
+    }
+    _setupScannerBound = true;
     document.getElementById('btn-metrics-refresh')?.addEventListener('click', refreshMetricsCache);
     document.getElementById('btn-setup-filters-apply')?.addEventListener('click', () => loadSetupScan());
     document.getElementById('btn-setup-filters-clear')?.addEventListener('click', () => {
@@ -141,6 +167,29 @@ async function initSetupScanner() {
         const du = document.getElementById('flt-dual-up');
         if (du) du.checked = false;
         applyScannerType('all');
+    });
+    document.getElementById('btn-setup-chrome')?.addEventListener('click', () => {
+        _setupChromeOpen = !_setupChromeOpen;
+        const el = document.getElementById('setup-chrome');
+        if (el) el.hidden = !_setupChromeOpen;
+        const btn = document.getElementById('btn-setup-chrome');
+        if (btn) btn.textContent = _setupChromeOpen ? 'More ▴' : 'More ▾';
+    });
+    document.getElementById('btn-setup-filters-toggle')?.addEventListener('click', () => {
+        _setupFiltersOpen = !_setupFiltersOpen;
+        const el = document.getElementById('setup-adv-filters');
+        if (el) el.hidden = !_setupFiltersOpen;
+        const btn = document.getElementById('btn-setup-filters-toggle');
+        if (btn) btn.textContent = _setupFiltersOpen ? 'Filters ▴' : 'Filters ▾';
+    });
+    document.querySelectorAll('#setup-scan-table thead th[data-sort]').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', () => {
+            const key = th.dataset.sort;
+            if (_setupSort.key === key) _setupSort.dir *= -1;
+            else _setupSort = { key, dir: key === 'symbol' || key === 'badges' ? 1 : -1 };
+            renderSetupScanTable(_lastSetupResults);
+        });
     });
     refreshMetricsStatus();
 }
@@ -370,6 +419,56 @@ function renderMethBadgesHtml(row) {
     return parts.join('') || '—';
 }
 
+function sortSetupResults(results) {
+    const { key, dir } = _setupSort;
+    const copy = results.slice();
+    copy.sort((a, b) => {
+        let va = a[key];
+        let vb = b[key];
+        if (key === 'badges') {
+            va = (a.badge_codes || []).length;
+            vb = (b.badge_codes || []).length;
+        }
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        if (typeof va === 'string') return va.localeCompare(vb) * dir;
+        return (va - vb) * dir;
+    });
+    return copy;
+}
+
+function highlightSetupRow(idx) {
+    const rows = document.querySelectorAll('#setup-scan-tbody .setup-scan-row');
+    rows.forEach((tr, i) => tr.classList.toggle('setup-row-on', i === idx));
+    if (idx >= 0 && rows[idx]) {
+        rows[idx].scrollIntoView({ block: 'nearest' });
+    }
+}
+
+function moveSetupRow(delta) {
+    if (!_lastSetupResults.length) return false;
+    const n = _lastSetupResults.length;
+    if (_setupRowIdx < 0) _setupRowIdx = 0;
+    else _setupRowIdx = (_setupRowIdx + delta + n) % n;
+    highlightSetupRow(_setupRowIdx);
+    return true;
+}
+
+function openSetupRow() {
+    const sorted = sortSetupResults(_lastSetupResults);
+    const row = sorted[_setupRowIdx];
+    if (!row) return false;
+    switchTab('charts');
+    selectSymbol(row.symbol);
+    return true;
+}
+
+function isScannerTabOpen() {
+    const area = document.getElementById('scanner-area');
+    return area && area.style.display !== 'none';
+}
+
 function renderSetupScanTable(results) {
     const tbody = document.getElementById('setup-scan-tbody');
     const empty = document.getElementById('setup-scan-empty');
@@ -380,15 +479,23 @@ function renderSetupScanTable(results) {
     if (!results || !results.length) {
         if (empty) empty.style.display = 'block';
         if (table) table.style.display = 'none';
+        _setupRowIdx = -1;
         return;
     }
     if (empty) empty.style.display = 'none';
     if (table) table.style.display = 'table';
 
-    results.forEach(row => {
+    const sorted = sortSetupResults(results);
+    document.querySelectorAll('#setup-scan-table thead th[data-sort]').forEach(th => {
+        th.classList.toggle('sort-on', th.dataset.sort === _setupSort.key);
+        th.dataset.dir = th.dataset.sort === _setupSort.key ? (_setupSort.dir > 0 ? 'asc' : 'desc') : '';
+    });
+
+    sorted.forEach((row, idx) => {
         const tr = document.createElement('tr');
         tr.className = 'setup-scan-row';
         tr.dataset.symbol = row.symbol;
+        tr.dataset.idx = String(idx);
 
         const stageCls = row.stage ? `stage-${row.stage}` : '';
         let stageTxt = '—';
@@ -405,6 +512,9 @@ function renderSetupScanTable(results) {
         const dist = row.dist_20d_high_pct != null ? `${row.dist_20d_high_pct.toFixed(1)}%` : '—';
         const vol = row.vol_ratio_5_20 != null ? row.vol_ratio_5_20.toFixed(2) : '—';
         const rts = row.rts != null ? row.rts : '—';
+        const atr = row.atr_pct != null ? `${row.atr_pct.toFixed(1)}%` : '—';
+        const stop = row.stop_long_1_5atr != null ? row.stop_long_1_5atr.toFixed(2) : '—';
+        const rBox = row.r_to_box != null ? ` · ${row.r_to_box}R` : '';
 
         tr.innerHTML = `
             <td class="setup-sym">${row.symbol}</td>
@@ -415,6 +525,8 @@ function renderSetupScanTable(results) {
             <td>${rs}</td>
             <td>${dist}</td>
             <td>${vol}</td>
+            <td class="setup-atr" title="ATR% of price">${atr}</td>
+            <td class="setup-stop" title="1.5×ATR stop${rBox}">${stop}</td>
             <td class="setup-actions">
                 <button type="button" class="btn btn-ghost btn-sm setup-open" data-symbol="${row.symbol}">Chart</button>
                 <button type="button" class="btn btn-ghost btn-sm setup-promote" data-symbol="${row.symbol}">+ Desk</button>
@@ -430,12 +542,16 @@ function renderSetupScanTable(results) {
             await promoteSymbolToDesk(row.symbol);
         });
         tr.addEventListener('click', () => {
+            _setupRowIdx = idx;
+            highlightSetupRow(idx);
             switchTab('charts');
             selectSymbol(row.symbol);
         });
 
         tbody.appendChild(tr);
     });
+    if (_setupRowIdx >= sorted.length) _setupRowIdx = sorted.length - 1;
+    if (_setupRowIdx >= 0) highlightSetupRow(_setupRowIdx);
 }
 
 async function loadSetupScan() {
@@ -480,10 +596,14 @@ async function loadSetupScan() {
         renderSetupStagePills();
         renderSetupBadgePills();
         renderSetupScanTable(_lastSetupResults);
+        renderMarketContext(data.market_context);
         if (meta) {
             const typeBit = _scannerType && _scannerType !== 'all' ? ` · ${_scannerType}` : '';
             const badgeBit = _setupBadge ? ` · ${_setupBadge}` : '';
-            const cacheBit = data.from_cache ? ' · cached' : ' · live';
+            const cache = data.cache || {};
+            let cacheBit = data.from_cache ? ' · cached' : ' · live';
+            if (cache.freshness === 'stale') cacheBit += ' · stale';
+            if (cache.as_of) cacheBit += ` · as of ${String(cache.as_of).slice(0, 10)}`;
             meta.textContent = `${data.count || 0} hits${typeBit}${badgeBit}${cacheBit} · scanned ${data.scanned || 0}`;
         }
         refreshMetricsStatus();
@@ -495,16 +615,47 @@ async function loadSetupScan() {
     }
 }
 
+function renderMarketContext(ctx) {
+    const strip = document.getElementById('market-context-strip');
+    if (!strip) return;
+    if (!ctx || !ctx.n) {
+        strip.hidden = true;
+        return;
+    }
+    strip.hidden = false;
+    strip.classList.toggle('mc-stale', !!ctx.stale);
+    const regime = document.getElementById('mc-regime');
+    if (regime) {
+        regime.textContent = `M ${ctx.label || '—'}`;
+        regime.className = `mc-regime mc-${ctx.regime || 'mixed'}`;
+        regime.title = `${ctx.blurb || ''} ${ctx.honest || ''}`.trim();
+    }
+    const set = (id, label, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = `${label} ${val != null ? val.toFixed(0) + '%' : '—'}`;
+    };
+    set('mc-up', 'Up', ctx.pct_uptrend);
+    set('mc-dual', 'D+W', ctx.pct_dual_up);
+    set('mc-s2', 'S2', ctx.pct_stage2);
+    set('mc-ep', 'EP', ctx.pct_ep);
+    set('mc-pos', 'Day+', ctx.pct_positive);
+}
+
 async function refreshMetricsStatus() {
     const el = document.getElementById('setup-metrics-status');
     if (!el) return;
     try {
         const s = await apiFetch(`${API}/metrics/status`);
         const pct = s.coverage_pct != null ? `${s.coverage_pct}%` : '—';
-        el.textContent = `Cache ${s.cached || 0}/${s.universe || 0} (${pct})`;
-        el.title = s.updated_at
-            ? `Metrics updated ${s.updated_at}`
-            : 'Run Precompute after archiving prices';
+        const asOf = s.as_of ? String(s.as_of).slice(0, 10) : '';
+        let txt = `Cache ${s.cached || 0}/${s.universe || 0} (${pct})`;
+        if (asOf) txt += ` · ${asOf}`;
+        if (s.freshness === 'stale') txt += ' · stale';
+        el.textContent = txt;
+        el.classList.toggle('cache-stale', s.freshness === 'stale');
+        el.title = s.stale
+            ? `Prices newer than cache (${s.bars_as_of}). Click Precompute.`
+            : (s.updated_at ? `Metrics updated ${s.updated_at}` : 'Run Precompute after archiving prices');
     } catch {
         el.textContent = '';
     }
@@ -519,12 +670,44 @@ async function refreshMetricsCache() {
         loadEl.innerHTML = '<span class="spinner"></span> Precomputing desk metrics…';
     }
     try {
-        const res = await apiFetch(`${API}/metrics/refresh`, {
+        const res = await fetch(`${API}/metrics/refresh/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ workers: 8 }),
         });
-        toast(`Cached ${res.ok || 0}/${res.total || 0} symbols`, 'success');
+        if (!res.ok || !res.body) {
+            // Fallback to blocking POST
+            const sync = await apiFetch(`${API}/metrics/refresh`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workers: 8 }),
+            });
+            toast(`Cached ${sync.ok || 0}/${sync.total || 0} symbols`, 'success');
+        } else {
+            const reader = res.body.getReader();
+            const dec = new TextDecoder();
+            let buf = '';
+            let last = null;
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buf += dec.decode(value, { stream: true });
+                const parts = buf.split('\n\n');
+                buf = parts.pop();
+                for (const part of parts) {
+                    const line = part.trim();
+                    if (!line.startsWith('data:')) continue;
+                    let ev;
+                    try { ev = JSON.parse(line.slice(5).trim()); } catch { continue; }
+                    if (ev.type === 'progress' && loadEl && ev.total) {
+                        loadEl.innerHTML = `<span class="spinner"></span> Precomputing ${ev.done}/${ev.total} · ${ev.symbol || ''}`;
+                    }
+                    if (ev.type === 'done') last = ev;
+                }
+            }
+            if (last && last.error) throw new Error(last.error);
+            toast(`Cached ${(last && last.ok) || 0}/${(last && last.total) || 0} symbols`, 'success');
+        }
         await refreshMetricsStatus();
         await loadSetupScan();
     } catch (e) {

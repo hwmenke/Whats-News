@@ -61,6 +61,10 @@ class DatabaseScaleTests(unittest.TestCase):
             db.get_latest_ohlcv_date("AAPL", "daily"),
             idx[-1].strftime("%Y-%m-%d"),
         )
+        self.assertEqual(
+            db.get_max_ohlcv_date("daily"),
+            idx[-1].strftime("%Y-%m-%d"),
+        )
 
     def test_many_tickers_roundtrip(self):
         tickers = [f"T{i:04d}" for i in range(200)]

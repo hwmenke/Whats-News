@@ -30,14 +30,16 @@ def _last(s: pd.Series):
     return float(v.iloc[-1])
 
 
-def minervini_trend_template(symbol: str) -> dict:
+def minervini_trend_template(symbol: str, df=None) -> dict:
     """
     Classic 8-point Trend Template (price/MA structure) on daily bars.
 
     Criterion 8 uses 21D return strength as a *book* RS proxy — never IBD RS.
+    Pass `df` to avoid a second OHLCV load during batch precompute.
     """
     sym = symbol.upper()
-    df = md.get_ohlcv_df(sym, "daily", limit=280)
+    if df is None:
+        df = md.get_ohlcv_df(sym, "daily", limit=280)
     if df is None or df.empty or len(df) < 200:
         return {
             "symbol": sym,
@@ -134,12 +136,14 @@ def minervini_trend_template(symbol: str) -> dict:
     }
 
 
-def stockbee_momentum(symbol: str) -> dict:
+def stockbee_momentum(symbol: str, df=None) -> dict:
     """
     Stockbee-style mechanical flags: EP-class gap/vol, 9/20 EMA, range expansion, anticipation coil.
+    Pass `df` to reuse bars already loaded by the caller.
     """
     sym = symbol.upper()
-    df = md.get_ohlcv_df(sym, "daily", limit=120)
+    if df is None:
+        df = md.get_ohlcv_df(sym, "daily", limit=120)
     if df is None or df.empty or len(df) < 30:
         return {"symbol": sym, "ready": False, "tags": []}
 

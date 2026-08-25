@@ -70,7 +70,7 @@ def _empty(sym: str) -> dict:
     }
 
 
-def classify_stage(symbol: str, include_series: bool = False) -> dict:
+def classify_stage(symbol: str, include_series: bool = False, df=None) -> dict:
     """
     Return stage 1–4 (or 0) from weekly closes vs SMA(30).
 
@@ -83,7 +83,8 @@ def classify_stage(symbol: str, include_series: bool = False) -> dict:
       - early_stage2: just broke above SMA after Stage-1-like base
     """
     sym = symbol.upper()
-    df = md.get_ohlcv_df(sym, "weekly", limit=160)
+    if df is None:
+        df = md.get_ohlcv_df(sym, "weekly", limit=160)
     if df is None or df.empty or len(df) < 40:
         return _empty(sym)
 

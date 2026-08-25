@@ -88,6 +88,7 @@ function renderSmartListPresets() {
         preset_minervini_pivot: { tone: 'minervini', blurb: 'VCP + near 20D high' },
         preset_stockbee_ep: { tone: 'stockbee', blurb: 'Gap + volume EP' },
         preset_stockbee_re: { tone: 'stockbee', blurb: 'TR ≫ ATR day' },
+        preset_tight_coil: { tone: 'stockbee', blurb: 'Near high + dry vol / VCP' },
         badge_kq: { tone: 'kq', blurb: 'Qullamaggie momentum badge' },
         badge_mm: { tone: 'mm', blurb: 'Minervini Trend Template' },
         badge_sb4: { tone: 'sb', blurb: '≥4% day / gap' },
