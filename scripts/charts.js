@@ -145,6 +145,7 @@ function destroyCharts() {
     riskLines = { daily: [], weekly: [] };
     darvasLines = { daily: [] };
     stageSmaSeries = null;
+}
 
 // ── Build one panel (daily or weekly) ────────────────────────
 function buildPanel(freq) {

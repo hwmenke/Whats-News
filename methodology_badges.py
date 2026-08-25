@@ -108,7 +108,7 @@ def momentum_extras(symbol: str, df=None) -> dict:
     """Extra returns for SBW / SB9 / 52W. Pass `df` to skip a second OHLCV load."""
     sym = symbol.upper()
     if df is None:
-        df = md.get_ohlcv_df(sym, "daily", limit=220)
+        df = md.get_ohlcv_df(sym, "daily", limit=260)
     if df is None or df.empty or len(df) < 30:
         return {"ready": False}
     close = df["close"].astype(float)
@@ -247,9 +247,9 @@ def badges_for_row(row: dict, fetch_extras: bool = True) -> dict:
         early_stage2=bool(row.get("early_stage2")),
         change_pct=row.get("change_pct"),
         gap_pct=row.get("gap_pct"),
-        ret_5d_pct=row.get("ret_5d_pct", extras.get("ret_5d_pct")),
-        ret_9m_pct=row.get("ret_9m_pct", extras.get("ret_9m_pct")),
-        vs_52w_high_pct=row.get("vs_52w_high_pct", extras.get("vs_52w_high_pct")),
+        ret_5d_pct=row.get("ret_5d_pct") if row.get("ret_5d_pct") is not None else extras.get("ret_5d_pct"),
+        ret_9m_pct=row.get("ret_9m_pct") if row.get("ret_9m_pct") is not None else extras.get("ret_9m_pct"),
+        vs_52w_high_pct=row.get("vs_52w_high_pct") if row.get("vs_52w_high_pct") is not None else extras.get("vs_52w_high_pct"),
         dist_20d_high_pct=row.get("dist_20d_high_pct"),
         rs_rank_21d=row.get("rs_rank_21d"),
         rs_n=row.get("rs_n"),

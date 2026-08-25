@@ -184,6 +184,7 @@ class DeskMetricsCacheServeTests(unittest.TestCase):
         self.assertIn("KQ", out["results"][0].get("badge_codes") or [])
         self.assertIn("market_context", out)
         self.assertIn("cache", out)
+        self.assertIn("total_matched", out)
 
 
 if __name__ == "__main__":

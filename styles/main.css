@@ -26,7 +26,9 @@
 
   --text-primary:  #e6edf3;
   --text-muted:    #8b949e;
-  --text-dim:      #4a5568;
+  --text-dim:      #8b949e;
+  --bg:            var(--bg-base);
+  --text:          var(--text-primary);
 
   --font-main:     'Inter', sans-serif;
   --font-mono:     'JetBrains Mono', monospace;
@@ -48,6 +50,12 @@
 html, body {
   height: 100%;
   font-family: var(--font-main);
+}
+:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
   background: var(--bg-base);
   color: var(--text-primary);
   overscroll-behavior: none;
@@ -1288,10 +1296,16 @@ html, body {
 .main-nav-tabs {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 4px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
+  min-height: 32px;
+}
+.main-nav-tabs .indicator-toggles,
+.main-nav-tabs #chart-overlays-bar {
+  flex: 1 1 100%;
 }
 
 /* ═══════════════════ STATISTICS VIEW ═══════════════════ */
@@ -2845,7 +2859,7 @@ html, body {
   border-radius: 3px;
   border: 1px solid var(--border);
   background: var(--bg-elevated);
-  color: var(--text);
+  color: var(--text-primary);
   line-height: 1.4;
 }
 .meth-badge.tone-kq { color: #fbbf24; border-color: #f59e0b66; background: rgba(245, 158, 11, 0.12); }
@@ -3333,7 +3347,7 @@ body.is-resizing * {
 .scanner-type-card {
   border: 1px solid var(--border);
   background: var(--bg-elevated);
-  color: var(--text);
+  color: var(--text-primary);
   border-radius: 6px;
   padding: 6px 10px;
   cursor: pointer;
@@ -3376,8 +3390,8 @@ body.is-resizing * {
   padding: 3px 6px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--bg-base);
+  color: var(--text-primary);
   font-size: 11px;
 }
 .setup-flt-select {

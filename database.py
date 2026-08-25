@@ -301,6 +301,7 @@ def remove_symbol(symbol: str):
     with connection() as conn:
         conn.execute("DELETE FROM symbols WHERE symbol = ?", (symbol.upper(),))
         conn.execute("DELETE FROM ohlcv WHERE symbol = ?", (symbol.upper(),))
+        conn.execute("DELETE FROM symbol_metrics WHERE symbol = ?", (symbol.upper(),))
 
 
 def update_last_fetch(symbol: str):

@@ -61,6 +61,25 @@ class MethodologyBadgeTests(unittest.TestCase):
         self.assertTrue(wf._compare("has_badge", ["KQ", "MM"], "MM"))
         self.assertFalse(wf._compare("has_badge", ["KQ"], "SB4"))
 
+    def test_badges_for_row_uses_extras_when_keys_are_none(self):
+        row = {
+            "symbol": "AAA",
+            "ret_5d_pct": None,
+            "ret_9m_pct": None,
+            "vs_52w_high_pct": None,
+            "change_pct": 0,
+        }
+        extras = {"ret_5d_pct": 22.0, "ret_9m_pct": 150.0, "vs_52w_high_pct": -1.0}
+
+        def _fake_extras(sym, df=None):
+            return extras
+
+        from unittest.mock import patch
+        with patch.object(mb, "momentum_extras", side_effect=_fake_extras):
+            out = mb.badges_for_row(row, fetch_extras=True)
+        self.assertIn("SBW", out["codes"])
+        self.assertIn("SB9", out["codes"])
+
 
 if __name__ == "__main__":
     unittest.main()

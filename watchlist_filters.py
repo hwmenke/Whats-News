@@ -6,11 +6,14 @@ Evaluates rules server-side against stored OHLCV. Use scope=with_data for univer
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
 import market_data as md
 import portfolio
+
+log = logging.getLogger(__name__)
 
 # ── Field catalog (for UI + validation) ───────────────────────────────────────
 
@@ -32,7 +35,7 @@ FILTER_CATALOG: List[dict] = [
     {"id": "d_roc_3m", "label": "ROC 3M %", "group": "History", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
     {"id": "d_roc_6m", "label": "ROC 6M %", "group": "History", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
     # Volume
-    {"id": "vol_ratio_5_20", "label": "Vol today / 20D avg", "group": "Volume", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
+    {"id": "dollar_vol_20d", "label": "Dollar volume 20D avg", "group": "Volume", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
     {"id": "d_vol_ratio", "label": "Vol ratio 5/20 (scanner)", "group": "Volume", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
     # MA / structure
     {"id": "vs_kama20_pct", "label": "Price vs KAMA20 %", "group": "MA / Structure", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
@@ -64,7 +67,7 @@ FILTER_CATALOG: List[dict] = [
                 "BRANDT_RISK_BOX", "BRANDT_RANGE",
                 "STAGE_1", "STAGE_2", "STAGE_2_EARLY", "STAGE_3", "STAGE_4",
                 "MINERVINI_TT", "MINERVINI_VCP", "MINERVINI_PIVOT",
-                "STOCKBEE_EP", "STOCKBEE_RE", "STOCKBEE_EMA", "STOCKBEE_ANT",
+                "STOCKBEE_EP", "STOCKBEE_RE", "STOCKBEE_EMA", "STOCKBEE_ANT", "TIGHT_COIL",
                 "RSI_OB", "RSI_OS"]},
     {"id": "stage", "label": "Weinstein stage (1–4)", "group": "Setups", "type": "number", "ops": ["eq", "in"]},
     {"id": "minervini_pass", "label": "Minervini Trend Template pass", "group": "Setups", "type": "bool", "ops": ["is_true", "is_false"]},
@@ -447,9 +450,11 @@ def apply_filter(
                     row["name"] = (meta.get("name") or "").strip()
                     tag = row["group_tag"]
                     row["index_tag"] = tag if tag.startswith("univ:") else ""
+                    row["peer_etf"] = portfolio.peer_etf_for(row.get("sector"))
                     rows.append(row)
                 from_cache = True
         except Exception:
+            log.exception("metrics cache serve failed; falling back to live filter")
             rows = []
             from_cache = False
 

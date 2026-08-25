@@ -71,7 +71,8 @@ class DataServiceApiTests(unittest.TestCase):
 
     def test_ohlcv_missing(self):
         res = self.client.get("/api/ohlcv/AAPL")
-        self.assertEqual(res.status_code, 404)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.get_json(), [])
 
     @patch("data_service.app.fetcher.fetch_and_store")
     def test_fetch_symbol(self, mock_fetch):

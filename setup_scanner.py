@@ -105,7 +105,7 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
         sym = symbol.upper()
         daily = md.get_ohlcv_df(sym, "daily", limit=280)
         weekly = md.get_ohlcv_df(sym, "weekly", limit=160)
-        snap = portfolio.snapshot_symbol(sym, light=False, df=daily, weekly_df=weekly)
+        snap = portfolio.snapshot_symbol(sym, light=False, include_scanner=True, df=daily, weekly_df=weekly)
         if not snap.get("ready"):
             return {
                 "symbol": sym,
@@ -223,7 +223,7 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
         stop = snap.get("stop_long_1_5atr")
         r_box = _r_to_box(snap.get("price"), box.get("bottom"), atr)
 
-        return {
+        payload = {
             "symbol": snap["symbol"],
             "ready": True,
             "as_of": snap.get("as_of"),
@@ -269,7 +269,17 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
                 "strong" if (snap.get("gap_pct") or 0) >= 4 and (snap.get("vol_ratio_5_20") or 0) >= 2
                 else ("soft" if snap.get("is_ep") else None)
             ),
+            "vs_kama20_pct": snap.get("vs_kama20_pct"),
+            "kama20": snap.get("kama20"),
+            "dist_63d_high_pct": snap.get("dist_63d_high_pct"),
+            "pct_off_20d_high_pct": snap.get("pct_off_20d_high_pct"),
+            "breakout_score": snap.get("breakout_score"),
+            "dollar_vol_20d": snap.get("dollar_vol_20d"),
         }
+        for key, val in snap.items():
+            if key.startswith("d_") and key not in payload:
+                payload[key] = val
+        return payload
     except Exception as exc:
         return {
             "symbol": symbol.upper(),
@@ -346,15 +356,21 @@ def _filter_and_rollup(
     )
 
     ready = [r for r in filtered if r.get("ready")]
+    # Rank Book RS / RTS against the *unfiltered* incoming set so a live
+    # scan cannot mint "97 Club" inside a 30-name subset. Cache rows already
+    # carry universe ranks from desk_metrics.finalize_payloads.
     if not from_cache:
+        universe = [r for r in results if r and r.get("ready")]
         ranked = sorted(
-            ready,
+            universe,
             key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
             reverse=True,
         )
-        for i, row in enumerate(ranked, start=1):
-            row["rs_rank_21d"] = i
-            row["rs_n"] = len(ranked)
+        n = len(ranked)
+        rank_of = {id(r): i for i, r in enumerate(ranked, start=1)}
+        for row in universe:
+            row["rs_rank_21d"] = rank_of.get(id(row))
+            row["rs_n"] = n
 
     badge_counts = {k: 0 for k in methodology_badges.BADGE_CATALOG}
     for r in ready:
@@ -385,7 +401,10 @@ def _filter_and_rollup(
         ready = [r for r in filtered if r.get("ready")]
 
     if limit and len(filtered) > limit:
+        total_matched = len(filtered)
         filtered = filtered[:limit]
+    else:
+        total_matched = len(filtered)
 
     family_counts = {k: 0 for k in SETUP_FAMILIES}
     stage_counts = {1: 0, 2: 0, 3: 0, 4: 0}
@@ -413,6 +432,7 @@ def _filter_and_rollup(
         "badge_catalog": methodology_badges.BADGE_CATALOG,
         "badge_counts": badge_counts,
         "from_cache": from_cache,
+        "total_matched": total_matched,
     }
 
 

@@ -2459,10 +2459,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     await checkHealth();
     setInterval(checkHealth, 30000);
 
-    // Seed default KAMA periods
-    DEFAULT_KAMA_PERIODS.forEach(p => addKamaPeriod(p));
-    renderKamaPills();
-    setupKamaAddForm();
+    // Seed default KAMA periods (charts.js may fail to load — don't abort boot)
+    try {
+        if (typeof addKamaPeriod === 'function') {
+            DEFAULT_KAMA_PERIODS.forEach(p => addKamaPeriod(p));
+        }
+        if (typeof renderKamaPills === 'function') renderKamaPills();
+        if (typeof setupKamaAddForm === 'function') setupKamaAddForm();
+    } catch (e) {
+        console.warn('KAMA init skipped:', e);
+    }
 
     // BB pill
     const bbPill = document.getElementById('pill-bb');

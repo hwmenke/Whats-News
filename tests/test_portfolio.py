@@ -83,6 +83,7 @@ class PortfolioSnapshotTests(unittest.TestCase):
         self.assertTrue(snap["is_vol_surge"])
         self.assertTrue(snap["is_ep"])
         self.assertGreaterEqual(snap["breakout_score"], 3)
+        self.assertGreater(snap["dist_20d_high_pct"], 0)
 
     def test_breakout_queue_and_news_focus_prefer_strong_names(self):
         self._seed_breakout("EPCO")  # near-high + vol surge + EP

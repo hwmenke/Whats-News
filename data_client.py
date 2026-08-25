@@ -99,11 +99,16 @@ def get_ohlcv(symbol: str, freq: str = "daily", limit: int = 500) -> list[dict]:
     if use_embedded():
         import database as db
         return db.get_ohlcv(symbol, freq, limit)
-    return _request(
-        "GET",
-        f"/api/ohlcv/{urllib.parse.quote(symbol.upper())}",
-        query={"freq": freq, "limit": limit},
-    ) or []
+    try:
+        return _request(
+            "GET",
+            f"/api/ohlcv/{urllib.parse.quote(symbol.upper())}",
+            query={"freq": freq, "limit": limit},
+        ) or []
+    except DataServiceError as exc:
+        if exc.status == 404:
+            return []
+        raise
 
 
 def get_ohlcv_df(symbol: str, freq: str = "daily", limit: int = 1000) -> pd.DataFrame:

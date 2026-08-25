@@ -189,9 +189,7 @@ def get_ohlcv(symbol):
         return jsonify({"error": "limit must be a positive integer"}), 400
 
     rows = db.get_ohlcv(symbol.upper(), freq, limit)
-    if not rows:
-        return jsonify({"error": "No data. Fetch the symbol first."}), 404
-    return jsonify(rows)
+    return jsonify(rows or [])
 
 
 # -- DB ops ---------------------------------------------------------------------

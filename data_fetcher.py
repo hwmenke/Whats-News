@@ -77,6 +77,10 @@ def fetch_and_store(symbol: str, period: str = "2y", overlap_days: int = 3) -> d
         "close":  "last",
         "volume": "sum"
     }).dropna()
+    # Incremental windows start mid-week; the first resampled bar is a
+    # partial week and would overwrite a good stored weekly OHLC.
+    if last_date_str and len(weekly_df) > 1:
+        weekly_df = weekly_df.iloc[1:]
     print(f"++ Fetcher: Resampled to {len(weekly_df)} weekly bars")
 
     daily_count  = db.upsert_ohlcv(sym, "daily",  daily_df)
@@ -88,13 +92,14 @@ def fetch_and_store(symbol: str, period: str = "2y", overlap_days: int = 3) -> d
     try:
         print(f"++ Fetcher: Requesting ticker.info for {sym}...")
         info   = ticker.info
-        name   = info.get("longName", "")
-        sector = info.get("sector", f"{info.get('industry', '')}").strip()
+        name   = info.get("longName") or ""
+        sector = (info.get("sector") or info.get("industry") or "").strip()
         print(f"++ Fetcher: Info retrieved: {name} ({sector})")
     except Exception as e:
         print(f"!! Fetcher: Metadata download failed (skipped): {str(e)}")
 
-    db.update_symbol_info(sym, name, sector)
+    if name or sector:
+        db.update_symbol_info(sym, name, sector)
     db.update_last_fetch(sym)
 
     return {
@@ -147,12 +152,13 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
             name, sector = "", ""
             try:
                 info   = ticker.info
-                name   = info.get("longName", "")
-                sector = info.get("sector", info.get("industry", "")).strip()
+                name   = info.get("longName") or ""
+                sector = (info.get("sector") or info.get("industry") or "").strip()
             except Exception:
                 pass
 
-            db.update_symbol_info(sym, name, sector)
+            if name or sector:
+                db.update_symbol_info(sym, name, sector)
             db.update_last_fetch(sym)
 
             return {

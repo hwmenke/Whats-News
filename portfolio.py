@@ -234,14 +234,26 @@ def snapshot_symbol(
     chg_pct = (chg / prev * 100) if prev else 0.0
 
     # ── Momentum / breakout metrics (Qullamaggie loop) ──────────────
-    # Distance from N-day high, 0 = sitting at the high (near-high queue).
-    def _dist_from_high(n: int):
+    # Distance from the *prior* N-day high (excludes today) so a breakout
+    # can print positive. pct_off_Nd_high keeps "how far under today's ceiling."
+    def _dist_from_prior_high(n: int):
+        if len(high) < 2:
+            return None
+        prior = high.iloc[:-1]
+        window = prior.tail(min(n, len(prior)))
+        if window.empty:
+            return None
+        hi = float(window.max())
+        return round((last / hi - 1.0) * 100, 2) if hi else None
+
+    def _pct_off_high(n: int):
         window = high.tail(min(n, len(high)))
         hi = float(window.max()) if len(window) else None
         return round((last / hi - 1.0) * 100, 2) if hi else None
 
-    dist_20d_high = _dist_from_high(20)
-    dist_63d_high = _dist_from_high(63)
+    dist_20d_high = _dist_from_prior_high(20)
+    dist_63d_high = _dist_from_prior_high(63)
+    pct_off_20d_high = _pct_off_high(20)
 
     # Volume surge: today's bar vs 20-bar average volume.
     vol_avg20 = float(volume.tail(21).iloc[:-1].mean()) if len(volume) > 21 else (
@@ -249,6 +261,10 @@ def snapshot_symbol(
     )
     vol_today = float(volume.iloc[-1])
     vol_ratio = round(vol_today / vol_avg20, 2) if vol_avg20 and vol_avg20 > 0 else None
+    dollar_vol_20d = None
+    if len(close) >= 5:
+        dv = (close * volume).tail(min(20, len(close)))
+        dollar_vol_20d = round(float(dv.mean()), 0) if len(dv) else None
 
     # Gap %: today's open vs prior close — episodic-pivot (EP) path.
     today_open = float(open_.iloc[-1])
@@ -337,7 +353,9 @@ def snapshot_symbol(
         "stop_short_1_5atr": stop_short,
         "dist_20d_high_pct": dist_20d_high,
         "dist_63d_high_pct": dist_63d_high,
+        "pct_off_20d_high_pct": pct_off_20d_high,
         "vol_ratio_5_20": vol_ratio,
+        "dollar_vol_20d": dollar_vol_20d,
         "gap_pct": gap_pct,
         "is_near_high": is_near_high,
         "is_vol_surge": is_vol_surge,

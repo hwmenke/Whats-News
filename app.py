@@ -37,6 +37,10 @@ import index_universe
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 
+if data_client.use_embedded():
+    import database as _db
+    _db.init_db()
+
 
 def _data_error(exc):
     if isinstance(exc, data_client.DataServiceError):
@@ -71,7 +75,7 @@ def health():
     except Exception:
         symbol_count = None
     return jsonify({
-        "ok": True,
+        "ok": bool(data_health.get("ok")) if isinstance(data_health, dict) else True,
         "service": "whats-news",
         "layer": "analysis",
         "symbol_count": symbol_count,
@@ -831,12 +835,14 @@ def watchlist_apply_filter():
             limit = int(body.get("limit", 500))
         except (TypeError, ValueError):
             limit = 500
+        live = bool(body.get("live"))
         return jsonify(
             watchlist_filters.apply_filter(
                 rules=rules,
                 match=match,
                 scope=scope,
                 limit=limit,
+                use_cache=not live,
             )
         )
     except Exception as exc:

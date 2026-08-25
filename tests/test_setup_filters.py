@@ -93,6 +93,18 @@ class SetupFilterExtrasTests(unittest.TestCase):
         self.assertEqual(ss._r_to_box(100, 85, 10), 1.0)
         self.assertIsNone(ss._r_to_box(100, 85, None))
 
+    def test_live_rs_ranked_on_universe_not_filter(self):
+        rows = self._rows()
+        out = ss._filter_and_rollup(
+            rows,
+            symbols_scanned=2,
+            setup_filter="EP",
+            from_cache=False,
+        )
+        self.assertEqual(out["count"], 1)
+        # A is the only EP but both rows are in the universe; rank must be vs 2.
+        self.assertEqual(out["results"][0]["rs_n"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
