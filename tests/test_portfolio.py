@@ -213,5 +213,43 @@ class LabelHonestyTests(unittest.TestCase):
             )
 
 
+class FrontendContractTests(unittest.TestCase):
+    """Static contracts the desk JS must keep: method packs, copy gate, jump."""
+
+    def test_method_chart_packs_wired(self):
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            scanner = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        self.assertIn("METHOD_CHART_PACKS", charts)
+        self.assertIn("minervini:", charts)
+        self.assertIn("stockbee:", charts)
+        self.assertIn("qulla:", charts)
+        self.assertIn("function applyMethodPack", charts)
+        self.assertIn("function computeSma", charts)
+        self.assertIn("applyMethodPack(typeId)", scanner)
+        self.assertIn('data-sma="50"', html)
+        self.assertIn('data-sma="150"', html)
+        self.assertIn('data-sma="200"', html)
+        self.assertIn('data-ema="9"', html)
+        self.assertIn('data-ema="20"', html)
+        self.assertIn('id="method-pack-hint"', html)
+
+    def test_copy_setup_is_checklist_gated(self):
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        self.assertIn("Complete checklist before copying", app_js)
+        self.assertIn("copySetupCard()", app_js)
+
+    def test_palette_exposes_method_packs(self):
+        with open("scripts/desk_palette.js", encoding="utf-8") as fh:
+            pal = fh.read()
+        self.assertIn("pack-minervini", pal)
+        self.assertIn("pack-stockbee", pal)
+        self.assertIn("applyMethodPack", pal)
+
+
 if __name__ == "__main__":
     unittest.main()

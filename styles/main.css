@@ -1042,6 +1042,14 @@ html, body {
   gap: 4px;
 }
 
+.method-pack-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  margin-left: 6px;
+  letter-spacing: 0.02em;
+}
+
 .kama-input {
   width: 60px;
   background: var(--bg-base);

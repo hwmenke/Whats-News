@@ -2173,6 +2173,10 @@ function copySetupCard() {
         return;
     }
     const allChecked = Object.values(state.checklist).every(Boolean);
+    if (!allChecked) {
+        toast('Complete checklist before copying', 'warning');
+        return;
+    }
     const entry = parseFloat(document.getElementById('pm-entry-input')?.value);
     const stop = parseFloat(document.getElementById('pm-stop-input')?.value);
     const target = parseFloat(document.getElementById('pm-target-input')?.value);
@@ -2601,17 +2605,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         epPill.classList.toggle('active-ep', on);
     });
 
-    // EMA stack pills (10/21/50) — optional, off by default (Qullamaggie: beside KAMA, not instead of)
+    // EMA / SMA pills — optional; method scanner types apply a pack.
     document.querySelectorAll('[data-ema]').forEach(pill => {
         pill.addEventListener('click', () => {
-            const p = pill.dataset.ema;
-            const on = toggleEma(p);
-            pill.classList.toggle('active-ema', on);
-            pill.style.borderColor = on ? EMA_COLORS[p] : '';
-            pill.style.color = on ? EMA_COLORS[p] : '';
-            pill.style.background = on ? EMA_COLORS[p] + '20' : '';
+            toggleEma(pill.dataset.ema);
         });
     });
+    document.querySelectorAll('[data-sma]').forEach(pill => {
+        pill.addEventListener('click', () => {
+            if (typeof toggleSma === 'function') toggleSma(pill.dataset.sma);
+        });
+    });
+    if (typeof syncMaPills === 'function') syncMaPills();
 
     // Darvas box overlay pill — on by default (structural, not KAMA)
     const darvasPill = document.getElementById('pill-darvas');

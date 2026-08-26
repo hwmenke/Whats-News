@@ -15,6 +15,9 @@ const PALETTE_COMMANDS = [
     { id: 'guide', label: 'Desk guide', hint: '?', run: () => openDeskGuide?.(0) },
     { id: 'badges', label: 'Badge key', hint: '', run: () => openBadgeKey?.() },
     { id: 'focus', label: 'Toggle focus mode', hint: 'f', run: () => toggleFocusMode?.() },
+    { id: 'pack-minervini', label: 'Chart pack · Minervini SMA 50/150/200', hint: '', run: () => applyMethodPack?.('minervini') },
+    { id: 'pack-stockbee', label: 'Chart pack · Stockbee EMA 9/20', hint: '', run: () => applyMethodPack?.('stockbee') },
+    { id: 'pack-qulla', label: 'Chart pack · Qulla EMA 10/21/50', hint: '', run: () => applyMethodPack?.('qulla') },
 ];
 
 let _paletteMode = 'jump';

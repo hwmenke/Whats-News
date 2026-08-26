@@ -102,6 +102,8 @@ function applyScannerType(typeId) {
 
     resetTypeDrivenFilters(t);
 
+    if (typeof applyMethodPack === 'function') applyMethodPack(typeId);
+
     renderScannerTypeCards();
     renderSetupFamilyCards();
     renderSetupStagePills();

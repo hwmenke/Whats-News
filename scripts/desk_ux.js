@@ -58,6 +58,7 @@ const DESK_GUIDE_PAGES = [
             <li><kbd>/</kbd> jumps to a ticker without adding it · <kbd>⌘K</kbd> opens commands</li>
             <li><strong>Positions</strong> (<kbd>Shift+J</kbd>) tracks open heat vs entry/stop</li>
             <li>Panes: turn on RSI / MACD / Trend only when needed</li>
+            <li>Method types light a chart pack: Minervini SMA 50/150/200 · Stockbee EMA 9/20 · Qulla EMA 10/21/50</li>
           </ul>
         `,
         action: { label: 'Open Charts', run: () => switchTab('charts') },

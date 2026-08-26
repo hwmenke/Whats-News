@@ -42,10 +42,19 @@ let lastStageSmaData = [];
 // chart.resize() on a disposed chart throws "Object is disposed").
 let resizeObservers = [];
 
-// EMA stack (Qullamaggie "optional, beside KAMA") — off by default.
-const EMA_PERIODS = [10, 21, 50];
-const EMA_COLORS = { 10: '#fbbf24', 21: '#38bdf8', 50: '#a3e635' };
-const activeEma = { 10: false, 21: false, 50: false };
+// EMA / SMA stacks — off by default; scanner method types apply a pack.
+const EMA_PERIODS = [9, 10, 20, 21, 50];
+const EMA_COLORS = { 9: '#fb923c', 10: '#fbbf24', 20: '#38bdf8', 21: '#818cf8', 50: '#a3e635' };
+const activeEma = { 9: false, 10: false, 20: false, 21: false, 50: false };
+const SMA_PERIODS = [50, 150, 200];
+const SMA_COLORS = { 50: '#f472b6', 150: '#c084fc', 200: '#e879f9' };
+const activeSma = { 50: false, 150: false, 200: false };
+const METHOD_CHART_PACKS = {
+    minervini: { ema: [], sma: [50, 150, 200], label: 'Minervini · SMA 50/150/200' },
+    stockbee: { ema: [9, 20], sma: [], label: 'Stockbee · EMA 9/20' },
+    qulla: { ema: [10, 21, 50], sma: [], label: 'Qulla · EMA 10/21/50' },
+    pullback: { ema: [20], sma: [], label: 'Pullback · EMA 20' },
+};
 
 // ── Chart instances ─────────────────────────────────────────
 let charts = {
@@ -56,11 +65,11 @@ let charts = {
 // ── Series references ────────────────────────────────────────
 let series = {
     daily: {
-        candle: null, volume: null, bb: {}, ema: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
     weekly: {
-        candle: null, volume: null, bb: {}, ema: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
 };
@@ -133,7 +142,7 @@ function destroyCharts() {
         Object.values(charts[freq]).forEach(c => { if (c) c.remove(); });
         charts[freq] = { main: null, volume: null, rsi: null, macd: null, trend: null };
         series[freq] = {
-            candle: null, volume: null, bb: {}, ema: {}, rsi: {}, macdLine: null,
+            candle: null, volume: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
             macdSig: null, macdHist: null, trend: null,
         };
         // Clear kama series refs
@@ -178,10 +187,16 @@ function buildPanel(freq) {
         });
     });
 
-    // EMA stack overlay series (10/21/50) — optional, off by default.
+    // EMA / SMA overlay series — optional, off by default until a method pack.
     EMA_PERIODS.forEach(p => {
         series[freq].ema[p] = charts[freq].main.addLineSeries({
             color: EMA_COLORS[p], lineWidth: 1.5, lineStyle: 0,
+            priceLineVisible: false, lastValueVisible: false, visible: false,
+        });
+    });
+    SMA_PERIODS.forEach(p => {
+        series[freq].sma[p] = charts[freq].main.addLineSeries({
+            color: SMA_COLORS[p], lineWidth: 1.5, lineStyle: 2,
             priceLineVisible: false, lastValueVisible: false, visible: false,
         });
     });
@@ -265,8 +280,14 @@ function paintOhlcLegend(freq, param) {
     const rows = rawRows[freq] || [];
     if (!rows.length) { el.textContent = ''; return; }
     const key = _legendTimeKey(param && param.time);
-    let idx = key ? rows.findIndex(r => String(r.date).slice(0, 10) === key) : -1;
-    if (idx < 0) idx = rows.length - 1;
+    let idx;
+    if (!key) {
+        // Crosshair left the pane — keep last bar visible (desk default).
+        idx = rows.length - 1;
+    } else {
+        idx = rows.findIndex(r => String(r.date).slice(0, 10) === key);
+        if (idx < 0) return; // unknown time: leave previous legend text
+    }
     const row = rows[idx];
     const prev = rows[idx - 1];
     if (!row) { el.textContent = ''; return; }
@@ -392,6 +413,18 @@ function computeEma(closes, period) {
     return out;
 }
 
+function computeSma(closes, period) {
+    const out = new Array(closes.length).fill(null);
+    if (closes.length < period) return out;
+    let sum = 0;
+    for (let i = 0; i < closes.length; i++) {
+        sum += closes[i];
+        if (i >= period) sum -= closes[i - period];
+        if (i >= period - 1) out[i] = sum / period;
+    }
+    return out;
+}
+
 function loadOHLCV(freq, rows) {
     if (!series[freq].candle || !rows?.length) return;
     rawRows[freq] = rows;
@@ -430,14 +463,18 @@ function loadOHLCV(freq, rows) {
         }
     }
 
-    // EMA stack — client-side, mirrors optional KAMA overlay.
+    // EMA / SMA stacks — client-side, mirrors optional KAMA overlay.
     const closes = rows.map(r => r.close);
-    EMA_PERIODS.forEach(p => {
-        const s = series[freq].ema[p];
-        if (!s) return;
-        const vals = computeEma(closes, p);
-        s.setData(rows.map((r, i) => (vals[i] == null ? { time: r.date } : { time: r.date, value: vals[i] })));
-    });
+    const setMaData = (bucket, periods, compute) => {
+        periods.forEach(p => {
+            const s = series[freq][bucket][p];
+            if (!s) return;
+            const vals = compute(closes, p);
+            s.setData(rows.map((r, i) => (vals[i] == null ? { time: r.date } : { time: r.date, value: vals[i] })));
+        });
+    };
+    setMaData('ema', EMA_PERIODS, computeEma);
+    setMaData('sma', SMA_PERIODS, computeSma);
 
     applyEpMarkers(freq);
     applyOverlayVisibility(freq);
@@ -544,9 +581,12 @@ function applyOverlayVisibility(freq) {
         showHide(s, meta.active, meta.color, 1.5);
     });
 
-    // EMA stack (10/21/50) — optional overlay, off by default
+    // EMA / SMA stacks — optional overlays, off by default
     EMA_PERIODS.forEach(p => {
-        showHide(series[freq].ema[p], activeEma[p], EMA_COLORS[p], 1.5);
+        showHide(series[freq].ema && series[freq].ema[p], activeEma[p], EMA_COLORS[p], 1.5);
+    });
+    SMA_PERIODS.forEach(p => {
+        showHide(series[freq].sma && series[freq].sma[p], activeSma[p], SMA_COLORS[p], 1.5, 2);
     });
 }
 
@@ -683,7 +723,60 @@ function toggleEma(period) {
     const p = Number(period);
     activeEma[p] = !activeEma[p];
     ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
+    syncMaPills();
     return activeEma[p];
+}
+
+function toggleSma(period) {
+    const p = Number(period);
+    activeSma[p] = !activeSma[p];
+    ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
+    syncMaPills();
+    return activeSma[p];
+}
+
+function syncMaPills() {
+    document.querySelectorAll('[data-ema]').forEach(pill => {
+        const p = Number(pill.dataset.ema);
+        const on = !!activeEma[p];
+        const color = EMA_COLORS[p];
+        pill.classList.toggle('active-ema', on);
+        pill.setAttribute('aria-pressed', on ? 'true' : 'false');
+        pill.style.borderColor = on && color ? color : '';
+        pill.style.color = on && color ? color : '';
+        pill.style.background = on && color ? color + '20' : '';
+    });
+    document.querySelectorAll('[data-sma]').forEach(pill => {
+        const p = Number(pill.dataset.sma);
+        const on = !!activeSma[p];
+        const color = SMA_COLORS[p];
+        pill.classList.toggle('active-sma', on);
+        pill.setAttribute('aria-pressed', on ? 'true' : 'false');
+        pill.style.borderColor = on && color ? color : '';
+        pill.style.color = on && color ? color : '';
+        pill.style.background = on && color ? color + '20' : '';
+    });
+}
+
+/**
+ * Apply a method's default MA overlay pack. Unknown types leave user toggles
+ * in place and only hide the pack hint.
+ */
+function applyMethodPack(typeId) {
+    const pack = METHOD_CHART_PACKS[typeId];
+    const hint = document.getElementById('method-pack-hint');
+    if (!pack) {
+        if (hint) { hint.hidden = true; hint.textContent = ''; }
+        return;
+    }
+    EMA_PERIODS.forEach(p => { activeEma[p] = pack.ema.includes(p); });
+    SMA_PERIODS.forEach(p => { activeSma[p] = pack.sma.includes(p); });
+    ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
+    syncMaPills();
+    if (hint) {
+        hint.hidden = false;
+        hint.textContent = pack.label;
+    }
 }
 
 // ── KAMA period management ────────────────────────────────────
@@ -747,3 +840,6 @@ window.applyStageSma     = applyStageSma;
 window.clearStageSma     = clearStageSma;
 window.setIndicatorPane  = setIndicatorPane;
 window.resizeAllCharts   = resizeAllCharts;
+window.applyMethodPack   = applyMethodPack;
+window.toggleSma         = toggleSma;
+window.syncMaPills       = syncMaPills;
