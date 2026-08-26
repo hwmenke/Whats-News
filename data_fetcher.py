@@ -13,6 +13,10 @@ import database as db
 # as a split/dividend seam and re-download full history instead of mixing
 # unadjusted stored bars with newly adjusted ones.
 ADJUSTMENT_SEAM_PCT = 15.0
+# When overlap dates are missing (split dropped the session), still flag a
+# close jump if the first new bar is within this many calendar days of the
+# last stored close — long enough to cover a skipped refresh week + holidays.
+ADJUSTMENT_SEAM_GAP_DAYS = 21
 
 
 def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
@@ -87,7 +91,7 @@ def adjustment_seam(
         return False
     if old_c <= 0 or new_c <= 0:
         return False
-    if 0 < gap_days <= 10 and abs(new_c / old_c - 1.0) * 100.0 >= threshold_pct:
+    if 0 < gap_days <= ADJUSTMENT_SEAM_GAP_DAYS and abs(new_c / old_c - 1.0) * 100.0 >= threshold_pct:
         return True
     return False
 

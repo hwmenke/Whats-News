@@ -2765,7 +2765,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let savedWs = null;
     try { savedWs = localStorage.getItem('whats-news-workspace'); } catch { savedWs = null; }
-    if (savedWs && typeof applyWorkspace === 'function' && state.symbols.length) {
+    let restoredDesk = false;
+    if (state.symbols.length && typeof applyMyDesk === 'function') {
+        restoredDesk = !!applyMyDesk({ silent: true });
+    }
+    if (!restoredDesk && savedWs && typeof applyWorkspace === 'function' && state.symbols.length) {
         applyWorkspace(savedWs);
     }
 

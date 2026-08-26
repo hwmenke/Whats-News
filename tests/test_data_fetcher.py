@@ -38,6 +38,18 @@ class AdjustmentSeamTests(unittest.TestCase):
         df = pd.DataFrame({"close": [10.0]}, index=idx)
         self.assertTrue(fetcher.adjustment_seam(stored, df))
 
+    def test_seam_without_overlap_within_skipped_week(self):
+        stored = {"2024-06-01": 100.0}
+        idx = pd.to_datetime(["2024-06-15"])
+        df = pd.DataFrame({"close": [10.0]}, index=idx)
+        self.assertTrue(fetcher.adjustment_seam(stored, df))
+
+    def test_no_seam_on_long_gap_without_overlap(self):
+        stored = {"2024-06-01": 100.0}
+        idx = pd.to_datetime(["2024-07-20"])
+        df = pd.DataFrame({"close": [10.0]}, index=idx)
+        self.assertFalse(fetcher.adjustment_seam(stored, df))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -291,12 +291,12 @@ function saveMyDesk() {
     toast?.('Saved My desk', 'success');
 }
 
-function applyMyDesk() {
+function applyMyDesk(opts = {}) {
     let raw = null;
     try { raw = JSON.parse(localStorage.getItem(MY_DESK_KEY) || 'null'); } catch { raw = null; }
     if (!raw) {
-        toast?.('No saved desk — click Save desk first', 'warning');
-        return;
+        if (!opts.silent) toast?.('No saved desk — click Save desk first', 'warning');
+        return false;
     }
     if (raw.workspace && WORKSPACE_PRESETS[raw.workspace]) applyWorkspace(raw.workspace);
     Object.entries(raw.views || {}).forEach(([name, on]) => applyViewToggle(name, !!on));
@@ -307,6 +307,7 @@ function applyMyDesk() {
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
     window.resizeAllCharts?.();
+    return true;
 }
 
 function syncMyDeskPill() {

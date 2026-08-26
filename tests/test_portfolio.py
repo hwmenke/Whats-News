@@ -249,6 +249,7 @@ class FrontendContractTests(unittest.TestCase):
             app_js = fh.read()
             self.assertIn('class="pos-table"', app_js)
             self.assertIn("stayReview", app_js)
+        self.assertIn("applyMyDesk({ silent: true })", app_js)
 
     def test_copy_setup_is_checklist_gated(self):
         with open("scripts/app.js", encoding="utf-8") as fh:
