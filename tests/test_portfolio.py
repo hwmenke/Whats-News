@@ -236,10 +236,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('data-ema="9"', html)
         self.assertIn('data-ema="20"', html)
         self.assertIn('id="method-pack-hint"', html)
+        with open("scripts/desk_ux.js", encoding="utf-8") as fh:
+            self.assertIn("function armModalFocus", fh.read())
         self.assertIn("brandt:", charts)
         self.assertIn("id: 'brandt'", scanner)
-        self.assertIn("function armModalFocus", open("scripts/desk_ux.js", encoding="utf-8").read())
-        self.assertIn('class="pos-table"', open("scripts/app.js", encoding="utf-8").read())
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            self.assertIn('class="pos-table"', fh.read())
 
     def test_copy_setup_is_checklist_gated(self):
         with open("scripts/app.js", encoding="utf-8") as fh:
