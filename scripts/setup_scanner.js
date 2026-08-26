@@ -30,6 +30,7 @@ const SCANNER_TYPES = [
     { id: 'pullback', label: 'Pullback', blurb: 'Uptrend vs KAMA20', setup: 'PULLBACK_EMA', group: 'flow' },
     { id: 'qulla', label: 'Qulla', blurb: 'Near high + vol', family: 'qullamaggie', setup: 'QULLA_BREAKOUT', group: 'method' },
     { id: 'darvas', label: 'Darvas', blurb: 'Box breakout', family: 'darvas', setup: 'DARVAS_BREAKOUT', badge: 'DB', group: 'method' },
+    { id: 'brandt', label: 'Brandt', blurb: 'Range / risk box', family: 'brandt', group: 'method' },
     { id: 'minervini', label: 'Minervini', blurb: 'Trend Template', family: 'minervini', setup: 'MINERVINI_TT', badge: 'MM', group: 'method' },
     { id: 'stockbee', label: 'Stockbee', blurb: 'EP / RE / EMA', family: 'stockbee', group: 'method' },
     { id: 'stage2', label: 'Stage 2', blurb: 'Advancing', family: 'stage', stage: 2, group: 'method' },

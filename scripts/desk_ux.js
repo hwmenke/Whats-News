@@ -4,6 +4,70 @@
 
 const VIEW_KEY = 'whats-news-view';
 const GUIDE_SEEN_KEY = 'whats-news-guide-seen';
+const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+let _modalFocusPrev = null;
+
+function overlayIsShown(el) {
+    if (!el) return false;
+    if (el.hidden) return false;
+    if (el.style && el.style.display === 'none') return false;
+    const cs = window.getComputedStyle(el);
+    return cs.display !== 'none' && cs.visibility !== 'hidden';
+}
+
+function openModalRoot() {
+    const ids = ['desk-palette', 'desk-guide-modal', 'badge-key-modal', 'smart-lists-modal', 'bulk-modal'];
+    for (const id of ids) {
+        const el = document.getElementById(id);
+        if (overlayIsShown(el)) return el;
+    }
+    return null;
+}
+
+function modalFocusables(root) {
+    const dialog = root.querySelector('[role="dialog"]') || root;
+    return [...dialog.querySelectorAll(MODAL_FOCUSABLE)].filter(el => {
+        if (el.disabled || el.getAttribute('aria-hidden') === 'true') return false;
+        return el.offsetWidth > 0 || el.offsetHeight > 0 || el === document.activeElement;
+    });
+}
+
+function armModalFocus(root) {
+    if (!root) return;
+    _modalFocusPrev = document.activeElement;
+    requestAnimationFrame(() => {
+        const list = modalFocusables(root);
+        if (list.length) list[0].focus();
+    });
+}
+
+function disarmModalFocus() {
+    const prev = _modalFocusPrev;
+    _modalFocusPrev = null;
+    if (prev && document.contains(prev) && typeof prev.focus === 'function') {
+        try { prev.focus(); } catch (_) { /* detached */ }
+    }
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const root = openModalRoot();
+    if (!root) return;
+    const list = modalFocusables(root);
+    if (!list.length) return;
+    const first = list[0];
+    const last = list[list.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey) {
+        if (active === first || !root.contains(active)) {
+            e.preventDefault();
+            last.focus();
+        }
+    } else if (active === last || !root.contains(active)) {
+        e.preventDefault();
+        first.focus();
+    }
+}, true);
 
 const DESK_GUIDE_PAGES = [
     {
@@ -58,7 +122,7 @@ const DESK_GUIDE_PAGES = [
             <li><kbd>/</kbd> jumps to a ticker without adding it · <kbd>⌘K</kbd> opens commands</li>
             <li><strong>Positions</strong> (<kbd>Shift+J</kbd>) tracks open heat vs entry/stop</li>
             <li>Panes: turn on RSI / MACD / Trend only when needed</li>
-            <li>Method types light a chart pack: Minervini SMA 50/150/200 · Stockbee EMA 9/20 · Qulla EMA 10/21/50</li>
+            <li>Method types light a chart pack: Minervini SMA 50/150/200 · Stockbee EMA 9/20 · Qulla EMA 10/21/50 · Brandt risk box</li>
           </ul>
         `,
         action: { label: 'Open Charts', run: () => switchTab('charts') },
@@ -259,17 +323,14 @@ function openDeskGuide(page = 0) {
     if (!modal) return;
     modal.style.display = 'flex';
     renderDeskGuidePage();
-    const card = modal.querySelector('.desk-guide-card') || modal.querySelector('[role="dialog"]');
-    if (card) {
-        if (!card.hasAttribute('tabindex')) card.setAttribute('tabindex', '-1');
-        card.focus();
-    }
+    armModalFocus(modal);
 }
 
 function closeDeskGuide() {
     const modal = document.getElementById('desk-guide-modal');
     if (modal) modal.style.display = 'none';
     localStorage.setItem(GUIDE_SEEN_KEY, '1');
+    disarmModalFocus();
 }
 
 function renderDeskGuidePage() {

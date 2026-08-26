@@ -54,6 +54,7 @@ const METHOD_CHART_PACKS = {
     stockbee: { ema: [9, 20], sma: [], label: 'Stockbee · EMA 9/20' },
     qulla: { ema: [10, 21, 50], sma: [], label: 'Qulla · EMA 10/21/50' },
     pullback: { ema: [20], sma: [], label: 'Pullback · EMA 20' },
+    brandt: { ema: [], sma: [], label: 'Brandt · risk box (Tools ▾) · Box overlay' },
 };
 
 // ── Chart instances ─────────────────────────────────────────
@@ -771,6 +772,11 @@ function applyMethodPack(typeId) {
     }
     EMA_PERIODS.forEach(p => { activeEma[p] = pack.ema.includes(p); });
     SMA_PERIODS.forEach(p => { activeSma[p] = pack.sma.includes(p); });
+    if (typeId === 'brandt' && !activeOverlays.darvas) {
+        activeOverlays.darvas = true;
+        document.getElementById('pill-darvas')?.classList.add('active-darvas');
+        applyDarvasBox(lastDarvasBox);
+    }
     ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
     syncMaPills();
     if (hint) {

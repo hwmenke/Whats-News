@@ -35,6 +35,7 @@ function openSmartListsModal() {
     const el = document.getElementById('smart-lists-modal');
     if (!el) return;
     el.style.display = 'flex';
+    if (typeof armModalFocus === 'function') armModalFocus(el);
     if (!_filterCatalog) {
         apiFetch(`${API}/watchlist/filter-catalog`).then(cat => {
             _filterCatalog = cat;
@@ -51,6 +52,7 @@ function openSmartListsModal() {
 function closeSmartListsModal() {
     const el = document.getElementById('smart-lists-modal');
     if (el) el.style.display = 'none';
+    if (typeof disarmModalFocus === 'function') disarmModalFocus();
 }
 
 function renderSmartListsNav() {

@@ -822,6 +822,9 @@ html, body {
 .book-drawer[aria-hidden="false"] {
   transform: translateX(0);
 }
+.journal-drawer {
+  width: min(520px, 92vw);
+}
 @media (prefers-reduced-motion: reduce) {
   .book-drawer { transition: none; }
 }
@@ -913,53 +916,57 @@ html, body {
 /* ── Trade journal (localStorage-backed) ──────────────────────────── */
 .journal-list {
   flex: 1;
-  overflow-y: auto;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  overflow: auto;
+  padding: 0;
+  display: block;
 }
-.journal-item {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
-  font-size: 11px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.journal-item-closed { opacity: 0.6; }
-.journal-item-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.journal-sym {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  color: var(--text-primary);
-}
-.journal-date {
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+.journal-local-note {
+  margin: 0;
+  padding: 6px 12px;
   font-size: 10px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
 }
-.journal-item-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  color: var(--text-muted);
+.pos-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+.pos-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-elevated);
+}
+.pos-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.pos-table td.journal-sym { color: var(--text-primary); font-weight: 700; }
+.pos-table tr:hover td { background: var(--bg-card); }
+.journal-item { cursor: pointer; }
+.journal-item-closed { opacity: 0.7; }
 .journal-item-actions {
   display: flex;
-  gap: 6px;
-  margin-top: 2px;
+  gap: 4px;
 }
-.journal-item-actions .btn { font-size: 10px; padding: 3px 8px; }
+.journal-item-actions .btn { font-size: 10px; padding: 2px 6px; }
+.pm-tools-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-left: 6px;
+}
 
 /* ── Tab Bar ──────────────────────────────────────────────── */
 .tab-bar {
@@ -3643,8 +3650,6 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 }
 .pos-heat-up { color: #86efac; }
 .pos-heat-down { color: #fca5a5; }
-.journal-item { cursor: pointer; }
-.journal-item:hover { border-color: var(--accent); }
 
 .desk-palette-overlay {
   position: fixed;

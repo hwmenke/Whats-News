@@ -212,7 +212,8 @@
       <div class="pm-tools-row">
         <button type="button" id="pm-apply-risk-box" class="btn btn-ghost btn-sm">Draw risk box</button>
         <button type="button" id="pm-copy-setup" class="btn btn-ghost btn-sm pm-copy-btn" disabled title="Complete checklist first">Copy setup</button>
-        <button type="button" id="pm-save-journal" class="btn btn-primary btn-sm" title="Save to Positions">Save position</button>
+        <button type="button" id="pm-save-journal" class="btn btn-primary btn-sm" title="Save to Positions (checklist optional)">Save position</button>
+        <span class="pm-tools-hint">Copy needs checklist · Save pos does not</span>
       </div>
     </div>
 
@@ -222,6 +223,7 @@
         <strong>Positions</strong>
         <button type="button" id="btn-journal-close" class="btn btn-ghost btn-sm">✕</button>
       </div>
+      <p class="journal-local-note">Local book in this browser — not a broker. Last = tape/pm-desk quote.</p>
       <div id="journal-summary" class="journal-summary" hidden></div>
       <div class="journal-tabs" role="tablist" aria-label="Position status">
         <button type="button" class="tape-mode-btn active" data-journal-tab="open" aria-pressed="true">Open</button>

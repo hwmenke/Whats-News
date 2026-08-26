@@ -44,6 +44,11 @@ class SetupScannerTests(unittest.TestCase):
         self.assertEqual(out["scanned"], 1)
         self.assertGreaterEqual(out["count"], 0)
 
+    def test_brandt_is_a_first_class_family(self):
+        self.assertIn("brandt", setup_scanner.SETUP_FAMILIES)
+        self.assertIn("BRANDT_RISK_BOX", setup_scanner.SETUP_IDS)
+        self.assertIn("BRANDT_RANGE", setup_scanner.SETUP_IDS)
+
     def test_scan_filters_by_setup_tag(self):
         fake_row = {
             "symbol": "TEST1",

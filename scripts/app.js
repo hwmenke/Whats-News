@@ -637,29 +637,42 @@ function renderJournal() {
         list.innerHTML = `<div class="alert-log-empty">${_journalTab === 'closed' ? 'No closed trades' : 'No open positions — click Save pos in the header (or Shift+J)'}</div>`;
         return;
     }
-    const fmt = v => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
+    const fmt = v => (v == null ? '—' : Number(v).toFixed(2));
     const fmtN = (v, suf) => (v == null || !Number.isFinite(v) ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}${suf}`);
-    list.innerHTML = shown.map(e => {
+    const closed = _journalTab === 'closed';
+    const head = closed
+        ? '<th>Sym</th><th>Entry</th><th>Stop</th><th>Target</th><th>Result</th><th>Date</th><th></th>'
+        : '<th>Sym</th><th>Last</th><th>Heat</th><th>R</th><th>Entry</th><th>Stop</th><th>Target</th><th></th>';
+    list.innerHTML = `
+      <table class="pos-table">
+        <thead><tr>${head}</tr></thead>
+        <tbody>
+          ${shown.map(e => {
         const live = e.closed ? {} : livePositionMetrics(e);
         const heatCls = live.heatPct == null ? '' : (live.heatPct >= 0 ? 'pos-heat-up' : 'pos-heat-down');
-        return `
-      <div class="journal-item ${e.closed ? 'journal-item-closed' : ''}" data-id="${e.id}" data-symbol="${e.symbol}">
-        <div class="journal-item-head">
-          <span class="journal-sym">${e.symbol}</span>
-          <span class="journal-date">${(e.date || '').slice(0, 10)}</span>
-        </div>
-        <div class="journal-item-body">
-          <span>Entry ${fmt(e.entry)} · Stop ${fmt(e.stop)} · Target ${fmt(e.target)}</span>
-          <span>Plan ${e.r_multiple ?? '—'}R${e.closed ? ` · Closed @ ${e.result_r ?? '—'}R` : ''}</span>
-          ${e.closed ? '' : `<span class="${heatCls}">Last ${fmt(live.price)} · heat ${fmtN(live.heatPct, '%')} · ${fmtN(live.liveR, 'R')}</span>`}
-        </div>
-        <div class="journal-item-actions">
-          <button type="button" class="btn btn-ghost btn-sm journal-open-btn" data-symbol="${e.symbol}">Chart</button>
-          <button type="button" class="btn btn-ghost btn-sm journal-close-btn" data-id="${e.id}">${e.closed ? 'Edit result' : 'Close'}</button>
-          <button type="button" class="btn btn-ghost btn-sm journal-del-btn" data-id="${e.id}">Delete</button>
-        </div>
-      </div>`;
-    }).join('');
+        const actions = `<button type="button" class="btn btn-ghost btn-sm journal-open-btn" data-symbol="${e.symbol}">Chart</button>
+            <button type="button" class="btn btn-ghost btn-sm journal-close-btn" data-id="${e.id}">${e.closed ? 'Edit' : 'Close'}</button>
+            <button type="button" class="btn btn-ghost btn-sm journal-del-btn" data-id="${e.id}">Del</button>`;
+        if (closed) {
+            return `<tr class="journal-item journal-item-closed" data-id="${e.id}" data-symbol="${e.symbol}">
+              <td class="journal-sym">${e.symbol}</td>
+              <td>${fmt(e.entry)}</td><td>${fmt(e.stop)}</td><td>${fmt(e.target)}</td>
+              <td>${e.result_r != null ? `${e.result_r}R` : '—'}</td>
+              <td class="journal-date">${(e.date || '').slice(0, 10)}</td>
+              <td class="journal-item-actions">${actions}</td>
+            </tr>`;
+        }
+        return `<tr class="journal-item" data-id="${e.id}" data-symbol="${e.symbol}">
+              <td class="journal-sym">${e.symbol}</td>
+              <td class="${heatCls}">${fmt(live.price)}</td>
+              <td class="${heatCls}">${fmtN(live.heatPct, '%')}</td>
+              <td class="${heatCls}">${fmtN(live.liveR, 'R')}</td>
+              <td>${fmt(e.entry)}</td><td>${fmt(e.stop)}</td><td>${fmt(e.target)}</td>
+              <td class="journal-item-actions">${actions}</td>
+            </tr>`;
+    }).join('')}
+        </tbody>
+      </table>`;
     list.querySelectorAll('.journal-close-btn').forEach(btn => {
         btn.addEventListener('click', ev => { ev.stopPropagation(); closeJournalEntry(btn.dataset.id); });
     });
@@ -1061,6 +1074,7 @@ function openBulkModal() {
     document.getElementById('btn-bulk-submit').disabled           = false;
     document.getElementById('bulk-symbols-input').disabled        = false;
     setTimeout(() => document.getElementById('bulk-symbols-input').focus(), 50);
+    if (typeof armModalFocus === 'function') armModalFocus(modal);
 }
 
 function closeBulkModal() {
@@ -1069,6 +1083,7 @@ function closeBulkModal() {
     document.getElementById('bulk-modal').style.display = 'none';
     document.getElementById('bulk-symbols-input').value = '';
     document.getElementById('bulk-progress').style.display = 'none';
+    if (typeof disarmModalFocus === 'function') disarmModalFocus();
 }
 
 async function bulkAddSymbols() {

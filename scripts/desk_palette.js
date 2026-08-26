@@ -18,6 +18,7 @@ const PALETTE_COMMANDS = [
     { id: 'pack-minervini', label: 'Chart pack · Minervini SMA 50/150/200', hint: '', run: () => applyMethodPack?.('minervini') },
     { id: 'pack-stockbee', label: 'Chart pack · Stockbee EMA 9/20', hint: '', run: () => applyMethodPack?.('stockbee') },
     { id: 'pack-qulla', label: 'Chart pack · Qulla EMA 10/21/50', hint: '', run: () => applyMethodPack?.('qulla') },
+    { id: 'pack-brandt', label: 'Chart pack · Brandt risk box', hint: '', run: () => applyMethodPack?.('brandt') },
 ];
 
 let _paletteMode = 'jump';
@@ -33,6 +34,7 @@ function closeDeskPalette() {
     const el = document.getElementById('desk-palette');
     if (!el) return;
     el.hidden = true;
+    if (typeof disarmModalFocus === 'function') disarmModalFocus();
 }
 
 function openDeskPalette(mode = 'jump') {
@@ -48,7 +50,8 @@ function openDeskPalette(mode = 'jump') {
     el.hidden = false;
     input.value = '';
     renderPaletteResults('');
-    requestAnimationFrame(() => input.focus());
+    if (typeof armModalFocus === 'function') armModalFocus(el);
+    else requestAnimationFrame(() => input.focus());
 }
 
 function visibleSymbolCodes() {
@@ -235,9 +238,11 @@ function openBadgeKey() {
         </div>`;
     }).join('');
     modal.style.display = 'flex';
+    if (typeof armModalFocus === 'function') armModalFocus(modal);
 }
 
 function closeBadgeKey() {
     const modal = document.getElementById('badge-key-modal');
     if (modal) modal.style.display = 'none';
+    if (typeof disarmModalFocus === 'function') disarmModalFocus();
 }
