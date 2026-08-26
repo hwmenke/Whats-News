@@ -705,7 +705,7 @@ function closePmToolsPopover() {
     if (pop) pop.hidden = true;
 }
 
-// ── Checklist gate — copy/save only unlock once all 4 boxes are checked ─
+// ── Checklist gate — copy unlocks once all 4 boxes are checked; Save pos does not ─
 function syncChecklist() {
     const boxes = document.querySelectorAll('#pm-checklist input[type="checkbox"]');
     boxes.forEach(box => { state.checklist[box.dataset.check] = box.checked; });
@@ -1612,11 +1612,6 @@ async function checkHealth() {
     }
 }
 
-function showChartArea() {
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('chart-area').style.display  = 'flex';
-}
-
 function showLoadingOverlay(show) {
     document.getElementById('chart-loading').style.display = show ? 'flex' : 'none';
 }
@@ -1691,7 +1686,10 @@ function showStatsArea() {
 }
 
 function showChartArea() {
-    document.body.classList.remove('ws-review');
+    const stayReview = (typeof state !== 'undefined' && state.activeTab === 'review')
+        || document.body.classList.contains('ws-review');
+    if (stayReview) document.body.classList.add('ws-review');
+    else document.body.classList.remove('ws-review');
     document.getElementById('empty-state').style.display       = 'none';
     document.getElementById('news-area').style.display         = 'none';
     document.getElementById('stats-area').style.display        = 'none';
@@ -1699,7 +1697,7 @@ function showChartArea() {
     document.getElementById('backtest-area').style.display     = 'none';
     document.getElementById('chart-area').style.display        = 'flex';
     document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('scanner-area').style.display      = stayReview ? 'flex' : 'none';
     document.getElementById('data-manager-area').style.display = 'none';
 }
 
@@ -2312,9 +2310,14 @@ function setupPmKeyboard() {
             if (openSetupRow()) { e.preventDefault(); return; }
         }
         if (!e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-            if (e.key === '1' && typeof applyWorkspace === 'function') { e.preventDefault(); applyWorkspace('scan'); return; }
-            if (e.key === '2' && typeof applyWorkspace === 'function') { e.preventDefault(); applyWorkspace('chart'); return; }
-            if (e.key === '3' && typeof applyWorkspace === 'function') { e.preventDefault(); applyWorkspace('review'); return; }
+            const empty = document.getElementById('empty-state');
+            const firstRun = empty && empty.style.display !== 'none'
+                && !(state.symbols && state.symbols.length);
+            if (!firstRun) {
+                if (e.key === '1' && typeof applyWorkspace === 'function') { e.preventDefault(); applyWorkspace('scan'); return; }
+                if (e.key === '2' && typeof applyWorkspace === 'function') { e.preventDefault(); applyWorkspace('chart'); return; }
+                if (e.key === '3' && typeof applyWorkspace === 'function') { e.preventDefault(); applyWorkspace('review'); return; }
+            }
         }
         if (e.key === 'j') { e.preventDefault(); moveSymbolSelection(1); }
         else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); moveSymbolSelection(-1); }

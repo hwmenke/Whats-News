@@ -227,6 +227,7 @@ function renderSetupFamilyCards() {
         _setupBadge = null;
         _scannerType = 'all';
         resetTypeDrivenFilters({});
+        if (typeof applyMethodPack === 'function') applyMethodPack('all');
         renderSetupFamilyCards();
         renderSetupStagePills();
         renderSetupBadgePills();
@@ -251,6 +252,7 @@ function renderSetupFamilyCards() {
             _scannerType = 'all';
             resetTypeDrivenFilters({});
             if (id !== 'stage') _setupStage = null;
+            if (typeof applyMethodPack === 'function') applyMethodPack(methodPackIdFor(id));
             renderSetupFamilyCards();
             renderSetupStagePills();
             renderSetupBadgePills();
@@ -344,6 +346,7 @@ function renderSetupBadgePills() {
             _setupFilter = null;
             _scannerType = 'all';
             resetTypeDrivenFilters({});
+            if (typeof applyMethodPack === 'function') applyMethodPack(methodPackIdFor(code));
             renderSetupBadgePills();
             renderSetupFilterPills();
             loadSetupScan();
@@ -472,12 +475,52 @@ function highlightSetupRow(idx) {
     }
 }
 
+function isReviewWorkspace() {
+    return (typeof state !== 'undefined' && state.activeTab === 'review')
+        || document.body.classList.contains('ws-review');
+}
+
+function methodPackIdFor(id) {
+    const map = {
+        qullamaggie: 'qulla',
+        minervini: 'minervini',
+        stockbee: 'stockbee',
+        darvas: 'darvas',
+        brandt: 'brandt',
+        stage: 'stage',
+        KQ: 'qulla',
+        MM: 'minervini',
+        DB: 'darvas',
+        SB4: 'stockbee',
+        SBW: 'stockbee',
+        SB9: 'stockbee',
+        '2A': 'stage2a',
+        '2B': 'stage2',
+    };
+    return map[id] || id;
+}
+
+function openSetupOnChart(symbol, forceChart) {
+    if (!forceChart && isReviewWorkspace()) {
+        selectSymbol(symbol);
+        return;
+    }
+    if (typeof applyWorkspace === 'function') applyWorkspace('chart');
+    else switchTab('charts');
+    selectSymbol(symbol);
+}
+
 function moveSetupRow(delta) {
     if (!_lastSetupResults.length) return false;
     const n = _lastSetupResults.length;
     if (_setupRowIdx < 0) _setupRowIdx = 0;
     else _setupRowIdx = (_setupRowIdx + delta + n) % n;
     highlightSetupRow(_setupRowIdx);
+    if (isReviewWorkspace()) {
+        const sorted = sortSetupResults(_lastSetupResults);
+        const row = sorted[_setupRowIdx];
+        if (row) selectSymbol(row.symbol);
+    }
     return true;
 }
 
@@ -488,9 +531,7 @@ function openSetupRow() {
     const row = sorted[_setupRowIdx];
     if (!row) return false;
     highlightSetupRow(_setupRowIdx);
-    if (typeof applyWorkspace === 'function') applyWorkspace('chart');
-    else switchTab('charts');
-    selectSymbol(row.symbol);
+    openSetupOnChart(row.symbol);
     return true;
 }
 
@@ -564,8 +605,7 @@ function renderSetupScanTable(results) {
 
         tr.querySelector('.setup-open').addEventListener('click', e => {
             e.stopPropagation();
-            switchTab('charts');
-            selectSymbol(row.symbol);
+            openSetupOnChart(row.symbol, true);
         });
         tr.querySelector('.setup-promote').addEventListener('click', async e => {
             e.stopPropagation();
@@ -574,8 +614,7 @@ function renderSetupScanTable(results) {
         tr.addEventListener('click', () => {
             _setupRowIdx = idx;
             highlightSetupRow(idx);
-            switchTab('charts');
-            selectSymbol(row.symbol);
+            openSetupOnChart(row.symbol);
         });
 
         tbody.appendChild(tr);

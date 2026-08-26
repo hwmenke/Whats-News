@@ -54,7 +54,11 @@ const METHOD_CHART_PACKS = {
     stockbee: { ema: [9, 20], sma: [], label: 'Stockbee · EMA 9/20' },
     qulla: { ema: [10, 21, 50], sma: [], label: 'Qulla · EMA 10/21/50' },
     pullback: { ema: [20], sma: [], label: 'Pullback · EMA 20' },
-    brandt: { ema: [], sma: [], label: 'Brandt · risk box (Tools ▾) · Box overlay' },
+    darvas: { ema: [], sma: [], overlay: 'darvas', label: 'Darvas · Box overlay' },
+    brandt: { ema: [], sma: [], overlay: 'darvas', label: 'Brandt · risk box (Tools ▾) · Box overlay' },
+    stage: { ema: [], sma: [], overlay: 'stage', label: 'Stage · 30W SMA' },
+    stage2: { ema: [], sma: [], overlay: 'stage', label: 'Stage 2 · 30W SMA' },
+    stage2a: { ema: [], sma: [], overlay: 'stage', label: 'Early 2A · 30W SMA' },
 };
 
 // ── Chart instances ─────────────────────────────────────────
@@ -772,10 +776,15 @@ function applyMethodPack(typeId) {
     }
     EMA_PERIODS.forEach(p => { activeEma[p] = pack.ema.includes(p); });
     SMA_PERIODS.forEach(p => { activeSma[p] = pack.sma.includes(p); });
-    if (typeId === 'brandt' && !activeOverlays.darvas) {
+    if (pack.overlay === 'darvas' && !activeOverlays.darvas) {
         activeOverlays.darvas = true;
         document.getElementById('pill-darvas')?.classList.add('active-darvas');
         applyDarvasBox(lastDarvasBox);
+    }
+    if (pack.overlay === 'stage' && !activeOverlays.stage) {
+        activeOverlays.stage = true;
+        document.getElementById('pill-stage-ma')?.classList.add('active-stage');
+        applyStageSma(lastStageSmaData);
     }
     ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
     syncMaPills();

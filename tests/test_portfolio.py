@@ -240,8 +240,15 @@ class FrontendContractTests(unittest.TestCase):
             self.assertIn("function armModalFocus", fh.read())
         self.assertIn("brandt:", charts)
         self.assertIn("id: 'brandt'", scanner)
+        self.assertIn("function openSetupOnChart", scanner)
+        self.assertIn("isReviewWorkspace()", scanner)
+        self.assertIn("methodPackIdFor(id)", scanner)
+        self.assertIn("overlay: 'darvas'", charts)
+        self.assertIn("overlay: 'stage'", charts)
         with open("scripts/app.js", encoding="utf-8") as fh:
-            self.assertIn('class="pos-table"', fh.read())
+            app_js = fh.read()
+            self.assertIn('class="pos-table"', app_js)
+            self.assertIn("stayReview", app_js)
 
     def test_copy_setup_is_checklist_gated(self):
         with open("scripts/app.js", encoding="utf-8") as fh:

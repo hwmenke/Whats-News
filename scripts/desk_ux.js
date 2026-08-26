@@ -135,7 +135,7 @@ const DESK_GUIDE_PAGES = [
             <li><strong>Adaptive Trend</strong> — regime lines</li>
             <li><strong>KNN</strong> — similar historical patterns</li>
             <li><strong>Statistics</strong> — distributions &amp; KAMA stats</li>
-            <li><strong>Journal / Positions</strong> (<kbd>Shift+J</kbd>) — save the setup, track live heat</li>
+            <li><strong>Journal / Positions</strong> (<kbd>Shift+J</kbd>) — save the setup, track Last heat vs entry/stop</li>
           </ul>
           <p class="guide-tip">Daily loop: Refresh → Lists / Scanner → Chart → Journal.</p>
         `,
