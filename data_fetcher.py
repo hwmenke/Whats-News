@@ -9,6 +9,11 @@ import yfinance as yf
 import pandas as pd
 import database as db
 
+# If an overlapping bar's close jumps this much after auto_adjust, treat it
+# as a split/dividend seam and re-download full history instead of mixing
+# unadjusted stored bars with newly adjusted ones.
+ADJUSTMENT_SEAM_PCT = 15.0
+
 
 def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     """Normalize yfinance output to lowercase columns and drop NaN rows."""
@@ -37,6 +42,48 @@ def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     df.index = pd.to_datetime(df.index)
     df.index = df.index.tz_localize(None)
     return df
+
+
+def adjustment_seam(
+    stored_closes: dict,
+    daily_df: pd.DataFrame,
+    threshold_pct: float = ADJUSTMENT_SEAM_PCT,
+) -> bool:
+    """True when overlap closes disagree by ≥ threshold (split/div adjust)."""
+    if not stored_closes or daily_df is None or daily_df.empty:
+        return False
+    if "close" not in daily_df.columns:
+        return False
+    for ts, row in daily_df.iterrows():
+        try:
+            d = pd.Timestamp(ts).strftime("%Y-%m-%d")
+        except Exception:
+            continue
+        old = stored_closes.get(d)
+        if old is None:
+            continue
+        try:
+            old_c = float(old)
+            new_c = float(row["close"])
+        except (TypeError, ValueError):
+            continue
+        if old_c <= 0 or new_c <= 0:
+            continue
+        if abs(new_c / old_c - 1.0) * 100.0 >= threshold_pct:
+            return True
+    return False
+
+
+def _stored_closes(symbol: str, limit: int = 40) -> dict:
+    rows = db.get_ohlcv(symbol, "daily", limit=limit)
+    out = {}
+    for r in rows or []:
+        d = str(r.get("date") or "")[:10]
+        try:
+            out[d] = float(r["close"])
+        except (TypeError, ValueError, KeyError):
+            continue
+    return out
 
 
 def fetch_and_store(symbol: str, period: str = "2y", overlap_days: int = 3) -> dict:
@@ -68,6 +115,10 @@ def fetch_and_store(symbol: str, period: str = "2y", overlap_days: int = 3) -> d
 
     daily_df = _clean_df(raw)
     print(f"++ Fetcher: Processed {len(daily_df)} daily bars")
+
+    if last_date_str and adjustment_seam(_stored_closes(sym), daily_df):
+        print(f"!! Fetcher: Adjustment seam on {sym} — full re-download")
+        return fetch_full_history(sym)
 
     # Resample to weekly (week ending Friday)
     weekly_df = daily_df.resample("W-FRI").agg({

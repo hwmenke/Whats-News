@@ -89,6 +89,28 @@ class SetupFilterExtrasTests(unittest.TestCase):
         self.assertIn("TIGHT_COIL", ss.SETUP_IDS)
         self.assertIn("TIGHT_COIL", ss.SETUP_FAMILIES["stockbee"]["tags"])
 
+    def test_pullback_in_catalog(self):
+        self.assertIn("PULLBACK_EMA", ss.SETUP_IDS)
+        self.assertTrue(ss.is_kama_pullback({"regime": "uptrend", "vs_kama20_pct": -4}))
+        self.assertFalse(ss.is_kama_pullback({"regime": "uptrend", "vs_kama20_pct": -20}))
+        self.assertFalse(ss.is_kama_pullback({"regime": "downtrend", "vs_kama20_pct": -2}))
+
+    def test_liquidity_floors(self):
+        rows = self._rows()
+        rows[0]["price"] = 80
+        rows[0]["dollar_vol_20d"] = 50_000_000
+        rows[1]["price"] = 2
+        rows[1]["dollar_vol_20d"] = 1_000_000
+        out = ss._filter_and_rollup(
+            rows,
+            symbols_scanned=2,
+            min_price=5,
+            min_dollar_vol=20_000_000,
+            from_cache=True,
+        )
+        self.assertEqual(out["count"], 1)
+        self.assertEqual(out["results"][0]["symbol"], "A")
+
     def test_r_to_box(self):
         self.assertEqual(ss._r_to_box(100, 85, 10), 1.0)
         self.assertIsNone(ss._r_to_box(100, 85, None))

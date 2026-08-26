@@ -210,6 +210,7 @@ async function refreshPortfolioTape(opts = {}) {
         state.portfolioMeta = data;
         renderSymbolList();
         renderPortfolioTape(data);
+        if (document.getElementById('journal-drawer')?.classList.contains('open')) renderJournal();
         if (state.activeSymbol && map[state.activeSymbol]?.ready) {
             renderPmDesk(map[state.activeSymbol]);
         }
@@ -514,6 +515,45 @@ function saveJournalEntries(entries) {
     localStorage.setItem(JOURNAL_KEY, JSON.stringify(entries));
 }
 
+let _journalTab = 'open';
+
+function livePositionMetrics(entry) {
+    const snap = state.portfolio[entry.symbol] || {};
+    const price = Number(snap.price);
+    const e = Number(entry.entry);
+    const s = Number(entry.stop);
+    const heatPct = (Number.isFinite(price) && Number.isFinite(e) && e !== 0)
+        ? ((price - e) / Math.abs(e)) * 100
+        : null;
+    const liveR = (Number.isFinite(price) && Number.isFinite(e) && Number.isFinite(s) && Math.abs(e - s) > 1e-9)
+        ? (price - e) / Math.abs(e - s)
+        : null;
+    return { price: Number.isFinite(price) ? price : null, heatPct, liveR };
+}
+
+function journalSummary(entries) {
+    const open = entries.filter(e => !e.closed);
+    const closed = entries.filter(e => e.closed);
+    const closedRs = closed.map(e => Number(e.result_r)).filter(Number.isFinite);
+    const avgR = closedRs.length
+        ? closedRs.reduce((a, b) => a + b, 0) / closedRs.length
+        : null;
+    const wins = closedRs.filter(r => r > 0).length;
+    let heat = 0;
+    let heatN = 0;
+    open.forEach(e => {
+        const m = livePositionMetrics(e);
+        if (m.heatPct != null) { heat += m.heatPct; heatN += 1; }
+    });
+    return {
+        openN: open.length,
+        closedN: closed.length,
+        avgR,
+        winPct: closedRs.length ? (100 * wins / closedRs.length) : null,
+        heatPct: heatN ? heat / heatN : null,
+    };
+}
+
 function saveToJournal() {
     const snap = state.portfolio[state.activeSymbol];
     if (!snap?.ready) {
@@ -537,7 +577,7 @@ function saveToJournal() {
     entries.unshift(entry);
     saveJournalEntries(entries);
     renderJournal();
-    toast(`${snap.symbol} setup saved to journal`, 'success');
+    toast(`${snap.symbol} saved to Positions`, 'success');
 }
 
 function closeJournalEntry(id) {
@@ -561,34 +601,64 @@ function deleteJournalEntry(id) {
 
 function renderJournal() {
     const list = document.getElementById('journal-list');
+    const summaryEl = document.getElementById('journal-summary');
     if (!list) return;
     const entries = loadJournalEntries();
-    if (!entries.length) {
-        list.innerHTML = '<div class="alert-log-empty">No setups saved yet</div>';
+    const summary = journalSummary(entries);
+    if (summaryEl) {
+        summaryEl.hidden = !entries.length;
+        if (entries.length) {
+            const heat = summary.heatPct == null ? '—' : `${summary.heatPct >= 0 ? '+' : ''}${summary.heatPct.toFixed(1)}%`;
+            const avg = summary.avgR == null ? '—' : `${summary.avgR.toFixed(2)}R`;
+            const win = summary.winPct == null ? '—' : `${summary.winPct.toFixed(0)}%`;
+            summaryEl.textContent = `Open ${summary.openN} · heat ${heat} · closed ${summary.closedN} · avg ${avg} · win ${win}`;
+        }
+    }
+    const shown = entries.filter(e => _journalTab === 'closed' ? e.closed : !e.closed);
+    if (!shown.length) {
+        list.innerHTML = `<div class="alert-log-empty">${_journalTab === 'closed' ? 'No closed trades' : 'No open positions — save a setup from PM tools'}</div>`;
         return;
     }
     const fmt = v => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
-    list.innerHTML = entries.map(e => `
-      <div class="journal-item ${e.closed ? 'journal-item-closed' : ''}" data-id="${e.id}">
+    const fmtN = (v, suf) => (v == null || !Number.isFinite(v) ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}${suf}`);
+    list.innerHTML = shown.map(e => {
+        const live = e.closed ? {} : livePositionMetrics(e);
+        const heatCls = live.heatPct == null ? '' : (live.heatPct >= 0 ? 'pos-heat-up' : 'pos-heat-down');
+        return `
+      <div class="journal-item ${e.closed ? 'journal-item-closed' : ''}" data-id="${e.id}" data-symbol="${e.symbol}">
         <div class="journal-item-head">
           <span class="journal-sym">${e.symbol}</span>
           <span class="journal-date">${(e.date || '').slice(0, 10)}</span>
         </div>
         <div class="journal-item-body">
           <span>Entry ${fmt(e.entry)} · Stop ${fmt(e.stop)} · Target ${fmt(e.target)}</span>
-          <span>R ${e.r_multiple ?? '—'}${e.closed ? ` · Closed @ ${e.result_r ?? '—'}R` : ''}</span>
+          <span>Plan ${e.r_multiple ?? '—'}R${e.closed ? ` · Closed @ ${e.result_r ?? '—'}R` : ''}</span>
+          ${e.closed ? '' : `<span class="${heatCls}">Live ${fmt(live.price)} · heat ${fmtN(live.heatPct, '%')} · ${fmtN(live.liveR, 'R')}</span>`}
         </div>
         <div class="journal-item-actions">
+          <button type="button" class="btn btn-ghost btn-sm journal-open-btn" data-symbol="${e.symbol}">Chart</button>
           <button type="button" class="btn btn-ghost btn-sm journal-close-btn" data-id="${e.id}">${e.closed ? 'Edit result' : 'Close'}</button>
           <button type="button" class="btn btn-ghost btn-sm journal-del-btn" data-id="${e.id}">Delete</button>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
     list.querySelectorAll('.journal-close-btn').forEach(btn => {
-        btn.addEventListener('click', () => closeJournalEntry(btn.dataset.id));
+        btn.addEventListener('click', ev => { ev.stopPropagation(); closeJournalEntry(btn.dataset.id); });
     });
     list.querySelectorAll('.journal-del-btn').forEach(btn => {
-        btn.addEventListener('click', () => deleteJournalEntry(btn.dataset.id));
+        btn.addEventListener('click', ev => { ev.stopPropagation(); deleteJournalEntry(btn.dataset.id); });
+    });
+    list.querySelectorAll('.journal-open-btn').forEach(btn => {
+        btn.addEventListener('click', ev => {
+            ev.stopPropagation();
+            selectSymbol(btn.dataset.symbol);
+            if (typeof applyWorkspace === 'function') applyWorkspace('chart');
+        });
+    });
+    list.querySelectorAll('.journal-item').forEach(row => {
+        row.addEventListener('click', () => {
+            if (row.dataset.symbol) selectSymbol(row.dataset.symbol);
+        });
     });
 }
 
@@ -921,6 +991,14 @@ async function addSymbol() {
     } finally {
         input.disabled = false;
     }
+}
+
+async function addSymbolByCode(code) {
+    const symbol = String(code || '').trim().toUpperCase();
+    if (!symbol) return;
+    const input = document.getElementById('new-symbol-input');
+    if (input) input.value = symbol;
+    return addSymbol();
 }
 
 async function removeSymbol(symbol) {
@@ -2087,8 +2165,9 @@ function copySetupCard() {
 }
 
 function moveSymbolSelection(delta) {
-    if (!state.symbols.length) return;
-    const codes = state.symbols.map(s => s.symbol);
+    const codes = (typeof visibleSymbolCodes === 'function' ? visibleSymbolCodes() : null)
+        || (state.symbols || []).map(s => s.symbol);
+    if (!codes.length) return;
     let idx = codes.indexOf(state.activeSymbol);
     if (idx < 0) idx = 0;
     else idx = (idx + delta + codes.length) % codes.length;
@@ -2157,6 +2236,8 @@ function setupPmKeyboard() {
             if (e.key === 'Escape') e.target.blur();
             return;
         }
+        if (typeof isPaletteOpen === 'function' && isPaletteOpen()) return;
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
         // Shift+J → toggle trade journal drawer (plain j/k stay reserved for list nav).
         if (e.shiftKey && (e.key === 'J' || e.key === 'j')) {
             e.preventDefault();
@@ -2186,11 +2267,6 @@ function setupPmKeyboard() {
             if (state.activeSymbol) fetchSymbolData(state.activeSymbol);
             else refreshAll();
         }
-        else if (e.key === '/') {
-            e.preventDefault();
-            const input = document.getElementById('new-symbol-input');
-            if (input) { input.focus(); input.select(); }
-        }
         else if (e.key === 'c' && !e.metaKey && !e.ctrlKey) {
             e.preventDefault();
             copySetupCard();
@@ -2201,6 +2277,8 @@ function setupPmKeyboard() {
             closePmToolsPopover();
             if (typeof closeDeskGuide === 'function') closeDeskGuide();
             if (typeof closeSmartListsModal === 'function') closeSmartListsModal();
+            if (typeof closeDeskPalette === 'function') closeDeskPalette();
+            if (typeof closeBadgeKey === 'function') closeBadgeKey();
         }
     });
 }
@@ -2559,6 +2637,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Trade journal drawer
     document.getElementById('btn-journal')?.addEventListener('click', toggleJournal);
     document.getElementById('btn-journal-close')?.addEventListener('click', closeJournal);
+    document.querySelectorAll('[data-journal-tab]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _journalTab = btn.dataset.journalTab || 'open';
+            document.querySelectorAll('[data-journal-tab]').forEach(b => {
+                const on = b.dataset.journalTab === _journalTab;
+                b.classList.toggle('active', on);
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+            renderJournal();
+        });
+    });
 
     // PM tools popover (risk box, stop mode, checklist, copy/journal)
     document.getElementById('btn-pm-tools')?.addEventListener('click', e => {
@@ -2607,6 +2696,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (typeof setupViewToggles === 'function') setupViewToggles();
     if (typeof initDeskLayout === 'function') initDeskLayout();
     if (typeof initDeskGuide === 'function') initDeskGuide();
+    if (typeof initDeskPalette === 'function') initDeskPalette();
 
     await loadSymbols();
 

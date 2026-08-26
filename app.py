@@ -675,6 +675,15 @@ def setups_scan():
             except (TypeError, ValueError):
                 return None
 
+        min_price = _f("min_price")
+        min_dollar_vol = _f("min_dollar_vol")
+        # Client sends liquid=1 for the default desk floor ($5 / $20M ADV).
+        if request.args.get("liquid", "").lower() in ("1", "true", "yes"):
+            if min_price is None:
+                min_price = 5.0
+            if min_dollar_vol is None:
+                min_dollar_vol = 20_000_000.0
+
         return jsonify(
             setup_scanner.scan_setups(
                 symbols=symbols,
@@ -695,6 +704,8 @@ def setups_scan():
                 strike=request.args.get("strike", "").lower() in ("1", "true", "yes"),
                 dual_up=request.args.get("dual_up", "").lower() in ("1", "true", "yes"),
                 rsi_extreme=request.args.get("rsi_extreme", "").lower() in ("1", "true", "yes"),
+                min_price=min_price,
+                min_dollar_vol=min_dollar_vol,
             )
         )
     except Exception as exc:

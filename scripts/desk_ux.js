@@ -55,6 +55,8 @@ const DESK_GUIDE_PAGES = [
             <li><strong>Focus</strong> (or press <kbd>f</kbd>) — chart only</li>
             <li>Drag the sidebar edge, chart divider, or setups handle to <strong>resize</strong></li>
             <li>Scanner: <kbd>j</kbd>/<kbd>k</kbd> walk rows, <kbd>Enter</kbd> opens the chart</li>
+            <li><kbd>/</kbd> jumps to a ticker without adding it · <kbd>⌘K</kbd> opens commands</li>
+            <li><strong>Positions</strong> (<kbd>Shift+J</kbd>) tracks open heat vs entry/stop</li>
             <li>Panes: turn on RSI / MACD / Trend only when needed</li>
           </ul>
         `,
@@ -68,7 +70,7 @@ const DESK_GUIDE_PAGES = [
             <li><strong>Adaptive Trend</strong> — regime lines</li>
             <li><strong>KNN</strong> — similar historical patterns</li>
             <li><strong>Statistics</strong> — distributions &amp; KAMA stats</li>
-            <li><strong>Journal</strong> (<kbd>Shift+J</kbd>) — save the setup</li>
+            <li><strong>Journal / Positions</strong> (<kbd>Shift+J</kbd>) — save the setup, track live heat</li>
           </ul>
           <p class="guide-tip">Daily loop: Refresh → Lists / Scanner → Chart → Journal.</p>
         `,
@@ -93,7 +95,10 @@ function saveViewPrefs(prefs) {
 function applyViewToggle(name, visible) {
     document.body.classList.toggle(`hide-${name}`, !visible);
     const pill = document.querySelector(`.view-pill[data-view="${name}"]`);
-    if (pill) pill.classList.toggle('active', visible);
+    if (pill) {
+        pill.classList.toggle('active', visible);
+        pill.setAttribute('aria-pressed', visible ? 'true' : 'false');
+    }
     if (name === 'weekly' || name === 'volume' || name === 'sidebar' || name === 'header') {
         window.resizeAllCharts?.();
     }
@@ -172,7 +177,9 @@ function applyWorkspace(id) {
     });
     saveViewPrefs(prefs);
     document.querySelectorAll('.workspace-pill').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.workspace === id);
+        const on = btn.dataset.workspace === id;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
     try { localStorage.setItem('whats-news-workspace', id); } catch { /* ignore */ }
     if (typeof switchTab === 'function' && ws.tab) switchTab(ws.tab);
@@ -187,7 +194,9 @@ function setupWorkspacePresets() {
     try { saved = localStorage.getItem('whats-news-workspace'); } catch { saved = null; }
     if (saved && WORKSPACE_PRESETS[saved]) {
         document.querySelectorAll('.workspace-pill').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.workspace === saved);
+            const on = btn.dataset.workspace === saved;
+            btn.classList.toggle('active', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
         });
     }
 }

@@ -245,7 +245,48 @@ function initCharts() {
     buildPanel('weekly');
     syncPanels();
     setupResizeObserver();
+    setupCrosshairLegend();
     applySavedPaneVisibility();
+}
+
+function _legendTimeKey(time) {
+    if (time == null) return null;
+    if (typeof time === 'object' && time.year) {
+        const m = String(time.month).padStart(2, '0');
+        const d = String(time.day).padStart(2, '0');
+        return `${time.year}-${m}-${d}`;
+    }
+    return String(time).slice(0, 10);
+}
+
+function paintOhlcLegend(freq, param) {
+    const el = document.getElementById(`chart-legend-${freq}`);
+    if (!el) return;
+    const rows = rawRows[freq] || [];
+    if (!rows.length) { el.textContent = ''; return; }
+    const key = _legendTimeKey(param && param.time);
+    let idx = key ? rows.findIndex(r => String(r.date).slice(0, 10) === key) : -1;
+    if (idx < 0) idx = rows.length - 1;
+    const row = rows[idx];
+    const prev = rows[idx - 1];
+    if (!row) { el.textContent = ''; return; }
+    const n = v => (v == null || !Number.isFinite(Number(v)) ? '—' : Number(v).toFixed(2));
+    const chg = prev && prev.close ? ((row.close / prev.close - 1) * 100) : null;
+    const up = chg == null ? true : chg >= 0;
+    el.classList.toggle('legend-up', up);
+    el.classList.toggle('legend-down', !up);
+    const chgStr = chg == null ? '' : `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
+    const vol = row.volume != null ? Number(row.volume).toLocaleString() : '—';
+    el.textContent = `${row.date}  O ${n(row.open)}  H ${n(row.high)}  L ${n(row.low)}  C ${n(row.close)}  ${chgStr}  V ${vol}`;
+}
+
+function setupCrosshairLegend() {
+    ['daily', 'weekly'].forEach(freq => {
+        const chart = charts[freq].main;
+        if (!chart) return;
+        paintOhlcLegend(freq, {});
+        chart.subscribeCrosshairMove(param => paintOhlcLegend(freq, param || {}));
+    });
 }
 
 // ── Within-panel sync (same freq → logical range by bar index) ──
@@ -400,6 +441,7 @@ function loadOHLCV(freq, rows) {
 
     applyEpMarkers(freq);
     applyOverlayVisibility(freq);
+    paintOhlcLegend(freq, {});
 }
 
 // EP (episodic pivot) markers: gap-up ≥4% on ≥1.5x volume — the entry path

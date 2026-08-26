@@ -51,6 +51,7 @@ SETUP_IDS = {
     "STOCKBEE_EMA": "Close > EMA9 > EMA20",
     "STOCKBEE_ANT": "Anticipation coil after strength",
     "TIGHT_COIL": "Near high + dry volume / VCP / anticipation (triage)",
+    "PULLBACK_EMA": "Uptrend pullback toward KAMA20 (book, not a licensed signal)",
     "RSI_OB": "RSI overbought (swing alert)",
     "RSI_OS": "RSI oversold (swing alert)",
 }
@@ -59,7 +60,7 @@ SETUP_FAMILIES = {
     "qullamaggie": {
         "label": "Qullamaggie",
         "blurb": "EP · near high · volume · breakout queue",
-        "tags": ["EP", "NEAR_HIGH", "VOL_SURGE", "BREAKOUT_QUEUE", "QULLA_BREAKOUT"],
+        "tags": ["EP", "NEAR_HIGH", "VOL_SURGE", "BREAKOUT_QUEUE", "QULLA_BREAKOUT", "PULLBACK_EMA"],
     },
     "minervini": {
         "label": "Minervini",
@@ -87,6 +88,20 @@ SETUP_FAMILIES = {
         "tags": ["STAGE_1", "STAGE_2", "STAGE_2_EARLY", "STAGE_3", "STAGE_4"],
     },
 }
+
+
+def is_kama_pullback(row: dict) -> bool:
+    """Uptrend and close within ~12% below to 1% above KAMA20."""
+    if not row or row.get("regime") != "uptrend":
+        return False
+    vs = row.get("vs_kama20_pct")
+    if vs is None:
+        return False
+    try:
+        v = float(vs)
+    except (TypeError, ValueError):
+        return False
+    return -12.0 <= v <= 1.0
 
 
 def _r_to_box(price, box_low, atr) -> Optional[float]:
@@ -129,7 +144,9 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             setups.append("BREAKOUT_QUEUE")
         if snap.get("is_near_high") and snap.get("is_vol_surge"):
             setups.append("QULLA_BREAKOUT")
-        if any(t in setups for t in ("EP", "NEAR_HIGH", "VOL_SURGE", "BREAKOUT_QUEUE", "QULLA_BREAKOUT")):
+        if is_kama_pullback(snap):
+            setups.append("PULLBACK_EMA")
+        if any(t in setups for t in ("EP", "NEAR_HIGH", "VOL_SURGE", "BREAKOUT_QUEUE", "QULLA_BREAKOUT", "PULLBACK_EMA")):
             families.append("qullamaggie")
 
         # ── Darvas ────────────────────────────────────────────────────
@@ -212,6 +229,8 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
         if "STOCKBEE_EP" in setups or "STOCKBEE_RE" in setups:
             score += 1
         if "TIGHT_COIL" in setups:
+            score += 1
+        if "PULLBACK_EMA" in setups:
             score += 1
         if stage_n == 2:
             score += 1
@@ -310,6 +329,8 @@ def _filter_and_rollup(
     strike: bool = False,
     dual_up: bool = False,
     rsi_extreme: bool = False,
+    min_price: Optional[float] = None,
+    min_dollar_vol: Optional[float] = None,
 ) -> dict:
     filtered = []
     for row in results:
@@ -334,6 +355,12 @@ def _filter_and_rollup(
             continue
         vol = row.get("vol_ratio_5_20")
         if min_vol is not None and (vol is None or vol < min_vol):
+            continue
+        px = row.get("price")
+        if min_price is not None and (px is None or px < min_price):
+            continue
+        dv = row.get("dollar_vol_20d")
+        if min_dollar_vol is not None and (dv is None or dv < min_dollar_vol):
             continue
         rs = row.get("rs_rank_21d")
         if max_rs is not None and (rs is None or rs > max_rs):
@@ -455,6 +482,8 @@ def scan_setups(
     strike: bool = False,
     dual_up: bool = False,
     rsi_extreme: bool = False,
+    min_price: Optional[float] = None,
+    min_dollar_vol: Optional[float] = None,
 ) -> dict:
     """
     Scan symbols for setup tags / families / stage / badges.
@@ -483,6 +512,8 @@ def scan_setups(
         strike=strike,
         dual_up=dual_up,
         rsi_extreme=rsi_extreme,
+        min_price=min_price,
+        min_dollar_vol=min_dollar_vol,
     )
 
     if use_cache and not live:

@@ -68,6 +68,7 @@ FILTER_CATALOG: List[dict] = [
                 "STAGE_1", "STAGE_2", "STAGE_2_EARLY", "STAGE_3", "STAGE_4",
                 "MINERVINI_TT", "MINERVINI_VCP", "MINERVINI_PIVOT",
                 "STOCKBEE_EP", "STOCKBEE_RE", "STOCKBEE_EMA", "STOCKBEE_ANT", "TIGHT_COIL",
+                "PULLBACK_EMA",
                 "RSI_OB", "RSI_OS"]},
     {"id": "stage", "label": "Weinstein stage (1–4)", "group": "Setups", "type": "number", "ops": ["eq", "in"]},
     {"id": "minervini_pass", "label": "Minervini Trend Template pass", "group": "Setups", "type": "bool", "ops": ["is_true", "is_false"]},
@@ -184,6 +185,12 @@ PRESET_LISTS: List[dict] = [
         "match": "all",
     },
     {
+        "id": "preset_pullback",
+        "name": "KAMA20 pullback",
+        "rules": [{"field": "setup", "op": "has_setup", "value": "PULLBACK_EMA"}],
+        "match": "all",
+    },
+    {
         "id": "badge_kq",
         "name": "KQ · Qullamaggie",
         "rules": [{"field": "badge", "op": "has_badge", "value": "KQ"}],
@@ -279,6 +286,12 @@ def _setups_from_row(row: dict) -> List[str]:
         or ("MINERVINI_VCP" in setups and row.get("is_near_high") and row.get("vol_dry"))
     ):
         setups.append("TIGHT_COIL")
+    try:
+        import setup_scanner as _ss
+        if "PULLBACK_EMA" not in setups and _ss.is_kama_pullback(row):
+            setups.append("PULLBACK_EMA")
+    except Exception:
+        pass
     return setups
 
 

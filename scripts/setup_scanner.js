@@ -27,6 +27,7 @@ const SCANNER_TYPES = [
     { id: 'near_high', label: 'Near high', blurb: 'Breakout queue', setup: 'BREAKOUT_QUEUE', group: 'flow' },
     { id: 'vol_surge', label: 'Vol surge', blurb: '≥1.5× volume', setup: 'VOL_SURGE', min_vol: 1.5, group: 'flow' },
     { id: 'coil', label: 'Tight coil', blurb: 'Near high + dry vol', setup: 'TIGHT_COIL', group: 'flow' },
+    { id: 'pullback', label: 'Pullback', blurb: 'Uptrend vs KAMA20', setup: 'PULLBACK_EMA', group: 'flow' },
     { id: 'qulla', label: 'Qulla', blurb: 'Near high + vol', family: 'qullamaggie', setup: 'QULLA_BREAKOUT', group: 'method' },
     { id: 'darvas', label: 'Darvas', blurb: 'Box breakout', family: 'darvas', setup: 'DARVAS_BREAKOUT', badge: 'DB', group: 'method' },
     { id: 'minervini', label: 'Minervini', blurb: 'Trend Template', family: 'minervini', setup: 'MINERVINI_TT', badge: 'MM', group: 'method' },
@@ -61,6 +62,12 @@ function collectAdvFilters() {
         regime: document.getElementById('flt-regime')?.value || '',
         strike: !!document.getElementById('flt-strike')?.checked,
         dual_up: !!document.getElementById('flt-dual-up')?.checked,
+        liquid: document.getElementById('flt-liquid') ? !!document.getElementById('flt-liquid').checked : true,
+        min_price: num('flt-min-price'),
+        min_dollar_vol: (() => {
+            const v = num('flt-min-dv');
+            return v == null ? null : v * 1e6;
+        })(),
     };
 }
 
@@ -166,6 +173,12 @@ async function initSetupScanner() {
         if (st) st.checked = false;
         const du = document.getElementById('flt-dual-up');
         if (du) du.checked = false;
+        const liq = document.getElementById('flt-liquid');
+        if (liq) liq.checked = true;
+        ['flt-min-price', 'flt-min-dv'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
         applyScannerType('all');
     });
     document.getElementById('btn-setup-chrome')?.addEventListener('click', () => {
@@ -580,6 +593,10 @@ async function loadSetupScan() {
         if (adv.regime) url += `&regime=${encodeURIComponent(adv.regime)}`;
         if (adv.strike) url += `&strike=1`;
         if (adv.dual_up) url += `&dual_up=1`;
+        if (adv.liquid) url += `&liquid=1`;
+        else url += `&liquid=0`;
+        if (adv.min_price != null) url += `&min_price=${adv.min_price}`;
+        if (adv.min_dollar_vol != null) url += `&min_dollar_vol=${adv.min_dollar_vol}`;
         // RSI extremes type: include both OB and OS via special flag
         if (_scannerType === 'rsi_ext') url += `&rsi_extreme=1`;
 
