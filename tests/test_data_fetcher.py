@@ -32,6 +32,12 @@ class AdjustmentSeamTests(unittest.TestCase):
         out = fetcher.drop_partial_first_week(daily, weekly)
         self.assertTrue(out.empty)
 
+    def test_seam_without_overlap_date(self):
+        stored = {"2024-06-01": 100.0}
+        idx = pd.to_datetime(["2024-06-04"])
+        df = pd.DataFrame({"close": [10.0]}, index=idx)
+        self.assertTrue(fetcher.adjustment_seam(stored, df))
+
 
 if __name__ == "__main__":
     unittest.main()

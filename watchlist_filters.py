@@ -192,6 +192,15 @@ PRESET_LISTS: List[dict] = [
         "match": "all",
     },
     {
+        "id": "preset_liquid",
+        "name": "Liquid ≥$5 / $20M",
+        "rules": [
+            {"field": "price", "op": "gte", "value": 5},
+            {"field": "dollar_vol_20d", "op": "gte", "value": 20000000},
+        ],
+        "match": "all",
+    },
+    {
         "id": "badge_kq",
         "name": "KQ · Qullamaggie",
         "rules": [{"field": "badge", "op": "has_badge", "value": "KQ"}],

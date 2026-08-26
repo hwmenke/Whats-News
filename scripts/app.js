@@ -205,7 +205,12 @@ async function refreshPortfolioTape(opts = {}) {
         const url = `${API}/portfolio/snapshot` + (q ? `?${q}` : '');
         const data = await apiFetch(url);
         const map = {};
-        (data.symbols || []).forEach(row => { map[row.symbol] = row; });
+        (data.symbols || []).forEach(row => {
+            map[row.symbol] = { ...(state.portfolio[row.symbol] || {}), ...row };
+        });
+        Object.keys(state.portfolio || {}).forEach(sym => {
+            if (!map[sym]) map[sym] = state.portfolio[sym];
+        });
         state.portfolio = map;
         state.portfolioMeta = data;
         renderSymbolList();
@@ -486,6 +491,19 @@ function openJournal() {
     drawer.classList.add('open');
     drawer.setAttribute('aria-hidden', 'false');
     renderJournal();
+    refreshJournalQuotes();
+}
+
+async function refreshJournalQuotes() {
+    const open = loadJournalEntries().filter(e => !e.closed).slice(0, 24);
+    for (const e of open) {
+        if (state.portfolio[e.symbol]?.price != null) continue;
+        try {
+            const snap = await apiFetch(`${API}/pm-desk/${e.symbol}`);
+            state.portfolio[e.symbol] = { ...(state.portfolio[e.symbol] || {}), ...snap };
+        } catch (_) { /* no bars yet */ }
+    }
+    if (document.getElementById('journal-drawer')?.classList.contains('open')) renderJournal();
 }
 
 function closeJournal() {
@@ -616,7 +634,7 @@ function renderJournal() {
     }
     const shown = entries.filter(e => _journalTab === 'closed' ? e.closed : !e.closed);
     if (!shown.length) {
-        list.innerHTML = `<div class="alert-log-empty">${_journalTab === 'closed' ? 'No closed trades' : 'No open positions — save a setup from PM tools'}</div>`;
+        list.innerHTML = `<div class="alert-log-empty">${_journalTab === 'closed' ? 'No closed trades' : 'No open positions — click Save pos in the header (or Shift+J)'}</div>`;
         return;
     }
     const fmt = v => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
@@ -633,7 +651,7 @@ function renderJournal() {
         <div class="journal-item-body">
           <span>Entry ${fmt(e.entry)} · Stop ${fmt(e.stop)} · Target ${fmt(e.target)}</span>
           <span>Plan ${e.r_multiple ?? '—'}R${e.closed ? ` · Closed @ ${e.result_r ?? '—'}R` : ''}</span>
-          ${e.closed ? '' : `<span class="${heatCls}">Live ${fmt(live.price)} · heat ${fmtN(live.heatPct, '%')} · ${fmtN(live.liveR, 'R')}</span>`}
+          ${e.closed ? '' : `<span class="${heatCls}">Last ${fmt(live.price)} · heat ${fmtN(live.heatPct, '%')} · ${fmtN(live.liveR, 'R')}</span>`}
         </div>
         <div class="journal-item-actions">
           <button type="button" class="btn btn-ghost btn-sm journal-open-btn" data-symbol="${e.symbol}">Chart</button>
@@ -1209,7 +1227,7 @@ function clearSmartListSidebar() {
 async function selectSymbol(symbol) {
     state.activeSymbol = symbol;
     renderSymbolList();
-    if (state.activeTab === 'charts') {
+    if (state.activeTab === 'charts' || state.activeTab === 'review') {
         await loadChartData(symbol);
     } else if (state.activeTab === 'news') {
         await loadNewsData(symbol);
@@ -2722,10 +2740,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadSymbols();
 
+    let savedWs = null;
+    try { savedWs = localStorage.getItem('whats-news-workspace'); } catch { savedWs = null; }
+    if (savedWs && typeof applyWorkspace === 'function' && state.symbols.length) {
+        applyWorkspace(savedWs);
+    }
+
     if (state.symbols.length && state.symbols[0].last_fetch) {
-        selectSymbol(state.symbols[0].symbol);
+        selectSymbol(state.activeSymbol || state.symbols[0].symbol);
     } else {
         showEmptyState();
+        try {
+            if (!localStorage.getItem('whats-news-guide-seen') && typeof openDeskGuide === 'function') {
+                openDeskGuide(0);
+            }
+        } catch { /* ignore */ }
     }
 });
 

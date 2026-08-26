@@ -20,7 +20,7 @@ from typing import Any, Optional
 import pandas as pd
 
 DATA_SERVICE_URL = os.environ.get("DATA_SERVICE_URL", "http://127.0.0.1:8051").rstrip("/")
-DATA_SERVICE_MODE = os.environ.get("DATA_SERVICE_MODE", "http").strip().lower()
+DATA_SERVICE_MODE = os.environ.get("DATA_SERVICE_MODE", "embedded").strip().lower()
 
 
 def use_embedded() -> bool:

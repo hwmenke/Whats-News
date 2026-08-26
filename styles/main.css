@@ -2097,6 +2097,13 @@ body.ws-review #scanner-area {
   border-top: 1px solid var(--border);
 }
 body.ws-review #metric-scanner-panel { display: none; }
+.setup-liquid-chip {
+  font-size: 10px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
 body.ws-scan .tab-btn:not(#tab-scanner):not(#tab-data-manager),
 body.ws-chart .tab-btn:not(#tab-charts):not(#tab-data-manager),
 body.ws-review .tab-btn:not(#tab-charts):not(#tab-scanner):not(#tab-data-manager) {

@@ -90,11 +90,21 @@ function paletteRows(query) {
             kind: 'add',
             id: q,
             label: `Add ${q}`,
-            hint: 'Shift+Enter',
+            hint: 'Shift+Enter only',
             run: () => addSymbolByCode?.(q),
         });
     }
     return rows.slice(0, 24);
+}
+
+function jumpToSymbol(code) {
+    if (typeof applyWorkspace === 'function'
+        && typeof state !== 'undefined'
+        && state.activeTab !== 'charts'
+        && state.activeTab !== 'review') {
+        applyWorkspace('chart');
+    }
+    selectSymbol(code);
 }
 
 function renderPaletteResults(query) {
@@ -114,19 +124,36 @@ function renderPaletteResults(query) {
       </button>
     `).join('');
     box.querySelectorAll('.desk-palette-row').forEach(btn => {
-        btn.addEventListener('click', () => runPaletteItem(Number(btn.dataset.idx), false));
+        btn.addEventListener('click', () => {
+            const item = _paletteItems[Number(btn.dataset.idx)];
+            runPaletteItem(Number(btn.dataset.idx), item?.kind === 'add');
+        });
     });
 }
 
 function runPaletteItem(idx, addInstead) {
     const item = _paletteItems[idx];
     if (!item) return;
-    closeDeskPalette();
-    if (addInstead && item.kind === 'sym') {
-        addSymbolByCode?.(item.id);
+    if (addInstead) {
+        const code = item.id;
+        if (item.kind !== 'add' && item.kind !== 'sym') return;
+        if (allWatchlistCodes().includes(code)) {
+            closeDeskPalette();
+            jumpToSymbol(code);
+            toast?.(`${code} already on the watchlist`, 'info');
+            return;
+        }
+        closeDeskPalette();
+        addSymbolByCode?.(code);
         return;
     }
-    item.run?.();
+    if (item.kind === 'add') {
+        toast?.('Shift+Enter adds a ticker — Enter never mutates the list', 'info');
+        return;
+    }
+    closeDeskPalette();
+    if (item.kind === 'sym') jumpToSymbol(item.id);
+    else item.run?.();
 }
 
 function initDeskPalette() {

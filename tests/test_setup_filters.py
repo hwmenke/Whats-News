@@ -111,6 +111,22 @@ class SetupFilterExtrasTests(unittest.TestCase):
         self.assertEqual(out["count"], 1)
         self.assertEqual(out["results"][0]["symbol"], "A")
 
+    def test_liquidity_floor_drops_null_adv(self):
+        rows = self._rows()
+        rows[0]["price"] = 80
+        rows[0]["dollar_vol_20d"] = None
+        rows[1]["price"] = 80
+        rows[1]["dollar_vol_20d"] = 50_000_000
+        out = ss._filter_and_rollup(
+            rows,
+            symbols_scanned=2,
+            min_price=5,
+            min_dollar_vol=20_000_000,
+            from_cache=True,
+        )
+        self.assertEqual(out["count"], 1)
+        self.assertEqual(out["results"][0]["symbol"], "B")
+
     def test_r_to_box(self):
         self.assertEqual(ss._r_to_box(100, 85, 10), 1.0)
         self.assertIsNone(ss._r_to_box(100, 85, None))

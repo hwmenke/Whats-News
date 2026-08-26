@@ -372,10 +372,10 @@ def _filter_and_rollup(
         if min_vol is not None and (vol is None or vol < min_vol):
             continue
         px = row.get("price")
-        if min_price is not None and px is not None and px < min_price:
+        if min_price is not None and (px is None or px < min_price):
             continue
         dv = row.get("dollar_vol_20d")
-        if min_dollar_vol is not None and dv is not None and dv < min_dollar_vol:
+        if min_dollar_vol is not None and (dv is None or dv < min_dollar_vol):
             continue
         rs = row.get("rs_rank_21d")
         if max_rs is not None and (rs is None or rs > max_rs):

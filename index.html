@@ -243,9 +243,10 @@
       <div class="tab-spacer"></div>
       <div class="view-toggles" aria-label="Show or hide desk features">
         <span class="overlay-section-label">Desk</span>
-        <button type="button" class="ind-pill workspace-pill" data-workspace="scan" title="Scanner-first workspace (1)">Scan</button>
-        <button type="button" class="ind-pill workspace-pill" data-workspace="chart" title="Chart-first workspace (2)">Chart</button>
-        <button type="button" class="ind-pill workspace-pill" data-workspace="review" title="Chart + setups review (3)">Review</button>
+        <button type="button" class="ind-pill workspace-pill" data-workspace="scan" title="Scanner-first workspace (1)" aria-pressed="false">Scan</button>
+        <button type="button" class="ind-pill workspace-pill" data-workspace="chart" title="Chart-first workspace (2)" aria-pressed="false">Chart</button>
+        <button type="button" class="ind-pill workspace-pill" data-workspace="review" title="Chart + setups review (3)" aria-pressed="false">Review</button>
+        <button type="button" class="ind-pill workspace-pill" data-workspace="mine" id="pill-my-desk" title="Restore the desk you saved" hidden>My desk</button>
         <span class="overlay-section-label">View</span>
         <button type="button" class="ind-pill view-pill active" data-view="sidebar" title="Show / hide watchlist sidebar">Sidebar</button>
         <button type="button" class="ind-pill view-pill active" data-view="header" title="Show / hide symbol header">Header</button>
@@ -258,6 +259,7 @@
         <button type="button" class="ind-pill view-pill active" data-view="heatmap" title="Show / hide metric heatmap scanner">Heatmap</button>
         <button type="button" id="btn-badge-key" class="btn btn-ghost btn-sm" title="Badge legend">Badges</button>
         <button type="button" id="btn-layout-reset" class="btn btn-ghost btn-sm" title="Reset panel sizes">Reset size</button>
+        <button type="button" id="btn-save-desk" class="btn btn-ghost btn-sm" title="Save current workspace + view pills as My desk">Save desk</button>
         <button type="button" id="btn-journal" class="btn btn-ghost btn-sm" title="Positions &amp; journal (Shift+J)">Positions</button>
         <button type="button" id="btn-desk-guide" class="btn btn-ghost btn-sm" title="Step-by-step guide (?)">Guide</button>
       </div>
@@ -336,7 +338,7 @@
         <button type="button" class="btn btn-ghost" id="btn-open-lists-from-guide">Open Lists</button>
         <button type="button" class="btn btn-ghost" id="btn-open-full-guide">Full walkthrough</button>
       </div>
-      <p class="guide-hint">Or type a ticker on the left (e.g. <strong>AAPL</strong>) and press <strong>+</strong>.</p>
+      <p class="guide-hint">Add with <strong>+</strong>. Jump with <kbd>/</kbd> (does not add) · <kbd>⌘K</kbd> commands · <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> Scan/Chart/Review · <kbd>Shift+J</kbd> Positions.</p>
     </div>
 
     <!-- ── Chart Area ── -->
@@ -846,6 +848,7 @@
           <button type="button" id="btn-setup-filters-toggle" class="btn btn-ghost btn-sm" title="Numeric filters">Filters ▾</button>
           <span id="setup-metrics-status" class="scanner-ts" title="Metrics cache coverage"></span>
           <span id="setup-scan-meta" class="scanner-ts"></span>
+          <span id="setup-liquid-chip" class="setup-liquid-chip" hidden>Liquid ≥$5 / $20M</span>
           <span class="setup-kbd-hint" title="When Scanner is open">j/k · Enter</span>
         </div>
         <div id="market-context-strip" class="market-context-strip" hidden title="Book breadth of the cached universe — not a licensed Market Monitor">
@@ -1152,7 +1155,7 @@
     <input id="desk-palette-input" type="text" class="desk-palette-input"
            placeholder="Ticker or command…" autocomplete="off" spellcheck="false" />
     <div id="desk-palette-results" class="desk-palette-results" role="listbox"></div>
-    <p class="desk-palette-hint">/ jump · ⌘K commands · Enter opens · Shift+Enter adds · never mutates the list on jump</p>
+    <p class="desk-palette-hint">/ jump · ⌘K commands · Enter opens (never adds) · Shift+Enter or click Add to mutate the list</p>
   </div>
 </div>
 

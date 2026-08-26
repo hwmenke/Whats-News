@@ -190,8 +190,13 @@ function applyWorkspace(id) {
 
 function setupWorkspacePresets() {
     document.querySelectorAll('.workspace-pill[data-workspace]').forEach(btn => {
-        btn.addEventListener('click', () => applyWorkspace(btn.dataset.workspace));
+        btn.addEventListener('click', () => {
+            if (btn.dataset.workspace === 'mine') applyMyDesk();
+            else applyWorkspace(btn.dataset.workspace);
+        });
     });
+    document.getElementById('btn-save-desk')?.addEventListener('click', saveMyDesk);
+    syncMyDeskPill();
     let saved = null;
     try { saved = localStorage.getItem('whats-news-workspace'); } catch { saved = null; }
     if (saved && WORKSPACE_PRESETS[saved]) {
@@ -203,6 +208,48 @@ function setupWorkspacePresets() {
             btn.setAttribute('aria-pressed', on ? 'true' : 'false');
         });
     }
+}
+
+const MY_DESK_KEY = 'whats-news-my-desk';
+
+function saveMyDesk() {
+    let workspace = 'chart';
+    try { workspace = localStorage.getItem('whats-news-workspace') || 'chart'; } catch { /* ignore */ }
+    const layout = {
+        workspace: WORKSPACE_PRESETS[workspace] ? workspace : 'chart',
+        views: loadViewPrefs(),
+        tab: (typeof state !== 'undefined' && state.activeTab) || null,
+        saved_at: new Date().toISOString(),
+    };
+    try { localStorage.setItem(MY_DESK_KEY, JSON.stringify(layout)); } catch { /* ignore */ }
+    syncMyDeskPill();
+    toast?.('Saved My desk', 'success');
+}
+
+function applyMyDesk() {
+    let raw = null;
+    try { raw = JSON.parse(localStorage.getItem(MY_DESK_KEY) || 'null'); } catch { raw = null; }
+    if (!raw) {
+        toast?.('No saved desk — click Save desk first', 'warning');
+        return;
+    }
+    if (raw.workspace && WORKSPACE_PRESETS[raw.workspace]) applyWorkspace(raw.workspace);
+    Object.entries(raw.views || {}).forEach(([name, on]) => applyViewToggle(name, !!on));
+    if (raw.views) saveViewPrefs(raw.views);
+    document.querySelectorAll('.workspace-pill').forEach(btn => {
+        const on = btn.dataset.workspace === 'mine';
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    window.resizeAllCharts?.();
+}
+
+function syncMyDeskPill() {
+    const pill = document.getElementById('pill-my-desk');
+    if (!pill) return;
+    let has = false;
+    try { has = !!localStorage.getItem(MY_DESK_KEY); } catch { has = false; }
+    pill.hidden = !has;
 }
 
 function openDeskGuide(page = 0) {

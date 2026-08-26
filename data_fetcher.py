@@ -54,6 +54,7 @@ def adjustment_seam(
         return False
     if "close" not in daily_df.columns:
         return False
+    overlapped = False
     for ts, row in daily_df.iterrows():
         try:
             d = pd.Timestamp(ts).strftime("%Y-%m-%d")
@@ -62,6 +63,7 @@ def adjustment_seam(
         old = stored_closes.get(d)
         if old is None:
             continue
+        overlapped = True
         try:
             old_c = float(old)
             new_c = float(row["close"])
@@ -71,6 +73,22 @@ def adjustment_seam(
             continue
         if abs(new_c / old_c - 1.0) * 100.0 >= threshold_pct:
             return True
+    if overlapped:
+        return False
+    # No shared dates (split may have dropped the overlap session).
+    try:
+        last_d = max(stored_closes)
+        last_ts = pd.Timestamp(last_d)
+        first_ts = pd.Timestamp(daily_df.index.min())
+        gap_days = (first_ts - last_ts).days
+        old_c = float(stored_closes[last_d])
+        new_c = float(daily_df.iloc[0]["close"])
+    except Exception:
+        return False
+    if old_c <= 0 or new_c <= 0:
+        return False
+    if 0 < gap_days <= 10 and abs(new_c / old_c - 1.0) * 100.0 >= threshold_pct:
+        return True
     return False
 
 

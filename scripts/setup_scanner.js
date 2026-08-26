@@ -34,7 +34,7 @@ const SCANNER_TYPES = [
     { id: 'stockbee', label: 'Stockbee', blurb: 'EP / RE / EMA', family: 'stockbee', group: 'method' },
     { id: 'stage2', label: 'Stage 2', blurb: 'Advancing', family: 'stage', stage: 2, group: 'method' },
     { id: 'stage2a', label: 'Early 2A', blurb: 'Fresh Stage 2', setup: 'STAGE_2_EARLY', badge: '2A', group: 'method' },
-    { id: 'rs_leaders', label: 'RS leaders', blurb: 'Top Book RS', max_rs: 30, min_rts: 70, group: 'quality' },
+    { id: 'rs_leaders', label: 'Book RS leaders', blurb: 'Top Book RS', max_rs: 30, min_rts: 70, group: 'quality' },
     { id: 'dual_up', label: 'Dual up', blurb: 'D+W uptrend', dual_up: true, regime: 'uptrend', group: 'quality' },
     { id: 'strike', label: 'Strike zone', blurb: 'Near pivot', strike: true, badge: '52W', group: 'quality' },
     { id: 'rsi_ext', label: 'RSI extremes', blurb: 'OB or OS', setup: 'RSI_OB', group: 'quality' },
@@ -631,11 +631,17 @@ async function loadSetupScan() {
         if (meta) {
             const typeBit = _scannerType && _scannerType !== 'all' ? ` · ${_scannerType}` : '';
             const badgeBit = _setupBadge ? ` · ${_setupBadge}` : '';
+            const liqBit = adv.liquid ? ' · liquid' : '';
             const cache = data.cache || {};
             let cacheBit = data.from_cache ? ' · cached' : ' · live';
             if (cache.freshness === 'stale') cacheBit += ' · stale';
             if (cache.as_of) cacheBit += ` · as of ${String(cache.as_of).slice(0, 10)}`;
-            meta.textContent = `${data.count || 0} hits${typeBit}${badgeBit}${cacheBit} · scanned ${data.scanned || 0}`;
+            meta.textContent = `${data.count || 0} hits${typeBit}${badgeBit}${liqBit}${cacheBit} · scanned ${data.scanned || 0}`;
+        }
+        const chip = document.getElementById('setup-liquid-chip');
+        if (chip) {
+            chip.hidden = !adv.liquid;
+            chip.title = 'Filters ▾ → uncheck Liquid to include names under $5 or $20M ADV';
         }
         refreshMetricsStatus();
     } catch (e) {
