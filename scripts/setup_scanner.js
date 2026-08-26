@@ -32,7 +32,7 @@ const SCANNER_TYPES = [
     { id: 'darvas', label: 'Darvas', blurb: 'Box breakout', family: 'darvas', setup: 'DARVAS_BREAKOUT', badge: 'DB', group: 'method' },
     { id: 'minervini', label: 'Minervini', blurb: 'Trend Template', family: 'minervini', setup: 'MINERVINI_TT', badge: 'MM', group: 'method' },
     { id: 'stockbee', label: 'Stockbee', blurb: 'EP / RE / EMA', family: 'stockbee', group: 'method' },
-    { id: 'stage2', label: 'Stage 2', blurb: 'Advancing', family: 'stage', stage: 2, badge: '2B', group: 'method' },
+    { id: 'stage2', label: 'Stage 2', blurb: 'Advancing', family: 'stage', stage: 2, group: 'method' },
     { id: 'stage2a', label: 'Early 2A', blurb: 'Fresh Stage 2', setup: 'STAGE_2_EARLY', badge: '2A', group: 'method' },
     { id: 'rs_leaders', label: 'RS leaders', blurb: 'Top Book RS', max_rs: 30, min_rts: 70, group: 'quality' },
     { id: 'dual_up', label: 'Dual up', blurb: 'D+W uptrend', dual_up: true, regime: 'uptrend', group: 'quality' },
@@ -71,16 +71,7 @@ function collectAdvFilters() {
     };
 }
 
-function applyScannerType(typeId) {
-    _scannerType = typeId || 'all';
-    const t = SCANNER_TYPES.find(x => x.id === _scannerType) || SCANNER_TYPES[0];
-
-    _setupFamily = t.family || null;
-    _setupStage = t.stage != null ? t.stage : null;
-    _setupFilter = t.setup || null;
-    _setupBadge = t.badge || null;
-
-    // Seed advanced filter inputs from type defaults (only when empty-ish)
+function resetTypeDrivenFilters(t) {
     const setIf = (id, val) => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -92,15 +83,25 @@ function applyScannerType(typeId) {
         if (el.type === 'checkbox') el.checked = !!val;
         else el.value = val;
     };
-    // Always sync type-driven toggles
-    if (t.min_vol != null) setIf('flt-min-vol', t.min_vol);
-    if (t.max_rs != null) setIf('flt-max-rs', t.max_rs);
-    if (t.min_rts != null) setIf('flt-min-rts', t.min_rts);
-    if (t.regime) setIf('flt-regime', t.regime);
-    if (t.strike != null) setIf('flt-strike', t.strike);
-    if (t.dual_up != null) setIf('flt-dual-up', t.dual_up);
+    setIf('flt-min-vol', t.min_vol);
+    setIf('flt-max-rs', t.max_rs);
+    setIf('flt-min-rts', t.min_rts);
+    setIf('flt-regime', t.regime || '');
+    setIf('flt-strike', t.strike || false);
+    setIf('flt-dual-up', t.dual_up || false);
+}
 
-    // RSI extremes: client will also keep RSI_OS via post-filter
+function applyScannerType(typeId) {
+    _scannerType = typeId || 'all';
+    const t = SCANNER_TYPES.find(x => x.id === _scannerType) || SCANNER_TYPES[0];
+
+    _setupFamily = t.family || null;
+    _setupStage = t.stage != null ? t.stage : null;
+    _setupFilter = t.setup || null;
+    _setupBadge = t.badge || null;
+
+    resetTypeDrivenFilters(t);
+
     renderScannerTypeCards();
     renderSetupFamilyCards();
     renderSetupStagePills();
@@ -124,7 +125,7 @@ function renderScannerTypeCards() {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'scanner-type-card compact' + (_scannerType === t.id ? ' selected' : '');
-            btn.innerHTML = `<strong>${t.label}</strong>`;
+            btn.innerHTML = `<strong>${t.label}</strong><span class="scanner-type-blurb">${t.blurb}</span>`;
             btn.title = t.blurb;
             btn.addEventListener('click', () => applyScannerType(t.id));
             wrap.appendChild(btn);
@@ -220,6 +221,9 @@ function renderSetupFamilyCards() {
         _setupFamily = null;
         _setupStage = null;
         _setupFilter = null;
+        _setupBadge = null;
+        _scannerType = 'all';
+        resetTypeDrivenFilters({});
         renderSetupFamilyCards();
         renderSetupStagePills();
         renderSetupBadgePills();
@@ -241,6 +245,8 @@ function renderSetupFamilyCards() {
             _setupFamily = id;
             _setupFilter = null;
             _setupBadge = null;
+            _scannerType = 'all';
+            resetTypeDrivenFilters({});
             if (id !== 'stage') _setupStage = null;
             renderSetupFamilyCards();
             renderSetupStagePills();
@@ -282,6 +288,8 @@ function renderSetupStagePills() {
         })[st];
         btn.addEventListener('click', () => {
             _setupStage = st;
+            _scannerType = 'all';
+            resetTypeDrivenFilters({});
             if (st != null) _setupFamily = 'stage';
             renderSetupFamilyCards();
             renderSetupStagePills();
@@ -331,6 +339,8 @@ function renderSetupBadgePills() {
         btn.addEventListener('click', () => {
             _setupBadge = code;
             _setupFilter = null;
+            _scannerType = 'all';
+            resetTypeDrivenFilters({});
             renderSetupBadgePills();
             renderSetupFilterPills();
             loadSetupScan();
@@ -470,9 +480,13 @@ function moveSetupRow(delta) {
 
 function openSetupRow() {
     const sorted = sortSetupResults(_lastSetupResults);
+    if (!sorted.length) return false;
+    if (_setupRowIdx < 0 || _setupRowIdx >= sorted.length) _setupRowIdx = 0;
     const row = sorted[_setupRowIdx];
     if (!row) return false;
-    switchTab('charts');
+    highlightSetupRow(_setupRowIdx);
+    if (typeof applyWorkspace === 'function') applyWorkspace('chart');
+    else switchTab('charts');
     selectSymbol(row.symbol);
     return true;
 }
@@ -626,6 +640,13 @@ async function loadSetupScan() {
         refreshMetricsStatus();
     } catch (e) {
         toast('Setup scan failed: ' + e.message, 'error');
+        _lastSetupResults = [];
+        renderSetupScanTable([]);
+        const empty = document.getElementById('setup-scan-empty');
+        if (empty) {
+            empty.style.display = 'block';
+            empty.innerHTML = `<div class="empty-icon">⚠️</div><p>Scan failed: ${e.message}</p><p>If the table is empty after archive, click <strong>Precompute</strong>.</p>`;
+        }
     } finally {
         if (loadEl) loadEl.style.display = 'none';
         if (btn) { btn.disabled = false; btn.textContent = 'Scan'; }
@@ -643,7 +664,7 @@ function renderMarketContext(ctx) {
     strip.classList.toggle('mc-stale', !!ctx.stale);
     const regime = document.getElementById('mc-regime');
     if (regime) {
-        regime.textContent = `M ${ctx.label || '—'}`;
+        regime.textContent = `Book ${ctx.label || '—'}`;
         regime.className = `mc-regime mc-${ctx.regime || 'mixed'}`;
         regime.title = `${ctx.blurb || ''} ${ctx.honest || ''}`.trim();
     }
@@ -651,11 +672,11 @@ function renderMarketContext(ctx) {
         const el = document.getElementById(id);
         if (el) el.textContent = `${label} ${val != null ? val.toFixed(0) + '%' : '—'}`;
     };
-    set('mc-up', 'Up', ctx.pct_uptrend);
-    set('mc-dual', 'D+W', ctx.pct_dual_up);
-    set('mc-s2', 'S2', ctx.pct_stage2);
-    set('mc-ep', 'EP', ctx.pct_ep);
-    set('mc-pos', 'Day+', ctx.pct_positive);
+    set('mc-up', 'Uptrend', ctx.pct_uptrend);
+    set('mc-dual', 'Daily+weekly up', ctx.pct_dual_up);
+    set('mc-s2', 'Stage 2', ctx.pct_stage2);
+    set('mc-ep', 'EP gap', ctx.pct_ep);
+    set('mc-pos', 'Day up', ctx.pct_positive);
 }
 
 async function refreshMetricsStatus() {

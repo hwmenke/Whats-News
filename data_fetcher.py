@@ -74,6 +74,18 @@ def adjustment_seam(
     return False
 
 
+def drop_partial_first_week(daily_df: pd.DataFrame, weekly_df: pd.DataFrame) -> pd.DataFrame:
+    """Drop the first W-FRI bar when the incremental window does not cover ~4 sessions."""
+    if weekly_df is None or weekly_df.empty:
+        return weekly_df
+    first = weekly_df.index[0]
+    week_start = first - pd.Timedelta(days=6)
+    in_week = daily_df[(daily_df.index >= week_start) & (daily_df.index <= first)]
+    if len(in_week) < 4:
+        return weekly_df.iloc[1:] if len(weekly_df) > 1 else weekly_df.iloc[0:0]
+    return weekly_df
+
+
 def _stored_closes(symbol: str, limit: int = 40) -> dict:
     rows = db.get_ohlcv(symbol, "daily", limit=limit)
     out = {}
@@ -128,14 +140,14 @@ def fetch_and_store(symbol: str, period: str = "2y", overlap_days: int = 3) -> d
         "close":  "last",
         "volume": "sum"
     }).dropna()
-    # Incremental windows start mid-week; the first resampled bar is a
-    # partial week and would overwrite a good stored weekly OHLC.
-    if last_date_str and len(weekly_df) > 1:
-        weekly_df = weekly_df.iloc[1:]
+    # Incremental windows start mid-week; drop a first bar that is not a
+    # full Mon–Fri week so we do not overwrite a complete stored candle.
+    if last_date_str and not weekly_df.empty:
+        weekly_df = drop_partial_first_week(daily_df, weekly_df)
     print(f"++ Fetcher: Resampled to {len(weekly_df)} weekly bars")
 
     daily_count  = db.upsert_ohlcv(sym, "daily",  daily_df)
-    weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
+    weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df) if len(weekly_df) else 0
     print(f"++ Fetcher: Database updated ({daily_count}d, {weekly_count}w)")
 
     # Pull meta info (name, sector) - try/except as this can be slow/fail

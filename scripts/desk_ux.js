@@ -159,7 +159,7 @@ const WORKSPACE_PRESETS = {
     },
     review: {
         label: 'Review',
-        tab: 'charts',
+        tab: 'review',
         views: {
             sidebar: true, header: true, tape: true, weekly: true, volume: false,
             pm: true, overlays: true, setups: true, heatmap: false,
@@ -176,6 +176,8 @@ function applyWorkspace(id) {
         prefs[name] = on;
     });
     saveViewPrefs(prefs);
+    document.body.classList.remove('ws-scan', 'ws-chart', 'ws-review');
+    document.body.classList.add(`ws-${id}`);
     document.querySelectorAll('.workspace-pill').forEach(btn => {
         const on = btn.dataset.workspace === id;
         btn.classList.toggle('active', on);
@@ -193,6 +195,8 @@ function setupWorkspacePresets() {
     let saved = null;
     try { saved = localStorage.getItem('whats-news-workspace'); } catch { saved = null; }
     if (saved && WORKSPACE_PRESETS[saved]) {
+        document.body.classList.remove('ws-scan', 'ws-chart', 'ws-review');
+        document.body.classList.add(`ws-${saved}`);
         document.querySelectorAll('.workspace-pill').forEach(btn => {
             const on = btn.dataset.workspace === saved;
             btn.classList.toggle('active', on);
@@ -207,6 +211,11 @@ function openDeskGuide(page = 0) {
     if (!modal) return;
     modal.style.display = 'flex';
     renderDeskGuidePage();
+    const card = modal.querySelector('.desk-guide-card') || modal.querySelector('[role="dialog"]');
+    if (card) {
+        if (!card.hasAttribute('tabindex')) card.setAttribute('tabindex', '-1');
+        card.focus();
+    }
 }
 
 function closeDeskGuide() {
@@ -270,9 +279,14 @@ function initDeskGuide() {
     });
 
     document.addEventListener('keydown', e => {
-        if (e.key === '?' && !(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        const tag = (e.target && e.target.tagName) || '';
+        const typing = tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable;
+        if (typing) return;
+        const wantGuide = e.key === '?' || (e.shiftKey && e.key === '/');
+        if (wantGuide) {
             e.preventDefault();
+            e.stopPropagation();
             openDeskGuide(0);
         }
-    });
+    }, true);
 }

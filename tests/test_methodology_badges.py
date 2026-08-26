@@ -15,7 +15,14 @@ class MethodologyBadgeTests(unittest.TestCase):
         self.assertEqual(mb.book_rts(100, 100), 1)
         self.assertIsNone(mb.book_rts(None, 10))
 
-    def test_compute_kq_mm_sb4(self):
+    def test_kq_not_from_breakout_queue_alone(self):
+        out = mb.compute_badges(
+            setups=["BREAKOUT_QUEUE", "VOL_SURGE"],
+            is_near_high=False,
+            is_vol_surge=True,
+            change_pct=-3,
+        )
+        self.assertNotIn("KQ", out["codes"])
         out = mb.compute_badges(
             setups=["QULLA_BREAKOUT", "MINERVINI_TT", "EP"],
             change_pct=5.2,

@@ -36,6 +36,7 @@ FILTER_CATALOG: List[dict] = [
     {"id": "d_roc_6m", "label": "ROC 6M %", "group": "History", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
     # Volume
     {"id": "dollar_vol_20d", "label": "Dollar volume 20D avg", "group": "Volume", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
+    {"id": "vol_ratio_5_20", "label": "Vol ratio vs 20-bar avg", "group": "Volume", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
     {"id": "d_vol_ratio", "label": "Vol ratio 5/20 (scanner)", "group": "Volume", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},
     # MA / structure
     {"id": "vs_kama20_pct", "label": "Price vs KAMA20 %", "group": "MA / Structure", "type": "number", "ops": ["gt", "gte", "lt", "lte", "between"]},

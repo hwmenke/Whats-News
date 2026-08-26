@@ -127,6 +127,22 @@ class SetupFilterExtrasTests(unittest.TestCase):
         # A is the only EP but both rows are in the universe; rank must be vs 2.
         self.assertEqual(out["results"][0]["rs_n"], 2)
 
+    def test_max_rs_ranks_before_filter_on_live(self):
+        rows = self._rows()
+        rows[0]["rs_rank_21d"] = None
+        rows[1]["rs_rank_21d"] = None
+        rows[0]["ret_21d_pct"] = 20.0
+        rows[1]["ret_21d_pct"] = 1.0
+        out = ss._filter_and_rollup(
+            rows,
+            symbols_scanned=2,
+            max_rs=1,
+            from_cache=False,
+        )
+        self.assertEqual(out["count"], 1)
+        self.assertEqual(out["results"][0]["symbol"], "A")
+        self.assertEqual(out["results"][0]["rs_rank_21d"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

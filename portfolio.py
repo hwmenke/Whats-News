@@ -270,7 +270,7 @@ def snapshot_symbol(
     today_open = float(open_.iloc[-1])
     gap_pct = round((today_open / prev - 1.0) * 100, 2) if prev else None
 
-    is_near_high = dist_20d_high is not None and dist_20d_high >= -5.0
+    is_near_high = pct_off_20d_high is not None and pct_off_20d_high >= -5.0
     is_vol_surge = vol_ratio is not None and vol_ratio >= 1.5
     is_ep = (
         gap_pct is not None and vol_ratio is not None

@@ -50,17 +50,16 @@
 html, body {
   height: 100%;
   font-family: var(--font-main);
-}
-:focus-visible {
-  outline: 2px solid #93c5fd;
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
   background: var(--bg-base);
   color: var(--text-primary);
   overscroll-behavior: none;
   font-size: 13px;
   line-height: 1.5;
+}
+:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -2086,6 +2085,29 @@ html, body {
   position: relative;
   min-height: 0;
   background: var(--bg-base);
+}
+
+body.ws-review #chart-area {
+  flex: 1 1 52%;
+  min-height: 200px;
+}
+body.ws-review #scanner-area {
+  flex: 1 1 40%;
+  min-height: 180px;
+  border-top: 1px solid var(--border);
+}
+body.ws-review #metric-scanner-panel { display: none; }
+body.ws-scan .tab-btn:not(#tab-scanner):not(#tab-data-manager),
+body.ws-chart .tab-btn:not(#tab-charts):not(#tab-data-manager),
+body.ws-review .tab-btn:not(#tab-charts):not(#tab-scanner):not(#tab-data-manager) {
+  display: none;
+}
+.scanner-type-blurb {
+  display: block;
+  font-size: 10px;
+  color: var(--text-dim);
+  font-weight: 400;
+  margin-top: 1px;
 }
 
 /* Controls bar */

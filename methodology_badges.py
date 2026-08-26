@@ -160,7 +160,6 @@ def compute_badges(
         or (is_near_high and is_vol_surge)
         or is_ep
         or "EP" in setups
-        or "BREAKOUT_QUEUE" in setups
     ):
         add("KQ")
 

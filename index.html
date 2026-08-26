@@ -93,7 +93,6 @@
       </div>
       <button type="button" id="tape-book-news" class="btn btn-ghost btn-sm" title="News for breakout queue + top Book RS names">Book news</button>
       <button type="button" id="btn-book-drawer" class="btn btn-ghost btn-sm" title="Open regime map &amp; alert log (h)">Book ▾</button>
-      <button type="button" id="btn-journal" class="btn btn-ghost btn-sm" title="Open positions &amp; journal (Shift+J)">Positions</button>
       <div id="tape-chips" class="tape-chips"></div>
     </div>
 
@@ -126,6 +125,7 @@
       <div class="symbol-header-name">
         <span id="sym-title" class="sym-title">--</span>
         <span id="sym-subtitle" class="sym-subtitle"></span>
+        <button type="button" id="btn-save-position" class="btn btn-ghost btn-sm" title="Save this name to Positions">Save pos</button>
       </div>
 
       <div class="sym-price-block">
@@ -212,7 +212,7 @@
       <div class="pm-tools-row">
         <button type="button" id="pm-apply-risk-box" class="btn btn-ghost btn-sm">Draw risk box</button>
         <button type="button" id="pm-copy-setup" class="btn btn-ghost btn-sm pm-copy-btn" disabled title="Complete checklist first">Copy setup</button>
-        <button type="button" id="pm-save-journal" class="btn btn-primary btn-sm" disabled title="Complete checklist first">Save position</button>
+        <button type="button" id="pm-save-journal" class="btn btn-primary btn-sm" title="Save to Positions">Save position</button>
       </div>
     </div>
 
@@ -258,6 +258,7 @@
         <button type="button" class="ind-pill view-pill active" data-view="heatmap" title="Show / hide metric heatmap scanner">Heatmap</button>
         <button type="button" id="btn-badge-key" class="btn btn-ghost btn-sm" title="Badge legend">Badges</button>
         <button type="button" id="btn-layout-reset" class="btn btn-ghost btn-sm" title="Reset panel sizes">Reset size</button>
+        <button type="button" id="btn-journal" class="btn btn-ghost btn-sm" title="Positions &amp; journal (Shift+J)">Positions</button>
         <button type="button" id="btn-desk-guide" class="btn btn-ghost btn-sm" title="Step-by-step guide (?)">Guide</button>
       </div>
       <div id="chart-overlays-bar" class="indicator-toggles chart-overlays-bar">
@@ -291,7 +292,7 @@
       <div class="guide-hero">
         <p class="guide-kicker">Whats-News desk</p>
         <h2>From 2000+ tickers to a clean setup list</h2>
-        <p class="guide-lead">Follow these steps once. After that: refresh → Lists → chart.</p>
+        <p class="guide-lead">Archive once, precompute, then Lists → Scanner → chart → Positions.</p>
       </div>
       <div class="guide-steps" id="desk-guide-steps">
         <button type="button" class="guide-step" data-guide="data">
@@ -312,7 +313,7 @@
           <span class="guide-num">3</span>
           <span class="guide-step-body">
             <strong>Scanner</strong>
-            <span>Scan setups across the universe</span>
+            <span>Precompute, then scan setups</span>
           </span>
         </button>
         <button type="button" class="guide-step" data-guide="chart">
@@ -848,12 +849,12 @@
           <span class="setup-kbd-hint" title="When Scanner is open">j/k · Enter</span>
         </div>
         <div id="market-context-strip" class="market-context-strip" hidden title="Book breadth of the cached universe — not a licensed Market Monitor">
-          <span id="mc-regime" class="mc-regime">M —</span>
-          <span id="mc-up" class="mc-stat">Up —</span>
-          <span id="mc-dual" class="mc-stat">D+W —</span>
-          <span id="mc-s2" class="mc-stat">S2 —</span>
-          <span id="mc-ep" class="mc-stat">EP —</span>
-          <span id="mc-pos" class="mc-stat">Day+ —</span>
+          <span id="mc-regime" class="mc-regime">Book —</span>
+          <span id="mc-up" class="mc-stat">Uptrend —</span>
+          <span id="mc-dual" class="mc-stat">Daily+weekly up —</span>
+          <span id="mc-s2" class="mc-stat">Stage 2 —</span>
+          <span id="mc-ep" class="mc-stat">EP gap —</span>
+          <span id="mc-pos" class="mc-stat">Day up —</span>
           <span id="mc-honest" class="mc-honest">book breadth</span>
         </div>
         <div id="scanner-type-cards" class="scanner-type-cards" aria-label="Scanner types"></div>
@@ -911,7 +912,7 @@
           </table>
         </div>
         <div id="setup-scan-empty" class="scanner-empty" style="display:none;">
-          <p>No setups found — sync universe in <strong>Data</strong>, archive history, then scan again.</p>
+          <p>No setups found — sync universe in <strong>Data</strong>, archive history, click <strong>Precompute</strong>, then scan again.</p>
         </div>
       </div>
 

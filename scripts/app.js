@@ -686,8 +686,8 @@ function syncChecklist() {
         copyBtn.title = allChecked ? 'Copy setup card' : 'Complete checklist first';
     }
     if (saveBtn) {
-        saveBtn.disabled = !allChecked;
-        saveBtn.title = allChecked ? 'Save to journal' : 'Complete checklist first';
+        saveBtn.disabled = false;
+        saveBtn.title = 'Save to Positions (checklist optional)';
     }
 }
 
@@ -1538,15 +1538,15 @@ function showEmptyState() {
     if (pm) pm.style.display = 'none';
 
     const title = document.querySelector('#empty-state h2');
-    const blurb = document.querySelector('#empty-state > p');
-    const steps = document.querySelector('#empty-state .onboarding-steps');
+    const blurb = document.querySelector('#empty-state .guide-lead');
+    const steps = document.getElementById('desk-guide-steps');
     if (!state.symbols.length) {
-        if (title) title.textContent = 'Welcome to Whats-News';
-        if (blurb) blurb.textContent = 'Your local watchlist for charts, analysis, and real Yahoo Finance headlines.';
+        if (title) title.textContent = 'From 2000+ tickers to a clean setup list';
+        if (blurb) blurb.textContent = 'Archive once, precompute, then Lists → Scanner → chart → Positions.';
         if (steps) steps.style.display = '';
     } else {
         if (title) title.textContent = 'Pick a symbol';
-        if (blurb) blurb.textContent = 'Click a ticker in the watchlist sidebar to load its chart and analysis.';
+        if (blurb) blurb.textContent = 'Click a ticker in the watchlist, or press / to jump.';
         if (steps) steps.style.display = 'none';
     }
 }
@@ -1634,6 +1634,11 @@ async function switchTab(tabId) {
         if (typeof initSetupScanner === 'function') initSetupScanner();
         loadSetupScan();
         loadScannerData();
+    } else if (tabId === 'review') {
+        showReviewArea();
+        if (state.activeSymbol) loadChartData(state.activeSymbol);
+        if (typeof initSetupScanner === 'function') initSetupScanner();
+        loadSetupScan();
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
@@ -1653,6 +1658,7 @@ function showStatsArea() {
 }
 
 function showChartArea() {
+    document.body.classList.remove('ws-review');
     document.getElementById('empty-state').style.display       = 'none';
     document.getElementById('news-area').style.display         = 'none';
     document.getElementById('stats-area').style.display        = 'none';
@@ -1677,6 +1683,7 @@ function showTrendArea() {
 }
 
 function showScannerArea() {
+    document.body.classList.remove('ws-review');
     document.getElementById('empty-state').style.display       = 'none';
     document.getElementById('chart-area').style.display        = 'none';
     document.getElementById('news-area').style.display         = 'none';
@@ -1686,6 +1693,20 @@ function showScannerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'flex';
     document.getElementById('data-manager-area').style.display = 'none';
+}
+
+function showReviewArea() {
+    document.body.classList.add('ws-review');
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'flex';
+    document.getElementById('news-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'flex';
+    document.getElementById('data-manager-area').style.display = 'none';
+    window.resizeAllCharts?.();
 }
 
 function showDataManagerArea() {
@@ -2637,6 +2658,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Trade journal drawer
     document.getElementById('btn-journal')?.addEventListener('click', toggleJournal);
     document.getElementById('btn-journal-close')?.addEventListener('click', closeJournal);
+    document.getElementById('btn-save-position')?.addEventListener('click', saveToJournal);
     document.querySelectorAll('[data-journal-tab]').forEach(btn => {
         btn.addEventListener('click', () => {
             _journalTab = btn.dataset.journalTab || 'open';

@@ -84,6 +84,7 @@ def minervini_trend_template(symbol: str, df=None) -> dict:
         "above_sma50": bool(s50 and last > s50),
         "above_52w_low_25pct": bool(vs_low is not None and vs_low >= 25),
         "within_25pct_52w_high": bool(vs_high is not None and vs_high >= -25),
+        # Absolute 21D return ≥5% — not a rank-in-book RS check.
         "book_momentum_ok": bool(ret_21 is not None and ret_21 >= 5),
     }
     score = sum(1 for v in checks.values() if v)

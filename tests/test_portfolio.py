@@ -85,6 +85,32 @@ class PortfolioSnapshotTests(unittest.TestCase):
         self.assertGreaterEqual(snap["breakout_score"], 3)
         self.assertGreater(snap["dist_20d_high_pct"], 0)
 
+    def test_near_high_uses_including_today_ceiling(self):
+        """A name 10% off the actual 20D high is not 'near high' even if prior-N dist is positive."""
+        db.add_symbol("FADE")
+        n = 80
+        idx = pd.date_range("2024-01-01", periods=n, freq="D")
+        close = np.full(n, 50.0)
+        high = np.full(n, 50.5)
+        high[-2] = 60.0
+        close[-1] = 54.0
+        high[-1] = 54.5
+        df = pd.DataFrame(
+            {
+                "open": close - 0.1,
+                "high": high,
+                "low": close - 0.5,
+                "close": close,
+                "volume": np.full(n, 1_000_000.0),
+            },
+            index=idx,
+        )
+        db.upsert_ohlcv("FADE", "daily", df)
+        snap = portfolio.snapshot_symbol("FADE")
+        self.assertTrue(snap["ready"])
+        self.assertLess(snap["pct_off_20d_high_pct"], -5)
+        self.assertFalse(snap["is_near_high"])
+
     def test_breakout_queue_and_news_focus_prefer_strong_names(self):
         self._seed_breakout("EPCO")  # near-high + vol surge + EP
         self._seed("WEAK", n=80)     # plain uptrend, not near-high/vol-surge

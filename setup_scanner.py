@@ -333,6 +333,21 @@ def _filter_and_rollup(
     min_dollar_vol: Optional[float] = None,
 ) -> dict:
     filtered = []
+    # Rank Book RS / RTS against the *unfiltered* incoming set before any
+    # rank cut (live rows have ret_21d_pct but no rs_rank_21d yet).
+    if not from_cache:
+        universe = [r for r in results if r and r.get("ready")]
+        ranked = sorted(
+            universe,
+            key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
+            reverse=True,
+        )
+        n = len(ranked)
+        rank_of = {id(r): i for i, r in enumerate(ranked, start=1)}
+        for row in universe:
+            row["rs_rank_21d"] = rank_of.get(id(row))
+            row["rs_n"] = n
+
     for row in results:
         if not row:
             continue
@@ -357,10 +372,10 @@ def _filter_and_rollup(
         if min_vol is not None and (vol is None or vol < min_vol):
             continue
         px = row.get("price")
-        if min_price is not None and (px is None or px < min_price):
+        if min_price is not None and px is not None and px < min_price:
             continue
         dv = row.get("dollar_vol_20d")
-        if min_dollar_vol is not None and (dv is None or dv < min_dollar_vol):
+        if min_dollar_vol is not None and dv is not None and dv < min_dollar_vol:
             continue
         rs = row.get("rs_rank_21d")
         if max_rs is not None and (rs is None or rs > max_rs):
@@ -382,56 +397,44 @@ def _filter_and_rollup(
         )
     )
 
-    ready = [r for r in filtered if r.get("ready")]
-    # Rank Book RS / RTS against the *unfiltered* incoming set so a live
-    # scan cannot mint "97 Club" inside a 30-name subset. Cache rows already
-    # carry universe ranks from desk_metrics.finalize_payloads.
-    if not from_cache:
-        universe = [r for r in results if r and r.get("ready")]
-        ranked = sorted(
-            universe,
-            key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
-            reverse=True,
-        )
-        n = len(ranked)
-        rank_of = {id(r): i for i, r in enumerate(ranked, start=1)}
-        for row in universe:
-            row["rs_rank_21d"] = rank_of.get(id(row))
-            row["rs_n"] = n
+    def _attach_badges(rows):
+        for r in rows:
+            if not r.get("ready"):
+                continue
+            if not r.get("badge_codes"):
+                bd = methodology_badges.badges_for_row(r, fetch_extras=False)
+                r["badges"] = bd["badges"]
+                r["badge_codes"] = bd["codes"]
+                r["rts"] = bd["rts"]
+                r["strike_zone"] = bd["strike_zone"]
 
-    badge_counts = {k: 0 for k in methodology_badges.BADGE_CATALOG}
-    for r in ready:
-        if not r.get("badge_codes"):
-            bd = methodology_badges.badges_for_row(r, fetch_extras=False)
-            r["badges"] = bd["badges"]
-            r["badge_codes"] = bd["codes"]
-            r["rts"] = bd["rts"]
-            r["strike_zone"] = bd["strike_zone"]
-        for c in r.get("badge_codes") or []:
-            if c in badge_counts:
-                badge_counts[c] += 1
+    _attach_badges(filtered)
 
     if min_rts is not None:
         filtered = [
             r for r in filtered
             if r.get("rts") is not None and r.get("rts") >= min_rts
         ]
-        ready = [r for r in filtered if r.get("ready")]
 
     if strike:
         filtered = [r for r in filtered if r.get("strike_zone")]
-        ready = [r for r in filtered if r.get("ready")]
 
     if badge:
         badge_u = badge.upper()
         filtered = [r for r in filtered if badge_u in (r.get("badge_codes") or [])]
-        ready = [r for r in filtered if r.get("ready")]
 
     if limit and len(filtered) > limit:
         total_matched = len(filtered)
         filtered = filtered[:limit]
     else:
         total_matched = len(filtered)
+
+    ready = [r for r in filtered if r.get("ready")]
+    badge_counts = {k: 0 for k in methodology_badges.BADGE_CATALOG}
+    for r in ready:
+        for c in r.get("badge_codes") or []:
+            if c in badge_counts:
+                badge_counts[c] += 1
 
     family_counts = {k: 0 for k in SETUP_FAMILIES}
     stage_counts = {1: 0, 2: 0, 3: 0, 4: 0}
