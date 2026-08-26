@@ -23,22 +23,58 @@ function nextKamaColor() {
 }
 
 // Overlay state
-const activeOverlays = { bb: true };
+const activeOverlays = { bb: true, ep: true, darvas: true, stage: true };
+
+// Persisted indicator-pane visibility key — mirrors scripts/app.js.
+const PANES_STORAGE_KEY = 'whats-news-panes';
+
+// Risk box (entry/stop/target) and Darvas box price lines — kept separate
+// from the KAMA/BB/EMA overlay series since they're structural levels, not
+// indicators, and are drawn via createPriceLine rather than a line series.
+let riskLines = { daily: [], weekly: [] };
+let darvasLines = { daily: [] };
+let lastDarvasBox = null;
+let stageSmaSeries = null; // weekly SMA30 line for stage analysis
+let lastStageSmaData = [];
+
+// Live ResizeObservers — tracked so destroyCharts() can disconnect them
+// before the charts they reference get remove()'d (stale observers firing
+// chart.resize() on a disposed chart throws "Object is disposed").
+let resizeObservers = [];
+
+// EMA / SMA stacks — off by default; scanner method types apply a pack.
+const EMA_PERIODS = [9, 10, 20, 21, 50];
+const EMA_COLORS = { 9: '#fb923c', 10: '#fbbf24', 20: '#38bdf8', 21: '#818cf8', 50: '#a3e635' };
+const activeEma = { 9: false, 10: false, 20: false, 21: false, 50: false };
+const SMA_PERIODS = [50, 150, 200];
+const SMA_COLORS = { 50: '#f472b6', 150: '#c084fc', 200: '#e879f9' };
+const activeSma = { 50: false, 150: false, 200: false };
+const METHOD_CHART_PACKS = {
+    minervini: { ema: [], sma: [50, 150, 200], label: 'Minervini · SMA 50/150/200' },
+    stockbee: { ema: [9, 20], sma: [], label: 'Stockbee · EMA 9/20' },
+    qulla: { ema: [10, 21, 50], sma: [], label: 'Qulla · EMA 10/21/50' },
+    pullback: { ema: [20], sma: [], label: 'Pullback · EMA 20' },
+    darvas: { ema: [], sma: [], overlay: 'darvas', label: 'Darvas · Box overlay' },
+    brandt: { ema: [], sma: [], overlay: 'darvas', label: 'Brandt · risk box (Tools ▾) · Box overlay' },
+    stage: { ema: [], sma: [], overlay: 'stage', label: 'Stage · 30W SMA' },
+    stage2: { ema: [], sma: [], overlay: 'stage', label: 'Stage 2 · 30W SMA' },
+    stage2a: { ema: [], sma: [], overlay: 'stage', label: 'Early 2A · 30W SMA' },
+};
 
 // ── Chart instances ─────────────────────────────────────────
 let charts = {
-    daily:  { main: null, rsi: null, macd: null, trend: null },
-    weekly: { main: null, rsi: null, macd: null, trend: null },
+    daily:  { main: null, volume: null, rsi: null, macd: null, trend: null },
+    weekly: { main: null, volume: null, rsi: null, macd: null, trend: null },
 };
 
 // ── Series references ────────────────────────────────────────
 let series = {
     daily: {
-        candle: null, bb: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
     weekly: {
-        candle: null, bb: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
 };
@@ -58,7 +94,15 @@ const C = {
     trend_pos:     '#22c55e',
     trend_neg:     '#ef4444',
     trend_zero:    '#4a5568',
+    vol_up:        '#22c55e66',
+    vol_down:      '#ef444466',
+    vol_surge_up:   '#f97316',
+    vol_surge_down: '#f97316',
 };
+
+// Volume-surge / EP thresholds — mirror portfolio.py so chart markers agree with the tape.
+const VOL_SURGE_RATIO = 1.5;
+const EP_GAP_PCT = 4.0;
 
 // ── Base chart options ────────────────────────────────────────
 function baseOpts() {
@@ -94,11 +138,16 @@ function baseOpts() {
 
 // ── Destroy all charts ────────────────────────────────────────
 function destroyCharts() {
+    // Stale ResizeObservers from a prior initCharts() call would otherwise
+    // keep firing chart.resize() against instances we're about to remove()
+    // below, throwing "Object is disposed" — disconnect them first.
+    resizeObservers.forEach(ro => ro.disconnect());
+    resizeObservers = [];
     ['daily', 'weekly'].forEach(freq => {
         Object.values(charts[freq]).forEach(c => { if (c) c.remove(); });
-        charts[freq] = { main: null, rsi: null, macd: null, trend: null };
+        charts[freq] = { main: null, volume: null, rsi: null, macd: null, trend: null };
         series[freq] = {
-            candle: null, bb: {}, rsi: {}, macdLine: null,
+            candle: null, volume: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
             macdSig: null, macdHist: null, trend: null,
         };
         // Clear kama series refs
@@ -106,6 +155,10 @@ function destroyCharts() {
             p[`series_${freq}`] = null;
         });
     });
+    // Price lines die with their chart — drop the stale references.
+    riskLines = { daily: [], weekly: [] };
+    darvasLines = { daily: [] };
+    stageSmaSeries = null;
 }
 
 // ── Build one panel (daily or weekly) ────────────────────────
@@ -137,6 +190,30 @@ function buildPanel(freq) {
             color: meta.color, lineWidth: 1.5,
             priceLineVisible: false, lastValueVisible: false,
         });
+    });
+
+    // EMA / SMA overlay series — optional, off by default until a method pack.
+    EMA_PERIODS.forEach(p => {
+        series[freq].ema[p] = charts[freq].main.addLineSeries({
+            color: EMA_COLORS[p], lineWidth: 1.5, lineStyle: 0,
+            priceLineVisible: false, lastValueVisible: false, visible: false,
+        });
+    });
+    SMA_PERIODS.forEach(p => {
+        series[freq].sma[p] = charts[freq].main.addLineSeries({
+            color: SMA_COLORS[p], lineWidth: 1.5, lineStyle: 2,
+            priceLineVisible: false, lastValueVisible: false, visible: false,
+        });
+    });
+
+    // Volume chart — price/volume first. Bars color-flip on 1.5x-avg surge.
+    const volEl = document.getElementById(`${pfx}-volume`);
+    charts[freq].volume = LWC.createChart(volEl, {
+        ...baseOpts(), width: volEl.clientWidth, height: volEl.clientHeight,
+    });
+    series[freq].volume = charts[freq].volume.addHistogramSeries({
+        priceFormat: { type: 'volume' },
+        priceLineVisible: false, lastValueVisible: false,
     });
 
     // RSI chart
@@ -175,7 +252,8 @@ function buildPanel(freq) {
     series[freq].trend.createPriceLine({ price: 0, color: '#30363d', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: false });
 
     // Sync sub-charts to main
-    syncTo(charts[freq].main, charts[freq].rsi, charts[freq].macd, charts[freq].trend);
+    syncTo(charts[freq].main, charts[freq].volume, charts[freq].rsi, charts[freq].macd, charts[freq].trend);
+    syncTo(charts[freq].volume, charts[freq].main);
     syncTo(charts[freq].rsi,   charts[freq].main);
     syncTo(charts[freq].macd,  charts[freq].main);
     syncTo(charts[freq].trend, charts[freq].main);
@@ -187,6 +265,54 @@ function initCharts() {
     buildPanel('weekly');
     syncPanels();
     setupResizeObserver();
+    setupCrosshairLegend();
+    applySavedPaneVisibility();
+}
+
+function _legendTimeKey(time) {
+    if (time == null) return null;
+    if (typeof time === 'object' && time.year) {
+        const m = String(time.month).padStart(2, '0');
+        const d = String(time.day).padStart(2, '0');
+        return `${time.year}-${m}-${d}`;
+    }
+    return String(time).slice(0, 10);
+}
+
+function paintOhlcLegend(freq, param) {
+    const el = document.getElementById(`chart-legend-${freq}`);
+    if (!el) return;
+    const rows = rawRows[freq] || [];
+    if (!rows.length) { el.textContent = ''; return; }
+    const key = _legendTimeKey(param && param.time);
+    let idx;
+    if (!key) {
+        // Crosshair left the pane — keep last bar visible (desk default).
+        idx = rows.length - 1;
+    } else {
+        idx = rows.findIndex(r => String(r.date).slice(0, 10) === key);
+        if (idx < 0) return; // unknown time: leave previous legend text
+    }
+    const row = rows[idx];
+    const prev = rows[idx - 1];
+    if (!row) { el.textContent = ''; return; }
+    const n = v => (v == null || !Number.isFinite(Number(v)) ? '—' : Number(v).toFixed(2));
+    const chg = prev && prev.close ? ((row.close / prev.close - 1) * 100) : null;
+    const up = chg == null ? true : chg >= 0;
+    el.classList.toggle('legend-up', up);
+    el.classList.toggle('legend-down', !up);
+    const chgStr = chg == null ? '' : `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
+    const vol = row.volume != null ? Number(row.volume).toLocaleString() : '—';
+    el.textContent = `${row.date}  O ${n(row.open)}  H ${n(row.high)}  L ${n(row.low)}  C ${n(row.close)}  ${chgStr}  V ${vol}`;
+}
+
+function setupCrosshairLegend() {
+    ['daily', 'weekly'].forEach(freq => {
+        const chart = charts[freq].main;
+        if (!chart) return;
+        paintOhlcLegend(freq, {});
+        chart.subscribeCrosshairMove(param => paintOhlcLegend(freq, param || {}));
+    });
 }
 
 // ── Within-panel sync (same freq → logical range by bar index) ──
@@ -222,27 +348,50 @@ function syncPanels() {
     });
 }
 
+// ── Chart element/instance pairs — shared by the resize observer,
+//    manual resizeAllCharts(), and anything else that needs to iterate. ──
+function chartResizePairs() {
+    return [
+        ['chart-daily-main',    charts.daily.main],
+        ['chart-daily-volume',  charts.daily.volume],
+        ['chart-daily-rsi',     charts.daily.rsi],
+        ['chart-daily-macd',    charts.daily.macd],
+        ['chart-daily-trend',   charts.daily.trend],
+        ['chart-weekly-main',   charts.weekly.main],
+        ['chart-weekly-volume', charts.weekly.volume],
+        ['chart-weekly-rsi',    charts.weekly.rsi],
+        ['chart-weekly-macd',   charts.weekly.macd],
+        ['chart-weekly-trend',  charts.weekly.trend],
+    ];
+}
+
 // ── Resize observer ──────────────────────────────────────────
 function setupResizeObserver() {
-    const pairs = [
-        ['chart-daily-main',   charts.daily.main],
-        ['chart-daily-rsi',    charts.daily.rsi],
-        ['chart-daily-macd',   charts.daily.macd],
-        ['chart-daily-trend',  charts.daily.trend],
-        ['chart-weekly-main',  charts.weekly.main],
-        ['chart-weekly-rsi',   charts.weekly.rsi],
-        ['chart-weekly-macd',  charts.weekly.macd],
-        ['chart-weekly-trend', charts.weekly.trend],
-    ];
-    pairs.forEach(([id, chart]) => {
+    chartResizePairs().forEach(([id, chart]) => {
         const el = document.getElementById(id);
         if (!el || !chart) return;
-        new ResizeObserver(entries => {
+        const ro = new ResizeObserver(entries => {
             for (const e of entries) {
                 const { width, height } = e.contentRect;
-                chart.resize(width, height);
+                try { chart.resize(width, height); } catch (_) { /* chart disposed */ }
             }
-        }).observe(el);
+        });
+        ro.observe(el);
+        resizeObservers.push(ro);
+    });
+}
+
+// Manual resize pass — used right after toggling pane/focus-mode visibility,
+// where a hidden→visible flex change may not always fire a ResizeObserver
+// callback in every browser before the next paint.
+function resizeAllCharts() {
+    chartResizePairs().forEach(([id, chart]) => {
+        const el = document.getElementById(id);
+        if (!el || !chart) return;
+        const rect = el.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+            try { chart.resize(rect.width, rect.height); } catch (_) { /* chart disposed */ }
+        }
     });
 }
 
@@ -252,11 +401,118 @@ function toLineData(arr) {
     return arr.map(d => (d.value == null ? { time: d.date } : { time: d.date, value: d.value }));
 }
 
+// Raw OHLCV rows kept per-freq so EMA/EP/volume-surge overlays can be
+// recomputed client-side on toggle without a re-fetch.
+let rawRows = { daily: [], weekly: [] };
+
+function computeEma(closes, period) {
+    const out = new Array(closes.length).fill(null);
+    if (closes.length < period) return out;
+    const k = 2 / (period + 1);
+    let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    out[period - 1] = ema;
+    for (let i = period; i < closes.length; i++) {
+        ema = closes[i] * k + ema * (1 - k);
+        out[i] = ema;
+    }
+    return out;
+}
+
+function computeSma(closes, period) {
+    const out = new Array(closes.length).fill(null);
+    if (closes.length < period) return out;
+    let sum = 0;
+    for (let i = 0; i < closes.length; i++) {
+        sum += closes[i];
+        if (i >= period) sum -= closes[i - period];
+        if (i >= period - 1) out[i] = sum / period;
+    }
+    return out;
+}
+
 function loadOHLCV(freq, rows) {
     if (!series[freq].candle || !rows?.length) return;
+    rawRows[freq] = rows;
+
     series[freq].candle.setData(rows.map(r => ({
         time: r.date, open: r.open, high: r.high, low: r.low, close: r.close,
     })));
+
+    // Volume — colored by direction, surge bars (>=1.5x 20-bar avg) flagged orange.
+    if (series[freq].volume) {
+        const vols = rows.map(r => r.volume || 0);
+        let surgeCount = 0;
+        const volData = rows.map((r, i) => {
+            const windowVols = vols.slice(Math.max(0, i - 20), i);
+            const avg20 = windowVols.length ? windowVols.reduce((a, b) => a + b, 0) / windowVols.length : null;
+            const isSurge = avg20 && vols[i] / avg20 >= VOL_SURGE_RATIO;
+            if (isSurge) surgeCount++;
+            const up = r.close >= r.open;
+            const color = isSurge ? (up ? C.vol_surge_up : C.vol_surge_down) : (up ? C.vol_up : C.vol_down);
+            return { time: r.date, value: r.volume || 0, color };
+        });
+        series[freq].volume.setData(volData);
+
+        const badge = document.getElementById(`chart-${freq}-vol-badge`);
+        if (badge) {
+            const last3Surges = volData.slice(-3).filter((_, i) => {
+                const idx = volData.length - 3 + i;
+                return idx >= 0 && volData[idx] && (volData[idx].color === C.vol_surge_up || volData[idx].color === C.vol_surge_down);
+            }).length;
+            if (last3Surges > 0) {
+                badge.textContent = `${last3Surges}× surge (3 bars)`;
+                badge.style.display = 'inline';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    }
+
+    // EMA / SMA stacks — client-side, mirrors optional KAMA overlay.
+    const closes = rows.map(r => r.close);
+    const setMaData = (bucket, periods, compute) => {
+        periods.forEach(p => {
+            const s = series[freq][bucket][p];
+            if (!s) return;
+            const vals = compute(closes, p);
+            s.setData(rows.map((r, i) => (vals[i] == null ? { time: r.date } : { time: r.date, value: vals[i] })));
+        });
+    };
+    setMaData('ema', EMA_PERIODS, computeEma);
+    setMaData('sma', SMA_PERIODS, computeSma);
+
+    applyEpMarkers(freq);
+    applyOverlayVisibility(freq);
+    paintOhlcLegend(freq, {});
+}
+
+// EP (episodic pivot) markers: gap-up ≥4% on ≥1.5x volume — the entry path
+// that actually matters for momentum, distinct from RSI OB/OS alerts.
+function applyEpMarkers(freq) {
+    const s = series[freq].candle;
+    if (!s) return;
+    if (!activeOverlays.ep) {
+        s.setMarkers([]);
+        return;
+    }
+    const rows = rawRows[freq] || [];
+    const markers = [];
+    for (let i = 1; i < rows.length; i++) {
+        const prevClose = rows[i - 1].close;
+        const row = rows[i];
+        if (!prevClose || !row.open) continue;
+        const gapPct = (row.open / prevClose - 1) * 100;
+        const windowVols = rows.slice(Math.max(0, i - 20), i).map(r => r.volume || 0);
+        const avg20 = windowVols.length ? windowVols.reduce((a, b) => a + b, 0) / windowVols.length : null;
+        const volRatio = avg20 ? (row.volume || 0) / avg20 : null;
+        if (gapPct >= EP_GAP_PCT && volRatio != null && volRatio >= VOL_SURGE_RATIO) {
+            markers.push({
+                time: row.date, position: 'aboveBar', color: '#f97316',
+                shape: 'arrowUp', text: `EP +${gapPct.toFixed(0)}%`,
+            });
+        }
+    }
+    s.setMarkers(markers);
 }
 
 function loadIndicatorsToPanel(freq, data) {
@@ -329,12 +585,213 @@ function applyOverlayVisibility(freq) {
         const s = meta[`series_${freq}`];
         showHide(s, meta.active, meta.color, 1.5);
     });
+
+    // EMA / SMA stacks — optional overlays, off by default
+    EMA_PERIODS.forEach(p => {
+        showHide(series[freq].ema && series[freq].ema[p], activeEma[p], EMA_COLORS[p], 1.5);
+    });
+    SMA_PERIODS.forEach(p => {
+        showHide(series[freq].sma && series[freq].sma[p], activeSma[p], SMA_COLORS[p], 1.5, 2);
+    });
 }
 
 function toggleOverlay(key) {
     activeOverlays[key] = !activeOverlays[key];
-    ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
+    ['daily', 'weekly'].forEach(f => {
+        applyOverlayVisibility(f);
+        if (key === 'ep') applyEpMarkers(f);
+    });
+    if (key === 'darvas') applyDarvasBox(lastDarvasBox);
+    if (key === 'stage') applyStageSma(lastStageSmaData);
     return activeOverlays[key];
+}
+
+function ensureStageSmaSeries() {
+    if (stageSmaSeries || !charts.weekly?.main) return;
+    stageSmaSeries = charts.weekly.main.addLineSeries({
+        color: '#14b8a6',
+        lineWidth: 2,
+        lineStyle: LWC.LineStyle.Solid,
+        title: '30W SMA',
+        priceLineVisible: false,
+        lastValueVisible: true,
+    });
+}
+
+function applyStageSma(points) {
+    lastStageSmaData = points || [];
+    ensureStageSmaSeries();
+    if (!stageSmaSeries) return;
+    if (!activeOverlays.stage || !lastStageSmaData.length) {
+        stageSmaSeries.setData([]);
+        stageSmaSeries.applyOptions({ visible: false });
+        return;
+    }
+    const data = lastStageSmaData
+        .filter(p => p.time && p.value != null)
+        .map(p => ({ time: p.time, value: p.value }));
+    stageSmaSeries.setData(data);
+    stageSmaSeries.applyOptions({ visible: true, color: '#14b8a6', lineWidth: 2 });
+}
+
+function clearStageSma() {
+    lastStageSmaData = [];
+    if (stageSmaSeries) {
+        try { stageSmaSeries.setData([]); } catch (_) {}
+    }
+}
+
+// ── Risk box (entry / stop / target) — daily + weekly candle series ────
+function clearRiskBox() {
+    ['daily', 'weekly'].forEach(freq => {
+        const s = series[freq].candle;
+        if (s) riskLines[freq].forEach(line => { try { s.removePriceLine(line); } catch (_) {} });
+        riskLines[freq] = [];
+    });
+}
+
+function applyRiskBox(entry, stop, target) {
+    clearRiskBox();
+    ['daily', 'weekly'].forEach(freq => {
+        const s = series[freq].candle;
+        if (!s) return;
+        const lines = [];
+        if (entry != null && Number.isFinite(entry)) {
+            lines.push(s.createPriceLine({
+                price: entry, color: '#22c55e', lineWidth: 2,
+                lineStyle: LWC.LineStyle.Solid, axisLabelVisible: true, title: 'Entry',
+            }));
+        }
+        if (stop != null && Number.isFinite(stop)) {
+            lines.push(s.createPriceLine({
+                price: stop, color: '#ef4444', lineWidth: 2,
+                lineStyle: LWC.LineStyle.Solid, axisLabelVisible: true, title: 'Stop',
+            }));
+        }
+        if (target != null && Number.isFinite(target)) {
+            lines.push(s.createPriceLine({
+                price: target, color: '#3b82f6', lineWidth: 2,
+                lineStyle: LWC.LineStyle.Solid, axisLabelVisible: true, title: 'Target',
+            }));
+        }
+        riskLines[freq] = lines;
+    });
+}
+
+// ── Darvas box — top/bottom dashed orange, daily main only ─────────────
+function clearDarvasBox() {
+    const s = series.daily.candle;
+    if (s) darvasLines.daily.forEach(line => { try { s.removePriceLine(line); } catch (_) {} });
+    darvasLines.daily = [];
+}
+
+function applyDarvasBox(box) {
+    lastDarvasBox = box || null;
+    clearDarvasBox();
+    if (!lastDarvasBox || !activeOverlays.darvas) return;
+    const s = series.daily.candle;
+    if (!s) return;
+    const lines = [];
+    if (lastDarvasBox.top != null) {
+        lines.push(s.createPriceLine({
+            price: lastDarvasBox.top, color: '#f97316', lineWidth: 1,
+            lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'Box top',
+        }));
+    }
+    if (lastDarvasBox.bottom != null) {
+        lines.push(s.createPriceLine({
+            price: lastDarvasBox.bottom, color: '#f97316', lineWidth: 1,
+            lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'Box bottom',
+        }));
+    }
+    darvasLines.daily = lines;
+}
+
+// ── Indicator pane visibility (RSI / MACD / Trend) — hides both the chart
+//    wrapper and its divider, on both daily + weekly, then resizes. ──────
+function setIndicatorPane(pane, visible) {
+    document.querySelectorAll(`.pane-optional[data-pane="${pane}"]`).forEach(el => { el.hidden = !visible; });
+    document.querySelectorAll(`.chart-divider-${pane}`).forEach(el => { el.hidden = !visible; });
+    const pill = document.getElementById(`pill-pane-${pane}`);
+    if (pill) pill.classList.toggle('active', visible);
+    resizeAllCharts();
+}
+
+function applySavedPaneVisibility() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(PANES_STORAGE_KEY) || '{}') || {}; } catch (_) { saved = {}; }
+    // Default: every optional pane stays hidden — price-first, chart-first.
+    ['rsi', 'macd', 'trend'].forEach(pane => setIndicatorPane(pane, !!saved[pane]));
+}
+
+function toggleEma(period) {
+    const p = Number(period);
+    activeEma[p] = !activeEma[p];
+    ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
+    syncMaPills();
+    return activeEma[p];
+}
+
+function toggleSma(period) {
+    const p = Number(period);
+    activeSma[p] = !activeSma[p];
+    ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
+    syncMaPills();
+    return activeSma[p];
+}
+
+function syncMaPills() {
+    document.querySelectorAll('[data-ema]').forEach(pill => {
+        const p = Number(pill.dataset.ema);
+        const on = !!activeEma[p];
+        const color = EMA_COLORS[p];
+        pill.classList.toggle('active-ema', on);
+        pill.setAttribute('aria-pressed', on ? 'true' : 'false');
+        pill.style.borderColor = on && color ? color : '';
+        pill.style.color = on && color ? color : '';
+        pill.style.background = on && color ? color + '20' : '';
+    });
+    document.querySelectorAll('[data-sma]').forEach(pill => {
+        const p = Number(pill.dataset.sma);
+        const on = !!activeSma[p];
+        const color = SMA_COLORS[p];
+        pill.classList.toggle('active-sma', on);
+        pill.setAttribute('aria-pressed', on ? 'true' : 'false');
+        pill.style.borderColor = on && color ? color : '';
+        pill.style.color = on && color ? color : '';
+        pill.style.background = on && color ? color + '20' : '';
+    });
+}
+
+/**
+ * Apply a method's default MA overlay pack. Unknown types leave user toggles
+ * in place and only hide the pack hint.
+ */
+function applyMethodPack(typeId) {
+    const pack = METHOD_CHART_PACKS[typeId];
+    const hint = document.getElementById('method-pack-hint');
+    if (!pack) {
+        if (hint) { hint.hidden = true; hint.textContent = ''; }
+        return;
+    }
+    EMA_PERIODS.forEach(p => { activeEma[p] = pack.ema.includes(p); });
+    SMA_PERIODS.forEach(p => { activeSma[p] = pack.sma.includes(p); });
+    if (pack.overlay === 'darvas' && !activeOverlays.darvas) {
+        activeOverlays.darvas = true;
+        document.getElementById('pill-darvas')?.classList.add('active-darvas');
+        applyDarvasBox(lastDarvasBox);
+    }
+    if (pack.overlay === 'stage' && !activeOverlays.stage) {
+        activeOverlays.stage = true;
+        document.getElementById('pill-stage-ma')?.classList.add('active-stage');
+        applyStageSma(lastStageSmaData);
+    }
+    ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
+    syncMaPills();
+    if (hint) {
+        hint.hidden = false;
+        hint.textContent = pack.label;
+    }
 }
 
 // ── KAMA period management ────────────────────────────────────
@@ -389,3 +846,15 @@ function fitContent() {
     // Fitting both independently would leave them showing different periods.
     if (charts.daily.main) charts.daily.main.timeScale().fitContent();
 }
+
+// ── Public API for app.js (process-tools popover, pane pills, focus mode) ──
+window.applyRiskBox      = applyRiskBox;
+window.clearRiskBox      = clearRiskBox;
+window.applyDarvasBox    = applyDarvasBox;
+window.applyStageSma     = applyStageSma;
+window.clearStageSma     = clearStageSma;
+window.setIndicatorPane  = setIndicatorPane;
+window.resizeAllCharts   = resizeAllCharts;
+window.applyMethodPack   = applyMethodPack;
+window.toggleSma         = toggleSma;
+window.syncMaPills       = syncMaPills;

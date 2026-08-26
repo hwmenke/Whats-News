@@ -30,9 +30,16 @@ import scanner
 import adaptive_trend as adaptive
 import yfinance as yf
 import portfolio
+import setup_scanner
+import watchlist_filters
+import index_universe
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
+
+if data_client.use_embedded():
+    import database as _db
+    _db.init_db()
 
 
 def _data_error(exc):
@@ -68,7 +75,7 @@ def health():
     except Exception:
         symbol_count = None
     return jsonify({
-        "ok": True,
+        "ok": bool(data_health.get("ok")) if isinstance(data_health, dict) else True,
         "service": "whats-news",
         "layer": "analysis",
         "symbol_count": symbol_count,
@@ -82,7 +89,24 @@ def health():
 def portfolio_snapshot():
     """Watchlist tape: day change, RSI, regime vs KAMA — for PM desk."""
     try:
-        return jsonify(portfolio.portfolio_snapshot())
+        full = request.args.get("full", "").lower() in ("1", "true", "yes")
+        desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+        light = request.args.get("light", "1").lower() in ("1", "true", "yes")
+        scope = request.args.get("scope", "desk" if desk and not full else "all")
+        if full:
+            scope = request.args.get("scope", "all")
+            light = False
+        try:
+            max_workers = int(request.args.get("workers", 8))
+        except (TypeError, ValueError):
+            max_workers = 8
+        return jsonify(
+            portfolio.portfolio_snapshot(
+                scope=scope,
+                light=light and not full,
+                max_workers=max(1, min(max_workers, 16)),
+            )
+        )
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -101,9 +125,93 @@ def pm_desk(symbol):
             risk = float(request.args.get("risk", 100))
         except (TypeError, ValueError):
             risk = 100.0
-        snap["size"] = portfolio.position_size(snap.get("price"), snap.get("atr14"), risk, 1.5)
+        stop_mode = (request.args.get("stop") or "atr").strip().lower()
+        stop_price = None
+        if stop_mode == "box":
+            box = snap.get("darvas") or {}
+            stop_price = box.get("bottom")
+        elif stop_mode == "user":
+            try:
+                stop_price = float(request.args.get("stop_price"))
+            except (TypeError, ValueError):
+                stop_price = None
+        snap["size"] = portfolio.position_size(
+            snap.get("price"),
+            snap.get("atr14"),
+            risk,
+            1.5,
+            stop_price=stop_price,
+        )
+        # Structural risk box: entry / stop / target for chart overlays
+        entry = snap.get("price")
+        if stop_mode == "user" and stop_price:
+            stop = stop_price
+        elif stop_mode == "box" and stop_price:
+            stop = stop_price
+        else:
+            stop = snap.get("stop_long_1_5atr")
+        target = None
+        try:
+            t = request.args.get("target")
+            if t is not None and str(t).strip() != "":
+                target = float(t)
+        except (TypeError, ValueError):
+            target = None
+        if target is None and snap.get("darvas"):
+            target = snap["darvas"].get("target")
+        r_mult = None
+        if entry and stop and target and abs(entry - stop) > 1e-9:
+            r_mult = round((target - entry) / abs(entry - stop), 2)
+        snap["risk_box"] = {
+            "entry": entry,
+            "stop": stop,
+            "target": target,
+            "r_multiple": r_mult,
+            "stop_mode": stop_mode,
+        }
         snap.pop("closes_30", None)
+        # Stage analysis (Weinstein / Jacobs-style weekly SMA30)
+        try:
+            import stage_analysis
+            st = stage_analysis.classify_stage(symbol, include_series=False)
+            snap["stage"] = st.get("stage")
+            snap["stage_label"] = st.get("stage_label")
+            snap["stage_blurb"] = st.get("stage_blurb")
+            snap["stage_action"] = st.get("stage_action")
+            snap["vs_sma30_pct"] = st.get("vs_sma30_pct")
+            snap["sma30"] = st.get("sma30")
+            snap["early_stage2"] = st.get("early_stage2")
+            snap["vol_confirm"] = st.get("vol_confirm")
+        except Exception:
+            pass
         return jsonify(snap)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/stage/<string:symbol>", methods=["GET"])
+def stage_api(symbol):
+    """Weinstein-style stage 1–4 + optional weekly SMA30 series for chart overlay."""
+    try:
+        import stage_analysis
+        include = request.args.get("series", "1").lower() in ("1", "true", "yes")
+        return jsonify(stage_analysis.classify_stage(symbol.upper(), include_series=include))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/darvas-box/<string:symbol>", methods=["GET"])
+def darvas_box_api(symbol):
+    """Darvas box levels for chart overlay — distinct from KAMA/RSI."""
+    try:
+        freq = request.args.get("freq", "daily")
+        if freq not in ("daily", "weekly"):
+            return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        df = md.get_ohlcv_df(symbol.upper(), freq, limit=260)
+        box = portfolio.darvas_box(df)
+        if not box:
+            return jsonify({"symbol": symbol.upper(), "ready": False, "error": "No box"}), 404
+        return jsonify({"symbol": symbol.upper(), "ready": True, "freq": freq, **box})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -113,7 +221,33 @@ def pm_desk(symbol):
 @app.route("/api/symbols", methods=["GET"])
 def get_symbols():
     try:
+        desk = request.args.get("desk", "").lower() in ("1", "true", "yes")
+        if desk:
+            return jsonify(md.list_desk_symbols())
         return jsonify(md.list_symbols())
+    except Exception as exc:
+        return _data_error(exc)
+
+
+@app.route("/api/symbols/with-data", methods=["GET"])
+def symbols_with_data():
+    try:
+        freq = request.args.get("freq", "daily")
+        try:
+            min_bars = int(request.args.get("min_bars", 30))
+        except (TypeError, ValueError):
+            return jsonify({"error": "min_bars must be an integer"}), 400
+        codes = md.list_symbols_with_ohlcv(freq, min_bars)
+        return jsonify({"symbols": codes, "count": len(codes)})
+    except Exception as exc:
+        return _data_error(exc)
+
+
+@app.route("/api/symbols/<string:symbol>/promote", methods=["POST"])
+def promote_symbol_to_desk(symbol):
+    """Move a universe-only symbol onto the trading desk."""
+    try:
+        return jsonify(md.promote_to_desk(symbol.upper()))
     except Exception as exc:
         return _data_error(exc)
 
@@ -202,7 +336,12 @@ def fetch_symbol(symbol):
 @app.route("/api/refresh", methods=["POST"])
 def refresh_all():
     try:
-        return jsonify(md.refresh_all())
+        body = request.get_json(force=True, silent=True) or {}
+        try:
+            overlap = int(body.get("overlap_days", 3))
+        except (TypeError, ValueError):
+            overlap = 3
+        return jsonify(md.refresh_all(overlap_days=overlap))
     except Exception as exc:
         return _data_error(exc)
 
@@ -470,15 +609,409 @@ def run_scanner():
 
 @app.route("/api/scanner", methods=["GET"])
 def get_scanner():
-    """Compute multi-timeframe scanner metrics for every watched symbol."""
+    """Compute multi-timeframe scanner metrics for symbols with stored data."""
     try:
-        symbols = md.list_symbol_codes()
+        universe = request.args.get("universe", "1").lower() in ("1", "true", "yes")
+        if universe:
+            symbols = md.list_symbols_with_ohlcv("daily", min_bars=30)
+        else:
+            symbols = [s["symbol"] for s in md.list_desk_symbols()]
         if not symbols:
             return jsonify([])
         data = scanner.compute_scanner(symbols)
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/setups/catalog", methods=["GET"])
+def setups_catalog():
+    return jsonify({"setups": setup_scanner.SETUP_IDS})
+
+
+@app.route("/api/setups/scan", methods=["GET"])
+def setups_scan():
+    """Scan stored universe for named trading setups / families / stage / badges."""
+    try:
+        setup_filter = request.args.get("setup") or None
+        family = request.args.get("family") or None
+        badge = request.args.get("badge") or None
+        stage_raw = request.args.get("stage")
+        stage = None
+        if stage_raw is not None and str(stage_raw).strip() != "":
+            try:
+                stage = int(stage_raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "stage must be 1–4"}), 400
+        try:
+            limit = int(request.args.get("limit", 250))
+        except (TypeError, ValueError):
+            limit = 250
+        try:
+            min_score = int(request.args.get("min_score", 0))
+        except (TypeError, ValueError):
+            min_score = 0
+        universe_only = request.args.get("universe", "1").lower() in ("1", "true", "yes")
+        live = request.args.get("live", "").lower() in ("1", "true", "yes")
+        symbols = None
+        if not universe_only:
+            symbols = [s["symbol"] for s in md.list_desk_symbols()]
+
+        def _f(name):
+            raw = request.args.get(name)
+            if raw is None or raw == "":
+                return None
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                return None
+
+        def _i(name):
+            raw = request.args.get(name)
+            if raw is None or raw == "":
+                return None
+            try:
+                return int(float(raw))
+            except (TypeError, ValueError):
+                return None
+
+        min_price = _f("min_price")
+        min_dollar_vol = _f("min_dollar_vol")
+        # Client sends liquid=1 for the default desk floor ($5 / $20M ADV).
+        if request.args.get("liquid", "").lower() in ("1", "true", "yes"):
+            if min_price is None:
+                min_price = 5.0
+            if min_dollar_vol is None:
+                min_dollar_vol = 20_000_000.0
+
+        return jsonify(
+            setup_scanner.scan_setups(
+                symbols=symbols,
+                setup_filter=setup_filter,
+                family=family,
+                stage=stage,
+                badge=badge,
+                limit=limit,
+                min_score=min_score,
+                use_cache=not live,
+                live=live,
+                min_change=_f("min_change"),
+                max_change=_f("max_change"),
+                min_vol=_f("min_vol"),
+                max_rs=_i("max_rs"),
+                min_rts=_i("min_rts"),
+                regime=(request.args.get("regime") or None),
+                strike=request.args.get("strike", "").lower() in ("1", "true", "yes"),
+                dual_up=request.args.get("dual_up", "").lower() in ("1", "true", "yes"),
+                rsi_extreme=request.args.get("rsi_extreme", "").lower() in ("1", "true", "yes"),
+                min_price=min_price,
+                min_dollar_vol=min_dollar_vol,
+            )
+        )
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/setups/families", methods=["GET"])
+def setups_families():
+    return jsonify({
+        "families": setup_scanner.SETUP_FAMILIES,
+        "setups": setup_scanner.SETUP_IDS,
+        "stage_labels": __import__("stage_analysis").STAGE_LABELS,
+        "badges": __import__("methodology_badges").BADGE_CATALOG,
+    })
+
+
+@app.route("/api/badges/catalog", methods=["GET"])
+def badges_catalog():
+    import methodology_badges
+    return jsonify(methodology_badges.catalog_for_api())
+
+
+@app.route("/api/templates/<string:symbol>", methods=["GET"])
+def templates_symbol(symbol):
+    """Mechanical Minervini Trend Template + Stockbee flags for one symbol."""
+    try:
+        import ta_templates
+        return jsonify({
+            "symbol": symbol.upper(),
+            "minervini": ta_templates.minervini_trend_template(symbol),
+            "stockbee": ta_templates.stockbee_momentum(symbol),
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/metrics/status", methods=["GET"])
+def metrics_status_api():
+    try:
+        import desk_metrics
+        return jsonify(desk_metrics.cache_coverage())
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/metrics/refresh", methods=["POST"])
+def metrics_refresh_api():
+    """Precompute symbol_metrics for dashboard (sync; optional limit)."""
+    try:
+        body = request.get_json(force=True) or {}
+        limit = int(body.get("limit", 0) or 0)
+        workers = int(body.get("workers", 8) or 8)
+        symbols = body.get("symbols")
+        import desk_metrics
+        result = desk_metrics.refresh_symbols(
+            symbols=symbols,
+            max_workers=max(1, min(workers, 16)),
+            limit=limit,
+        )
+        return jsonify(result)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/metrics/refresh/stream", methods=["POST"])
+def metrics_refresh_stream():
+    """SSE progress for precompute — same work as POST /api/metrics/refresh."""
+    body = request.get_json(silent=True) or {}
+    limit = int(body.get("limit", 0) or 0)
+    workers = int(body.get("workers", 8) or 8)
+    symbols = body.get("symbols")
+
+    def generate():
+        import desk_metrics
+        from queue import Queue
+        from threading import Thread
+
+        q = Queue()
+        yield f"data: {json.dumps({'type': 'start'})}\n\n"
+
+        def progress_cb(done, total, sym, ok):
+            q.put({"type": "progress", "done": done, "total": total, "symbol": sym, "ok": ok})
+
+        def run():
+            try:
+                result = desk_metrics.refresh_symbols(
+                    symbols=symbols,
+                    max_workers=max(1, min(workers, 16)),
+                    limit=limit,
+                    progress_cb=progress_cb,
+                )
+                q.put({"type": "done", **{k: result.get(k) for k in ("ok", "failed", "total", "written", "updated_at")}})
+            except Exception as exc:
+                q.put({"type": "done", "error": str(exc)})
+            q.put(None)
+
+        Thread(target=run, daemon=True).start()
+        while True:
+            ev = q.get()
+            if ev is None:
+                break
+            yield f"data: {json.dumps(ev, default=str)}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.route("/api/metrics/context", methods=["GET"])
+def metrics_context_api():
+    """Book market breadth from the metrics cache (not a licensed Market Monitor)."""
+    try:
+        import desk_metrics
+        return jsonify(desk_metrics.market_context())
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/watchlist/filter-catalog", methods=["GET"])
+def watchlist_filter_catalog():
+    try:
+        return jsonify(watchlist_filters.catalog_for_api())
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/watchlist/apply-filter", methods=["POST"])
+def watchlist_apply_filter():
+    """Run smart-list rules against stored universe."""
+    try:
+        body = request.get_json(force=True) or {}
+        rules = body.get("rules") or []
+        match = body.get("match") or "all"
+        scope = body.get("scope") or "with_data"
+        try:
+            limit = int(body.get("limit", 500))
+        except (TypeError, ValueError):
+            limit = 500
+        live = bool(body.get("live"))
+        return jsonify(
+            watchlist_filters.apply_filter(
+                rules=rules,
+                match=match,
+                scope=scope,
+                limit=limit,
+                use_cache=not live,
+            )
+        )
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/universe/registry", methods=["GET"])
+def universe_registry():
+    return jsonify({"indices": index_universe.registry_for_api()})
+
+
+@app.route("/api/universe/sync", methods=["POST"])
+def universe_sync():
+    """Register index constituents in DB (no Yahoo download)."""
+    try:
+        body = request.get_json(force=True) or {}
+        indices = body.get("indices") or ["all"]
+        merged = index_universe.merged_universe(indices)
+        if data_client.use_embedded():
+            import database as db
+            sync = db.add_universe_symbols(merged.get("symbol_indices") or {})
+        else:
+            sync = {"error": "universe sync requires embedded mode"}
+        return jsonify({
+            "total_unique": merged.get("total_unique"),
+            "per_index": merged.get("per_index"),
+            "errors": merged.get("errors"),
+            "sync": sync,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/universe/archive", methods=["POST"])
+def universe_archive():
+    """
+    SSE batch: full history download for symbols in DB (optionally only missing).
+    Body: {start_date, delay, only_missing, limit}
+    """
+    body = request.get_json(force=True) or {}
+    start_date = body.get("start_date", "2000-01-01")
+    delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
+    only_missing = bool(body.get("only_missing", False))
+    limit = int(body.get("limit", 0) or 0)
+
+    if not data_client.use_embedded():
+        return jsonify({"error": "universe archive requires embedded mode"}), 400
+
+    import time
+    import database as db
+    import data_fetcher as fetcher
+
+    if only_missing:
+        have = set(db.list_symbols_with_ohlcv("daily", min_bars=1))
+        tickers = [s for s in db.list_symbol_codes() if s not in have]
+    else:
+        tickers = db.list_symbol_codes()
+    if limit > 0:
+        tickers = tickers[:limit]
+
+    def generate():
+        ok_count = fail_count = 0
+        yield f"data: {json.dumps({'type': 'start', 'total': len(tickers)})}\n\n"
+        for i, sym in enumerate(tickers):
+            try:
+                result = fetcher.fetch_full_history(sym, start=start_date)
+                if "error" in result:
+                    fail_count += 1
+                    ok, msg = False, result["error"]
+                else:
+                    ok_count += 1
+                    ok, msg = True, (
+                        f"{result.get('daily_rows', 0)}d / "
+                        f"{result.get('weekly_rows', 0)}w rows stored"
+                    )
+                yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': ok, 'msg': msg})}\n\n"
+            except Exception as exc:
+                fail_count += 1
+                yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': False, 'msg': str(exc)})}\n\n"
+            if i < len(tickers) - 1:
+                time.sleep(delay)
+        if ok_count:
+            db.optimize_db()
+        yield f"data: {json.dumps({'type': 'done', 'ok': ok_count, 'failed': fail_count})}\n\n"
+        try:
+            import desk_metrics
+            yield f"data: {json.dumps({'type': 'metrics_start'})}\n\n"
+            m = desk_metrics.refresh_symbols(max_workers=8)
+            yield f"data: {json.dumps({'type': 'metrics_done', 'ok': m.get('ok'), 'failed': m.get('failed'), 'total': m.get('total')})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'metrics_done', 'error': str(exc)})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.route("/api/universe/refresh", methods=["POST"])
+def universe_refresh():
+    """SSE incremental refresh for all symbols in DB."""
+    body = request.get_json(force=True) or {}
+    delay = max(0.2, min(float(body.get("delay", 0.8)), 10.0))
+    try:
+        overlap = int(body.get("overlap_days", 5))
+    except (TypeError, ValueError):
+        overlap = 5
+    limit = int(body.get("limit", 0) or 0)
+
+    if not data_client.use_embedded():
+        return jsonify({"error": "universe refresh requires embedded mode"}), 400
+
+    import time
+    import database as db
+    import data_fetcher as fetcher
+
+    tickers = db.list_symbol_codes()
+    if limit > 0:
+        tickers = tickers[:limit]
+
+    def generate():
+        ok_count = fail_count = skip_count = 0
+        yield f"data: {json.dumps({'type': 'start', 'total': len(tickers)})}\n\n"
+        for i, sym in enumerate(tickers):
+            try:
+                if db.is_recently_fetched(sym, hours=4):
+                    skip_count += 1
+                    yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': True, 'msg': 'skipped (recent)'})}\n\n"
+                else:
+                    result = fetcher.fetch_and_store(sym, overlap_days=overlap)
+                    if "error" in result:
+                        fail_count += 1
+                        ok, msg = False, result["error"]
+                    else:
+                        ok_count += 1
+                        ok, msg = True, f"{result.get('daily_rows', 0)}d updated"
+                    yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': ok, 'msg': msg})}\n\n"
+            except Exception as exc:
+                fail_count += 1
+                yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': False, 'msg': str(exc)})}\n\n"
+            if i < len(tickers) - 1:
+                time.sleep(delay)
+        yield f"data: {json.dumps({'type': 'done', 'ok': ok_count, 'failed': fail_count, 'skipped': skip_count})}\n\n"
+        # Rebuild desk metrics cache after price refresh
+        try:
+            import desk_metrics
+            yield f"data: {json.dumps({'type': 'metrics_start'})}\n\n"
+            m = desk_metrics.refresh_symbols(max_workers=8)
+            yield f"data: {json.dumps({'type': 'metrics_done', 'ok': m.get('ok'), 'failed': m.get('failed'), 'total': m.get('total')})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'metrics_done', 'error': str(exc)})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # -- News -----------------------------------------------------------------------

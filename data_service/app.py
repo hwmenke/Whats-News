@@ -167,6 +167,14 @@ def refresh_all():
 
 # -- OHLCV ----------------------------------------------------------------------
 
+@app.route("/api/ohlcv/max-date", methods=["GET"])
+def ohlcv_max_date():
+    freq = request.args.get("freq", "daily")
+    if freq not in ("daily", "weekly"):
+        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    return jsonify({"freq": freq, "date": db.get_max_ohlcv_date(freq)})
+
+
 @app.route("/api/ohlcv/<string:symbol>", methods=["GET"])
 def get_ohlcv(symbol):
     freq = request.args.get("freq", "daily")
@@ -181,9 +189,7 @@ def get_ohlcv(symbol):
         return jsonify({"error": "limit must be a positive integer"}), 400
 
     rows = db.get_ohlcv(symbol.upper(), freq, limit)
-    if not rows:
-        return jsonify({"error": "No data. Fetch the symbol first."}), 404
-    return jsonify(rows)
+    return jsonify(rows or [])
 
 
 # -- DB ops ---------------------------------------------------------------------
@@ -203,6 +209,40 @@ def db_optimize():
     if hasattr(db, "optimize_db"):
         return jsonify(db.optimize_db())
     return jsonify({"message": "optimize not available in this database build"})
+
+
+# -- Precomputed metrics cache --------------------------------------------------
+
+@app.route("/api/metrics/status", methods=["GET"])
+def metrics_status():
+    return jsonify(db.metrics_status())
+
+
+@app.route("/api/metrics/upsert", methods=["POST"])
+def metrics_upsert():
+    body = request.get_json(force=True) or {}
+    rows = body.get("rows") or []
+    if not isinstance(rows, list):
+        return jsonify({"error": "rows must be a list"}), 400
+    written = db.upsert_symbol_metrics(rows)
+    return jsonify({"written": written, "status": db.metrics_status()})
+
+
+@app.route("/api/metrics/query", methods=["POST"])
+def metrics_query():
+    body = request.get_json(force=True) or {}
+    symbols = body.get("symbols")
+    ready_only = bool(body.get("ready_only", True))
+    rows = db.get_symbol_metrics_many(symbols, ready_only=ready_only)
+    return jsonify({"count": len(rows), "rows": rows})
+
+
+@app.route("/api/metrics/<string:symbol>", methods=["GET"])
+def metrics_one(symbol):
+    row = db.get_symbol_metrics(symbol)
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(row)
 
 
 # -- Curated lists + batch fetch ------------------------------------------------

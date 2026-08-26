@@ -39,15 +39,27 @@
   <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
   <aside class="sidebar">
     <div class="sidebar-header">
-      <div class="sidebar-title">Watchlist</div>
+      <div class="sidebar-title-row">
+        <div class="sidebar-title">Watchlist</div>
+        <span id="sidebar-symbol-count" class="sidebar-count"></span>
+      </div>
+      <label class="desk-filter-toggle" title="Hide archive-only index tickers (univ:*)">
+        <input type="checkbox" id="chk-desk-only" checked />
+        Desk only
+      </label>
+      <div class="sidebar-list-bar">
+        <button type="button" id="btn-smart-lists" class="btn btn-ghost btn-sm" title="Smart lists &amp; filters">Lists ▾</button>
+        <div id="smart-list-pills" class="smart-list-pills"></div>
+      </div>
       <div class="add-symbol-form">
         <input
           id="new-symbol-input"
           type="text"
-          placeholder="AAPL, TSLA…"
+          placeholder="Add ticker…"
           maxlength="60"
           autocomplete="off"
           spellcheck="false"
+          aria-label="Add symbol"
         />
         <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add symbol (or type comma-separated)">+</button>
         <button id="btn-bulk-add"   class="btn btn-ghost   btn-icon" title="Bulk import a list of tickers">≡</button>
@@ -57,6 +69,7 @@
     <div id="symbol-list" class="symbol-list">
       <!-- Rendered by app.js -->
     </div>
+    <div id="symbol-list-hint" class="symbol-list-hint" style="display:none;"></div>
 
     <div class="sidebar-actions">
       <div class="preset-row">
@@ -70,33 +83,49 @@
   <!-- ═══════════════════ MAIN CONTENT ═══════════════════ -->
   <main class="main">
 
-    <!-- Portfolio tape — sorted by day %, RS ranks -->
+    <!-- Portfolio tape — All / Breakout / Alerts share one slim chip row -->
     <div id="portfolio-tape" class="portfolio-tape" style="display:none;" aria-label="Portfolio tape">
       <div class="tape-meta" id="tape-meta">Book tape</div>
-      <label class="tape-filter" title="Show only RSI overbought/oversold names">
-        <input type="checkbox" id="tape-alerts-only" />
-        Alerts only
-      </label>
-      <button type="button" id="tape-book-news" class="btn btn-ghost btn-sm" title="Load news for alerting / weakest RS names">Book news</button>
+      <div class="tape-mode" role="tablist" aria-label="Tape filter">
+        <button type="button" class="tape-mode-btn active" data-mode="all" title="All names by day %">All</button>
+        <button type="button" class="tape-mode-btn" data-mode="breakout" title="Near 20D high and/or volume surge — book-relative breakout queue, not a formal published breakout signal">Breakout</button>
+        <button type="button" class="tape-mode-btn" data-mode="alerts" title="RSI overbought/oversold only">Alerts</button>
+      </div>
+      <button type="button" id="tape-book-news" class="btn btn-ghost btn-sm" title="News for breakout queue + top Book RS names">Book news</button>
+      <button type="button" id="btn-book-drawer" class="btn btn-ghost btn-sm" title="Open regime map &amp; alert log (h)">Book ▾</button>
       <div id="tape-chips" class="tape-chips"></div>
     </div>
 
-    <div id="pm-panels" class="pm-panels" style="display:none;">
-      <div class="pm-panel">
-        <div class="pm-panel-title">Regime map (D / W)</div>
-        <div id="regime-heatmap" class="regime-heatmap"></div>
+    <!-- Regime map + alert log — off default viewport; drawer, not a permanent chrome row -->
+    <aside id="book-drawer" class="book-drawer" aria-hidden="true" aria-label="Book scan drawer">
+      <div class="book-drawer-head">
+        <strong>Book scan</strong>
+        <span id="pm-panels-badge" class="pm-panels-badge" style="display:none;">0</span>
+        <button type="button" id="btn-book-drawer-close" class="btn btn-ghost btn-sm" title="Close">✕</button>
       </div>
-      <div class="pm-panel">
-        <div class="pm-panel-title">Alert log</div>
-        <div id="alert-log" class="alert-log"><div class="alert-log-empty">No RSI alerts</div></div>
+      <div id="pm-panels" class="pm-panels">
+        <div class="pm-panel">
+          <div class="pm-panel-title">Regime map (D / W)</div>
+          <div id="regime-heatmap" class="regime-heatmap"></div>
+        </div>
+        <div class="pm-panel">
+          <div class="pm-panel-title">Alert log</div>
+          <div id="alert-log" class="alert-log"><div class="alert-log-empty">No RSI alerts</div></div>
+        </div>
+        <div class="pm-panel">
+          <div class="pm-panel-title">Theme leaders (group)</div>
+          <div id="theme-leaders" class="theme-leaders"><div class="alert-log-empty">No groups yet</div></div>
+        </div>
       </div>
-    </div>
+    </aside>
+    <div id="book-drawer-backdrop" class="book-drawer-backdrop" hidden></div>
 
-    <!-- Symbol Header -->
-    <div class="symbol-header">
+    <!-- Compact command bar: symbol + glance metrics + process tools -->
+    <div class="symbol-header" id="symbol-header">
       <div class="symbol-header-name">
         <span id="sym-title" class="sym-title">--</span>
         <span id="sym-subtitle" class="sym-subtitle"></span>
+        <button type="button" id="btn-save-position" class="btn btn-ghost btn-sm" title="Save this name to Positions">Save pos</button>
       </div>
 
       <div class="sym-price-block">
@@ -104,126 +133,221 @@
         <span id="sym-change-badge" class="sym-change-badge"></span>
       </div>
 
-      <div class="ohlcv-strip">
-        <div class="ohlcv-item">
-          <span class="ohlcv-label">Open</span>
-          <span id="ohlcv-open" class="ohlcv-val">--</span>
+      <div class="ohlcv-strip ohlcv-strip-inline" title="OHLCV">
+        <span class="ohlcv-inline" id="ohlcv-inline">O — · H — · L — · C — · V —</span>
+        <span id="ohlcv-open" class="visually-hidden">--</span>
+        <span id="ohlcv-high" class="visually-hidden">--</span>
+        <span id="ohlcv-low" class="visually-hidden">--</span>
+        <span id="ohlcv-close" class="visually-hidden">--</span>
+        <span id="ohlcv-volume" class="visually-hidden">--</span>
+      </div>
+
+      <!-- Glance chips (was PM Desk strip) -->
+      <div id="pm-desk" class="pm-desk pm-desk-inline" style="display:none;" aria-label="PM technical desk">
+        <div class="pm-metric">
+          <span class="pm-label">Regime D/W</span>
+          <span id="pm-regime" class="pm-val">—</span>
         </div>
-        <div class="ohlcv-item">
-          <span class="ohlcv-label">High</span>
-          <span id="ohlcv-high" class="ohlcv-val">--</span>
+        <div class="pm-metric">
+          <span class="pm-label">RSI 14</span>
+          <span id="pm-rsi" class="pm-val">—</span>
         </div>
-        <div class="ohlcv-item">
-          <span class="ohlcv-label">Low</span>
-          <span id="ohlcv-low" class="ohlcv-val">--</span>
+        <div class="pm-metric">
+          <span class="pm-label">vs KAMA20</span>
+          <span id="pm-kama" class="pm-val">—</span>
         </div>
-        <div class="ohlcv-item">
-          <span class="ohlcv-label">Close</span>
-          <span id="ohlcv-close" class="ohlcv-val">--</span>
+        <div class="pm-metric">
+          <span class="pm-label">5D / 21D</span>
+          <span id="pm-returns" class="pm-val">—</span>
         </div>
-        <div class="ohlcv-item">
-          <span class="ohlcv-label">Volume</span>
-          <span id="ohlcv-volume" class="ohlcv-val">--</span>
+        <div class="pm-metric">
+          <span class="pm-label">Book RS</span>
+          <span id="pm-book-rs" class="pm-val" title="Book RS (21D) — watchlist rank only, not a published RS Rating">—</span>
         </div>
+        <div class="pm-metric">
+          <span class="pm-label">ATR%</span>
+          <span id="pm-atr" class="pm-val">—</span>
+        </div>
+        <div class="pm-metric">
+          <span class="pm-label">Peer ETF</span>
+          <span id="pm-peer" class="pm-val">—</span>
+        </div>
+        <div class="pm-metric">
+          <span class="pm-label">Darvas</span>
+          <span id="pm-darvas" class="pm-val" title="Box state — not a KAMA pattern">—</span>
+        </div>
+        <div class="pm-metric">
+          <span class="pm-label">Stage</span>
+          <span id="pm-stage" class="pm-val" title="Weinstein-style weekly SMA30 stage (book label)">—</span>
+        </div>
+        <button type="button" id="btn-pm-tools" class="btn btn-ghost btn-sm" title="Risk box, sizing, checklist">Tools ▾</button>
       </div>
 
       <div class="header-spacer"></div>
     </div>
 
-    <!-- PM Desk — TA decision strip -->
-    <div id="pm-desk" class="pm-desk" style="display:none;" aria-label="PM technical desk">
-      <div class="pm-desk-title">PM Desk</div>
-      <div class="pm-metric">
-        <span class="pm-label">Regime D / W</span>
-        <span id="pm-regime" class="pm-val">—</span>
+    <!-- Process tools popover: risk box, stop source, checklist, copy/journal -->
+    <div id="pm-tools-popover" class="pm-tools-popover" hidden>
+      <div class="pm-tools-row">
+        <label>Entry <input id="pm-entry-input" type="number" step="0.01" /></label>
+        <label>Stop <input id="pm-stop-input" type="number" step="0.01" /></label>
+        <label>Target <input id="pm-target-input" type="number" step="0.01" /></label>
+        <span id="pm-r-mult" class="pm-val" title="R-multiple">R —</span>
       </div>
-      <div class="pm-metric">
-        <span class="pm-label">RSI 14</span>
-        <span id="pm-rsi" class="pm-val">—</span>
+      <div class="pm-tools-row">
+        <span class="pm-label">Stop source</span>
+        <label class="tape-filter"><input type="radio" name="stop-mode" value="atr" checked /> 1.5×ATR</label>
+        <label class="tape-filter"><input type="radio" name="stop-mode" value="box" /> Box low</label>
+        <label class="tape-filter"><input type="radio" name="stop-mode" value="user" /> User stop</label>
+        <label class="pm-label">$ risk <input id="pm-risk-input" type="number" min="10" step="10" value="100" /></label>
+        <span id="pm-size" class="pm-val">—</span>
+        <span id="pm-stops" class="pm-val visually-hidden">—</span>
       </div>
-      <div class="pm-metric">
-        <span class="pm-label">vs KAMA20</span>
-        <span id="pm-kama" class="pm-val">—</span>
+      <div class="pm-checklist" id="pm-checklist">
+        <label><input type="checkbox" data-check="regime" /> Regime aligned</label>
+        <label><input type="checkbox" data-check="stop" /> Stop set</label>
+        <label><input type="checkbox" data-check="size" /> Size confirmed</label>
+        <label><input type="checkbox" data-check="plan" /> Plan written</label>
       </div>
-      <div class="pm-metric">
-        <span class="pm-label">5D / 21D</span>
-        <span id="pm-returns" class="pm-val">—</span>
+      <div class="pm-tools-row">
+        <button type="button" id="pm-apply-risk-box" class="btn btn-ghost btn-sm">Draw risk box</button>
+        <button type="button" id="pm-copy-setup" class="btn btn-ghost btn-sm pm-copy-btn" disabled title="Complete checklist first">Copy setup</button>
+        <button type="button" id="pm-save-journal" class="btn btn-primary btn-sm" title="Save to Positions (checklist optional)">Save position</button>
+        <span class="pm-tools-hint">Copy needs checklist · Save pos does not</span>
       </div>
-      <div class="pm-metric">
-        <span class="pm-label">ATR%</span>
-        <span id="pm-atr" class="pm-val">—</span>
-      </div>
-      <div class="pm-metric">
-        <span class="pm-label">Peer ETF</span>
-        <span id="pm-peer" class="pm-val">—</span>
-      </div>
-      <div class="pm-metric pm-metric-wide">
-        <span class="pm-label">Size @ $ risk</span>
-        <span class="pm-size-row">
-          <input id="pm-risk-input" type="number" min="10" step="10" value="100" title="Dollars risked at 1.5×ATR stop" />
-          <span id="pm-size" class="pm-val">—</span>
-        </span>
-      </div>
-      <div class="pm-metric pm-metric-wide">
-        <span class="pm-label">1.5×ATR stops</span>
-        <span id="pm-stops" class="pm-val">—</span>
-      </div>
-      <button type="button" id="pm-copy-setup" class="btn btn-ghost btn-sm pm-copy-btn" title="Copy setup card to clipboard">Copy setup</button>
     </div>
 
-    <!-- ═══════════════════ MAIN TABS ═══════════════════ -->
-    <nav class="main-nav-tabs">
-      <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')">
-        <span class="tab-icon">📈</span> Charts
-      </button>
-      <button id="tab-news" class="tab-btn" onclick="switchTab('news')">
-        <span class="tab-icon">📰</span> News
-      </button>
-      <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">
-        <span class="tab-icon">📊</span> Statistics
-      </button>
-      <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">
-        <span class="tab-icon">🤖</span> KNN Lookalike
-      </button>
-      <button id="tab-backtest" class="tab-btn" onclick="switchTab('backtest')">
-        <span class="tab-icon">⚙️</span> Backtest
-      </button>
-      <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">
-        <span class="tab-icon">🎯</span> Adaptive Trend
-      </button>
-      <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">
-        <span class="tab-icon">📡</span> Scanner
-      </button>
-      <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">
-        <span class="tab-icon">🗄️</span> Data Manager
-      </button>
-    </nav>
-    <div class="tab-bar">
-      <div class="indicator-toggles">
+    <!-- Positions / journal drawer -->
+    <aside id="journal-drawer" class="book-drawer journal-drawer" aria-hidden="true">
+      <div class="book-drawer-head">
+        <strong>Positions</strong>
+        <button type="button" id="btn-journal-close" class="btn btn-ghost btn-sm">✕</button>
+      </div>
+      <p class="journal-local-note">Local book in this browser — not a broker. Last = tape/pm-desk quote.</p>
+      <div id="journal-summary" class="journal-summary" hidden></div>
+      <div class="journal-tabs" role="tablist" aria-label="Position status">
+        <button type="button" class="tape-mode-btn active" data-journal-tab="open" aria-pressed="true">Open</button>
+        <button type="button" class="tape-mode-btn" data-journal-tab="closed" aria-pressed="false">Closed</button>
+      </div>
+      <div id="journal-list" class="journal-list"><div class="alert-log-empty">No setups saved yet</div></div>
+    </aside>
+
+    <!-- Merged nav + indicator toggles (one chrome row) -->
+    <nav class="main-nav-tabs" aria-label="Views">
+      <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')">Charts</button>
+      <button id="tab-news" class="tab-btn" onclick="switchTab('news')" title="This symbol">News</button>
+      <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">Stats</button>
+      <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">KNN</button>
+      <button id="tab-backtest" class="tab-btn" onclick="switchTab('backtest')">Backtest</button>
+      <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">Trend</button>
+      <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
+      <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">Data</button>
+      <div class="tab-spacer"></div>
+      <div class="view-toggles" aria-label="Show or hide desk features">
+        <span class="overlay-section-label">Desk</span>
+        <button type="button" class="ind-pill workspace-pill" data-workspace="scan" title="Scanner-first workspace (1)" aria-pressed="false">Scan</button>
+        <button type="button" class="ind-pill workspace-pill" data-workspace="chart" title="Chart-first workspace (2)" aria-pressed="false">Chart</button>
+        <button type="button" class="ind-pill workspace-pill" data-workspace="review" title="Chart + setups review (3)" aria-pressed="false">Review</button>
+        <button type="button" class="ind-pill workspace-pill" data-workspace="mine" id="pill-my-desk" title="Restore the desk you saved" hidden>My desk</button>
+        <span class="overlay-section-label">View</span>
+        <button type="button" class="ind-pill view-pill active" data-view="sidebar" title="Show / hide watchlist sidebar">Sidebar</button>
+        <button type="button" class="ind-pill view-pill active" data-view="header" title="Show / hide symbol header">Header</button>
+        <button type="button" id="pill-view-tape" class="ind-pill view-pill active" data-view="tape" title="Show / hide portfolio tape">Tape</button>
+        <button type="button" id="pill-view-weekly" class="ind-pill view-pill active" data-view="weekly" title="Show / hide weekly chart panel">Weekly</button>
+        <button type="button" id="pill-view-volume" class="ind-pill view-pill active" data-view="volume" title="Show / hide volume panes">Vol</button>
+        <button type="button" id="pill-view-pm" class="ind-pill view-pill active" data-view="pm" title="Show / hide PM metrics strip">PM</button>
+        <button type="button" id="pill-view-overlays" class="ind-pill view-pill active" data-view="overlays" title="Show / hide overlay pills row">Overlays</button>
+        <button type="button" class="ind-pill view-pill active" data-view="setups" title="Show / hide Setups board (Scanner)">Setups</button>
+        <button type="button" class="ind-pill view-pill active" data-view="heatmap" title="Show / hide metric heatmap scanner">Heatmap</button>
+        <button type="button" id="btn-badge-key" class="btn btn-ghost btn-sm" title="Badge legend">Badges</button>
+        <button type="button" id="btn-layout-reset" class="btn btn-ghost btn-sm" title="Reset panel sizes">Reset size</button>
+        <button type="button" id="btn-save-desk" class="btn btn-ghost btn-sm" title="Save current workspace + view pills as My desk">Save desk</button>
+        <button type="button" id="btn-journal" class="btn btn-ghost btn-sm" title="Positions &amp; journal (Shift+J)">Positions</button>
+        <button type="button" id="btn-desk-guide" class="btn btn-ghost btn-sm" title="Step-by-step guide (?)">Guide</button>
+      </div>
+      <div id="chart-overlays-bar" class="indicator-toggles chart-overlays-bar">
+        <span class="overlay-section-label">Panes</span>
+        <button id="pill-pane-rsi" class="ind-pill" title="RSI pane — off by default (price-first)">RSI</button>
+        <button id="pill-pane-macd" class="ind-pill" title="MACD pane — off by default">MACD</button>
+        <button id="pill-pane-trend" class="ind-pill" title="Trend score — off by default">Trend</button>
         <span class="overlay-section-label">KAMA</span>
         <div id="kama-pills"></div>
         <div class="kama-add-form">
           <input id="kama-period-input" type="number" min="2" max="500" placeholder="Period" class="kama-input" />
           <button id="btn-add-kama" class="btn btn-primary btn-icon" title="Add KAMA period">+</button>
         </div>
-      </div>
-      <div class="tab-spacer"></div>
-      <div class="indicator-toggles">
+        <span class="overlay-section-label">EMA</span>
+        <button id="pill-ema-9" class="ind-pill" data-ema="9" title="EMA 9 — Stockbee pack" aria-pressed="false">9</button>
+        <button id="pill-ema-10" class="ind-pill" data-ema="10" title="EMA 10 — optional" aria-pressed="false">10</button>
+        <button id="pill-ema-20" class="ind-pill" data-ema="20" title="EMA 20 — Stockbee / pullback pack" aria-pressed="false">20</button>
+        <button id="pill-ema-21" class="ind-pill" data-ema="21" title="EMA 21 — optional" aria-pressed="false">21</button>
+        <button id="pill-ema-50" class="ind-pill" data-ema="50" title="EMA 50 — optional" aria-pressed="false">50</button>
+        <span class="overlay-section-label">SMA</span>
+        <button id="pill-sma-50" class="ind-pill" data-sma="50" title="SMA 50 — Trend Template" aria-pressed="false">50</button>
+        <button id="pill-sma-150" class="ind-pill" data-sma="150" title="SMA 150 — Trend Template" aria-pressed="false">150</button>
+        <button id="pill-sma-200" class="ind-pill" data-sma="200" title="SMA 200 — Trend Template" aria-pressed="false">200</button>
+        <span id="method-pack-hint" class="method-pack-hint" hidden></span>
         <span class="overlay-section-label">Overlays</span>
-        <button id="pill-bb" class="ind-pill active-bb">Bol. Bands</button>
+        <button id="pill-bb" class="ind-pill active-bb">BB</button>
+        <button id="pill-ep-markers" class="ind-pill active-ep" title="EP gap+volume markers">EP</button>
+        <button id="pill-darvas" class="ind-pill active-darvas" title="Darvas box high/low">Box</button>
+        <button id="pill-stage-ma" class="ind-pill active-stage" title="Weekly 30W SMA (stage analysis)">30W</button>
+        <button id="pill-focus" class="ind-pill" title="Focus mode (f) — hide tape">Focus</button>
       </div>
-    </div>
+    </nav>
+    <!-- Legacy tab-bar stub kept empty for any leftover selectors -->
+    <div class="tab-bar" id="legacy-tab-bar" hidden></div>
 
     <!-- ── Empty State / First-run guide ── -->
     <div id="empty-state" class="empty-state" style="display:flex;">
-      <div class="empty-icon">📰</div>
-      <h2>Welcome to Whats-News</h2>
-      <p>Your local watchlist for charts, analysis, and real Yahoo Finance headlines.</p>
-      <ol class="onboarding-steps">
-        <li>Type a ticker in the sidebar (try <strong>AAPL</strong>) and press <strong>+</strong></li>
-        <li>Click the symbol, then use <strong>Refresh</strong> if the chart is empty</li>
-        <li>Open <a href="/news">News</a> for headlines across your whole watchlist</li>
-      </ol>
+      <div class="guide-hero">
+        <p class="guide-kicker">Whats-News desk</p>
+        <h2>From 2000+ tickers to a clean setup list</h2>
+        <p class="guide-lead">Archive once, precompute, then Lists → Scanner → chart → Positions.</p>
+      </div>
+      <div class="guide-steps" id="desk-guide-steps">
+        <button type="button" class="guide-step" data-guide="data">
+          <span class="guide-num">1</span>
+          <span class="guide-step-body">
+            <strong>Data</strong>
+            <span>Archive once, then daily refresh</span>
+          </span>
+        </button>
+        <button type="button" class="guide-step" data-guide="lists">
+          <span class="guide-num">2</span>
+          <span class="guide-step-body">
+            <strong>Lists</strong>
+            <span>Filter EP / near high / Darvas</span>
+          </span>
+        </button>
+        <button type="button" class="guide-step" data-guide="scanner">
+          <span class="guide-num">3</span>
+          <span class="guide-step-body">
+            <strong>Scanner</strong>
+            <span>Precompute, then scan setups</span>
+          </span>
+        </button>
+        <button type="button" class="guide-step" data-guide="chart">
+          <span class="guide-num">4</span>
+          <span class="guide-step-body">
+            <strong>Charts</strong>
+            <span>Price + Box + EP — hide noise</span>
+          </span>
+        </button>
+        <button type="button" class="guide-step" data-guide="deep">
+          <span class="guide-num">5</span>
+          <span class="guide-step-body">
+            <strong>Deep dive</strong>
+            <span>Trend · KNN · Statistics</span>
+          </span>
+        </button>
+      </div>
+      <div class="guide-actions">
+        <button type="button" class="btn btn-primary" onclick="switchTab('data-manager')">Open Data tab</button>
+        <button type="button" class="btn btn-ghost" id="btn-open-lists-from-guide">Open Lists</button>
+        <button type="button" class="btn btn-ghost" id="btn-open-full-guide">Full walkthrough</button>
+      </div>
+      <p class="guide-hint">Add with <strong>+</strong>. Jump with <kbd>/</kbd> (does not add) · <kbd>⌘K</kbd> commands · <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> Scan/Chart/Review · <kbd>Shift+J</kbd> Positions.</p>
     </div>
 
     <!-- ── Chart Area ── -->
@@ -236,51 +360,63 @@
       </div>
 
       <!-- ── Daily Panel ── -->
-      <div class="chart-panel">
+      <div class="chart-panel chart-panel-daily" id="chart-panel-daily">
         <div class="panel-header">Daily</div>
         <div class="chart-wrapper chart-wrapper-main">
           <div class="chart-label">PRICE</div>
+          <div id="chart-legend-daily" class="chart-ohlc-legend" aria-live="polite"></div>
           <div id="chart-daily-main" style="width:100%;height:100%;"></div>
         </div>
         <div class="chart-divider"></div>
-        <div class="chart-wrapper chart-wrapper-rsi">
+        <div class="chart-wrapper chart-wrapper-volume">
+          <div class="chart-label">VOLUME <span id="chart-daily-vol-badge" class="vol-surge-badge" style="display:none;"></span></div>
+          <div id="chart-daily-volume" style="width:100%;height:100%;"></div>
+        </div>
+        <div class="chart-divider chart-divider-rsi"></div>
+        <div class="chart-wrapper chart-wrapper-rsi pane-optional" data-pane="rsi" hidden>
           <div class="chart-label">RSI (7 / 14 / 21)</div>
           <div id="chart-daily-rsi" style="width:100%;height:100%;"></div>
         </div>
-        <div class="chart-divider"></div>
-        <div class="chart-wrapper chart-wrapper-macd">
+        <div class="chart-divider chart-divider-macd"></div>
+        <div class="chart-wrapper chart-wrapper-macd pane-optional" data-pane="macd" hidden>
           <div class="chart-label">MACD (12/26/9)</div>
           <div id="chart-daily-macd" style="width:100%;height:100%;"></div>
         </div>
-        <div class="chart-divider"></div>
-        <div class="chart-wrapper chart-wrapper-trend">
+        <div class="chart-divider chart-divider-trend"></div>
+        <div class="chart-wrapper chart-wrapper-trend pane-optional" data-pane="trend" hidden>
           <div class="chart-label">TREND SCORE</div>
           <div id="chart-daily-trend" style="width:100%;height:100%;"></div>
         </div>
       </div>
 
       <!-- ── Panel Divider ── -->
-      <div class="panel-divider"></div>
+      <div class="panel-divider" id="chart-panel-divider"></div>
 
       <!-- ── Weekly Panel ── -->
-      <div class="chart-panel">
+      <div class="chart-panel chart-panel-weekly" id="chart-panel-weekly">
         <div class="panel-header">Weekly</div>
         <div class="chart-wrapper chart-wrapper-main">
           <div class="chart-label">PRICE</div>
+          <div id="chart-legend-weekly" class="chart-ohlc-legend" aria-live="polite"></div>
           <div id="chart-weekly-main" style="width:100%;height:100%;"></div>
         </div>
         <div class="chart-divider"></div>
-        <div class="chart-wrapper chart-wrapper-rsi">
+        <div class="chart-wrapper chart-wrapper-volume">
+          <div class="chart-label">VOLUME <span id="chart-weekly-vol-badge" class="vol-surge-badge" style="display:none;"></span></div>
+          <div id="chart-weekly-volume" style="width:100%;height:100%;"></div>
+        </div>
+        <div class="chart-divider chart-divider-rsi"></div>
+        <div class="chart-wrapper chart-wrapper-rsi pane-optional" data-pane="rsi" hidden>
           <div class="chart-label">RSI (7 / 14 / 21)</div>
           <div id="chart-weekly-rsi" style="width:100%;height:100%;"></div>
         </div>
-        <div class="chart-divider"></div>
-        <div class="chart-wrapper chart-wrapper-macd">
+        <div class="chart-divider chart-divider-macd"></div>
+        <div class="chart-wrapper chart-wrapper-macd pane-optional" data-pane="macd" hidden>
           <div class="chart-label">MACD (12/26/9)</div>
           <div id="chart-weekly-macd" style="width:100%;height:100%;"></div>
         </div>
-        <div class="chart-divider"></div>
-        <div class="chart-wrapper chart-wrapper-trend">
+        <div class="chart-divider chart-divider-trend"></div>
+        <div class="chart-wrapper chart-wrapper-trend pane-optional" data-pane="trend" hidden>
           <div class="chart-label">TREND SCORE</div>
           <div id="chart-weekly-trend" style="width:100%;height:100%;"></div>
         </div>
@@ -707,15 +843,104 @@
     <!-- ── Scanner Area ── -->
     <div id="scanner-area" class="scanner-container" style="display:none;">
 
+      <!-- Setup scanner — named methodology board -->
+      <div class="setup-scanner-panel" id="setup-scanner-panel">
+        <div class="setup-scanner-header">
+          <strong>Setups board</strong>
+          <button id="btn-setup-scan" type="button" class="btn btn-primary btn-sm" onclick="loadSetupScan()">Scan</button>
+          <button id="btn-metrics-refresh" type="button" class="btn btn-ghost btn-sm" title="Precompute setups/badges into cache for a fast dashboard">Precompute</button>
+          <label class="setup-universe-toggle" title="Scan full archive vs desk only">
+            <input type="checkbox" id="chk-setup-universe" checked />
+            Full universe
+          </label>
+          <button type="button" id="btn-setup-chrome" class="btn btn-ghost btn-sm" title="Show family / badge / tag pills">More ▾</button>
+          <button type="button" id="btn-setup-filters-toggle" class="btn btn-ghost btn-sm" title="Numeric filters">Filters ▾</button>
+          <span id="setup-metrics-status" class="scanner-ts" title="Metrics cache coverage"></span>
+          <span id="setup-scan-meta" class="scanner-ts"></span>
+          <span id="setup-liquid-chip" class="setup-liquid-chip" hidden>Liquid ≥$5 / $20M</span>
+          <span class="setup-kbd-hint" title="When Scanner is open">j/k · Enter</span>
+        </div>
+        <div id="market-context-strip" class="market-context-strip" hidden title="Book breadth of the cached universe — not a licensed Market Monitor">
+          <span id="mc-regime" class="mc-regime">Book —</span>
+          <span id="mc-up" class="mc-stat">Uptrend —</span>
+          <span id="mc-dual" class="mc-stat">Daily+weekly up —</span>
+          <span id="mc-s2" class="mc-stat">Stage 2 —</span>
+          <span id="mc-ep" class="mc-stat">EP gap —</span>
+          <span id="mc-pos" class="mc-stat">Day up —</span>
+          <span id="mc-honest" class="mc-honest">book breadth</span>
+        </div>
+        <div id="scanner-type-cards" class="scanner-type-cards" aria-label="Scanner types"></div>
+        <div id="setup-adv-filters" class="setup-adv-filters" hidden aria-label="Scanner filters">
+          <label>Chg% ≥ <input type="number" id="flt-min-change" class="setup-flt-input" step="0.5" placeholder="—" /></label>
+          <label>Chg% ≤ <input type="number" id="flt-max-change" class="setup-flt-input" step="0.5" placeholder="—" /></label>
+          <label>Vol× ≥ <input type="number" id="flt-min-vol" class="setup-flt-input" step="0.1" min="0" placeholder="—" /></label>
+          <label>Book RS ≤ <input type="number" id="flt-max-rs" class="setup-flt-input" step="1" min="1" placeholder="—" /></label>
+          <label>RTS ≥ <input type="number" id="flt-min-rts" class="setup-flt-input" step="1" min="1" max="99" placeholder="—" /></label>
+          <label>Regime
+            <select id="flt-regime" class="dm-select setup-flt-select">
+              <option value="">Any</option>
+              <option value="uptrend">Uptrend</option>
+              <option value="range">Range</option>
+              <option value="downtrend">Downtrend</option>
+            </select>
+          </label>
+          <label class="setup-flt-check"><input type="checkbox" id="flt-strike" /> Strike zone</label>
+          <label class="setup-flt-check"><input type="checkbox" id="flt-dual-up" /> D+W up</label>
+          <label class="setup-flt-check" title="Skip names under $5 or under $20M average dollar volume">
+            <input type="checkbox" id="flt-liquid" checked /> Liquid ≥$5 / $20M
+          </label>
+          <label>Price ≥ <input type="number" id="flt-min-price" class="setup-flt-input" step="0.5" min="0" placeholder="5" /></label>
+          <label>$vol M ≥ <input type="number" id="flt-min-dv" class="setup-flt-input" step="1" min="0" placeholder="20" /></label>
+          <button type="button" id="btn-setup-filters-apply" class="btn btn-ghost btn-sm">Apply filters</button>
+          <button type="button" id="btn-setup-filters-clear" class="btn btn-ghost btn-sm">Clear</button>
+        </div>
+        <div id="setup-chrome" class="setup-chrome" hidden>
+        <div id="setup-family-cards" class="setup-family-cards"></div>
+        <div id="setup-stage-pills" class="setup-stage-pills"></div>
+        <div id="setup-badge-pills" class="setup-badge-pills"></div>
+        <div id="setup-filter-pills" class="setup-filter-pills"></div>
+        </div>
+        <div id="setup-scan-loading" class="chart-loading setup-scan-loading" style="display:none;">
+          <span class="spinner"></span> Scanning setups…
+        </div>
+        <div class="scanner-table-wrap setup-table-wrap">
+          <table id="setup-scan-table" class="scanner-table setup-scan-table">
+            <thead>
+              <tr>
+                <th data-sort="symbol">Symbol</th>
+                <th data-sort="badges">Badges</th>
+                <th data-sort="stage">Stage</th>
+                <th data-sort="rts">RTS</th>
+                <th data-sort="change_pct">Chg%</th>
+                <th data-sort="rs_rank_21d">Book RS</th>
+                <th data-sort="dist_20d_high_pct">20D dist</th>
+                <th data-sort="vol_ratio_5_20">Vol×</th>
+                <th data-sort="atr_pct">ATR%</th>
+                <th data-sort="stop_long_1_5atr">Stop</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="setup-scan-tbody"></tbody>
+          </table>
+        </div>
+        <div id="setup-scan-empty" class="scanner-empty" style="display:none;">
+          <p>No setups found — sync universe in <strong>Data</strong>, archive history, click <strong>Precompute</strong>, then scan again.</p>
+        </div>
+      </div>
+
+      <div class="scanner-section-divider" id="setup-resize-handle" aria-hidden="true"></div>
+
+      <div id="metric-scanner-panel" class="metric-scanner-panel">
       <!-- Loading overlay -->
       <div id="scanner-loading" class="chart-loading" style="display:none;">
         <span class="spinner"></span>
-        Scanning watchlist…
+        Scanning metrics…
       </div>
 
       <!-- Controls bar -->
       <div class="scanner-controls">
         <div class="scanner-controls-left">
+          <strong class="scanner-section-title">Metric heatmap</strong>
           <button id="btn-scan" class="btn btn-primary" onclick="loadScannerData()">⟳ Scan All</button>
           <span id="scanner-ts" class="scanner-ts"></span>
         </div>
@@ -742,6 +967,7 @@
         <div class="empty-icon">📡</div>
         <p>No symbols in watchlist, or data not yet fetched.<br>Add tickers, then click <strong>⟳ Scan All</strong>.</p>
       </div>
+      </div><!-- #metric-scanner-panel -->
 
     </div><!-- #scanner-area -->
 
@@ -777,6 +1003,34 @@
 
       <!-- ── Right panel: settings + progress ── -->
       <div class="dm-right">
+
+        <div class="dm-universe-section">
+          <div class="dm-panel-header">US index universe (~2000 tickers)</div>
+          <p class="dm-hint">Register S&amp;P, Nasdaq, Russell lists once. <strong>Archive</strong> full history (hours). <strong>Daily refresh</strong> fetches only the last few days.</p>
+          <div id="universe-indices" class="universe-indices"><!-- rendered by data_manager.js --></div>
+          <div class="dm-field dm-field-row">
+            <label class="dm-label dm-label-inline">
+              <input id="dm-only-missing" type="checkbox" />
+              Archive only symbols missing daily data
+            </label>
+          </div>
+          <div class="dm-field-row dm-universe-fields">
+            <div class="dm-field">
+              <label class="dm-label" for="dm-overlap-days">Refresh overlap (days)</label>
+              <input id="dm-overlap-days" type="number" class="dm-input" min="1" max="30" value="5" />
+            </div>
+            <div id="universe-stats" class="universe-stats"></div>
+          </div>
+          <div class="dm-actions dm-universe-actions">
+            <button id="btn-universe-sync" type="button" class="btn btn-ghost">Sync indices</button>
+            <button id="btn-universe-archive" type="button" class="btn btn-primary">Archive history</button>
+            <button id="btn-universe-refresh" type="button" class="btn btn-ghost">Daily refresh</button>
+            <button id="btn-universe-abort" type="button" class="btn btn-danger" style="display:none;">Abort</button>
+          </div>
+        </div>
+
+        <div class="dm-section-rule" aria-hidden="true"></div>
+
         <div class="dm-panel-header">Batch Fetch Settings</div>
 
         <div class="dm-settings">
@@ -844,6 +1098,108 @@
 <!-- Toast container -->
 <div id="toast-container" class="toast-container"></div>
 
+<!-- ══ Smart Lists Modal ═══════════════════════════════════════ -->
+<div id="smart-lists-modal" class="bulk-modal-overlay smart-lists-modal" style="display:none;"
+     onclick="if(event.target===this)closeSmartListsModal()">
+  <div class="bulk-modal-card smart-lists-card" role="dialog" aria-modal="true">
+    <div class="bulk-modal-header">
+      <span>Smart lists</span>
+      <div class="smart-flow-steps" aria-hidden="true">
+        <span class="smart-flow-step">1 Pick</span>
+        <span class="smart-flow-step">2 Preview</span>
+        <span class="smart-flow-step">3 Apply</span>
+      </div>
+      <button class="bulk-modal-close" onclick="closeSmartListsModal()" title="Close">×</button>
+    </div>
+    <div class="smart-lists-body">
+      <aside class="smart-lists-sidebar">
+        <div class="smart-lists-sidebar-head">Saved</div>
+        <div id="smart-lists-nav" class="smart-lists-nav"></div>
+        <button type="button" id="btn-new-smart-list" class="btn btn-ghost btn-sm">+ New list</button>
+      </aside>
+      <div class="smart-lists-editor">
+        <p class="smart-lists-blurb">Click a preset card, or build rules. Preview shows matching tickers as chips — then apply to the sidebar.</p>
+        <div id="smart-list-presets" class="smart-list-presets"></div>
+        <div class="smart-lists-editor-head">
+          <input id="smart-list-name" type="text" class="smart-list-name-input" placeholder="List name" />
+          <select id="smart-list-scope" class="dm-select smart-list-scope">
+            <option value="with_data" selected>Universe (with data)</option>
+            <option value="desk">Desk only</option>
+            <option value="all">All registered</option>
+          </select>
+          <label class="smart-match-label">
+            <input type="radio" name="smart-match" value="all" checked /> All rules
+          </label>
+          <label class="smart-match-label">
+            <input type="radio" name="smart-match" value="any" /> Any rule
+          </label>
+        </div>
+        <div id="smart-list-rules" class="smart-list-rules"></div>
+        <button type="button" id="btn-add-rule" class="btn btn-ghost btn-sm">+ Add rule</button>
+        <div class="smart-preview-panel">
+          <div class="smart-preview-head">
+            <strong>Matches</strong>
+            <span id="smart-list-preview" class="smart-list-preview">Preview to see chips</span>
+          </div>
+          <div id="smart-preview-chips" class="smart-preview-chips"></div>
+        </div>
+        <div class="smart-lists-actions">
+          <button type="button" id="btn-preview-smart-list" class="btn btn-ghost btn-sm">Preview</button>
+          <button type="button" id="btn-save-smart-list" class="btn btn-ghost btn-sm">Save</button>
+          <button type="button" id="btn-apply-smart-list" class="btn btn-primary btn-sm">Apply to watchlist →</button>
+          <button type="button" id="btn-delete-smart-list" class="btn btn-danger btn-sm">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Jump / command palette ══════════════════════════════════ -->
+<div id="desk-palette" class="desk-palette-overlay" hidden>
+  <div class="desk-palette-card" role="dialog" aria-modal="true" aria-labelledby="desk-palette-title">
+    <div class="desk-palette-head">
+      <span id="desk-palette-title">Jump to symbol</span>
+      <kbd class="desk-palette-kbd">esc</kbd>
+    </div>
+    <input id="desk-palette-input" type="text" class="desk-palette-input"
+           placeholder="Ticker or command…" autocomplete="off" spellcheck="false" />
+    <div id="desk-palette-results" class="desk-palette-results" role="listbox"></div>
+    <p class="desk-palette-hint">/ jump · ⌘K commands · Enter opens (never adds) · Shift+Enter or click Add to mutate the list</p>
+  </div>
+</div>
+
+<!-- ══ Badge key ═══════════════════════════════════════════════ -->
+<div id="badge-key-modal" class="bulk-modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeBadgeKey()">
+  <div class="bulk-modal-card desk-guide-card" role="dialog" aria-modal="true">
+    <div class="bulk-modal-header">
+      <span>Methodology badges</span>
+      <button class="bulk-modal-close" onclick="closeBadgeKey()" title="Close">×</button>
+    </div>
+    <div id="badge-key-body" class="badge-key-body"></div>
+    <p class="guide-tip badge-key-honest">Mechanical book approximations only — not a published RS rating, licensed SEPA, Stockbee Market Monitor, or Factor.</p>
+  </div>
+</div>
+
+<!-- ══ Desk Guide Walkthrough ══════════════════════════════════ -->
+<div id="desk-guide-modal" class="bulk-modal-overlay" style="display:none;"
+     onclick="if(event.target===this)closeDeskGuide()">
+  <div class="bulk-modal-card desk-guide-card" role="dialog" aria-modal="true">
+    <div class="bulk-modal-header">
+      <span>How to use the desk</span>
+      <button class="bulk-modal-close" onclick="closeDeskGuide()" title="Close">×</button>
+    </div>
+    <div class="desk-guide-body" id="desk-guide-body">
+      <!-- filled by JS -->
+    </div>
+    <div class="desk-guide-footer">
+      <button type="button" id="btn-guide-prev" class="btn btn-ghost btn-sm">← Back</button>
+      <span id="desk-guide-progress" class="desk-guide-progress"></span>
+      <button type="button" id="btn-guide-next" class="btn btn-primary btn-sm">Next →</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ Bulk Add Modal ══════════════════════════════════════════ -->
 <div id="bulk-modal" class="bulk-modal-overlay" style="display:none;"
      onclick="if(event.target===this)closeBulkModal()">
@@ -885,7 +1241,12 @@
 <script src="scripts/charts.js"></script>
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
+<script src="scripts/setup_scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
+<script src="scripts/watchlist_filters.js"></script>
+<script src="scripts/desk_layout.js"></script>
+<script src="scripts/desk_ux.js"></script>
+<script src="scripts/desk_palette.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

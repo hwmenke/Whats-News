@@ -73,6 +73,28 @@ SQLite stays the datastore. The DB layer is set up so hundreds of tickers stay p
 
 `finance.db` (and WAL sidecars) stay gitignored — never commit the database file.
 
+### Bulk universe archive (2000+ US index tickers)
+
+One-time registration + archive, then a short daily refresh:
+
+```bash
+export DATA_SERVICE_MODE=embedded
+
+# 1) Register S&P 500/400/600, Nasdaq-100, Russell 2000 (~1500–2500 unique)
+python3 scripts/bulk_archive.py --sync-indices all
+
+# 2) Full history (run once; hours — use delay 1.5+ to avoid Yahoo throttling)
+python3 scripts/bulk_archive.py --archive --start 2000-01-01 --delay 1.5
+
+# 3) After each close — only last few days per symbol
+python3 scripts/bulk_archive.py --refresh --overlap-days 5 --delay 0.8
+```
+
+**In the UI:** open **Data** → sync indices → **Archive history** → later **Daily refresh**. Universe tickers stay tagged `univ:*` and are hidden from the sidebar until you **Promote to desk** (+ Desk on setup scan or ↑ on sidebar).
+
+**Scanners:** **Scanner** tab → **Setup scanner** (EP, Darvas, breakout queue, RSI) on the full archive; metrics heatmap below scans the same stored data. Charts, Adaptive Trend, KNN, and Statistics work on any symbol with stored OHLCV.
+
+
 ## Project layout (developers)
 
 | Path | Purpose |
@@ -81,12 +103,18 @@ SQLite stays the datastore. The DB layer is set up so hundreds of tickers stay p
 | `data_service/` | Optional data plane (SQLite + Yahoo fetches) |
 | `data_client.py` / `market_data.py` | Embedded or HTTP access to watchlist/OHLCV |
 | `database.py` / `data_fetcher.py` | SQLite + Yahoo downloads |
+| `index_universe.py` / `scripts/bulk_archive.py` | US index lists + bulk archive CLI |
+| `setup_scanner.py` | Setup families (Qullamaggie, Minervini, Stockbee, Darvas, Brandt, Stage) |
+| `ta_templates.py` | Mechanical Minervini Trend Template + Stockbee EP/RE/EMA |
+| `methodology_badges.py` | Compact badges (KQ/MM/SB4/SBW/SB9/DB/ON/2A/2B) for watchlists |
+| `desk_metrics.py` | Precompute setups/badges into `symbol_metrics` for a fast dashboard |
+| `.cursor/agents/` | TA specialist agent prompts (Minervini, Stockbee, …) |
 | `index.html` / `news.html` | UI |
 | `scripts/` | Frontend JS |
 | `tests/` | Unit tests (no live network) |
 | `start.sh` | One-command launcher (embedded mode) |
 | `SUGGESTIONS.md` | Ideas for future improvements |
-| `PM_REVIEW.md` / `METHODOLOGY_REVIEW.md` | Desk review notes |
+| `PM_REVIEW.md` / `METHODOLOGY_REVIEW.md` / `VISUAL_REVIEW.md` | Desk review notes |
 
 ```bash
 DATA_SERVICE_MODE=embedded make test

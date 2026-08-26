@@ -9,6 +9,15 @@ import yfinance as yf
 import pandas as pd
 import database as db
 
+# If an overlapping bar's close jumps this much after auto_adjust, treat it
+# as a split/dividend seam and re-download full history instead of mixing
+# unadjusted stored bars with newly adjusted ones.
+ADJUSTMENT_SEAM_PCT = 15.0
+# When overlap dates are missing (split dropped the session), still flag a
+# close jump if the first new bar is within this many calendar days of the
+# last stored close — long enough to cover a skipped refresh week + holidays.
+ADJUSTMENT_SEAM_GAP_DAYS = 21
+
 
 def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     """Normalize yfinance output to lowercase columns and drop NaN rows."""
@@ -39,12 +48,84 @@ def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def fetch_and_store(symbol: str, period: str = "2y") -> dict:
+def adjustment_seam(
+    stored_closes: dict,
+    daily_df: pd.DataFrame,
+    threshold_pct: float = ADJUSTMENT_SEAM_PCT,
+) -> bool:
+    """True when overlap closes disagree by ≥ threshold (split/div adjust)."""
+    if not stored_closes or daily_df is None or daily_df.empty:
+        return False
+    if "close" not in daily_df.columns:
+        return False
+    overlapped = False
+    for ts, row in daily_df.iterrows():
+        try:
+            d = pd.Timestamp(ts).strftime("%Y-%m-%d")
+        except Exception:
+            continue
+        old = stored_closes.get(d)
+        if old is None:
+            continue
+        overlapped = True
+        try:
+            old_c = float(old)
+            new_c = float(row["close"])
+        except (TypeError, ValueError):
+            continue
+        if old_c <= 0 or new_c <= 0:
+            continue
+        if abs(new_c / old_c - 1.0) * 100.0 >= threshold_pct:
+            return True
+    if overlapped:
+        return False
+    # No shared dates (split may have dropped the overlap session).
+    try:
+        last_d = max(stored_closes)
+        last_ts = pd.Timestamp(last_d)
+        first_ts = pd.Timestamp(daily_df.index.min())
+        gap_days = (first_ts - last_ts).days
+        old_c = float(stored_closes[last_d])
+        new_c = float(daily_df.iloc[0]["close"])
+    except Exception:
+        return False
+    if old_c <= 0 or new_c <= 0:
+        return False
+    if 0 < gap_days <= ADJUSTMENT_SEAM_GAP_DAYS and abs(new_c / old_c - 1.0) * 100.0 >= threshold_pct:
+        return True
+    return False
+
+
+def drop_partial_first_week(daily_df: pd.DataFrame, weekly_df: pd.DataFrame) -> pd.DataFrame:
+    """Drop the first W-FRI bar when the incremental window does not cover ~4 sessions."""
+    if weekly_df is None or weekly_df.empty:
+        return weekly_df
+    first = weekly_df.index[0]
+    week_start = first - pd.Timedelta(days=6)
+    in_week = daily_df[(daily_df.index >= week_start) & (daily_df.index <= first)]
+    if len(in_week) < 4:
+        return weekly_df.iloc[1:] if len(weekly_df) > 1 else weekly_df.iloc[0:0]
+    return weekly_df
+
+
+def _stored_closes(symbol: str, limit: int = 40) -> dict:
+    rows = db.get_ohlcv(symbol, "daily", limit=limit)
+    out = {}
+    for r in rows or []:
+        d = str(r.get("date") or "")[:10]
+        try:
+            out[d] = float(r["close"])
+        except (TypeError, ValueError, KeyError):
+            continue
+    return out
+
+
+def fetch_and_store(symbol: str, period: str = "2y", overlap_days: int = 3) -> dict:
     """
     Download daily data from Yahoo Finance, resample to weekly,
     and upsert both into the database.
-    If data already exists in the DB, only downloads bars from last_date + 1 day
-    forward (incremental mode). Falls back to full 2y download if no data exists.
+    If data already exists in the DB, only downloads from (last_date - overlap_days)
+    forward (incremental mode). Falls back to full period download if no data exists.
     """
     sym = symbol.upper()
     print(f"++ Fetcher: Starting fetch for {sym}")
@@ -54,9 +135,9 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     last_date_str = db.get_latest_ohlcv_date(sym, "daily")
     if last_date_str:
         last_date  = datetime.date.fromisoformat(last_date_str)
-        start_date = last_date + datetime.timedelta(days=1)
+        start_date = last_date - datetime.timedelta(days=max(0, overlap_days))
         start_str  = start_date.isoformat()
-        print(f"++ Fetcher: Incremental fetch for {sym} from {start_str}")
+        print(f"++ Fetcher: Incremental fetch for {sym} from {start_str} (overlap {overlap_days}d)")
         raw = ticker.history(start=start_str, interval="1d", auto_adjust=True)
     else:
         print(f"++ Fetcher: Full {period} download for {sym}")
@@ -69,6 +150,10 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     daily_df = _clean_df(raw)
     print(f"++ Fetcher: Processed {len(daily_df)} daily bars")
 
+    if last_date_str and adjustment_seam(_stored_closes(sym), daily_df):
+        print(f"!! Fetcher: Adjustment seam on {sym} — full re-download")
+        return fetch_full_history(sym)
+
     # Resample to weekly (week ending Friday)
     weekly_df = daily_df.resample("W-FRI").agg({
         "open":   "first",
@@ -77,10 +162,14 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
         "close":  "last",
         "volume": "sum"
     }).dropna()
+    # Incremental windows start mid-week; drop a first bar that is not a
+    # full Mon–Fri week so we do not overwrite a complete stored candle.
+    if last_date_str and not weekly_df.empty:
+        weekly_df = drop_partial_first_week(daily_df, weekly_df)
     print(f"++ Fetcher: Resampled to {len(weekly_df)} weekly bars")
 
     daily_count  = db.upsert_ohlcv(sym, "daily",  daily_df)
-    weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df)
+    weekly_count = db.upsert_ohlcv(sym, "weekly", weekly_df) if len(weekly_df) else 0
     print(f"++ Fetcher: Database updated ({daily_count}d, {weekly_count}w)")
 
     # Pull meta info (name, sector) - try/except as this can be slow/fail
@@ -88,13 +177,14 @@ def fetch_and_store(symbol: str, period: str = "2y") -> dict:
     try:
         print(f"++ Fetcher: Requesting ticker.info for {sym}...")
         info   = ticker.info
-        name   = info.get("longName", "")
-        sector = info.get("sector", f"{info.get('industry', '')}").strip()
+        name   = info.get("longName") or ""
+        sector = (info.get("sector") or info.get("industry") or "").strip()
         print(f"++ Fetcher: Info retrieved: {name} ({sector})")
     except Exception as e:
         print(f"!! Fetcher: Metadata download failed (skipped): {str(e)}")
 
-    db.update_symbol_info(sym, name, sector)
+    if name or sector:
+        db.update_symbol_info(sym, name, sector)
     db.update_last_fetch(sym)
 
     return {
@@ -147,12 +237,13 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
             name, sector = "", ""
             try:
                 info   = ticker.info
-                name   = info.get("longName", "")
-                sector = info.get("sector", info.get("industry", "")).strip()
+                name   = info.get("longName") or ""
+                sector = (info.get("sector") or info.get("industry") or "").strip()
             except Exception:
                 pass
 
-            db.update_symbol_info(sym, name, sector)
+            if name or sector:
+                db.update_symbol_info(sym, name, sector)
             db.update_last_fetch(sym)
 
             return {

@@ -4,6 +4,8 @@ portfolio.py — Fast watchlist / PM-desk snapshots for technical analysis.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import numpy as np
 import pandas as pd
 
@@ -37,17 +39,106 @@ def peer_etf_for(sector: str | None) -> str:
     return _PEER_ETF.get(str(sector).strip(), "SPY")
 
 
-def position_size(price, atr, risk_dollars: float = 100.0, atr_mult: float = 1.5) -> dict:
-    """Shares such that atr_mult×ATR move ≈ risk_dollars."""
-    if not price or not atr or atr <= 0 or risk_dollars <= 0:
-        return {"shares": None, "risk_dollars": risk_dollars, "stop_distance": None, "notional": None}
-    stop_distance = float(atr) * atr_mult
-    shares = int(risk_dollars // stop_distance) if stop_distance else 0
+def position_size(
+    price,
+    atr,
+    risk_dollars: float = 100.0,
+    atr_mult: float = 1.5,
+    *,
+    stop_price: float | None = None,
+) -> dict:
+    """Shares such that stop distance ≈ risk_dollars.
+
+    Prefer a user/structural stop (`stop_price`). Fall back to atr_mult×ATR
+    when no stop is provided (Brandt / Neumann risk box).
+    """
+    if not price or risk_dollars <= 0:
+        return {
+            "shares": None,
+            "risk_dollars": risk_dollars,
+            "stop_distance": None,
+            "notional": None,
+            "stop_source": None,
+        }
+    stop_source = "atr"
+    if stop_price is not None and float(stop_price) > 0:
+        stop_distance = abs(float(price) - float(stop_price))
+        stop_source = "user_stop"
+    elif atr and atr > 0:
+        stop_distance = float(atr) * atr_mult
+        stop_source = "atr"
+    else:
+        return {
+            "shares": None,
+            "risk_dollars": risk_dollars,
+            "stop_distance": None,
+            "notional": None,
+            "stop_source": None,
+        }
+    shares = int(risk_dollars // stop_distance) if stop_distance > 0 else 0
     return {
         "shares": shares,
         "risk_dollars": risk_dollars,
         "stop_distance": round(stop_distance, 2),
         "notional": round(shares * float(price), 2) if shares else 0.0,
+        "stop_source": stop_source,
+    }
+
+
+def darvas_box(df: pd.DataFrame, lookback: int = 20, confirm: int = 3) -> dict | None:
+    """Detect a simple Darvas-style consolidation box on OHLCV.
+
+    Box top = rolling N-bar high that held for `confirm` bars without a new high.
+    Box low = lowest low during that hold window. State is in_box / breakout / failed.
+    Never conflated with KAMA/RSI (see METHODOLOGY_REVIEW.md).
+    """
+    if df is None or df.empty or len(df) < lookback + confirm + 2:
+        return None
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+    close = df["close"].astype(float)
+    # Find last bar where a lookback-high held for `confirm` bars
+    roll_hi = high.rolling(lookback).max()
+    box_top = None
+    box_low = None
+    since_idx = None
+    for i in range(len(df) - confirm - 1, lookback - 1, -1):
+        top = float(roll_hi.iloc[i])
+        if pd.isna(top):
+            continue
+        window = high.iloc[i + 1 : i + 1 + confirm]
+        if len(window) < confirm:
+            continue
+        if float(window.max()) <= top + 1e-9:
+            # Confirmed: no new high for `confirm` bars after the pivot
+            hold = df.iloc[max(0, i - lookback + 1) : i + 1 + confirm]
+            box_top = top
+            box_low = float(hold["low"].astype(float).min())
+            since_idx = i - lookback + 1
+            break
+    if box_top is None or box_low is None or box_top <= box_low:
+        return None
+    last = float(close.iloc[-1])
+    if last > box_top:
+        state = "breakout"
+    elif last < box_low:
+        state = "failed"
+    else:
+        state = "in_box"
+    since = None
+    try:
+        since = str(df.index[max(0, since_idx)].date()) if since_idx is not None else None
+    except Exception:
+        since = None
+    height = box_top - box_low
+    return {
+        "top": round(box_top, 2),
+        "bottom": round(box_low, 2),
+        "height": round(height, 2),
+        "state": state,
+        "since": since,
+        "target": round(box_top + height, 2),  # 1× measured move
+        "pct_to_top": round((last / box_top - 1.0) * 100, 2) if box_top else None,
     }
 
 
@@ -115,10 +206,17 @@ def _rsi_zone(rsi: float | None) -> str:
     return "neutral"
 
 
-def snapshot_symbol(symbol: str) -> dict:
+def snapshot_symbol(
+    symbol: str,
+    light: bool = False,
+    include_scanner: bool = False,
+    df=None,
+    weekly_df=None,
+) -> dict:
     sym = symbol.upper()
-    df = md.get_ohlcv_df(sym, "daily", limit=260)
-    if df.empty or len(df) < 25:
+    if df is None:
+        df = md.get_ohlcv_df(sym, "daily", limit=260)
+    if df is None or df.empty or len(df) < 25:
         return {
             "symbol": sym,
             "ready": False,
@@ -128,10 +226,61 @@ def snapshot_symbol(symbol: str) -> dict:
     close = df["close"].astype(float)
     high = df["high"].astype(float)
     low = df["low"].astype(float)
+    open_ = df["open"].astype(float)
+    volume = df["volume"].astype(float)
     last = float(close.iloc[-1])
     prev = float(close.iloc[-2]) if len(close) > 1 else last
     chg = last - prev
     chg_pct = (chg / prev * 100) if prev else 0.0
+
+    # ── Momentum / breakout metrics (Qullamaggie loop) ──────────────
+    # Distance from the *prior* N-day high (excludes today) so a breakout
+    # can print positive. pct_off_Nd_high keeps "how far under today's ceiling."
+    def _dist_from_prior_high(n: int):
+        if len(high) < 2:
+            return None
+        prior = high.iloc[:-1]
+        window = prior.tail(min(n, len(prior)))
+        if window.empty:
+            return None
+        hi = float(window.max())
+        return round((last / hi - 1.0) * 100, 2) if hi else None
+
+    def _pct_off_high(n: int):
+        window = high.tail(min(n, len(high)))
+        hi = float(window.max()) if len(window) else None
+        return round((last / hi - 1.0) * 100, 2) if hi else None
+
+    dist_20d_high = _dist_from_prior_high(20)
+    dist_63d_high = _dist_from_prior_high(63)
+    pct_off_20d_high = _pct_off_high(20)
+
+    # Volume surge: today's bar vs 20-bar average volume.
+    vol_avg20 = float(volume.tail(21).iloc[:-1].mean()) if len(volume) > 21 else (
+        float(volume.iloc[:-1].mean()) if len(volume) > 1 else None
+    )
+    vol_today = float(volume.iloc[-1])
+    vol_ratio = round(vol_today / vol_avg20, 2) if vol_avg20 and vol_avg20 > 0 else None
+    dollar_vol_20d = None
+    if len(close) >= 5:
+        dv = (close * volume).tail(min(20, len(close)))
+        dollar_vol_20d = round(float(dv.mean()), 0) if len(dv) else None
+
+    # Gap %: today's open vs prior close — episodic-pivot (EP) path.
+    today_open = float(open_.iloc[-1])
+    gap_pct = round((today_open / prev - 1.0) * 100, 2) if prev else None
+
+    is_near_high = pct_off_20d_high is not None and pct_off_20d_high >= -5.0
+    is_vol_surge = vol_ratio is not None and vol_ratio >= 1.5
+    is_ep = (
+        gap_pct is not None and vol_ratio is not None
+        and gap_pct >= 4.0 and vol_ratio >= 1.5
+    )
+    breakout_score = (
+        (1 if is_near_high else 0)
+        + (1 if is_vol_surge else 0)
+        + (1 if is_ep else 0)
+    )
 
     rsi14 = _last_valid(_rsi(close, 14))
     kama20 = _last_valid(_kama(close, 20))
@@ -157,26 +306,35 @@ def snapshot_symbol(symbol: str) -> dict:
     ret_5d = (last / float(week_ago) - 1) * 100 if week_ago else None
     ret_21d = (last / float(month_ago) - 1) * 100 if month_ago else None
 
-    # Weekly regime (same KAMA20 logic on weekly bars)
-    w_df = md.get_ohlcv_df(sym, "weekly", limit=80)
+    as_of = None
+    try:
+        as_of = pd.Timestamp(df.index[-1]).strftime("%Y-%m-%d")
+    except Exception:
+        as_of = str(df.index[-1])[:10] if len(df) else None
+
     regime_w = "n/a"
     vs_kama_w = None
-    if not w_df.empty and len(w_df) >= 25:
-        w_close = w_df["close"].astype(float)
-        w_last = float(w_close.iloc[-1])
-        w_kama = _last_valid(_kama(w_close, 20))
-        if w_kama and w_kama > 0:
-            vs_kama_w = (w_last / w_kama - 1.0) * 100
-            if vs_kama_w >= 1.0:
-                regime_w = "uptrend"
-            elif vs_kama_w <= -1.0:
-                regime_w = "downtrend"
-            else:
-                regime_w = "range"
+    if not light:
+        w_df = weekly_df if weekly_df is not None else md.get_ohlcv_df(sym, "weekly", limit=80)
+        if w_df is not None and not w_df.empty and len(w_df) >= 25:
+            w_close = w_df["close"].astype(float)
+            w_last = float(w_close.iloc[-1])
+            w_kama = _last_valid(_kama(w_close, 20))
+            if w_kama and w_kama > 0:
+                vs_kama_w = (w_last / w_kama - 1.0) * 100
+                if vs_kama_w >= 1.0:
+                    regime_w = "uptrend"
+                elif vs_kama_w <= -1.0:
+                    regime_w = "downtrend"
+                else:
+                    regime_w = "range"
 
-    return {
+    darvas = darvas_box(df) if not light else None
+
+    row = {
         "symbol": sym,
         "ready": True,
+        "as_of": as_of,
         "price": round(last, 2),
         "change": round(chg, 2),
         "change_pct": round(chg_pct, 2),
@@ -193,9 +351,33 @@ def snapshot_symbol(symbol: str) -> dict:
         "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
         "stop_long_1_5atr": stop_long,
         "stop_short_1_5atr": stop_short,
-        # last ~30 daily closes for correlation (compact)
-        "closes_30": [round(float(x), 4) for x in close.tail(30).tolist()],
+        "dist_20d_high_pct": dist_20d_high,
+        "dist_63d_high_pct": dist_63d_high,
+        "pct_off_20d_high_pct": pct_off_20d_high,
+        "vol_ratio_5_20": vol_ratio,
+        "dollar_vol_20d": dollar_vol_20d,
+        "gap_pct": gap_pct,
+        "is_near_high": is_near_high,
+        "is_vol_surge": is_vol_surge,
+        "is_ep": is_ep,
+        "breakout_score": breakout_score,
+        "darvas": darvas,
     }
+
+    if not light:
+        row["closes_30"] = [round(float(x), 4) for x in close.tail(30).tolist()]
+
+    if include_scanner and len(df) >= 22:
+        try:
+            import scanner as scan_mod
+            tf = scan_mod._compute_tf(df, 252)
+            if tf:
+                for key, val in tf.items():
+                    row[f"d_{key}"] = val
+        except Exception:
+            pass
+
+    return row
 
 
 def _corr_hint(ready: list) -> dict | None:
@@ -219,30 +401,82 @@ def _corr_hint(ready: list) -> dict | None:
     }
 
 
-def portfolio_snapshot() -> dict:
+def portfolio_snapshot(
+    scope: str = "all",
+    light: bool = False,
+    symbols: list[str] | None = None,
+    max_workers: int = 8,
+    use_cache: bool = True,
+) -> dict:
     symbols_meta = {s["symbol"]: s for s in md.list_symbols()}
-    symbols = list(symbols_meta.keys())
-    rows = [snapshot_symbol(sym) for sym in symbols]
+
+    if symbols:
+        sym_list = [s.upper() for s in symbols]
+    elif scope == "desk":
+        sym_list = [s["symbol"] for s in md.list_desk_symbols()]
+    elif scope == "with_data":
+        sym_list = md.list_symbols_with_ohlcv("daily", min_bars=30)
+    else:
+        sym_list = list(symbols_meta.keys())
+
+    from_cache = False
+    rows: list[dict] = []
+
+    # Fast path: precomputed metrics (desk tape / light views)
+    if use_cache and light:
+        try:
+            import desk_metrics
+            cached = desk_metrics.load_cached_rows(sym_list, ready_only=False)
+            if cached and len(cached) >= max(1, int(0.4 * len(sym_list))):
+                by_sym = {r["symbol"]: r for r in cached if r.get("symbol")}
+                for sym in sym_list:
+                    if sym in by_sym:
+                        rows.append(dict(by_sym[sym]))
+                    else:
+                        rows.append({"symbol": sym, "ready": False, "error": "metrics miss"})
+                from_cache = True
+        except Exception:
+            rows = []
+            from_cache = False
+
+    if not from_cache:
+        include_scanner = not light
+
+        def _snap(sym: str) -> dict:
+            return snapshot_symbol(sym, light=light, include_scanner=include_scanner)
+
+        workers = min(max_workers, max(1, len(sym_list)))
+        if workers <= 1 or len(sym_list) <= 3:
+            rows = [_snap(sym) for sym in sym_list]
+        else:
+            rows = []
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(_snap, sym): sym for sym in sym_list}
+                for fut in as_completed(futures):
+                    rows.append(fut.result())
+            rows.sort(key=lambda r: r.get("symbol") or "")
+
     ready = [r for r in rows if r.get("ready")]
 
     # Attach group tags for rollups
     for row in rows:
         meta = symbols_meta.get(row["symbol"], {})
-        row["group_tag"] = (meta.get("group_tag") or "").strip()
-        row["sector"] = meta.get("sector") or ""
+        row["group_tag"] = (meta.get("group_tag") or row.get("group_tag") or "").strip()
+        row["sector"] = meta.get("sector") or row.get("sector") or ""
         row["peer_etf"] = peer_etf_for(row["sector"])
-        if row.get("ready"):
+        if row.get("ready") and row.get("size_risk_100") is None:
             row["size_risk_100"] = position_size(row.get("price"), row.get("atr14"), 100.0, 1.5)
 
-    # Relative strength rank by 21D return (1 = strongest)
+    # Relative strength rank by 21D return (1 = strongest) — skip if cache already ranked
     ranked = sorted(
         ready,
         key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
         reverse=True,
     )
-    for i, row in enumerate(ranked, start=1):
-        row["rs_rank_21d"] = i
-        row["rs_n"] = len(ranked)
+    if not from_cache or any(r.get("rs_rank_21d") is None for r in ready):
+        for i, row in enumerate(ranked, start=1):
+            row["rs_rank_21d"] = i
+            row["rs_n"] = len(ranked)
 
     # Alert flags for swing PMs
     alerts = []
@@ -257,6 +491,16 @@ def portfolio_snapshot() -> dict:
             alerts.append(row["symbol"])
 
     by_day = sorted(ready, key=lambda r: r.get("change_pct") or 0, reverse=True)
+
+    # Breakout queue: near-high + volume-confirmed names (Qullamaggie loop),
+    # NOT an RSI OS/weak-RS list. Ranked by breakout_score, then closest to high.
+    breakout_queue = sorted(
+        (r for r in ready if r.get("is_near_high") or r.get("is_vol_surge")),
+        key=lambda r: (
+            -(r.get("breakout_score") or 0),
+            -(r.get("dist_20d_high_pct") if r.get("dist_20d_high_pct") is not None else -999),
+        ),
+    )[:12]
 
     # Group rollup: avg day % by group_tag
     groups = {}
@@ -275,9 +519,12 @@ def portfolio_snapshot() -> dict:
         row.pop("closes_30", None)
 
     weak = ranked[-1] if ranked else None
-    focus_news = list(dict.fromkeys(
-        alerts + ([weak["symbol"]] if weak else [])
-    ))
+
+    # Book news defaults to STRONG names — breakout queue + top RS — not
+    # RSI OS/weak-RS. See METHODOLOGY_REVIEW.md must-not-do #3.
+    strong_focus = [r["symbol"] for r in breakout_queue[:3]]
+    strong_focus += [r["symbol"] for r in ranked[:3]]
+    focus_news = list(dict.fromkeys(strong_focus))
 
     # Regime heatmap rows for PM-A
     heatmap = [
@@ -293,8 +540,11 @@ def portfolio_snapshot() -> dict:
     ]
 
     return {
-        "count": len(symbols),
+        "count": len(sym_list),
         "ready_count": len(ready),
+        "scope": scope,
+        "light": light,
+        "from_cache": from_cache,
         "symbols": rows,
         "tape": by_day,
         "alerts": alerts,
@@ -306,4 +556,5 @@ def portfolio_snapshot() -> dict:
         "correlation": corr,
         "group_rollup": group_rollup,
         "news_focus": focus_news,
+        "breakout_queue": breakout_queue,
     }

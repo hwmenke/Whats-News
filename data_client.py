@@ -20,7 +20,7 @@ from typing import Any, Optional
 import pandas as pd
 
 DATA_SERVICE_URL = os.environ.get("DATA_SERVICE_URL", "http://127.0.0.1:8051").rstrip("/")
-DATA_SERVICE_MODE = os.environ.get("DATA_SERVICE_MODE", "http").strip().lower()
+DATA_SERVICE_MODE = os.environ.get("DATA_SERVICE_MODE", "embedded").strip().lower()
 
 
 def use_embedded() -> bool:
@@ -99,11 +99,16 @@ def get_ohlcv(symbol: str, freq: str = "daily", limit: int = 500) -> list[dict]:
     if use_embedded():
         import database as db
         return db.get_ohlcv(symbol, freq, limit)
-    return _request(
-        "GET",
-        f"/api/ohlcv/{urllib.parse.quote(symbol.upper())}",
-        query={"freq": freq, "limit": limit},
-    ) or []
+    try:
+        return _request(
+            "GET",
+            f"/api/ohlcv/{urllib.parse.quote(symbol.upper())}",
+            query={"freq": freq, "limit": limit},
+        ) or []
+    except DataServiceError as exc:
+        if exc.status == 404:
+            return []
+        raise
 
 
 def get_ohlcv_df(symbol: str, freq: str = "daily", limit: int = 1000) -> pd.DataFrame:
@@ -197,14 +202,87 @@ def fetch_symbol(symbol: str) -> dict:
     return _request("POST", f"/api/fetch/{urllib.parse.quote(symbol.upper())}", timeout=180.0)
 
 
-def refresh_all() -> list:
+def refresh_all(overlap_days: int = 3) -> list:
     if use_embedded():
         import data_fetcher as fetcher
         results = []
         for s in list_symbol_codes():
             try:
-                results.append(fetcher.fetch_and_store(s))
+                results.append(fetcher.fetch_and_store(s, overlap_days=overlap_days))
             except Exception as exc:
                 results.append({"symbol": s, "error": str(exc)})
         return results
     return _request("POST", "/api/refresh", timeout=600.0) or []
+
+
+def list_desk_symbols() -> list[dict]:
+    if use_embedded():
+        import database as db
+        return db.list_desk_symbols()
+    data = _request("GET", "/api/symbols", query={"desk": "1"})
+    return data or []
+
+
+def list_symbols_with_ohlcv(freq: str = "daily", min_bars: int = 30) -> list[str]:
+    if use_embedded():
+        import database as db
+        return db.list_symbols_with_ohlcv(freq, min_bars)
+    data = _request(
+        "GET",
+        "/api/symbols/with-data",
+        query={"freq": freq, "min_bars": min_bars},
+    )
+    if isinstance(data, dict):
+        return data.get("symbols", [])
+    return data or []
+
+
+def promote_to_desk(symbol: str) -> dict:
+    if use_embedded():
+        import database as db
+        ok = db.promote_to_desk(symbol)
+        return {"symbol": symbol.upper(), "promoted": ok}
+    return _request("POST", f"/api/symbols/{urllib.parse.quote(symbol.upper())}/promote")
+
+
+# ── Precomputed metrics cache ────────────────────────────────────────────────
+
+def upsert_symbol_metrics(rows: list) -> int:
+    if use_embedded():
+        import database as db
+        return db.upsert_symbol_metrics(rows)
+    data = _request("POST", "/api/metrics/upsert", body={"rows": rows}, timeout=300.0) or {}
+    return int(data.get("written") or 0)
+
+
+def get_symbol_metrics(symbol: str) -> Optional[dict]:
+    if use_embedded():
+        import database as db
+        return db.get_symbol_metrics(symbol)
+    return _request("GET", f"/api/metrics/{urllib.parse.quote(symbol.upper())}")
+
+
+def get_symbol_metrics_many(symbols: Optional[list] = None, ready_only: bool = True) -> list:
+    if use_embedded():
+        import database as db
+        return db.get_symbol_metrics_many(symbols, ready_only=ready_only)
+    body = {"ready_only": ready_only}
+    if symbols is not None:
+        body["symbols"] = list(symbols)
+    data = _request("POST", "/api/metrics/query", body=body, timeout=120.0) or {}
+    return data.get("rows") or []
+
+
+def metrics_status() -> dict:
+    if use_embedded():
+        import database as db
+        return db.metrics_status()
+    return _request("GET", "/api/metrics/status") or {}
+
+
+def get_max_ohlcv_date(freq: str = "daily"):
+    if use_embedded():
+        import database as db
+        return db.get_max_ohlcv_date(freq)
+    data = _request("GET", "/api/ohlcv/max-date", query={"freq": freq}) or {}
+    return data.get("date")
