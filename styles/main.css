@@ -876,6 +876,11 @@ body.workspace-review .heatmap-sort-btn {
   margin-bottom: 6px;
 }
 .preset-row .btn { flex: 1; font-size: 11px; padding: 4px 6px; }
+.preset-row .watchlist-export-btn {
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 3px 8px;
+}
 
 /* ── PM Desk glance chips ─────────────────────────────────────────────
    Was a full-width 70px band with its own gradient + border below the
