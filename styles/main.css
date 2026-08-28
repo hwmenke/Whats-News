@@ -3288,6 +3288,16 @@ body.workspace-review .heatmap-sort-btn {
   border-color: var(--accent);
   color: var(--accent-bright);
 }
+.setup-hide-tape-pill {
+  font-size: 10px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+.setup-hide-tape-pill.setup-hide-tape-on {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
 .setup-filter-pills {
   display: flex;
   flex-wrap: wrap;
@@ -3327,6 +3337,28 @@ body.workspace-review .heatmap-sort-btn {
 }
 .setup-scan-row.setup-scan-active {
   box-shadow: inset 2px 0 0 var(--accent);
+}
+.setup-tape-chip {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0 4px;
+  margin-left: 4px;
+  border-radius: 3px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  line-height: 1.45;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.setup-scan-row.setup-on-tape .setup-tape-chip {
+  color: var(--text-muted);
+}
+body.setup-hide-tape .setup-scan-row.setup-on-tape {
+  display: none;
 }
 .setup-scan-table td.setup-sym {
   white-space: normal;
