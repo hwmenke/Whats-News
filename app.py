@@ -28,6 +28,7 @@ import knn_model
 import backtester
 import scanner
 import adaptive_trend as adaptive
+import conditional_dist
 import yfinance as yf
 import portfolio
 import setup_scanner
@@ -357,6 +358,39 @@ def get_stats(symbol):
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# -- Conditional forward-return distribution ------------------------------------
+
+@app.route("/api/conditional-distribution/<string:symbol>", methods=["POST"])
+def conditional_distribution(symbol):
+    body = request.get_json(silent=True) or {}
+    conditions = body.get("conditions", [])
+    if not isinstance(conditions, list):
+        return jsonify({"error": "conditions must be a list"}), 400
+
+    horizons = body.get("horizons", [5, 10])
+    try:
+        horizons = [int(h) for h in horizons]
+    except (TypeError, ValueError):
+        return jsonify({"error": "horizons must be integers"}), 400
+    if not horizons:
+        horizons = [5, 10]
+    if any(h < 1 or h > 250 for h in horizons):
+        return jsonify({"error": "horizons must be between 1 and 250"}), 400
+
+    try:
+        result = conditional_dist.compute_conditional_distribution(
+            symbol.upper(), conditions, horizons
+        )
+    except conditional_dist.ConditionError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001 - surface as JSON, don't 500 the UI
+        return jsonify({"error": str(exc)}), 500
+
+    if "error" in result:
+        return jsonify(result), 404
+    return jsonify(result)
 
 
 # -- KNN Lookalike --------------------------------------------------------------
