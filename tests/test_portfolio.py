@@ -333,6 +333,46 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotRegex(app_js, r"\bIBD\b")
         self.assertNotRegex(setup, r"\bIBD\b")
 
+    def test_neighbor_chart_prefetch_for_jk(self):
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("scripts/desk_palette.js", encoding="utf-8") as fh:
+            pal = fh.read()
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("portfolio.py", encoding="utf-8") as fh:
+            port = fh.read()
+        self.assertIn("function visibleSymbolCodes", pal)
+        self.assertIn("function neighborVisibleSymbols", app_js)
+        self.assertIn("function scheduleNeighborPrefetch", app_js)
+        self.assertIn("function abortChartPrefetch", app_js)
+        self.assertIn("function fetchChartBundle", app_js)
+        self.assertIn("visibleSymbolCodes()", app_js)
+        self.assertIn("scheduleNeighborPrefetch(symbol)", app_js)
+        self.assertIn("new AbortController", app_js)
+        self.assertIn("ignore stale prefetch", app_js)
+        self.assertIn("isYahooThrottle(lastFetchError)", app_js)
+        self.assertIn("do not prefetch-spam the universe", app_js)
+        self.assertIn("state.workspace === 'scan'", app_js)
+        self.assertIn("${API}/ohlcv/${symbol}?freq=daily", app_js)
+        self.assertIn("${API}/ohlcv/${symbol}?freq=weekly", app_js)
+        self.assertIn("${API}/indicators/${symbol}?freq=daily", app_js)
+        self.assertIn("${API}/indicators/${symbol}?freq=weekly", app_js)
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        self.assertIn("function moveSetupScanSelection", setup)
+        self.assertIn("window.moveSetupScanSelection", setup)
+        self.assertNotRegex(app_js, r"\bIBD\b")
+        self.assertNotRegex(charts, r"\bIBD\b")
+        self.assertNotRegex(html, r"\bIBD\b")
+        self.assertNotRegex(port, r"\bIBD\b")
+        self.assertIsNone(re.search(r"ibd", app_js, re.IGNORECASE))
+        self.assertIsNone(re.search(r"ibd", charts, re.IGNORECASE))
+        self.assertIsNone(re.search(r"ibd", html, re.IGNORECASE))
+        self.assertIsNone(re.search(r"ibd", port, re.IGNORECASE))
+
 
 if __name__ == "__main__":
     unittest.main()
