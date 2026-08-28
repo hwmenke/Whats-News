@@ -193,6 +193,80 @@ def add_symbols(symbols, name: str = "", sector: str = "") -> dict:
     return {"added": added, "skipped": skipped}
 
 
+def add_universe_symbols(symbol_indices: dict[str, list[str]]) -> dict:
+    """
+    Register universe tickers with univ:<index> group tags.
+    symbol_indices: {symbol: [index_id, ...]} — does not overwrite desk symbols
+    (empty group_tag or non-univ tag).
+    """
+    added, skipped, tagged = [], [], []
+    now = datetime.now(timezone.utc).isoformat()
+    with connection() as conn:
+        for sym, indices in symbol_indices.items():
+            sym = str(sym).strip().upper()
+            if not sym:
+                continue
+            tag = f"univ:{indices[0]}" if indices else "univ:unknown"
+            row = conn.execute(
+                "SELECT symbol, group_tag FROM symbols WHERE symbol = ?",
+                (sym,),
+            ).fetchone()
+            if row:
+                skipped.append(sym)
+                existing_tag = (row["group_tag"] or "").strip()
+                if existing_tag.startswith("univ:") and existing_tag != tag:
+                    conn.execute(
+                        "UPDATE symbols SET group_tag = ? WHERE symbol = ?",
+                        (tag, sym),
+                    )
+                    tagged.append(sym)
+                continue
+            conn.execute(
+                "INSERT INTO symbols (symbol, name, sector, added_at, group_tag) "
+                "VALUES (?,?,?,?,?)",
+                (sym, "", "", now, tag),
+            )
+            added.append(sym)
+    return {"added": added, "skipped": skipped, "retagged": tagged}
+
+
+def list_desk_symbols():
+    """Trading desk sidebar — excludes univ:* archive-only names."""
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM symbols "
+            "WHERE group_tag IS NULL OR group_tag = '' OR group_tag NOT LIKE 'univ:%' "
+            "ORDER BY COALESCE(NULLIF(group_tag,''), 'zzz'), symbol"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def list_symbols_with_ohlcv(freq: str = "daily", min_bars: int = 30) -> list[str]:
+    """Symbols with enough stored bars for scanning / charts."""
+    with connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT symbol FROM ohlcv
+            WHERE freq = ?
+            GROUP BY symbol
+            HAVING COUNT(*) >= ?
+            ORDER BY symbol
+            """,
+            (freq, min_bars),
+        ).fetchall()
+    return [r["symbol"] for r in rows]
+
+
+def promote_to_desk(symbol: str) -> bool:
+    """Move a universe symbol onto the trading desk (clear univ tag)."""
+    with connection() as conn:
+        cur = conn.execute(
+            "UPDATE symbols SET group_tag = '' WHERE symbol = ?",
+            (symbol.upper(),),
+        )
+        return cur.rowcount > 0
+
+
 def remove_symbol(symbol: str):
     with connection() as conn:
         conn.execute("DELETE FROM symbols WHERE symbol = ?", (symbol.upper(),))
