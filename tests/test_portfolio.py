@@ -646,6 +646,31 @@ class FrontendContractTests(unittest.TestCase):
         for blob in (stats, charts, html, app_js, port, spy_js, setup):
             self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
 
+    def test_darvas_box_fill_contract(self):
+        with open("scripts/darvas_fill.js", encoding="utf-8") as fh:
+            fill_js = fh.read()
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        self.assertIn("function applyDarvasFill", fill_js)
+        self.assertIn("function clearDarvasFill", fill_js)
+        self.assertIn("addAreaSeries", fill_js)
+        self.assertIn("baseValue", fill_js)
+        self.assertIn("rgba(249, 115, 22, 0.16)", fill_js)
+        self.assertIn("if (typeof applyDarvasFill === 'function') applyDarvasFill(lastDarvasBox)", charts)
+        self.assertIn("if (typeof clearDarvasFill === 'function') clearDarvasFill()", charts)
+        self.assertIn("scripts/darvas_fill.js", html)
+        self.assertLess(html.index("scripts/charts.js"), html.index("scripts/darvas_fill.js"))
+        self.assertLess(html.index("scripts/spy_rs.js"), html.index("scripts/darvas_fill.js"))
+        self.assertIn('id="pill-darvas"', html)
+        self.assertIn("activeOverlays.darvas", charts)
+        self.assertNotIn("charts.weekly", fill_js)
+        self.assertNotIn("series.weekly", fill_js)
+        for blob in (fill_js, charts, html, app_js):
+            self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
 
 class LegendStatsMathTests(unittest.TestCase):
     """ADR% and dist-to-SMA200 — same formula as scripts/legend_stats.js."""
@@ -701,6 +726,7 @@ class LegendStatsMathTests(unittest.TestCase):
             "weekly", close=100.0, sma200=None, daily_rows=daily
         )
         self.assertEqual(omitted, [])
+
 
 
 class SpyRsOverlayTests(unittest.TestCase):
