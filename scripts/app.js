@@ -1003,6 +1003,7 @@ async function fetchSymbolData(symbol, silent = false) {
         const res = await apiFetch(`${API}/fetch/${symbol}`, { method: 'POST' });
         console.log(`[App] Fetch complete for ${symbol}:`, res);
         hideYahooThrottleBanner();
+        if (typeof forgetChartBundle === 'function') forgetChartBundle(symbol);
         if (!silent) toast(`${symbol}: ${res.daily_rows} daily / ${res.weekly_rows} weekly bars loaded`, 'success', 5000);
         return true;
     } catch (e) {
@@ -1276,22 +1277,149 @@ async function refreshAll() {
 }
 
 // ── Symbol selection & chart loading ─────────────────────────
+// Neighbor prefetch: after a selection change, warm next/prev visible
+// watchlist names so j/k chart switches reuse daily+weekly OHLCV + indicators.
+
+let _prefetchGen = 0;
+const _prefetchControllers = new Map();
+const _chartPayloadCache = new Map();
+const _inflightChartBundles = new Map();
+const CHART_BUNDLE_CACHE_MAX = 12;
+
+function chartBundleKey(symbol) {
+    return `${String(symbol || '').toUpperCase()}|${kamaApiParam()}`;
+}
+
+function peekChartBundle(symbol) {
+    return _chartPayloadCache.get(chartBundleKey(symbol)) || null;
+}
+
+function rememberChartBundle(symbol, bundle) {
+    if (!symbol || !bundle) return;
+    const key = chartBundleKey(symbol);
+    if (_chartPayloadCache.has(key)) _chartPayloadCache.delete(key);
+    _chartPayloadCache.set(key, bundle);
+    while (_chartPayloadCache.size > CHART_BUNDLE_CACHE_MAX) {
+        const oldest = _chartPayloadCache.keys().next().value;
+        _chartPayloadCache.delete(oldest);
+    }
+}
+
+function forgetChartBundle(symbol) {
+    const prefix = `${String(symbol || '').toUpperCase()}|`;
+    for (const key of [..._chartPayloadCache.keys()]) {
+        if (key.startsWith(prefix)) _chartPayloadCache.delete(key);
+    }
+    for (const key of [..._inflightChartBundles.keys()]) {
+        if (key.startsWith(prefix)) _inflightChartBundles.delete(key);
+    }
+    const code = String(symbol || '').toUpperCase();
+    const ac = _prefetchControllers.get(code);
+    if (ac) {
+        ac.abort();
+        _prefetchControllers.delete(code);
+    }
+}
+
+function neighborVisibleSymbols(symbol) {
+    const codes = (typeof visibleSymbolCodes === 'function' ? visibleSymbolCodes() : null) || [];
+    if (!codes.length || !symbol) return [];
+    const idx = codes.indexOf(symbol);
+    if (idx < 0) return [];
+    const neighbors = [];
+    const prev = codes[(idx - 1 + codes.length) % codes.length];
+    const next = codes[(idx + 1) % codes.length];
+    if (prev && prev !== symbol) neighbors.push(prev);
+    if (next && next !== symbol && next !== prev) neighbors.push(next);
+    return neighbors;
+}
+
+function abortChartPrefetch(keepSymbol) {
+    _prefetchGen += 1;
+    const keep = keepSymbol ? String(keepSymbol).toUpperCase() : '';
+    for (const [sym, ac] of [..._prefetchControllers.entries()]) {
+        if (keep && String(sym).toUpperCase() === keep) continue;
+        ac.abort();
+        _prefetchControllers.delete(sym);
+    }
+}
+
+async function fetchChartBundle(symbol, { signal } = {}) {
+    const key = chartBundleKey(symbol);
+    if (_inflightChartBundles.has(key)) {
+        return _inflightChartBundles.get(key);
+    }
+    const kama = kamaApiParam();
+    const opts = signal ? { signal } : {};
+    const pending = Promise.all([
+        apiFetch(`${API}/ohlcv/${symbol}?freq=daily`, opts),
+        apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`, opts),
+        apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`, opts),
+        apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`, opts),
+    ]).then(([dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd]) => ({
+        dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd,
+    }));
+    _inflightChartBundles.set(key, pending);
+    try {
+        return await pending;
+    } finally {
+        if (_inflightChartBundles.get(key) === pending) _inflightChartBundles.delete(key);
+    }
+}
+
+async function prefetchChartBundle(symbol, gen, signal) {
+    if (peekChartBundle(symbol)) return;
+    try {
+        const bundle = await fetchChartBundle(symbol, { signal });
+        if (gen !== _prefetchGen || (signal && signal.aborted)) return; // ignore stale prefetch
+        rememberChartBundle(symbol, bundle);
+    } catch (e) {
+        if (e && (e.name === 'AbortError' || (signal && signal.aborted))) return; // ignore stale prefetch
+        if (gen !== _prefetchGen) return; // ignore stale prefetch
+        if (isYahooThrottle(e)) lastFetchError = e;
+    }
+}
+
+function scheduleNeighborPrefetch(anchorSymbol) {
+    abortChartPrefetch(anchorSymbol);
+    if (!anchorSymbol) return;
+    // j/k walk setup rows; do not prefetch-spam the universe
+    if (state.workspace === 'scan') return;
+    // Skip prefetch after a 429 so we do not pile onto Yahoo.
+    if (isYahooThrottle(lastFetchError)) return;
+    const neighbors = neighborVisibleSymbols(anchorSymbol);
+    if (!neighbors.length) return;
+    const gen = _prefetchGen;
+    neighbors.forEach(sym => {
+        const code = String(sym).toUpperCase();
+        if (peekChartBundle(sym) || _prefetchControllers.has(code)) return;
+        const ac = new AbortController();
+        _prefetchControllers.set(code, ac);
+        prefetchChartBundle(sym, gen, ac.signal).finally(() => {
+            if (_prefetchControllers.get(code) === ac) _prefetchControllers.delete(code);
+        });
+    });
+}
+
 async function selectSymbol(symbol) {
     state.activeSymbol = symbol;
     renderSymbolList();
     if (state.workspace === 'scan' || state.activeTab === 'charts') {
         await loadChartData(symbol);
-    } else if (state.activeTab === 'news') {
-        await loadNewsData(symbol);
-    } else if (state.activeTab === 'stats') {
-        await loadStatsData(symbol);
-    } else if (state.activeTab === 'knn') {
-        await loadKNN(symbol);
-    } else if (state.activeTab === 'backtest') {
-        // Backtest is triggered manually via the Run button; just update header
-        updateSymbolHeader(symbol, null);
-    } else if (state.activeTab === 'trend') {
-        await loadAdaptiveTrendData(symbol);
+    } else {
+        scheduleNeighborPrefetch(symbol);
+        if (state.activeTab === 'news') {
+            await loadNewsData(symbol);
+        } else if (state.activeTab === 'stats') {
+            await loadStatsData(symbol);
+        } else if (state.activeTab === 'knn') {
+            await loadKNN(symbol);
+        } else if (state.activeTab === 'backtest') {
+            // Backtest is triggered manually via the Run button; just update header
+            updateSymbolHeader(symbol, null);
+        } else if (state.activeTab === 'trend') {
+            await loadAdaptiveTrendData(symbol);
+        }
     }
     // Scanner tab doesn't depend on the selected symbol
 }
@@ -1494,37 +1622,39 @@ function renderNews(articles) {
 async function loadChartData(symbol) {
     if (!symbol) return;
     const seq = ++_chartLoadSeq;
+    scheduleNeighborPrefetch(symbol);
+    const cached = peekChartBundle(symbol);
     state.loading = true;
     showChartArea();
-    showLoadingOverlay(true);
+    showLoadingOverlay(!cached);
     updateSymbolHeader(symbol, null);
 
-    const kama = kamaApiParam();
-
     try {
-        let [dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd] = await Promise.all([
-            apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
-            apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`),
-            apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`),
-            apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
-        ]).catch(async e => {
-            // No data yet — auto-fetch then retry
-            toast(`No data for ${symbol}. Downloading…`, 'info');
-            const ok = await fetchSymbolData(symbol);
-            if (!ok) {
-                if (isYahooThrottle(lastFetchError)) {
-                    throw lastFetchError;
+        let dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd;
+        if (cached) {
+            rememberChartBundle(symbol, cached);
+            ({ dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd } = cached);
+        } else {
+            let bundle;
+            try {
+                bundle = await fetchChartBundle(symbol);
+            } catch (e) {
+                if (e && e.name === 'AbortError') throw e;
+                // No data yet — auto-fetch then retry
+                toast(`No data for ${symbol}. Downloading…`, 'info');
+                const ok = await fetchSymbolData(symbol);
+                if (!ok) {
+                    if (isYahooThrottle(lastFetchError)) {
+                        throw lastFetchError;
+                    }
+                    throw e;
                 }
-                throw e;
+                await loadSymbols();
+                bundle = await fetchChartBundle(symbol);
             }
-            await loadSymbols();
-            return Promise.all([
-                apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
-                apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`),
-                apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`),
-                apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
-            ]);
-        });
+            rememberChartBundle(symbol, bundle);
+            ({ dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd } = bundle);
+        }
 
         if (seq !== _chartLoadSeq) return;
 
@@ -1556,6 +1686,7 @@ async function loadChartData(symbol) {
         hideYahooThrottleBanner();
     } catch (e) {
         if (seq !== _chartLoadSeq) return;
+        if (e && e.name === 'AbortError') return;
         if (isYahooThrottle(e) || isYahooThrottle(lastFetchError)) {
             showYahooThrottleBanner(symbol);
         } else {
