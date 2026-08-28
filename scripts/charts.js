@@ -596,6 +596,8 @@ function loadOHLCV(freq, rows) {
     if (freq === 'daily') applySessionLevels();
     // vs-SPY comparison line lives in spy_rs.js (off by default).
     if (freq === 'daily' && typeof applySpyRsIfOn === 'function') applySpyRsIfOn();
+    // News date markers live in news_markers.js (off by default).
+    if (freq === 'daily' && typeof applyNewsMarkersIfOn === 'function') applyNewsMarkersIfOn();
     paintOhlcLegend(freq, {});
 }
 
@@ -672,6 +674,15 @@ function applyPriceMarkers(freq) {
                 time: row.date, position: 'belowBar', color: '#38bdf8',
                 shape: 'square', text: `${volRatio.toFixed(1)}×`, size: 1,
             });
+        }
+    }
+    // News dates live in news_markers.js (off by default). Merge into this
+    // array — setMarkers replaces the whole set, so a second call would drop EP.
+    if (freq === 'daily' && typeof collectNewsPriceMarkers === 'function') {
+        const extra = collectNewsPriceMarkers(rows);
+        if (extra && extra.length) {
+            for (let i = 0; i < extra.length; i++) markers.push(extra[i]);
+            markers.sort((a, b) => String(a.time).localeCompare(String(b.time)));
         }
     }
     s.setMarkers(markers);
