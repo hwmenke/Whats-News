@@ -153,9 +153,17 @@ def compute_stats(symbol: str) -> dict:
                 **summary,
             })
 
-    # 5. Seasonality
-    df['month'] = df.index.month
-    monthly_ret = df.groupby('month')['ret_1d'].mean() * 21 # Monthly approx
+    # 5. Seasonality — average realized monthly return by calendar month.
+    # Compound the daily returns inside each (year, month) into a realized
+    # monthly return, then average those across years by calendar month. The
+    # old code averaged daily returns and scaled by 21, which is an arithmetic
+    # proxy that neither compounds nor matches the "Avg Monthly Returns" label.
+    monthly_realized = (
+        df['ret_1d']
+        .groupby(df.index.to_period('M'))
+        .apply(lambda r: (1.0 + r.dropna()).prod() - 1.0 if r.notna().any() else np.nan)
+    )
+    monthly_ret = monthly_realized.groupby(monthly_realized.index.month).mean()
     seasonality = [{"month": int(m), "value": _finite_or_none(v)} for m, v in monthly_ret.items()]
 
     return {

@@ -1597,22 +1597,46 @@ function renderStats(data) {
             x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } }
         }
     };
-    const distanceChartOptions = {
-        ...baseChartOpts,
-        plugins: {
-            legend: {
-                display: true,
-                labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
-            }
-        }
+
+    // The stats charts plot mean forward returns already scaled to percent
+    // (pctValue multiplies by 100). Label the axis and tooltip with "%" so a
+    // "0.12" reads as 0.12%, and emphasize the zero line so the sign is obvious.
+    const pctTick = v => (Number.isFinite(v) ? v.toFixed(2) + '%' : v);
+    const pctTooltip = ctx => {
+        const name = ctx.dataset.label ? ctx.dataset.label + ': ' : '';
+        const v = ctx.parsed.y;
+        return name + (Number.isFinite(v) ? v.toFixed(3) + '%' : '--');
     };
-    const crossChartOptions = {
+    const zeroGrid = ctx => (ctx.tick.value === 0 ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.05)');
+    const legendLabels = { color: '#8b949e', usePointStyle: true, boxWidth: 10 };
+
+    // beginAtZero on bar charts stops a truncated axis from exaggerating tiny
+    // decile differences. Line charts (KAMA distance) keep an auto range but
+    // still draw a bright zero baseline.
+    const returnScales = (beginAtZero) => ({
+        y: { beginAtZero, grid: { color: zeroGrid }, ticks: { color: '#8b949e', font: { size: 10 }, callback: pctTick } },
+        x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } }
+    });
+    const returnBarOpts = {
         ...baseChartOpts,
-        plugins: {
-            legend: {
-                display: true,
-                labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 }
-            }
+        scales: returnScales(true),
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: pctTooltip } } }
+    };
+    const returnLineOpts = {
+        ...baseChartOpts,
+        scales: returnScales(false),
+        plugins: { legend: { display: true, labels: legendLabels }, tooltip: { callbacks: { label: pctTooltip } } }
+    };
+    const returnMultiBarOpts = {
+        ...baseChartOpts,
+        scales: returnScales(true),
+        plugins: { legend: { display: true, labels: legendLabels }, tooltip: { callbacks: { label: pctTooltip } } }
+    };
+    const countBarOpts = {
+        ...baseChartOpts,
+        scales: {
+            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 10 }, precision: 0 } },
+            x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } }
         }
     };
 
@@ -1630,7 +1654,7 @@ function renderStats(data) {
                 backgroundColor: data.rsi_analysis.fwd_1d.map(d => pctColor(d.value)),
             }]
         },
-        options: baseChartOpts
+        options: returnBarOpts
     });
 
     // 2b. Price vs KAMA distance deciles (1D)
@@ -1651,7 +1675,7 @@ function renderStats(data) {
                 tension: 0.25,
             }))
         },
-        options: distanceChartOptions
+        options: returnLineOpts
     });
 
     // 2. RSI Deciles 5D
@@ -1666,7 +1690,7 @@ function renderStats(data) {
                 backgroundColor: data.rsi_analysis.fwd_5d.map(d => pctColor(d.value)),
             }]
         },
-        options: baseChartOpts
+        options: returnBarOpts
     });
 
     // 2c. Price vs KAMA distance deciles (5D)
@@ -1687,7 +1711,7 @@ function renderStats(data) {
                 tension: 0.25,
             }))
         },
-        options: distanceChartOptions
+        options: returnLineOpts
     });
 
     // 3. Returns Distribution
@@ -1707,9 +1731,18 @@ function renderStats(data) {
         },
         options: {
             ...baseChartOpts,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: {
+                    title: items => `Return ≈ ${items[0].label}`,
+                    label: ctx => `${ctx.parsed.y} day${ctx.parsed.y === 1 ? '' : 's'}`
+                } }
+            },
             scales: {
-                ...baseChartOpts.scales,
-                x: { ...baseChartOpts.scales.x, ticks: { ...baseChartOpts.scales.x.ticks, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } }
+                y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 10 } },
+                     title: { display: true, text: '# days', color: '#8b949e', font: { size: 10 } } },
+                x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 },
+                     title: { display: true, text: 'Daily return', color: '#8b949e', font: { size: 10 } } }
             }
         }
     });
@@ -1726,7 +1759,7 @@ function renderStats(data) {
                 backgroundColor: data.seasonality.map(d => Number.isFinite(d.value) && d.value >= 0 ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'),
             }]
         },
-        options: baseChartOpts
+        options: returnBarOpts
     });
 
     // 4b. KAMA cross forward returns
@@ -1752,7 +1785,7 @@ function renderStats(data) {
                 }
             ]
         },
-        options: crossChartOptions
+        options: returnMultiBarOpts
     });
 
     // 4c. KAMA cross event counts
@@ -1769,7 +1802,7 @@ function renderStats(data) {
                 borderWidth: 1,
             }]
         },
-        options: baseChartOpts
+        options: countBarOpts
     });
 }
 

@@ -88,5 +88,56 @@ class StatsEdgeCaseTests(unittest.TestCase):
         self.assertGreater(sum(item["count_1d"] for item in result["kama_cross_analysis"]), 0)
 
 
+class SeasonalityTests(unittest.TestCase):
+    """Seasonality must be the realized monthly return averaged by calendar month."""
+
+    @staticmethod
+    def _expected_by_month(close_series):
+        # Independent recomputation: compound daily returns within each
+        # (year, month), then average by calendar month. Plain loop, not the
+        # to_period/apply path used inside stats.compute_stats.
+        r = close_series.pct_change()
+        buckets = {}
+        for (_, month), grp in r.groupby([r.index.year, r.index.month]):
+            vals = grp.dropna().to_numpy()
+            realized = float(np.prod(1.0 + vals) - 1.0) if vals.size else np.nan
+            buckets.setdefault(month, []).append(realized)
+        return {m: float(np.nanmean(v)) for m, v in buckets.items()}
+
+    @patch("stats.db.get_ohlcv_df")
+    def test_seasonality_is_realized_monthly_return(self, mock_get_ohlcv_df):
+        index = pd.date_range("2022-01-01", periods=730, freq="D")
+        rets = np.array([0.001 if d.month <= 6 else -0.001 for d in index])
+        rets[0] = 0.0
+        close = 100.0 * np.cumprod(1.0 + rets)
+        mock_get_ohlcv_df.return_value = pd.DataFrame(
+            {
+                "open": close,
+                "high": close,
+                "low": close,
+                "close": close,
+                "volume": np.full(len(index), 1_000.0),
+            },
+            index=index,
+        )
+
+        result = stats.compute_stats("AAPL")
+        got = {row["month"]: row["value"] for row in result["seasonality"]}
+        expected = self._expected_by_month(pd.Series(close, index=index))
+
+        self.assertEqual(sorted(got), list(range(1, 13)))
+        for month, exp in expected.items():
+            self.assertAlmostEqual(got[month], exp, places=9)
+
+        # Sign follows the construction: H1 up, H2 down.
+        for month in range(1, 7):
+            self.assertGreater(got[month], 0.0)
+        for month in range(7, 13):
+            self.assertLess(got[month], 0.0)
+
+        # Compounding diverges from the old mean-daily * 21 proxy (~0.021).
+        self.assertGreater(got[1], 0.021)
+
+
 if __name__ == "__main__":
     unittest.main()
