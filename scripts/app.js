@@ -2755,6 +2755,10 @@ function setupPmKeyboard() {
             e.preventDefault();
             if (typeof copyPaintedOhlc === 'function') copyPaintedOhlc();
         }
+        else if (e.key === '.' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            e.preventDefault();
+            if (typeof scrollToLatestBar === 'function') scrollToLatestBar();
+        }
         else if (e.key === 'Escape') {
             closeBookDrawer();
             closeJournal();
