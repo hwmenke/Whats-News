@@ -1560,6 +1560,8 @@ class OverlayPackPersistenceTests(unittest.TestCase):
             last_js = fh.read()
         with open("scripts/gap_fill.js", encoding="utf-8") as fh:
             gap_js = fh.read()
+        with open("scripts/atr_stop.js", encoding="utf-8") as fh:
+            atr_js = fh.read()
         with open("scripts/price_alerts.js", encoding="utf-8") as fh:
             alerts = fh.read()
         with open("index.html", encoding="utf-8") as fh:
@@ -1586,11 +1588,13 @@ class OverlayPackPersistenceTests(unittest.TestCase):
         self.assertIn("vwap: false", charts)
         self.assertIn("last: false", charts)
         self.assertIn("gap: false", charts)
+        self.assertIn("atrStop: false", charts)
         self.assertIn("let spyRsOn = false", spy_js)
         self.assertIn("let newsMarkersOn = false", news_js)
         self.assertIn("let vwapOn = false", vwap_js)
         self.assertIn("let lastPriceOn = false", last_js)
         self.assertIn("let gapFillOn = false", gap_js)
+        self.assertIn("let atrStopOn = false", atr_js)
         self.assertIn("function setSpyRsOn", spy_js)
         self.assertIn("function getSpyRsOn", spy_js)
         self.assertIn("function spyRsIsOn", spy_js)
@@ -1606,12 +1610,16 @@ class OverlayPackPersistenceTests(unittest.TestCase):
         self.assertIn("function setGapFillOn", gap_js)
         self.assertIn("function getGapFillOn", gap_js)
         self.assertIn("function gapFillIsOn", gap_js)
+        self.assertIn("function setAtrStopOn", atr_js)
+        self.assertIn("function getAtrStopOn", atr_js)
+        self.assertIn("function atrStopIsOn", atr_js)
         self.assertIn("function getPriceAlertsOn", alerts)
         self.assertIn("persist: true", spy_js)
         self.assertIn("persist: true", news_js)
         self.assertIn("persist: true", vwap_js)
         self.assertIn("persist: true", last_js)
         self.assertIn("persist: true", gap_js)
+        self.assertIn("persist: true", atr_js)
         self.assertIn("persistOverlays()", charts)
 
         apply_start = charts.index("function applySavedOverlays")
@@ -1655,17 +1663,26 @@ class OverlayPackPersistenceTests(unittest.TestCase):
         self.assertIn("not a published rating", gap_snip)
         self.assertLess(last_idx, gap_idx)
 
+        stop_idx = html.index('id="pill-atr-stop"')
+        stop_snip = html[stop_idx : stop_idx + 480]
+        self.assertIn('aria-pressed="false"', stop_snip)
+        self.assertNotIn("active-atr-stop", stop_snip)
+        self.assertIn("not a published rating", stop_snip)
+        self.assertLess(gap_idx, stop_idx)
+
         self.assertIn("not a published rating", spy_js)
         self.assertIn("not a published rating", vwap_js)
         self.assertIn("not a published rating", last_js)
         self.assertIn("not a published rating", gap_js)
+        self.assertIn("not a published rating", atr_js)
         collect_start = charts.index("function collectOverlayState")
         collect_end = charts.index("function persistOverlays")
         collect_body = charts[collect_start:collect_end]
         self.assertNotIn("price_alerts", collect_body)
         self.assertIn("gapFillIsOn", collect_body)
+        self.assertIn("atrStopIsOn", collect_body)
 
-        for blob in (charts, spy_js, news_js, vwap_js, last_js, gap_js, alerts, html, app_js, port):
+        for blob in (charts, spy_js, news_js, vwap_js, last_js, gap_js, atr_js, alerts, html, app_js, port):
             self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
 
 
