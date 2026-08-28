@@ -473,6 +473,8 @@ html, body {
   flex-shrink: 0;
 }
 .focus-mode #portfolio-tape { display: none !important; }
+/* Extra chrome density (drawers / extra nav / glance chips) lives at
+   the end of this file so workspace-scan / workspace-review exceptions win. */
 
 .focus-mode-chip {
   display: none;
@@ -3337,6 +3339,103 @@ body.workspace-review #book-drawer {
 }
 body.workspace-review #book-drawer-backdrop {
   display: none !important;
+}
+
+/* ── Focus mode chrome density (workspace exceptions) ──────────
+   body.focus-mode is toggled by toggleFocusMode() (#pill-focus / key f).
+   Off: removing the class restores tape, drawers, tabs, and glance chips.
+
+   Chart (default / .workspace-chart): hide tape, heatmap, alert log,
+   book/journal drawers, extra view tabs, glance chips, panel titles —
+   keep a compact #chart-overlays-bar so pane pills, vs-SPY, and method
+   packs stay reachable. #chart-area flex-grows into the reclaimed pixels.
+
+   Scan (.workspace-scan): same extra-chrome hide; NEVER hide the setup
+   hit list (#scanner-area / .setup-scanner-panel). Charts still grow.
+
+   Review (.workspace-review): tape only — keep news, journal, book. */
+
+/* Tape: every workspace, including Review (the Review no-op besides tape). */
+body.focus-mode #portfolio-tape { display: none !important; }
+
+/* Heatmap, alert log, unused drawers — Chart + Scan only. */
+body.focus-mode:not(.workspace-review) #book-drawer,
+body.focus-mode:not(.workspace-review) #journal-drawer,
+body.focus-mode:not(.workspace-review) #book-drawer-backdrop,
+body.focus-mode:not(.workspace-review) #regime-heatmap,
+body.focus-mode:not(.workspace-review) #alert-log,
+body.focus-mode:not(.workspace-review) #theme-leaders,
+body.focus-mode:not(.workspace-review) #pm-tools-popover,
+body.focus-mode.workspace-chart #book-drawer,
+body.focus-mode.workspace-chart #journal-drawer,
+body.focus-mode.workspace-chart #regime-heatmap,
+body.focus-mode.workspace-chart #alert-log,
+body.focus-mode.workspace-scan #book-drawer,
+body.focus-mode.workspace-scan #journal-drawer,
+body.focus-mode.workspace-scan #regime-heatmap,
+body.focus-mode.workspace-scan #alert-log {
+  display: none !important;
+}
+
+/* Extra view tabs + glance chips + Daily/Weekly titles steal height.
+   Compact overlay strip stays so pane pills / vs-SPY / packs remain. */
+body.focus-mode:not(.workspace-review) .main-nav-tabs > .tab-btn,
+body.focus-mode:not(.workspace-review) .main-nav-tabs > .tab-spacer,
+body.focus-mode:not(.workspace-review) .overlay-section-label,
+body.focus-mode:not(.workspace-review) .kama-add-form,
+body.focus-mode:not(.workspace-review) #pm-desk,
+body.focus-mode:not(.workspace-review) .ohlcv-strip-inline,
+body.focus-mode:not(.workspace-review) .panel-header,
+body.focus-mode.workspace-chart .main-nav-tabs > .tab-btn,
+body.focus-mode.workspace-scan .main-nav-tabs > .tab-btn {
+  display: none !important;
+}
+
+body.focus-mode:not(.workspace-review) .symbol-header {
+  padding: 2px 10px;
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+
+body.focus-mode:not(.workspace-review) .main-nav-tabs {
+  padding: 2px 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+body.focus-mode:not(.workspace-review) #chart-overlays-bar,
+body.focus-mode.workspace-chart #chart-overlays-bar,
+body.focus-mode.workspace-scan #chart-overlays-bar {
+  display: flex !important;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  flex: 1 1 auto;
+}
+
+body.focus-mode.workspace-chart #chart-area,
+body.focus-mode:not(.workspace-scan):not(.workspace-review) #chart-area {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Scan: keep the setup hit list; still grow charts. */
+body.focus-mode.workspace-scan #scanner-area,
+body.focus-mode.workspace-scan .setup-scanner-panel {
+  display: flex !important;
+}
+body.focus-mode.workspace-scan #chart-area {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+/* Review: keep news / journal / book — do not collapse drawers. */
+body.focus-mode.workspace-review #book-drawer,
+body.focus-mode.workspace-review #journal-drawer {
+  display: flex !important;
+}
+body.focus-mode.workspace-review #regime-heatmap,
+body.focus-mode.workspace-review #alert-log {
+  display: flex;
 }
 
 
