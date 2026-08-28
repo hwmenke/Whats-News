@@ -1892,8 +1892,7 @@ function setWorkspace(id, opts = {}) {
         applyReviewDrawerLayout(false);
         showScanSplit();
         if (typeof initSetupScanner === 'function') initSetupScanner();
-        const tbody = document.getElementById('setup-scan-tbody');
-        if (!tbody || !tbody.children.length) loadSetupScan();
+        loadSetupScan({ allowStaleRows: true });
         if (!opts.skipChart && state.activeSymbol) loadChartData(state.activeSymbol);
         requestAnimationFrame(() => window.resizeAllCharts?.());
         return next;
