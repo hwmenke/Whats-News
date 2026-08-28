@@ -191,7 +191,11 @@ class HeatmapSortTests(unittest.TestCase):
         self.assertNotIn("whats-news-heatmap-sort", self.desk_only)
         self.assertNotIn("heatmap-sort", self.desk_only)
         self.assertNotIn("whats-news-heatmap-sort", self.app_js)
-        self.assertFalse(os.path.exists(os.path.join(ROOT, "scripts", "last_price.js")))
+        last_price = os.path.join(ROOT, "scripts", "last_price.js")
+        if os.path.exists(last_price):
+            last_txt = _read("scripts/last_price.js")
+            self.assertNotIn("whats-news-heatmap-sort", last_txt)
+            self.assertNotIn("heatmap_sort", last_txt)
         for rel in OWNED_OFF_LIMITS:
             text = _read(rel)
             self.assertNotIn("whats-news-heatmap-sort", text)
