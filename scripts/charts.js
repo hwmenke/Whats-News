@@ -1226,6 +1226,27 @@ function scrollDailyToDate(date, rowsOpt) {
     return true;
 }
 
+function scrollToLatestBar() {
+    // Jump both price panes to the latest bar / real-time right edge.
+    // Restores the default ~126-session daily window (weekly longer lookback)
+    // if the user had panned away. Double-click still fits all bars.
+    const dailyN = (rawRows.daily || []).length;
+    const weeklyN = (rawRows.weekly || []).length;
+    _crossSyncing = true;
+    try {
+        _fitPaneToBars(charts.daily.main, dailyN, DAILY_DEFAULT_BARS);
+        _fitPaneToBars(charts.weekly.main, weeklyN, WEEKLY_DEFAULT_BARS);
+        if (charts.daily.main) {
+            try { charts.daily.main.timeScale().scrollToRealTime(); } catch (_) {}
+        }
+        if (charts.weekly.main) {
+            try { charts.weekly.main.timeScale().scrollToRealTime(); } catch (_) {}
+        }
+    } finally {
+        _unlockCrossSync();
+    }
+}
+
 function setupFitAllOnDoubleClick() {
     ['chart-daily-main', 'chart-weekly-main'].forEach(id => {
         const el = document.getElementById(id);
@@ -1249,6 +1270,7 @@ window.chartsAreLive     = chartsAreLive;
 window.fitAllContent     = fitAllContent;
 window.scrollDailyToDate = scrollDailyToDate;
 window.dailyBarIndexForDate = dailyBarIndexForDate;
+window.scrollToLatestBar = scrollToLatestBar;
 
 if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('DOMContentLoaded', () => {
