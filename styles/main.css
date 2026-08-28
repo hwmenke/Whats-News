@@ -1078,6 +1078,7 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
 .ind-pill.active-spy-rs { background: rgba(103,232,249,0.16); border-color: #67e8f9; color: #67e8f9; }
 .ind-pill.active-ep { background: rgba(249,115,22,0.18); border-color: #f97316; color: #f97316; }
 .ind-pill.active-darvas { background: rgba(249,115,22,0.18); border-color: #f97316; color: #f97316; }
+.ind-pill.active-price-alerts { background: rgba(192,132,252,0.16); border-color: #c084fc; color: #e9d5ff; }
 .ind-pill.active-pack { background: rgba(232,121,249,0.16); border-color: #e879f9; color: #e879f9; }
 #pill-pack-stockbee.ind-pill.active-pack { background: rgba(244,114,182,0.16); border-color: #f472b6; color: #f472b6; }
 #pill-pack-weinstein.ind-pill.active-pack { background: rgba(245,158,11,0.16); border-color: #f59e0b; color: #f59e0b; }
@@ -3098,6 +3099,33 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
   opacity: 0.95;
 }
 .chart-ohlc-legend.chart-ohlc-twin:empty { display: none; }
+
+.price-alert-chips {
+  position: absolute;
+  top: 54px;
+  left: 118px;
+  z-index: 12;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: calc(100% - 80px);
+  pointer-events: auto;
+}
+.price-alert-chips[hidden] { display: none !important; }
+.price-alert-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #e9d5ff;
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid #a78bfa;
+  border-radius: 4px;
+  padding: 1px 6px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.price-alert-chip:hover { background: rgba(167, 139, 250, 0.22); }
 
 .desk-palette-overlay {
   position: fixed;

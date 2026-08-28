@@ -177,7 +177,13 @@ class LabelHonestyTests(unittest.TestCase):
     """Guardrail: never brand book ranks as a published RS Rating or invent EPS."""
 
     def test_frontend_has_no_ibd_or_fake_eps(self):
-        roots = ["scripts/app.js", "scripts/charts.js", "index.html", "portfolio.py"]
+        roots = [
+            "scripts/app.js",
+            "scripts/charts.js",
+            "index.html",
+            "portfolio.py",
+            "scripts/price_alerts.js",
+        ]
         ibd = re.compile(r"ibd", re.IGNORECASE)
         eps = re.compile(r"EPS\s*Rating", re.IGNORECASE)
         for path in roots:
@@ -816,6 +822,75 @@ class SpyRsOverlayTests(unittest.TestCase):
         data = res.get_json()
         self.assertFalse(data["ready"])
         self.assertIn("not a comparison", (data.get("error") or "").lower())
+
+
+class PriceAlertLineTests(unittest.TestCase):
+    """User price-alert lines on the daily pane — not RSI tape alerts."""
+
+    def test_shift_click_price_alert_contract(self):
+        with open("scripts/price_alerts.js", encoding="utf-8") as fh:
+            alerts = fh.read()
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("portfolio.py", encoding="utf-8") as fh:
+            port = fh.read()
+        with open("scripts/spy_rs.js", encoding="utf-8") as fh:
+            spy_js = fh.read()
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+
+        # Storage key, handler name, HTML control ids
+        self.assertIn("whats-news-price-alerts", alerts)
+        self.assertIn("PRICE_ALERTS_KEY", alerts)
+        self.assertIn("function onDailyPriceAlertClick", alerts)
+        self.assertIn("shiftKey", alerts)
+        self.assertIn('id="price-alert-chips"', html)
+        self.assertIn('id="pill-price-alerts"', html)
+        idx = html.index('id="pill-price-alerts"')
+        snippet = html[idx : idx + 280]
+        self.assertIn("aria-pressed", snippet)
+        self.assertIn("scripts/price_alerts.js", html)
+        self.assertLess(html.index("scripts/charts.js"), html.index("scripts/price_alerts.js"))
+
+        # charts.js only calls hooks if present; weekly stays journal-only
+        self.assertIn("if (freq === 'daily' && typeof onDailyPriceAlertClick === 'function')", charts)
+        self.assertIn("if (onDailyPriceAlertClick(param)) return", charts)
+        self.assertIn("typeof applyPriceAlerts === 'function'", charts)
+        self.assertIn("typeof forgetPriceAlertLines === 'function'", charts)
+        self.assertIn("freq === 'daily'", charts)
+
+        # Plain click still hits the journal path
+        self.assertIn("function setupBarClickJournal", charts)
+        self.assertIn("subscribeClick", charts)
+        self.assertIn("onChartBarClick", charts)
+        self.assertIn("function onChartBarClick", app_js)
+        self.assertIn("function openJournalForDate", app_js)
+
+        # Shift+click does not call openJournalForDate
+        self.assertNotIn("openJournalForDate", alerts)
+        self.assertNotIn("onChartBarClick", alerts)
+        hook_at = charts.index("if (onDailyPriceAlertClick(param)) return")
+        journal_at = charts.index("onChartBarClick({ freq, date })")
+        self.assertLess(hook_at, journal_at)
+
+        # User price lines, not RSI tape alerts, not a published rating
+        self.assertIn("not RSI", alerts)
+        self.assertIn("not a published rating", alerts)
+        self.assertIn("title: PRICE_ALERT_TITLE", alerts)
+        self.assertIn("PRICE_ALERT_TITLE = 'Alert'", alerts)
+        self.assertIn("coordinateToPrice", alerts)
+        self.assertIn("createPriceLine", alerts)
+        self.assertIn("PRICE_ALERTS_MAX = 8", alerts)
+        self.assertIn("Weekly pane: do not add alerts", alerts)
+        self.assertIn("localStorage.getItem(PRICE_ALERTS_KEY)", alerts)
+        self.assertNotIn("series.weekly", alerts)
+
+        for blob in (alerts, charts, html, app_js, port, spy_js, setup):
+            self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
 
 
 if __name__ == "__main__":

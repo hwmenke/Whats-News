@@ -274,6 +274,8 @@
                 title="vs SPY — close/SPY close comparison line on the daily pane, not a published rating">vs SPY</button>
         <button id="pill-ep-markers" class="ind-pill active-ep" title="EP gap+volume markers">EP</button>
         <button id="pill-darvas" class="ind-pill active-darvas" title="Darvas box high/low">Box</button>
+        <button type="button" id="pill-price-alerts" class="ind-pill" aria-pressed="false"
+                title="Shift+click the daily price pane to drop a user alert line (not RSI). Pressed = this ticker has alerts. Click to clear.">Alerts</button>
         <button type="button" id="pill-focus" class="ind-pill" aria-pressed="false" title="Focus mode (f) — hide the tape for a chart-only view">Focus (f)</button>
       </div>
     </nav>
@@ -325,6 +327,7 @@
           <div class="chart-label">PRICE <span id="chart-daily-ep-badge" class="ep-glance-badge" style="display:none;"></span></div>
           <div id="chart-legend-daily" class="chart-ohlc-legend" aria-live="polite"></div>
           <div id="chart-legend-daily-twin" class="chart-ohlc-legend chart-ohlc-twin" aria-live="polite"></div>
+          <div id="price-alert-chips" class="price-alert-chips" hidden></div>
           <div id="chart-daily-main" style="width:100%;height:100%;"></div>
         </div>
         <div class="chart-divider"></div>
@@ -1085,6 +1088,7 @@
       <div><dt><kbd>f</kbd></dt><dd>Focus mode (hide tape)</dd></div>
       <div><dt><kbd>h</kbd></dt><dd>Book scan drawer</dd></div>
       <div><dt><kbd>⇧J</kbd></dt><dd>Trade journal</dd></div>
+      <div><dt><kbd>⇧-click</kbd></dt><dd>Daily price — user alert line</dd></div>
       <div><dt><kbd>r</kbd></dt><dd>Refresh active symbol</dd></div>
       <div><dt><kbd>c</kbd></dt><dd>Copy setup (after checklist)</dd></div>
       <div><dt><kbd>?</kbd></dt><dd>This cheatsheet</dd></div>
@@ -1098,6 +1102,7 @@
 <script src="scripts/legend_stats.js"></script>
 <script src="scripts/linked_ohlc.js"></script>
 <script src="scripts/spy_rs.js"></script>
+<script src="scripts/price_alerts.js"></script>
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
 <script src="scripts/setup_scanner.js"></script>
