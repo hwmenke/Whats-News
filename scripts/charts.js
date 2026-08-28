@@ -191,6 +191,7 @@ function destroyCharts() {
     darvasLines = { daily: [] };
     sessionLevels = { daily: [] };
     if (typeof forgetPriceAlertLines === 'function') forgetPriceAlertLines();
+    if (typeof forgetSpyRsSeries === 'function') forgetSpyRsSeries();
 }
 
 // ── Build one panel (daily or weekly) ────────────────────────
@@ -604,7 +605,8 @@ function loadOHLCV(freq, rows) {
     applyOverlayVisibility(freq);
     if (freq === 'daily') applySessionLevels();
     // vs-SPY comparison line lives in spy_rs.js (off by default).
-    if (freq === 'daily' && typeof applySpyRsIfOn === 'function') applySpyRsIfOn();
+    // Same pill drives daily + weekly; weekly SPY alignment is in spy_rs.js.
+    if (typeof applySpyRsIfOn === 'function') applySpyRsIfOn();
     // User price-alert lines live in price_alerts.js (per-symbol localStorage).
     if (freq === 'daily' && typeof applyPriceAlerts === 'function') applyPriceAlerts();
     // Darvas fill lives in darvas_fill.js — refresh times after daily bars load.

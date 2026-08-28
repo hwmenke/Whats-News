@@ -850,6 +850,159 @@ class SpyRsOverlayTests(unittest.TestCase):
         self.assertIn("not a comparison", (data.get("error") or "").lower())
 
 
+class SpyRsWeeklyOverlayTests(unittest.TestCase):
+    """Weekly vs-SPY line — same daily SPY series, W-FRI align, not a rating."""
+
+    def test_weekly_hook_contract(self):
+        with open("scripts/spy_rs.js", encoding="utf-8") as fh:
+            spy_js = fh.read()
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("portfolio.py", encoding="utf-8") as fh:
+            port = fh.read()
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+
+        self.assertIn("function spyRsWeeklyFromDailyPoints", spy_js)
+        self.assertIn("function ensureSpyRsWeeklySeries", spy_js)
+        self.assertIn("function forgetSpyRsSeries", spy_js)
+        self.assertIn("charts.weekly", spy_js)
+        self.assertIn("rawRows.weekly", spy_js)
+        self.assertIn("_spyRsAddDays(w.day, -6)", spy_js)
+        self.assertIn("not a published rating", spy_js)
+        self.assertIn("let spyRsOn = false", spy_js)
+        self.assertIn("function applySpyRsIfOn", spy_js)
+
+        # Same pill; weekly hook is not daily-gated. SMA 10/40 pack unchanged.
+        self.assertIn("if (typeof applySpyRsIfOn === 'function') applySpyRsIfOn();", charts)
+        self.assertNotIn("freq === 'daily' && typeof applySpyRsIfOn", charts)
+        self.assertIn("typeof forgetSpyRsSeries === 'function'", charts)
+        self.assertIn("SMA_WEEKLY_ONLY", charts)
+        self.assertIn("sma: [10, 40]", charts)
+        self.assertIn('id="pill-spy-rs"', html)
+        idx = html.index('id="pill-spy-rs"')
+        snippet = html[idx : idx + 300]
+        self.assertIn("aria-pressed", snippet)
+        self.assertIn("not a published rating", snippet)
+        self.assertIn("weekly", snippet.lower())
+        self.assertNotIn("active-spy-rs", snippet)
+        self.assertIn("def spy_rs_weekly_from_daily_points", port)
+        self.assertIn("not a published rating", port)
+
+        for blob in (spy_js, charts, html, app_js, port, setup):
+            self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
+
+    def test_weekly_uses_daily_ratios_rebased_to_last_weekly_print(self):
+        symbol = [
+            {"date": "2024-01-05", "close": 100},
+            {"date": "2024-01-12", "close": 110},
+        ]
+        spy = [
+            {"date": "2024-01-05", "close": 50},
+            {"date": "2024-01-12", "close": 50},
+        ]
+        daily = portfolio.spy_rs_overlay(symbol, spy)
+        weekly_rows = [
+            {"date": "2024-01-05", "close": 100},
+            {"date": "2024-01-12", "close": 110},
+        ]
+        weekly = portfolio.spy_rs_weekly_from_daily_points(daily["points"], weekly_rows)
+        self.assertTrue(daily["ready"])
+        self.assertTrue(weekly["ready"])
+        self.assertEqual(weekly["freq"], "weekly")
+        self.assertEqual(weekly["basis"], "close_ratio")
+        self.assertIn("not a published", weekly["note"].lower())
+        self.assertEqual(weekly["n"], 2)
+        self.assertAlmostEqual(weekly["points"][-1]["value"], 110.0)
+        self.assertAlmostEqual(weekly["points"][0]["value"], 100.0)
+        self.assertEqual(weekly["points"][0]["ratio"], daily["points"][0]["ratio"])
+        self.assertEqual(weekly["points"][-1]["ratio"], daily["points"][-1]["ratio"])
+
+    def test_weekly_aligns_last_daily_in_wfri_week(self):
+        # Friday holiday: weekly bar is W-FRI, last print is Thursday.
+        daily_points = [
+            {"date": "2024-01-04", "ratio": 2.0},
+            {"date": "2024-01-11", "ratio": 2.2},
+        ]
+        weekly_rows = [
+            {"date": "2024-01-05", "close": 100},
+            {"date": "2024-01-12", "close": 110},
+        ]
+        weekly = portfolio.spy_rs_weekly_from_daily_points(daily_points, weekly_rows)
+        self.assertTrue(weekly["ready"])
+        self.assertEqual([p["date"] for p in weekly["points"]], ["2024-01-05", "2024-01-12"])
+        self.assertAlmostEqual(weekly["points"][0]["ratio"], 2.0)
+        self.assertAlmostEqual(weekly["points"][-1]["ratio"], 2.2)
+        self.assertAlmostEqual(weekly["points"][-1]["value"], 110.0)
+        self.assertAlmostEqual(weekly["points"][0]["value"], 100.0)
+
+    def test_weekly_does_not_reuse_prior_friday_ratio(self):
+        daily_points = [
+            {"date": "2024-01-05", "ratio": 1.0},
+            {"date": "2024-01-12", "ratio": 2.0},
+        ]
+        weekly_rows = [{"date": "2024-01-12", "close": 200}]
+        weekly = portfolio.spy_rs_weekly_from_daily_points(daily_points, weekly_rows)
+        self.assertTrue(weekly["ready"])
+        self.assertEqual(weekly["n"], 1)
+        self.assertAlmostEqual(weekly["points"][0]["ratio"], 2.0)
+        self.assertAlmostEqual(weekly["points"][0]["value"], 200.0)
+
+    def test_weekly_stays_off_when_alignment_fails_daily_still_works(self):
+        symbol = [
+            {"date": "2024-01-02", "close": 100},
+            {"date": "2024-01-03", "close": 110},
+        ]
+        spy = [
+            {"date": "2024-01-02", "close": 50},
+            {"date": "2024-01-03", "close": 50},
+        ]
+        daily = portfolio.spy_rs_overlay(symbol, spy)
+        self.assertTrue(daily["ready"])
+        empty = portfolio.spy_rs_weekly_from_daily_points(daily["points"], [])
+        self.assertFalse(empty["ready"])
+        self.assertEqual(empty["points"], [])
+        missed = portfolio.spy_rs_weekly_from_daily_points(
+            daily["points"],
+            [{"date": "2024-02-02", "close": 110}],
+        )
+        self.assertFalse(missed["ready"])
+        self.assertEqual(missed["n"], 0)
+        skipped_week = portfolio.spy_rs_weekly_from_daily_points(
+            [{"date": "2024-01-12", "ratio": 2.2}],
+            [
+                {"date": "2024-01-05", "close": 100},
+                {"date": "2024-01-12", "close": 110},
+            ],
+        )
+        self.assertTrue(skipped_week["ready"])
+        self.assertEqual(skipped_week["n"], 1)
+        self.assertEqual(skipped_week["points"][0]["date"], "2024-01-12")
+        self.assertAlmostEqual(skipped_week["points"][0]["value"], 110.0)
+
+    def test_weekly_underperform_line_declines_into_last_print(self):
+        symbol = [
+            {"date": "2024-01-05", "close": 100},
+            {"date": "2024-01-12", "close": 110},
+        ]
+        spy = [
+            {"date": "2024-01-05", "close": 100},
+            {"date": "2024-01-12", "close": 120},
+        ]
+        daily = portfolio.spy_rs_overlay(symbol, spy)
+        weekly_rows = [
+            {"date": "2024-01-05", "close": 100},
+            {"date": "2024-01-12", "close": 110},
+        ]
+        weekly = portfolio.spy_rs_weekly_from_daily_points(daily["points"], weekly_rows)
+        self.assertAlmostEqual(weekly["points"][-1]["value"], 110.0)
+        self.assertGreater(weekly["points"][0]["value"], weekly["points"][-1]["value"])
+
+
 class PriceAlertLineTests(unittest.TestCase):
     """User price-alert lines on the daily pane — not RSI tape alerts."""
 

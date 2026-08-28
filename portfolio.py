@@ -4,6 +4,8 @@ portfolio.py — Fast watchlist / PM-desk snapshots for technical analysis.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 import numpy as np
 import pandas as pd
 
@@ -107,6 +109,102 @@ def spy_rs_overlay(symbol_rows: list | None, spy_rows: list | None) -> dict:
         "benchmark": "SPY",
         "basis": "close_ratio",
         "rebase": "last_close",
+        "note": SPY_RS_NOTE,
+        "points": points,
+        "last_ratio": round(last_ratio, 6),
+        "n": len(points),
+    }
+
+
+def spy_rs_weekly_from_daily_points(
+    daily_points: list | None, weekly_rows: list | None
+) -> dict:
+    """Weekly close/SPY comparison from the same daily overlay series.
+
+    For each W-FRI weekly bar, take the last daily overlay ratio whose date
+    falls in that week (week-ending date back 6 calendar days). Rebase onto
+    the last weekly print so the line sits on weekly candles. Missing weeks
+    are skipped; if nothing aligns, ready=False so the weekly line can stay
+    off while the daily overlay still works.
+    """
+    empty = {
+        "ready": False,
+        "benchmark": "SPY",
+        "basis": "close_ratio",
+        "rebase": "last_close",
+        "freq": "weekly",
+        "note": SPY_RS_NOTE,
+        "points": [],
+        "last_ratio": None,
+        "n": 0,
+    }
+
+    daily: list[tuple[str, float]] = []
+    for point in daily_points or []:
+        if not isinstance(point, dict):
+            continue
+        day = str(point.get("date") or "")[:10]
+        try:
+            ratio = float(point.get("ratio"))
+        except (TypeError, ValueError):
+            continue
+        if day and ratio > 0:
+            daily.append((day, ratio))
+    daily.sort(key=lambda item: item[0])
+
+    weeks: list[tuple[str, float]] = []
+    for row in weekly_rows or []:
+        if not isinstance(row, dict):
+            continue
+        day = _bar_date(row)
+        try:
+            px = float(row.get("close"))
+        except (TypeError, ValueError):
+            continue
+        if day and px > 0:
+            weeks.append((day, px))
+
+    if not daily or not weeks:
+        return empty
+
+    aligned: list[tuple[str, float, float]] = []
+    for week_date, week_close in weeks:
+        try:
+            week_end = date.fromisoformat(week_date)
+        except ValueError:
+            continue
+        week_start = (week_end - timedelta(days=6)).isoformat()
+        hit_ratio = None
+        for day, ratio in daily:
+            if day < week_start:
+                continue
+            if day > week_date:
+                break
+            hit_ratio = ratio
+        if hit_ratio is None:
+            continue
+        aligned.append((week_date, week_close, hit_ratio))
+
+    if not aligned:
+        return empty
+
+    last_close = aligned[-1][1]
+    last_ratio = aligned[-1][2]
+    scale = last_close / last_ratio if last_ratio else 0.0
+    points = [
+        {
+            "date": day,
+            "ratio": round(ratio, 6),
+            "value": round(ratio * scale, 4),
+        }
+        for day, _px, ratio in aligned
+    ]
+    return {
+        "ready": True,
+        "benchmark": "SPY",
+        "basis": "close_ratio",
+        "rebase": "last_close",
+        "freq": "weekly",
         "note": SPY_RS_NOTE,
         "points": points,
         "last_ratio": round(last_ratio, 6),
