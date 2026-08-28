@@ -295,5 +295,188 @@ console.log(JSON.stringify({
         self.assertIsNone(out["bad"])
 
 
+class SetupScanActiveHighlightTests(unittest.TestCase):
+    """Hit-row highlight follows state.activeSymbol; missing names get no fake row."""
+
+    def test_active_class_and_helper_contract(self):
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        with open("styles/main.css", encoding="utf-8") as fh:
+            css = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+
+        self.assertIn("SETUP_SCAN_ACTIVE_CLASS = 'setup-scan-active'", setup)
+        self.assertIn("function syncSetupHitHighlight", setup)
+        self.assertIn("function bindSetupHitHighlight", setup)
+        self.assertIn("function currentActiveSymbol", setup)
+        self.assertIn("function highlightSetupRow", setup)
+        self.assertIn("setup-scan-active", setup)
+        self.assertIn("setup-scan-selected", setup)
+        self.assertIn("syncSetupHitHighlight(currentActiveSymbol())", setup)
+        self.assertIn("root.selectSymbol", setup)
+        self.assertIn("_setupHitBound", setup)
+        self.assertIn("Object.defineProperty(state, 'activeSymbol'", setup)
+        self.assertIn("bindSetupHitHighlight()", setup)
+        self.assertIn("DOMContentLoaded", setup)
+        self.assertNotIn("highlightSetupRow(first.dataset.symbol)", setup)
+        self.assertNotIn("highlightSetupRow(first", setup)
+
+        init = setup[
+            setup.index("async function initSetupScanner") : setup.index("function renderSetupFilterPills")
+        ]
+        self.assertIn("bindSetupHitHighlight()", init)
+        self.assertNotIn("loadSetupScan", init)
+
+        sync_fn = setup[
+            setup.index("function syncSetupHitHighlight") : setup.index("function bindSetupHitHighlight")
+        ]
+        self.assertNotIn("loadSetupScan", sync_fn)
+        self.assertIn("SETUP_SCAN_ACTIVE_CLASS", sync_fn)
+        self.assertIn("highlightSetupRow", sync_fn)
+
+        bind_fn = setup[
+            setup.index("function bindSetupHitHighlight") : setup.index("function moveSetupScanSelection")
+        ]
+        self.assertNotIn("loadSetupScan", bind_fn)
+        self.assertIn("syncSetupHitHighlight", bind_fn)
+        self.assertIn("selectSymbol", bind_fn)
+
+        load_fn = setup[setup.index("async function loadSetupScan") :]
+        self.assertIn("syncSetupHitHighlight(currentActiveSymbol())", load_fn)
+        self.assertIn("allowStaleRows", load_fn)
+
+        self.assertIn(".setup-scan-row.setup-scan-active", css)
+        self.assertIn("box-shadow: inset 2px 0 0 var(--accent)", css)
+
+        self.assertNotIn("syncSetupHitHighlight", app_js)
+        self.assertNotIn("setup-scan-active", app_js)
+        self.assertIn("function moveSymbolSelection", app_js)
+        self.assertIn("openDeskPalette('jump')", app_js)
+
+        self.assertIsNone(re.search(r"ibd", setup, re.IGNORECASE))
+        self.assertIsNone(re.search(r"ibd", css, re.IGNORECASE))
+
+    def test_highlight_helper_matches_active_or_nothing(self):
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        start = setup.index("const SETUP_SCAN_ACTIVE_CLASS")
+        end = setup.index("function moveSetupScanSelection")
+        fns = setup[start:end]
+        script = r"""
+function makeRow(symbol) {
+    const classes = new Set(['setup-scan-row']);
+    return {
+        dataset: { symbol },
+        classList: {
+            toggle(name, on) {
+                if (on) classes.add(name);
+                else classes.delete(name);
+            },
+            add(name) { classes.add(name); },
+            remove(...names) { names.forEach(n => classes.delete(n)); },
+            contains(name) { return classes.has(name); },
+        },
+        scrollIntoView() {},
+        classes,
+    };
+}
+const rows = [makeRow('AAPL'), makeRow('NVDA'), makeRow('MSFT')];
+global.window = global;
+global.document = {
+    querySelectorAll: sel => (String(sel).includes('setup-scan-row') ? rows : []),
+    addEventListener() {},
+};
+let scanCalls = 0;
+global.loadSetupScan = () => { scanCalls += 1; };
+global.state = { activeSymbol: 'AAPL' };
+const origCalls = [];
+function origSelect(symbol) {
+    origCalls.push(symbol);
+    state.activeSymbol = symbol;
+}
+global.selectSymbol = origSelect;
+let _setupScanCursor = 0;
+""" + fns + r"""
+const hit = syncSetupHitHighlight('NVDA');
+const nvdaOn = {
+    active: rows[1].classList.contains('setup-scan-active'),
+    selected: rows[1].classList.contains('setup-scan-selected'),
+};
+const aaplAfterNvda = {
+    active: rows[0].classList.contains('setup-scan-active'),
+    selected: rows[0].classList.contains('setup-scan-selected'),
+};
+highlightSetupRow('AAPL');
+const afterJk = {
+    aaplSelected: rows[0].classList.contains('setup-scan-selected'),
+    aaplActive: rows[0].classList.contains('setup-scan-active'),
+    nvdaActive: rows[1].classList.contains('setup-scan-active'),
+    nvdaSelected: rows[1].classList.contains('setup-scan-selected'),
+};
+bindSetupHitHighlight();
+selectSymbol('MSFT');
+const afterTape = {
+    msftActive: rows[2].classList.contains('setup-scan-active'),
+    msftSelected: rows[2].classList.contains('setup-scan-selected'),
+    aaplActive: rows[0].classList.contains('setup-scan-active'),
+    orig: origCalls.slice(),
+    wrapped: selectSymbol._setupHitBound === true,
+};
+selectSymbol('ZZZZ');
+const missing = rows.map(r => ({
+    sym: r.dataset.symbol,
+    active: r.classList.contains('setup-scan-active'),
+    selected: r.classList.contains('setup-scan-selected'),
+}));
+const caseHit = syncSetupHitHighlight('nvda');
+console.log(JSON.stringify({
+    hit,
+    nvdaOn,
+    aaplAfterNvda,
+    afterJk,
+    afterTape,
+    missing,
+    caseHit,
+    nvdaAfterCase: {
+        active: rows[1].classList.contains('setup-scan-active'),
+        selected: rows[1].classList.contains('setup-scan-selected'),
+    },
+    scanCalls,
+    cursor: _setupScanCursor,
+    origAll: origCalls,
+}));
+"""
+        proc = subprocess.run(
+            ["node", "-e", script],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        import json
+        out = json.loads(proc.stdout)
+        self.assertTrue(out["hit"])
+        self.assertTrue(out["nvdaOn"]["active"])
+        self.assertTrue(out["nvdaOn"]["selected"])
+        self.assertFalse(out["aaplAfterNvda"]["active"])
+        self.assertFalse(out["aaplAfterNvda"]["selected"])
+        self.assertTrue(out["afterJk"]["aaplSelected"])
+        self.assertFalse(out["afterJk"]["aaplActive"])
+        self.assertTrue(out["afterJk"]["nvdaActive"])
+        self.assertFalse(out["afterJk"]["nvdaSelected"])
+        self.assertTrue(out["afterTape"]["msftActive"])
+        self.assertTrue(out["afterTape"]["msftSelected"])
+        self.assertFalse(out["afterTape"]["aaplActive"])
+        self.assertEqual(out["afterTape"]["orig"], ["MSFT"])
+        self.assertTrue(out["afterTape"]["wrapped"])
+        self.assertTrue(all(not row["active"] and not row["selected"] for row in out["missing"]))
+        self.assertTrue(out["caseHit"])
+        self.assertTrue(out["nvdaAfterCase"]["active"])
+        self.assertEqual(out["scanCalls"], 0)
+        self.assertEqual(out["cursor"], 1)
+        self.assertEqual(out["origAll"], ["MSFT", "ZZZZ"])
+
+
 if __name__ == "__main__":
     unittest.main()
