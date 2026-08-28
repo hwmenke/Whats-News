@@ -1,6 +1,6 @@
 /**
  * Copy the currently painted daily OHLC legend (sticky hovered/held bar)
- * to the clipboard as a one-line string. Not a published rating.
+ * to the clipboard as a one-line string. OHLC prints only — not a published rating.
  *
  * Uses lastLegend.daily (legend-held) — not always the last print.
  * Twin weekly bits are an optional suffix when linkedBarFor is present.
