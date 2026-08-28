@@ -584,9 +584,9 @@ function openJournalForDate(date, freq) {
     const noteEl = document.getElementById('journal-note');
     if (dateEl) dateEl.value = key;
     if (noteEl) {
-        const week = freq === 'weekly' ? ' week-ending' : '';
-        const sym = state.activeSymbol || '';
-        noteEl.placeholder = [sym, key + week].filter(Boolean).join(' ');
+        noteEl.placeholder = freq === 'weekly'
+            ? `Note for ${key} week-ending`
+            : `Note for ${key}`;
         noteEl.focus();
     }
 }

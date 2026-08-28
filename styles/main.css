@@ -996,6 +996,12 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
   gap: 6px;
   align-items: center;
 }
+.journal-compose input[type="date"] {
+  flex: 1 1 140px;
+  min-width: 132px;
+  color-scheme: dark;
+}
+.journal-compose-row .btn { flex-shrink: 0; }
 .journal-compose input[type="date"],
 .journal-compose input[type="text"] {
   background: var(--bg-base);
