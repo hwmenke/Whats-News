@@ -4,6 +4,7 @@
 
 let _setupFilter = null;
 let _setupCatalog = {};
+let _setupScanCursor = 0;
 
 async function initSetupScanner() {
     try {
@@ -83,6 +84,8 @@ function renderSetupScanTable(results) {
             ? row.vol_ratio_5_20.toFixed(2)
             : '—';
 
+        tr.dataset.setups = JSON.stringify(row.setups || []);
+
         tr.innerHTML = `
             <td class="setup-sym">${row.symbol}</td>
             <td class="setup-tags">${setups || '—'}</td>
@@ -110,14 +113,61 @@ function renderSetupScanTable(results) {
 
         tbody.appendChild(tr);
     });
+
+    const current = (typeof state !== 'undefined' && state.activeSymbol) || '';
+    if (current && tbody.querySelector(`tr[data-symbol="${current}"]`)) {
+        highlightSetupRow(current);
+    } else {
+        const first = tbody.querySelector('tr.setup-scan-row');
+        if (first) highlightSetupRow(first.dataset.symbol);
+    }
+}
+
+function highlightSetupRow(symbol) {
+    const rows = [...document.querySelectorAll('#setup-scan-tbody tr.setup-scan-row')];
+    let idx = 0;
+    rows.forEach((tr, i) => {
+        const on = tr.dataset.symbol === symbol;
+        tr.classList.toggle('setup-scan-selected', on);
+        if (on) {
+            idx = i;
+            tr.scrollIntoView({ block: 'nearest' });
+        }
+    });
+    _setupScanCursor = idx;
+}
+
+function moveSetupScanSelection(delta) {
+    const rows = [...document.querySelectorAll('#setup-scan-tbody tr.setup-scan-row')];
+    if (!rows.length) return;
+    _setupScanCursor = Math.max(0, Math.min(rows.length - 1, (_setupScanCursor || 0) + delta));
+    const tr = rows[_setupScanCursor];
+    highlightSetupRow(tr.dataset.symbol);
+}
+
+function openSelectedSetupRow() {
+    const rows = [...document.querySelectorAll('#setup-scan-tbody tr.setup-scan-row')];
+    const tr = rows[_setupScanCursor] || rows[0];
+    if (!tr) return;
+    let setups = [];
+    try { setups = JSON.parse(tr.dataset.setups || '[]'); } catch { setups = []; }
+    openSetupOnChart({ symbol: tr.dataset.symbol, setups });
 }
 
 function openSetupOnChart(row) {
     // Apply Minervini SMA / Stockbee EMA packs from existing scanner tags.
+    // Stay in Scan workspace so the hit list does not disappear.
     window._pendingChartPack = { symbol: row.symbol, setups: row.setups || [] };
-    switchTab('charts');
+    highlightSetupRow(row.symbol);
+    if (typeof setWorkspace === 'function') {
+        if (state.workspace !== 'scan') setWorkspace('scan', { skipChart: true });
+    }
     selectSymbol(row.symbol);
 }
+
+window.highlightSetupRow = highlightSetupRow;
+window.moveSetupScanSelection = moveSetupScanSelection;
+window.openSelectedSetupRow = openSelectedSetupRow;
 
 async function loadSetupScan() {
     const loadEl = document.getElementById('setup-scan-loading');

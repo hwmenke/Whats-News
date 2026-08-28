@@ -306,6 +306,33 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotRegex(charts, r"\bIBD\b")
         self.assertNotRegex(html, r"\bIBD\b")
 
+    def test_desk_workspaces_and_scanner_enter(self):
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        with open("styles/main.css", encoding="utf-8") as fh:
+            css = fh.read()
+        with open("scripts/desk_palette.js", encoding="utf-8") as fh:
+            pal = fh.read()
+        self.assertIn('data-workspace="chart"', html)
+        self.assertIn('data-workspace="scan"', html)
+        self.assertIn('data-workspace="review"', html)
+        self.assertIn("function setWorkspace", app_js)
+        self.assertIn("showScanSplit", app_js)
+        self.assertIn("workspace === 'scan'", app_js)
+        self.assertIn("function moveSetupScanSelection", setup)
+        self.assertIn("function openSelectedSetupRow", setup)
+        self.assertIn("Stay in Scan workspace", setup)
+        self.assertNotIn("switchTab('charts')", setup)
+        self.assertIn("body.workspace-scan #scanner-area", css)
+        self.assertIn("Workspace: Scan", pal)
+        self.assertIn("<kbd>Enter</kbd>", html)
+        self.assertNotRegex(app_js, r"\bIBD\b")
+        self.assertNotRegex(setup, r"\bIBD\b")
+
 
 if __name__ == "__main__":
     unittest.main()

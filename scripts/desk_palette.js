@@ -4,8 +4,11 @@
  */
 
 const PALETTE_COMMANDS = [
+    { id: 'ws-chart', label: 'Workspace: Chart', hint: '1', run: () => setWorkspace?.('chart') },
+    { id: 'ws-scan', label: 'Workspace: Scan', hint: '2', run: () => setWorkspace?.('scan') },
+    { id: 'ws-review', label: 'Workspace: Review', hint: '3', run: () => setWorkspace?.('review') },
     { id: 'tab-charts', label: 'Open Charts', hint: '', run: () => switchTab?.('charts') },
-    { id: 'tab-scanner', label: 'Open Scanner', hint: '', run: () => switchTab?.('scanner') },
+    { id: 'tab-scanner', label: 'Open Scanner', hint: '2', run: () => switchTab?.('scanner') },
     { id: 'tab-data', label: 'Open Data', hint: '', run: () => switchTab?.('data-manager') },
     { id: 'focus', label: 'Toggle focus mode', hint: 'f', run: () => toggleFocusMode?.() },
     { id: 'journal', label: 'Trade journal', hint: 'Shift+J', run: () => toggleJournal?.() },

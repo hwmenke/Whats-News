@@ -28,6 +28,11 @@
       <a href="/" class="topbar-nav-link active">Dashboard</a>
       <a href="/news" class="topbar-nav-link" title="Headlines for every symbol on the watchlist">Watchlist news</a>
     </nav>
+    <div class="workspace-switch" role="group" aria-label="Desk workspace">
+      <button type="button" class="workspace-btn active" data-workspace="chart" aria-pressed="true" title="Chart workspace (1)">Chart</button>
+      <button type="button" class="workspace-btn" data-workspace="scan" aria-pressed="false" title="Scan workspace (2) — list stays up; Enter opens the chart">Scan</button>
+      <button type="button" class="workspace-btn" data-workspace="review" aria-pressed="false" title="Review workspace (3) — this-ticker news, journal, book scan">Review</button>
+    </div>
 
     <div class="topbar-spacer"></div>
 
@@ -274,11 +279,13 @@
         <li>Press <kbd>/</kbd> to jump without adding · <kbd>⌘K</kbd> for commands · <kbd>j</kbd>/<kbd>k</kbd> walk the list</li>
         <li>Tab <strong>News · this ticker</strong> is the selected symbol · top-bar <a href="/news">Watchlist news</a> is the whole list</li>
         <li>Press <kbd>f</kbd> for focus mode (chart only — hides the tape)</li>
+        <li><kbd>1</kbd> Chart · <kbd>2</kbd> Scan (list stays up) · <kbd>3</kbd> Review</li>
       </ol>
       <p class="kbd-hint-row" id="kbd-hint-row">
         <span><kbd>/</kbd> jump</span>
         <span><kbd>⌘K</kbd> commands</span>
         <span><kbd>j</kbd>/<kbd>k</kbd> list</span>
+        <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> desk</span>
         <span><kbd>?</kbd> shortcuts</span>
       </p>
     </div>
@@ -797,6 +804,7 @@
             Full universe
           </label>
           <span id="setup-scan-meta" class="scanner-ts"></span>
+          <span class="setup-scan-hint"><kbd>j</kbd>/<kbd>k</kbd> · <kbd>Enter</kbd> chart</span>
         </div>
         <div id="setup-filter-pills" class="setup-filter-pills"></div>
         <div id="setup-scan-loading" class="chart-loading setup-scan-loading" style="display:none;">
@@ -1058,7 +1066,9 @@
     <dl class="kbd-help-list">
       <div><dt><kbd>/</kbd></dt><dd>Jump to symbol — Enter never adds</dd></div>
       <div><dt><kbd>⌘K</kbd></dt><dd>Command palette</dd></div>
-      <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Walk the filtered watchlist</dd></div>
+      <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Watchlist, or Scan rows in Scan workspace</dd></div>
+      <div><dt><kbd>Enter</kbd></dt><dd>Scan workspace — open highlighted row on the chart (list stays)</dd></div>
+      <div><dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Chart / Scan / Review workspace</dd></div>
       <div><dt><kbd>f</kbd></dt><dd>Focus mode (hide tape)</dd></div>
       <div><dt><kbd>h</kbd></dt><dd>Book scan drawer</dd></div>
       <div><dt><kbd>⇧J</kbd></dt><dd>Trade journal</dd></div>

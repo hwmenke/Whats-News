@@ -23,6 +23,7 @@ let state = {
     checklist: { regime: false, stop: false, size: false, plan: false },
     stopMode: 'atr',   // 'atr' | 'box' | 'user'
     riskBox: null,     // last-applied { entry, stop, target } for the active symbol
+    workspace: 'chart', // 'chart' | 'scan' | 'review'
 };
 
 const JOURNAL_KEY = 'whats-news-journal';
@@ -1278,7 +1279,7 @@ async function refreshAll() {
 async function selectSymbol(symbol) {
     state.activeSymbol = symbol;
     renderSymbolList();
-    if (state.activeTab === 'charts') {
+    if (state.workspace === 'scan' || state.activeTab === 'charts') {
         await loadChartData(symbol);
     } else if (state.activeTab === 'news') {
         await loadNewsData(symbol);
@@ -1687,8 +1688,76 @@ function showLoadingOverlay(show) {
     document.getElementById('chart-loading').style.display = show ? 'flex' : 'none';
 }
 
+function syncWorkspacePills() {
+    document.querySelectorAll('.workspace-btn').forEach(btn => {
+        setPressed(btn, btn.dataset.workspace === state.workspace);
+    });
+}
+
+function showScanSplit() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('news-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('chart-area').style.display        = 'flex';
+    document.getElementById('scanner-area').style.display      = 'flex';
+    state.activeTab = 'charts';
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.id === 'tab-scanner' || btn.id === 'tab-charts');
+    });
+}
+
+function setWorkspace(id, opts = {}) {
+    const next = id === 'scan' || id === 'review' ? id : 'chart';
+    state.workspace = next;
+    document.body.classList.toggle('workspace-scan', next === 'scan');
+    document.body.classList.toggle('workspace-review', next === 'review');
+    document.body.classList.toggle('workspace-chart', next === 'chart');
+    syncWorkspacePills();
+
+    if (next === 'scan') {
+        showScanSplit();
+        if (typeof initSetupScanner === 'function') initSetupScanner();
+        const tbody = document.getElementById('setup-scan-tbody');
+        if (!tbody || !tbody.children.length) loadSetupScan();
+        if (!opts.skipChart && state.activeSymbol) loadChartData(state.activeSymbol);
+        requestAnimationFrame(() => window.resizeAllCharts?.());
+        return next;
+    }
+
+    if (next === 'review') {
+        switchTab('news', { keepWorkspace: true });
+        openJournal();
+        openBookDrawer();
+        return next;
+    }
+
+    closeJournal();
+    closeBookDrawer();
+    if (!opts.fromTab) switchTab('charts', { keepWorkspace: true });
+    requestAnimationFrame(() => window.resizeAllCharts?.());
+    return next;
+}
+
+window.setWorkspace = setWorkspace;
+
 // ── Tab Switching ─────────────────────────────────────────────
-async function switchTab(tabId) {
+async function switchTab(tabId, opts = {}) {
+    if (tabId === 'scanner') {
+        setWorkspace('scan');
+        return;
+    }
+
+    if (!opts.keepWorkspace) {
+        state.workspace = 'chart';
+        document.body.classList.remove('workspace-scan', 'workspace-review');
+        document.body.classList.add('workspace-chart');
+        syncWorkspacePills();
+    }
+
     state.activeTab = tabId;
 
     // Update tab buttons
@@ -1728,11 +1797,6 @@ async function switchTab(tabId) {
         showTrendArea();
         if (typeof renderTrendConfig === 'function') renderTrendConfig();
         if (state.activeSymbol) loadAdaptiveTrendData(state.activeSymbol);
-    } else if (tabId === 'scanner') {
-        showScannerArea();
-        if (typeof initSetupScanner === 'function') initSetupScanner();
-        loadSetupScan();
-        loadScannerData();
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
@@ -1759,7 +1823,8 @@ function showChartArea() {
     document.getElementById('backtest-area').style.display     = 'none';
     document.getElementById('chart-area').style.display        = 'flex';
     document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('scanner-area').style.display      =
+        state.workspace === 'scan' ? 'flex' : 'none';
     document.getElementById('data-manager-area').style.display = 'none';
 }
 
@@ -2360,6 +2425,28 @@ function setupPmKeyboard() {
             }
             return;
         }
+        if (!e.metaKey && !e.ctrlKey && !e.altKey && (e.key === '1' || e.key === '2' || e.key === '3')) {
+            e.preventDefault();
+            setWorkspace(e.key === '1' ? 'chart' : e.key === '2' ? 'scan' : 'review');
+            return;
+        }
+        if (state.workspace === 'scan' && !e.metaKey && !e.ctrlKey) {
+            if (e.key === 'j' && !e.shiftKey) {
+                e.preventDefault();
+                window.moveSetupScanSelection?.(1);
+                return;
+            }
+            if (e.key === 'k' && !e.shiftKey) {
+                e.preventDefault();
+                window.moveSetupScanSelection?.(-1);
+                return;
+            }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                window.openSelectedSetupRow?.();
+                return;
+            }
+        }
         // Shift+J → toggle trade journal drawer (plain j/k stay reserved for list nav).
         if (e.shiftKey && (e.key === 'J' || e.key === 'j')) {
             e.preventDefault();
@@ -2798,6 +2885,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (state.activeSymbol) loadPmDesk(state.activeSymbol);
     });
     setupPmKeyboard();
+
+    document.querySelectorAll('.workspace-btn').forEach(btn => {
+        btn.addEventListener('click', () => setWorkspace(btn.dataset.workspace));
+    });
+    syncWorkspacePills();
 
     await loadSymbols();
 
