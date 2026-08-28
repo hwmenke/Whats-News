@@ -63,6 +63,14 @@ function _alertsForSymbol(sym) {
     return list.map(Number).filter(n => Number.isFinite(n));
 }
 
+function getPriceAlertsOn() {
+    return _alertsForSymbol(_alertSymbol()).length > 0;
+}
+
+function getPriceAlertPrices(sym) {
+    return _alertsForSymbol(sym || _alertSymbol()).slice();
+}
+
 function _snapAlertPrice(px) {
     return Math.round(Number(px) * 100) / 100;
 }

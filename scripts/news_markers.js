@@ -24,6 +24,25 @@ function newsMarkersIsOn() {
     return !!newsMarkersOn;
 }
 
+function getNewsMarkersOn() {
+    return newsMarkersIsOn();
+}
+
+function setNewsMarkersOn(on, opts) {
+    opts = opts || {};
+    newsMarkersOn = !!on;
+    _syncNewsMarkersPill();
+    if (opts.apply !== false) {
+        if (!newsMarkersOn) {
+            if (typeof applyPriceMarkers === 'function') applyPriceMarkers('daily');
+        } else {
+            applyNewsMarkersIfOn();
+        }
+    }
+    if (opts.persist && typeof persistOverlays === 'function') persistOverlays();
+    return newsMarkersOn;
+}
+
 function _newsMarkersApi() {
     return (typeof API !== 'undefined' && API) ? API : '/api';
 }
@@ -174,14 +193,7 @@ async function applyNewsMarkersIfOn() {
 }
 
 function toggleNewsMarkers() {
-    newsMarkersOn = !newsMarkersOn;
-    _syncNewsMarkersPill();
-    if (!newsMarkersOn) {
-        if (typeof applyPriceMarkers === 'function') applyPriceMarkers('daily');
-        return newsMarkersOn;
-    }
-    applyNewsMarkersIfOn();
-    return newsMarkersOn;
+    return setNewsMarkersOn(!newsMarkersOn, { persist: true });
 }
 
 if (typeof document !== 'undefined' && document.addEventListener) {

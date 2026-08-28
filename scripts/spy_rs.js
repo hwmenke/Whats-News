@@ -25,6 +25,19 @@ function spyRsIsOn() {
     return !!spyRsOn;
 }
 
+function getSpyRsOn() {
+    return spyRsIsOn();
+}
+
+function setSpyRsOn(on, opts) {
+    opts = opts || {};
+    spyRsOn = !!on;
+    _syncSpyRsPill();
+    if (opts.apply !== false) applySpyRsIfOn();
+    if (opts.persist && typeof persistOverlays === 'function') persistOverlays();
+    return spyRsOn;
+}
+
 function _spyRsApi() {
     return (typeof API !== 'undefined' && API) ? API : '/api';
 }
@@ -234,15 +247,14 @@ async function applySpyRsIfOn() {
 }
 
 function toggleSpyRs() {
-    spyRsOn = !spyRsOn;
-    _syncSpyRsPill();
-    applySpyRsIfOn();
-    return spyRsOn;
+    return setSpyRsOn(!spyRsOn, { persist: true });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const pill = document.getElementById('pill-spy-rs');
-    if (!pill) return;
-    pill.addEventListener('click', () => toggleSpyRs());
-    _syncSpyRsPill();
-});
+if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('DOMContentLoaded', () => {
+        const pill = document.getElementById('pill-spy-rs');
+        if (!pill) return;
+        pill.addEventListener('click', () => toggleSpyRs());
+        _syncSpyRsPill();
+    });
+}
