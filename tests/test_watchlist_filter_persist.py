@@ -90,9 +90,11 @@ class WatchlistFilterPersistContractTests(unittest.TestCase):
         self.assertIn(".filter(el => !el.hidden)", self.palette)
 
         tape_all = js[js.index("function renderAllChips") : js.index("function renderBreakoutChips")]
-        self.assertIn("filterByWatchlistQuery(tapeAll)", tape_all)
-        self.assertIn("filterByWatchlistQuery(data.breakout_queue || [])", js)
-        self.assertIn("filterByWatchlistQuery((data.tape || data.symbols || []).filter(r => r.alert))", js)
+        self.assertIn("prepareTapeRows(tapeAll)", tape_all)
+        self.assertIn("prepareTapeRows(data.breakout_queue || [])", js)
+        self.assertIn("prepareTapeRows((data.tape || data.symbols || []).filter(r => r.alert))", js)
+        prep = js[js.index("function prepareTapeRows") : js.index("function renderPortfolioTape")]
+        self.assertIn("filterByWatchlistQuery(rows)", prep)
 
     def test_forbidden_files_have_no_published_rating_brand(self):
         brand = chr(105) + chr(98) + chr(100)
