@@ -22,8 +22,8 @@ function nextKamaColor() {
     return c;
 }
 
-// Overlay state. Defaults: BB off, EP on, Darvas on. vs-SPY / News / VWAP / Last
-// live in spy_rs.js / news_markers.js / vwap.js / last_price.js (off until the
+// Overlay state. Defaults: BB off, EP on, Darvas on. vs-SPY / News / VWAP / Last / Gap
+// live in spy_rs.js / news_markers.js / vwap.js / last_price.js / gap_fill.js (off until the
 // user toggles). Alert lines use whats-news-price-alerts in price_alerts.js,
 // not this overlay blob.
 const activeOverlays = { bb: false, ep: true, darvas: true };
@@ -35,6 +35,7 @@ const OVERLAY_DEFAULTS = {
     news_markers: false,
     vwap: false,
     last: false,
+    gap: false,
 };
 
 // Persisted indicator-pane visibility key — mirrors scripts/app.js.
@@ -209,6 +210,7 @@ function destroyCharts() {
     if (typeof forgetSpyRsSeries === 'function') forgetSpyRsSeries();
     if (typeof forgetVwapSeries === 'function') forgetVwapSeries();
     if (typeof forgetLastPriceLines === 'function') forgetLastPriceLines();
+    if (typeof forgetGapFillLines === 'function') forgetGapFillLines();
 }
 
 // ── Build one panel (daily or weekly) ────────────────────────
@@ -666,6 +668,8 @@ function loadOHLCV(freq, rows) {
     if (freq === 'daily' && typeof applyVwapIfOn === 'function') applyVwapIfOn();
     // Last print lives in last_price.js (off by default). Daily + weekly; not PDC.
     if (typeof applyLastPriceIfOn === 'function') applyLastPriceIfOn();
+    // Unfilled daily gap lives in gap_fill.js (off by default). Daily only — weekly skip in v1.
+    if (freq === 'daily' && typeof applyGapFillIfOn === 'function') applyGapFillIfOn();
     paintOhlcLegend(freq, {});
 }
 
@@ -1072,6 +1076,7 @@ function collectOverlayState() {
         news_markers: (typeof newsMarkersIsOn === 'function') ? !!newsMarkersIsOn() : false,
         vwap: (typeof vwapIsOn === 'function') ? !!vwapIsOn() : false,
         last: (typeof lastPriceIsOn === 'function') ? !!lastPriceIsOn() : false,
+        gap: (typeof gapFillIsOn === 'function') ? !!gapFillIsOn() : false,
     };
 }
 
@@ -1081,7 +1086,7 @@ function persistOverlays() {
 
 function applySavedOverlays() {
     const saved = readStoredObject(OVERLAYS_STORAGE_KEY);
-    // No key → user never toggled. Keep defaults (vs-SPY / News / VWAP stay off; Last too).
+    // No key → user never toggled. Keep defaults (vs-SPY / News / VWAP stay off; Last too; Gap too).
     if (!saved) {
         syncOverlayPills();
         return;
@@ -1101,6 +1106,9 @@ function applySavedOverlays() {
     }
     if (typeof setLastPriceOn === 'function') {
         setLastPriceOn(!!merged.last, { persist: false, apply: false });
+    }
+    if (typeof setGapFillOn === 'function') {
+        setGapFillOn(!!merged.gap, { persist: false, apply: false });
     }
     syncOverlayPills();
 }

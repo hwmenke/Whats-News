@@ -205,6 +205,7 @@ assert(afterToggle.last === true, 'last saved on');
 assert(afterToggle.vwap === false, 'VWAP stays off');
 assert(afterToggle.spy_rs === false, 'vs-SPY stays off');
 assert(afterToggle.news_markers === false, 'News stays off');
+assert(afterToggle.gap === false, 'Gap stays off');
 assert(afterToggle.lastPrice == null, 'must use key last not lastPrice');
 
 desk = loadDesk(store);
@@ -214,6 +215,7 @@ assert(desk.collectOverlayState().last === true, 'collect restored on');
 assert(desk.vwapIsOn() === false, 'VWAP still off after last restore');
 assert(desk.spyRsIsOn() === false, 'vs-SPY still off after last restore');
 assert(desk.newsMarkersIsOn() === false, 'News still off after last restore');
+assert(desk.collectOverlayState().gap === false, 'Gap still off after last restore');
 
 const legacy = makeStore();
 legacy.setItem(OVERLAYS, JSON.stringify({

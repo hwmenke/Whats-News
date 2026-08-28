@@ -144,6 +144,8 @@ const afterToggle = JSON.parse(store.getItem(OVERLAYS));
 assert(afterToggle.vwap === true, 'vwap saved on');
 assert(afterToggle.spy_rs === false, 'vs-SPY stays off');
 assert(afterToggle.news_markers === false, 'News stays off');
+assert(afterToggle.gap === false, 'Gap stays off');
+assert(afterToggle.last === false, 'Last stays off');
 
 desk = loadDesk(store);
 desk.applySavedOverlays();
