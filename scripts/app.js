@@ -1735,6 +1735,8 @@ function _newsJumpMiss() {
 // Reveal the daily pane without leaving Scan / Chart / Review.
 // Scan already shows the chart — never call setWorkspace from this path.
 function revealDailyChartKeepingWorkspace() {
+    // Stay in Scan / Chart / Review — never call setWorkspace from this path.
+    // Scan already shows the chart.
     if (typeof showChartArea === 'function') showChartArea();
     state.activeTab = 'charts';
     document.querySelectorAll('.tab-btn').forEach(btn => {
