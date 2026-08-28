@@ -232,6 +232,9 @@
         </div>
         <input type="text" id="journal-note" maxlength="280" placeholder="One-line note" aria-label="Journal note" />
       </form>
+      <input id="journal-filter" type="text" class="journal-filter"
+             placeholder="Filter notes…" autocomplete="off" spellcheck="false"
+             aria-label="Filter journal notes" />
       <div id="journal-list" class="journal-list"><div class="alert-log-empty">No setups saved yet</div></div>
     </aside>
 
@@ -1162,6 +1165,7 @@
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/desk_palette.js"></script>
 <script src="scripts/app.js"></script>
+<script src="scripts/journal_filter.js"></script>
 
 </body>
 </html>

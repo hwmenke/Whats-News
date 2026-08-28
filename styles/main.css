@@ -1042,6 +1042,22 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
   box-shadow: 0 0 0 1px var(--accent-glow);
 }
 .journal-note-text { color: var(--text-primary); }
+.journal-filter {
+  display: block;
+  box-sizing: border-box;
+  width: calc(100% - 24px);
+  margin: 6px 12px 0;
+  flex-shrink: 0;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 8px;
+}
+.journal-filter:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.journal-item[hidden] { display: none !important; }
 
 /* ── Tab Bar ──────────────────────────────────────────────── */
 .tab-bar {
