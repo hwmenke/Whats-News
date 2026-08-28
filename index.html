@@ -225,6 +225,13 @@
         <strong>Trade journal</strong>
         <button type="button" id="btn-journal-close" class="btn btn-ghost btn-sm">✕</button>
       </div>
+      <form id="journal-compose" class="journal-compose">
+        <div class="journal-compose-row">
+          <input type="date" id="journal-date" aria-label="Journal date" />
+          <button type="submit" id="journal-note-save" class="btn btn-primary btn-sm">Save note</button>
+        </div>
+        <input type="text" id="journal-note" maxlength="280" placeholder="One-line note" aria-label="Journal note" />
+      </form>
       <div id="journal-list" class="journal-list"><div class="alert-log-empty">No setups saved yet</div></div>
     </aside>
 

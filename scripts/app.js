@@ -30,6 +30,7 @@ const JOURNAL_KEY = 'whats-news-journal';
 const PANES_KEY   = 'whats-news-panes';
 const WORKSPACE_KEY = 'whats-news-workspace';
 const LAST_SYMBOL_KEY = 'whats-news-last-symbol';
+let journalFocusDate = null;
 
 let statsCharts = {};
 let backtestEquityChart = null;
@@ -566,6 +567,30 @@ function openJournal() {
     renderJournal();
 }
 
+// Click-bar hook from charts.js subscribeClick. Daily uses the session date;
+// weekly uses the week-ending date on the bar.
+function onChartBarClick(payload) {
+    const date = payload && payload.date ? String(payload.date).slice(0, 10) : '';
+    if (!date) return;
+    openJournalForDate(date, payload && payload.freq);
+}
+
+function openJournalForDate(date, freq) {
+    const key = String(date || '').slice(0, 10);
+    if (!key) return;
+    journalFocusDate = key;
+    openJournal();
+    const dateEl = document.getElementById('journal-date');
+    const noteEl = document.getElementById('journal-note');
+    if (dateEl) dateEl.value = key;
+    if (noteEl) {
+        const week = freq === 'weekly' ? ' week-ending' : '';
+        const sym = state.activeSymbol || '';
+        noteEl.placeholder = [sym, key + week].filter(Boolean).join(' ');
+        noteEl.focus();
+    }
+}
+
 function closeJournal() {
     const drawer = document.getElementById('journal-drawer');
     if (!drawer) return;
@@ -638,37 +663,86 @@ function deleteJournalEntry(id) {
     renderJournal();
 }
 
+function saveJournalNote(ev) {
+    if (ev) ev.preventDefault();
+    const dateEl = document.getElementById('journal-date');
+    const noteEl = document.getElementById('journal-note');
+    const date = (dateEl && dateEl.value ? dateEl.value : journalFocusDate || '').slice(0, 10);
+    const note = (noteEl && noteEl.value ? noteEl.value : '').trim();
+    if (!date) {
+        toast('Pick a date', 'warning');
+        return;
+    }
+    if (!note) {
+        toast('Add a one-line note', 'warning');
+        return;
+    }
+    const symbol = state.activeSymbol || '—';
+    const entry = {
+        id: `${symbol}-${Date.now()}`,
+        symbol,
+        date,
+        note,
+        closed: false,
+        result_r: null,
+    };
+    const entries = loadJournalEntries();
+    entries.unshift(entry);
+    saveJournalEntries(entries);
+    journalFocusDate = date;
+    if (noteEl) noteEl.value = '';
+    renderJournal();
+    toast(`${symbol} ${date} saved`, 'success');
+}
+
 function renderJournal() {
     const list = document.getElementById('journal-list');
     if (!list) return;
+    const dateEl = document.getElementById('journal-date');
+    if (dateEl && !dateEl.value) {
+        dateEl.value = (journalFocusDate || new Date().toISOString().slice(0, 10));
+    }
     const entries = loadJournalEntries();
     if (!entries.length) {
         list.innerHTML = '<div class="alert-log-empty">No setups saved yet</div>';
         return;
     }
+    const focus = journalFocusDate || (dateEl && dateEl.value) || '';
     const fmt = v => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
-    list.innerHTML = entries.map(e => `
-      <div class="journal-item ${e.closed ? 'journal-item-closed' : ''}" data-id="${e.id}">
+    const sorted = entries.slice().sort((a, b) => {
+        const aHit = focus && String(a.date || '').slice(0, 10) === focus ? 0 : 1;
+        const bHit = focus && String(b.date || '').slice(0, 10) === focus ? 0 : 1;
+        return aHit - bHit;
+    });
+    list.innerHTML = sorted.map(e => {
+        const d = (e.date || '').slice(0, 10);
+        const focused = focus && d === focus;
+        const noteLine = e.note
+            ? `<span class="journal-note-text">${escapeHtml(e.note)}</span>`
+            : `<span>Entry ${fmt(e.entry)} · Stop ${fmt(e.stop)} · Target ${fmt(e.target)}</span>
+          <span>R ${e.r_multiple ?? '—'}${e.closed ? ` · Closed @ ${e.result_r ?? '—'}R` : ''}</span>`;
+        return `
+      <div class="journal-item ${e.closed ? 'journal-item-closed' : ''} ${focused ? 'journal-item-focus' : ''}" data-id="${e.id}" data-date="${d}">
         <div class="journal-item-head">
-          <span class="journal-sym">${e.symbol}</span>
-          <span class="journal-date">${(e.date || '').slice(0, 10)}</span>
+          <span class="journal-sym">${escapeHtml(e.symbol || '')}</span>
+          <span class="journal-date">${d}</span>
         </div>
         <div class="journal-item-body">
-          <span>Entry ${fmt(e.entry)} · Stop ${fmt(e.stop)} · Target ${fmt(e.target)}</span>
-          <span>R ${e.r_multiple ?? '—'}${e.closed ? ` · Closed @ ${e.result_r ?? '—'}R` : ''}</span>
+          ${noteLine}
         </div>
         <div class="journal-item-actions">
           <button type="button" class="btn btn-ghost btn-sm journal-close-btn" data-id="${e.id}">${e.closed ? 'Edit result' : 'Close'}</button>
           <button type="button" class="btn btn-ghost btn-sm journal-del-btn" data-id="${e.id}">Delete</button>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
     list.querySelectorAll('.journal-close-btn').forEach(btn => {
         btn.addEventListener('click', () => closeJournalEntry(btn.dataset.id));
     });
     list.querySelectorAll('.journal-del-btn').forEach(btn => {
         btn.addEventListener('click', () => deleteJournalEntry(btn.dataset.id));
     });
+    list.querySelector('.journal-item-focus')?.scrollIntoView({ block: 'nearest' });
 }
 
 // ── PM tools popover (risk box, checklist, copy/journal) ───────────────
@@ -3015,6 +3089,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Trade journal drawer
     document.getElementById('btn-journal')?.addEventListener('click', toggleJournal);
     document.getElementById('btn-journal-close')?.addEventListener('click', closeJournal);
+    document.getElementById('journal-compose')?.addEventListener('submit', saveJournalNote);
 
     // PM tools popover (risk box, stop mode, checklist, copy/journal)
     document.getElementById('btn-pm-tools')?.addEventListener('click', e => {

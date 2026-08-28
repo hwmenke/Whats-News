@@ -493,6 +493,37 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIsNone(re.search(r"ibd", html, re.IGNORECASE))
         self.assertIsNone(re.search(r"ibd", port, re.IGNORECASE))
 
+    def test_click_bar_opens_journal_for_date(self):
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("portfolio.py", encoding="utf-8") as fh:
+            port = fh.read()
+        self.assertIn("function setupBarClickJournal", charts)
+        self.assertIn("subscribeClick", charts)
+        self.assertIn("setupBarClickJournal()", charts)
+        self.assertIn("onChartBarClick", charts)
+        self.assertIn("week-ending date", charts)
+        self.assertIn("function onChartBarClick", app_js)
+        self.assertIn("function openJournalForDate", app_js)
+        self.assertIn("function saveJournalNote", app_js)
+        self.assertIn("journal-date", app_js)
+        self.assertIn("journal-note", app_js)
+        self.assertIn("week-ending", app_js)
+        self.assertIn('id="journal-date"', html)
+        self.assertIn('id="journal-note"', html)
+        self.assertIn('id="journal-compose"', html)
+        self.assertIn("keep the last hovered bar", charts)
+        self.assertIn("function chartsAreLive", charts)
+        self.assertIn("function neighborVisibleSymbols", app_js)
+        self.assertIn("function setWorkspace", app_js)
+        for blob in (charts, app_js, html, port):
+            self.assertNotRegex(blob, r"\bIBD\b")
+            self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
+
     def test_price_first_bb_off_hollow_up_volume_last(self):
         with open("scripts/charts.js", encoding="utf-8") as fh:
             charts = fh.read()
