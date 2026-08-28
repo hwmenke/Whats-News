@@ -145,6 +145,104 @@ def linked_ohlc_bar(
     return found
 
 
+ADR_LOOKBACK = 20
+ADR_MIN_BARS = 5
+LEGEND_MINUS = "\u2212"
+
+
+def _adr_bar_range_pct(row) -> float | None:
+    if not isinstance(row, dict):
+        return None
+    try:
+        high = float(row.get("high"))
+        low = float(row.get("low"))
+        close = float(row.get("close"))
+    except (TypeError, ValueError):
+        return None
+    if high > 0 and low > 0 and close > 0:
+        return ((high - low) / close) * 100
+    return None
+
+
+def legend_adr_pct(
+    rows: list | None,
+    lookback: int = ADR_LOOKBACK,
+    min_bars: int = ADR_MIN_BARS,
+) -> float | None:
+    """Mean of ((high-low)/close)*100 over the last `lookback` daily bars
+    that have high, low, close > 0. Omit if fewer than `min_bars` such bars.
+
+    Stock statistic from the latest daily series — not the hovered window.
+    """
+    ranges: list[float] = []
+    for row in reversed(rows or []):
+        pct = _adr_bar_range_pct(row)
+        if pct is None:
+            continue
+        ranges.append(pct)
+        if len(ranges) >= lookback:
+            break
+    if len(ranges) < min_bars:
+        return None
+    return sum(ranges) / len(ranges)
+
+
+def legend_sma200_dist_pct(close, sma200) -> float | None:
+    """(close / sma200 - 1) * 100. Omit if either is missing or not > 0."""
+    try:
+        c = float(close)
+        s = float(sma200)
+    except (TypeError, ValueError):
+        return None
+    if c > 0 and s > 0:
+        return (c / s - 1) * 100
+    return None
+
+
+def format_legend_adr(adr) -> str:
+    if adr is None:
+        return ""
+    try:
+        n = float(adr)
+    except (TypeError, ValueError):
+        return ""
+    if n != n:  # NaN
+        return ""
+    return f"ADR {n:.2f}%"
+
+
+def format_legend_sma200_dist(pct) -> str:
+    if pct is None:
+        return ""
+    try:
+        n = float(pct)
+    except (TypeError, ValueError):
+        return ""
+    if n != n:
+        return ""
+    sign = "+" if n >= 0 else LEGEND_MINUS
+    return f"200 {sign}{abs(n):.1f}%"
+
+
+def legend_stat_text_bits(
+    freq: str,
+    *,
+    close=None,
+    sma200=None,
+    daily_rows: list | None = None,
+) -> list[str]:
+    """Plain legend bits. ADR is daily-only; SMA200 distance follows the hovered bar."""
+    bits: list[str] = []
+    if (freq or "").lower() == "daily":
+        adr_txt = format_legend_adr(legend_adr_pct(daily_rows))
+        if adr_txt:
+            bits.append(adr_txt)
+    dist_txt = format_legend_sma200_dist(legend_sma200_dist_pct(close, sma200))
+    if dist_txt:
+        bits.append(dist_txt)
+    return bits
+
+
 def position_size(
     price,
     atr,

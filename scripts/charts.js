@@ -387,6 +387,8 @@ function paintOhlcLegend(freq, param) {
     const chgStr = chg == null ? '' : `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
     const vol = row.volume != null ? Number(row.volume).toLocaleString() : '—';
     const maBits = _maLegendBits(freq, idx);
+    // Always-on ADR% (daily series) + dist-to-SMA200 (hovered bar). Helper in legend_stats.js.
+    const statBits = (typeof legendStatHtmlBits === 'function') ? legendStatHtmlBits(freq, idx) : '';
     el.innerHTML = `<span class="lg-date">${row.date}</span>`
         + ` <span class="${tone}">O ${_fmtPx(row.open)}</span>`
         + ` <span class="lg-h">H ${_fmtPx(row.high)}</span>`
@@ -394,6 +396,7 @@ function paintOhlcLegend(freq, param) {
         + ` <span class="${tone}">C ${_fmtPx(row.close)}</span>`
         + (chgStr ? ` <span class="${tone}">${chgStr}</span>` : '')
         + ` <span class="lg-v">V ${vol}</span>`
+        + (statBits ? ` ${statBits}` : '')
         + (maBits ? ` ${maBits}` : '');
     // Twin readout: matching weekly (or daily) bar. Helper lives in linked_ohlc.js.
     if (typeof paintLinkedTwinIfLive === 'function') paintLinkedTwinIfLive(freq);
