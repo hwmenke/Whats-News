@@ -607,6 +607,8 @@ function loadOHLCV(freq, rows) {
     if (freq === 'daily' && typeof applySpyRsIfOn === 'function') applySpyRsIfOn();
     // User price-alert lines live in price_alerts.js (per-symbol localStorage).
     if (freq === 'daily' && typeof applyPriceAlerts === 'function') applyPriceAlerts();
+    // Darvas fill lives in darvas_fill.js — refresh times after daily bars load.
+    if (freq === 'daily' && typeof applyDarvasFill === 'function') applyDarvasFill(lastDarvasBox);
     paintOhlcLegend(freq, {});
 }
 
@@ -835,6 +837,7 @@ function clearDarvasBox() {
     const s = series.daily.candle;
     if (s) darvasLines.daily.forEach(line => { try { s.removePriceLine(line); } catch (_) {} });
     darvasLines.daily = [];
+    if (typeof clearDarvasFill === 'function') clearDarvasFill();
 }
 
 function applyDarvasBox(box) {
@@ -857,6 +860,7 @@ function applyDarvasBox(box) {
         }));
     }
     darvasLines.daily = lines;
+    if (typeof applyDarvasFill === 'function') applyDarvasFill(lastDarvasBox);
 }
 
 // ── Session levels: prior day high/low/close + 52-week high/low (daily) ──
