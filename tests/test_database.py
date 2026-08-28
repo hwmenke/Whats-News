@@ -96,6 +96,45 @@ class DatabaseScaleTests(unittest.TestCase):
         self.assertEqual(out["symbol_count"], 1)
         self.assertEqual(out["journal_mode"].lower(), "wal")
 
+    def test_universe_symbols_and_desk_filter(self):
+        mapping = {
+            "AAPL": ["sp500"],
+            "ARCH": ["russell2000"],
+        }
+        result = db.add_universe_symbols(mapping)
+        self.assertIn("ARCH", result["added"])
+        self.assertEqual(len(db.list_symbol_codes()), 2)
+
+        desk = db.list_desk_symbols()
+        desk_syms = {r["symbol"] for r in desk}
+        self.assertNotIn("ARCH", desk_syms)
+
+        db.add_symbol("MSFT")
+        desk2 = db.list_desk_symbols()
+        self.assertIn("MSFT", {r["symbol"] for r in desk2})
+
+        ok = db.promote_to_desk("ARCH")
+        self.assertTrue(ok)
+        desk3 = {r["symbol"] for r in db.list_desk_symbols()}
+        self.assertIn("ARCH", desk3)
+
+    def test_list_symbols_with_ohlcv_min_bars(self):
+        db.add_symbols(["A", "B"])
+        idx = pd.date_range("2024-01-01", periods=35, freq="D")
+        frame = pd.DataFrame(
+            {
+                "open": np.full(35, 10.0),
+                "high": np.full(35, 11.0),
+                "low": np.full(35, 9.0),
+                "close": np.full(35, 10.5),
+                "volume": np.full(35, 1000.0),
+            },
+            index=idx,
+        )
+        db.upsert_ohlcv("A", "daily", frame)
+        have = db.list_symbols_with_ohlcv("daily", min_bars=30)
+        self.assertEqual(have, ["A"])
+
 
 class DbApiTests(unittest.TestCase):
     def setUp(self):
@@ -132,6 +171,32 @@ class DbApiTests(unittest.TestCase):
         response = self.client.post("/api/db/optimize")
         self.assertEqual(response.status_code, 200)
         self.assertIn("symbol_count", response.get_json())
+
+    def test_universe_registry(self):
+        response = self.client.get("/api/universe/registry")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertGreaterEqual(len(data.get("indices", [])), 5)
+
+    def test_setups_catalog(self):
+        response = self.client.get("/api/setups/catalog")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("EP", response.get_json().get("setups", {}))
+
+    def test_promote_symbol_endpoint(self):
+        db.add_universe_symbols({"PROMO": ["sp500"]})
+        response = self.client.post("/api/symbols/PROMO/promote")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json().get("promoted"))
+
+    def test_symbols_desk_filter(self):
+        db.add_universe_symbols({"U1": ["sp500"]})
+        db.add_symbol("DESK1")
+        all_resp = self.client.get("/api/symbols")
+        desk_resp = self.client.get("/api/symbols?desk=1")
+        self.assertEqual(len(all_resp.get_json()), 2)
+        self.assertEqual(len(desk_resp.get_json()), 1)
+        self.assertEqual(desk_resp.get_json()[0]["symbol"], "DESK1")
 
 
 if __name__ == "__main__":
