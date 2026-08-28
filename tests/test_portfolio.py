@@ -729,6 +729,55 @@ class LegendStatsMathTests(unittest.TestCase):
 
 
 
+class NewsDateMarkersContractTests(unittest.TestCase):
+    """This-ticker news dates on the daily pane — off by default, merged with EP."""
+
+    def test_news_date_markers_contract(self):
+        with open("scripts/news_markers.js", encoding="utf-8") as fh:
+            news_js = fh.read()
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("scripts/spy_rs.js", encoding="utf-8") as fh:
+            spy_js = fh.read()
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        with open("portfolio.py", encoding="utf-8") as fh:
+            port = fh.read()
+        self.assertIn("function collectNewsPriceMarkers", news_js)
+        self.assertIn("function applyNewsMarkersIfOn", news_js)
+        self.assertIn("function toggleNewsMarkers", news_js)
+        self.assertIn("function buildNewsPriceMarkers", news_js)
+        self.assertIn("let newsMarkersOn = false", news_js)
+        self.assertIn("NEWS_MARKERS_MAX = 12", news_js)
+        self.assertIn("belowBar", news_js)
+        self.assertIn("circle", news_js)
+        self.assertIn("${_newsMarkersApi()}/news/", news_js)
+        self.assertIn("News dates on the daily pane", news_js)
+        self.assertIn("collectNewsPriceMarkers(rows)", charts)
+        self.assertIn("applyNewsMarkersIfOn()", charts)
+        self.assertIn("s.setMarkers(markers)", charts)
+        self.assertIn("function applyPriceMarkers", charts)
+        self.assertIn("function setupBarClickJournal", charts)
+        self.assertIn("scripts/news_markers.js", html)
+        spy_pos = html.index("scripts/spy_rs.js")
+        news_pos = html.index("scripts/news_markers.js")
+        self.assertLess(spy_pos, news_pos)
+        self.assertIn('id="pill-news-markers"', html)
+        idx = html.index('id="pill-news-markers"')
+        snippet = html[idx : idx + 280]
+        self.assertIn("aria-pressed", snippet)
+        self.assertIn('aria-pressed="false"', snippet)
+        self.assertIn("News dates on the daily pane", snippet)
+        self.assertNotIn("active-news-markers", snippet)
+        self.assertIn("not a rating", snippet)
+        for blob in (news_js, charts, html, app_js, spy_js, setup, port):
+            self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
+
+
 class SpyRsOverlayTests(unittest.TestCase):
     """close/SPY close comparison — not a published rating."""
 

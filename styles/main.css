@@ -1077,6 +1077,7 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
 .ind-pill.active-bb { background: rgba(34,197,94,0.18); border-color: #22c55e; color: #22c55e; }
 .ind-pill.active-spy-rs { background: rgba(103,232,249,0.16); border-color: #67e8f9; color: #67e8f9; }
 .ind-pill.active-ep { background: rgba(249,115,22,0.18); border-color: #f97316; color: #f97316; }
+.ind-pill.active-news-markers { background: rgba(196,181,253,0.16); border-color: #c4b5fd; color: #c4b5fd; }
 .ind-pill.active-darvas { background: rgba(249,115,22,0.18); border-color: #f97316; color: #f97316; }
 .ind-pill.active-price-alerts { background: rgba(192,132,252,0.16); border-color: #c084fc; color: #e9d5ff; }
 .ind-pill.active-pack { background: rgba(232,121,249,0.16); border-color: #e879f9; color: #e879f9; }
