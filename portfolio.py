@@ -4,6 +4,8 @@ portfolio.py — Fast watchlist / PM-desk snapshots for technical analysis.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 import numpy as np
 import pandas as pd
 
@@ -37,17 +39,600 @@ def peer_etf_for(sector: str | None) -> str:
     return _PEER_ETF.get(str(sector).strip(), "SPY")
 
 
-def position_size(price, atr, risk_dollars: float = 100.0, atr_mult: float = 1.5) -> dict:
-    """Shares such that atr_mult×ATR move ≈ risk_dollars."""
-    if not price or not atr or atr <= 0 or risk_dollars <= 0:
-        return {"shares": None, "risk_dollars": risk_dollars, "stop_distance": None, "notional": None}
-    stop_distance = float(atr) * atr_mult
-    shares = int(risk_dollars // stop_distance) if stop_distance else 0
+def _bar_date(row) -> str:
+    raw = row.get("date") if isinstance(row, dict) else row
+    return str(raw)[:10]
+
+
+SPY_RS_NOTE = "close/SPY close comparison line, not a published rating"
+
+
+def spy_rs_overlay(symbol_rows: list | None, spy_rows: list | None) -> dict:
+    """Daily close/SPY close comparison, rebased onto the last symbol close.
+
+    Overlay value at t = close_t * (SPY_last / SPY_t). The line ends at the
+    last print so it sits on the price pane as a comparison, not a rating.
+    """
+    spy_close: dict[str, float] = {}
+    for row in spy_rows or []:
+        if not isinstance(row, dict):
+            continue
+        day = _bar_date(row)
+        try:
+            px = float(row.get("close"))
+        except (TypeError, ValueError):
+            continue
+        if day and px > 0:
+            spy_close[day] = px
+
+    aligned: list[tuple[str, float, float]] = []
+    for row in symbol_rows or []:
+        if not isinstance(row, dict):
+            continue
+        day = _bar_date(row)
+        spy_px = spy_close.get(day)
+        if not day or not spy_px:
+            continue
+        try:
+            px = float(row.get("close"))
+        except (TypeError, ValueError):
+            continue
+        if px <= 0:
+            continue
+        aligned.append((day, px, px / spy_px))
+
+    if not aligned:
+        return {
+            "ready": False,
+            "benchmark": "SPY",
+            "basis": "close_ratio",
+            "rebase": "last_close",
+            "note": SPY_RS_NOTE,
+            "points": [],
+            "last_ratio": None,
+            "n": 0,
+        }
+
+    last_close = aligned[-1][1]
+    last_ratio = aligned[-1][2]
+    scale = last_close / last_ratio if last_ratio else 0.0
+    points = [
+        {
+            "date": day,
+            "ratio": round(ratio, 6),
+            "value": round(ratio * scale, 4),
+        }
+        for day, _px, ratio in aligned
+    ]
+    return {
+        "ready": True,
+        "benchmark": "SPY",
+        "basis": "close_ratio",
+        "rebase": "last_close",
+        "note": SPY_RS_NOTE,
+        "points": points,
+        "last_ratio": round(last_ratio, 6),
+        "n": len(points),
+    }
+
+
+def spy_rs_weekly_from_daily_points(
+    daily_points: list | None, weekly_rows: list | None
+) -> dict:
+    """Weekly close/SPY comparison from the same daily overlay series.
+
+    For each W-FRI weekly bar, take the last daily overlay ratio whose date
+    falls in that week (week-ending date back 6 calendar days). Rebase onto
+    the last weekly print so the line sits on weekly candles. Missing weeks
+    are skipped; if nothing aligns, ready=False so the weekly line can stay
+    off while the daily overlay still works.
+    """
+    empty = {
+        "ready": False,
+        "benchmark": "SPY",
+        "basis": "close_ratio",
+        "rebase": "last_close",
+        "freq": "weekly",
+        "note": SPY_RS_NOTE,
+        "points": [],
+        "last_ratio": None,
+        "n": 0,
+    }
+
+    daily: list[tuple[str, float]] = []
+    for point in daily_points or []:
+        if not isinstance(point, dict):
+            continue
+        day = str(point.get("date") or "")[:10]
+        try:
+            ratio = float(point.get("ratio"))
+        except (TypeError, ValueError):
+            continue
+        if day and ratio > 0:
+            daily.append((day, ratio))
+    daily.sort(key=lambda item: item[0])
+
+    weeks: list[tuple[str, float]] = []
+    for row in weekly_rows or []:
+        if not isinstance(row, dict):
+            continue
+        day = _bar_date(row)
+        try:
+            px = float(row.get("close"))
+        except (TypeError, ValueError):
+            continue
+        if day and px > 0:
+            weeks.append((day, px))
+
+    if not daily or not weeks:
+        return empty
+
+    aligned: list[tuple[str, float, float]] = []
+    for week_date, week_close in weeks:
+        try:
+            week_end = date.fromisoformat(week_date)
+        except ValueError:
+            continue
+        week_start = (week_end - timedelta(days=6)).isoformat()
+        hit_ratio = None
+        for day, ratio in daily:
+            if day < week_start:
+                continue
+            if day > week_date:
+                break
+            hit_ratio = ratio
+        if hit_ratio is None:
+            continue
+        aligned.append((week_date, week_close, hit_ratio))
+
+    if not aligned:
+        return empty
+
+    last_close = aligned[-1][1]
+    last_ratio = aligned[-1][2]
+    scale = last_close / last_ratio if last_ratio else 0.0
+    points = [
+        {
+            "date": day,
+            "ratio": round(ratio, 6),
+            "value": round(ratio * scale, 4),
+        }
+        for day, _px, ratio in aligned
+    ]
+    return {
+        "ready": True,
+        "benchmark": "SPY",
+        "basis": "close_ratio",
+        "rebase": "last_close",
+        "freq": "weekly",
+        "note": SPY_RS_NOTE,
+        "points": points,
+        "last_ratio": round(last_ratio, 6),
+        "n": len(points),
+    }
+
+
+def linked_ohlc_bar(
+    source_freq: str,
+    date_key: str,
+    daily_rows: list | None,
+    weekly_rows: list | None,
+) -> dict | None:
+    """Match a hovered daily date to its W-FRI weekly bar (and vice versa).
+
+    Daily → first weekly bar with date >= daily (the covering Friday bar).
+    Weekly → last daily bar with date <= weekly (that week's last print).
+    Chart range sync is separate; this is bar readout only.
+    """
+    key = str(date_key or "")[:10]
+    if not key:
+        return None
+    freq = (source_freq or "").lower()
+    if freq == "daily":
+        rows = weekly_rows or []
+        for row in rows:
+            if _bar_date(row) >= key:
+                return row
+        return rows[-1] if rows else None
+    found = None
+    for row in daily_rows or []:
+        if _bar_date(row) <= key:
+            found = row
+        else:
+            break
+    return found
+
+
+ADR_LOOKBACK = 20
+ADR_MIN_BARS = 5
+LEGEND_RVOL_LOOKBACK = 20
+LEGEND_52W_BARS = 252
+LEGEND_MINUS = "\u2212"
+LEGEND_TIMES = "\u00d7"
+
+
+def _adr_bar_range_pct(row) -> float | None:
+    if not isinstance(row, dict):
+        return None
+    try:
+        high = float(row.get("high"))
+        low = float(row.get("low"))
+        close = float(row.get("close"))
+    except (TypeError, ValueError):
+        return None
+    if high > 0 and low > 0 and close > 0:
+        return ((high - low) / close) * 100
+    return None
+
+
+def legend_adr_pct(
+    rows: list | None,
+    lookback: int = ADR_LOOKBACK,
+    min_bars: int = ADR_MIN_BARS,
+) -> float | None:
+    """Mean of ((high-low)/close)*100 over the last `lookback` daily bars
+    that have high, low, close > 0. Omit if fewer than `min_bars` such bars.
+
+    Stock statistic from the latest daily series — not the hovered window.
+    """
+    ranges: list[float] = []
+    for row in reversed(rows or []):
+        pct = _adr_bar_range_pct(row)
+        if pct is None:
+            continue
+        ranges.append(pct)
+        if len(ranges) >= lookback:
+            break
+    if len(ranges) < min_bars:
+        return None
+    return sum(ranges) / len(ranges)
+
+
+def legend_sma200_dist_pct(close, sma200) -> float | None:
+    """(close / sma200 - 1) * 100. Omit if either is missing or not > 0."""
+    try:
+        c = float(close)
+        s = float(sma200)
+    except (TypeError, ValueError):
+        return None
+    if c > 0 and s > 0:
+        return (c / s - 1) * 100
+    return None
+
+
+def format_legend_adr(adr) -> str:
+    if adr is None:
+        return ""
+    try:
+        n = float(adr)
+    except (TypeError, ValueError):
+        return ""
+    if n != n:  # NaN
+        return ""
+    return f"ADR {n:.2f}%"
+
+
+def format_legend_sma200_dist(pct) -> str:
+    if pct is None:
+        return ""
+    try:
+        n = float(pct)
+    except (TypeError, ValueError):
+        return ""
+    if n != n:
+        return ""
+    sign = "+" if n >= 0 else LEGEND_MINUS
+    return f"200 {sign}{abs(n):.1f}%"
+
+
+def tape_atr_pct(atr, close) -> float | None:
+    """ATR / close * 100. Omit if ATR or close is missing or not > 0."""
+    try:
+        a = float(atr)
+        c = float(close)
+    except (TypeError, ValueError):
+        return None
+    if a != a or c != c:  # NaN
+        return None
+    if a > 0 and c > 0:
+        return (a / c) * 100
+    return None
+
+
+def format_tape_atr_pct(pct) -> str:
+    """Muted tape chip: 'ATR 2.1%'. Empty if ATR% is missing."""
+    if pct is None:
+        return ""
+    try:
+        n = float(pct)
+    except (TypeError, ValueError):
+        return ""
+    if n != n:
+        return ""
+    return f"ATR {n:.1f}%"
+
+
+SMA200_BARS = 200
+
+
+def last_sma(close: pd.Series, window: int = SMA200_BARS) -> float | None:
+    """Simple SMA of the last `window` closes. Omit if fewer than `window` bars."""
+    if close is None:
+        return None
+    try:
+        s = close if isinstance(close, pd.Series) else pd.Series(close, dtype=float)
+        if len(s) < window:
+            return None
+        val = float(s.iloc[-window:].astype(float).mean(skipna=False))
+    except (TypeError, ValueError):
+        return None
+    if val != val or not (val > 0):
+        return None
+    return val
+
+
+def _legend_bar_volume(row) -> float:
+    """Match JS `r.volume || 0`: missing / non-numeric / NaN volume counts as 0."""
+    if not isinstance(row, dict):
+        return 0.0
+    raw = row.get("volume")
+    if raw is None or raw == "":
+        return 0.0
+    try:
+        vol = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    if vol != vol:  # NaN
+        return 0.0
+    return vol
+
+
+def legend_avg20_vol(rows: list | None, i) -> float | None:
+    """Mean volume of the prior 20 bars, not including bar i.
+
+    Same window as scripts/charts.js `_avg20Vol`: rows[max(0, i-20):i].
+    """
+    if not rows or i is None:
+        return None
+    try:
+        idx = int(i)
+    except (TypeError, ValueError):
+        return None
+    if idx < 0:
+        return None
+    window = rows[max(0, idx - LEGEND_RVOL_LOOKBACK) : idx]
+    if not window:
+        return None
+    return sum(_legend_bar_volume(r) for r in window) / len(window)
+
+
+def legend_rvol(rows: list | None, i) -> float | None:
+    """Hovered volume / prior-20 average. Omit if the average is missing or 0."""
+    avg = legend_avg20_vol(rows, i)
+    if avg is None or avg <= 0:
+        return None
+    try:
+        idx = int(i)
+    except (TypeError, ValueError):
+        return None
+    if idx < 0 or idx >= len(rows):
+        return None
+    try:
+        vol = float(rows[idx].get("volume"))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if vol != vol or vol < 0:
+        return None
+    return vol / avg
+
+
+def legend_high52(rows: list | None, i, lookback: int = LEGEND_52W_BARS) -> float | None:
+    """Max high over `lookback` sessions ending at i, including bar i.
+
+    Matches applySessionLevels (252 daily sessions) evaluated at the hovered index.
+    """
+    if not rows or i is None:
+        return None
+    try:
+        idx = int(i)
+    except (TypeError, ValueError):
+        return None
+    if idx < 0 or idx >= len(rows):
+        return None
+    start = max(0, idx + 1 - lookback)
+    hi = None
+    for row in rows[start : idx + 1]:
+        if not isinstance(row, dict):
+            continue
+        try:
+            h = float(row.get("high"))
+        except (TypeError, ValueError):
+            continue
+        if h != h:
+            continue
+        hi = h if hi is None else max(hi, h)
+    return hi
+
+
+def legend_gap_from_52h_pct(close, high52) -> float | None:
+    """(close / high52 - 1) * 100. Omit if either is missing or not > 0."""
+    try:
+        c = float(close)
+        h = float(high52)
+    except (TypeError, ValueError):
+        return None
+    if c > 0 and h > 0:
+        return (c / h - 1) * 100
+    return None
+
+
+def format_legend_rvol(rvol) -> str:
+    if rvol is None:
+        return ""
+    try:
+        n = float(rvol)
+    except (TypeError, ValueError):
+        return ""
+    if n != n:
+        return ""
+    return f"RVOL {n:.1f}{LEGEND_TIMES}"
+
+
+def format_legend_52h_gap(pct) -> str:
+    if pct is None:
+        return ""
+    try:
+        n = float(pct)
+    except (TypeError, ValueError):
+        return ""
+    if n != n:
+        return ""
+    mag = f"{abs(n):.1f}"
+    if mag == "0.0":
+        return "52H 0.0%"
+    sign = "+" if n > 0 else LEGEND_MINUS
+    return f"52H {sign}{mag}%"
+
+
+def legend_stat_text_bits(
+    freq: str,
+    *,
+    close=None,
+    sma200=None,
+    daily_rows: list | None = None,
+    rows: list | None = None,
+    idx: int | None = None,
+) -> list[str]:
+    """Plain legend bits. ADR / RVOL / 52H are daily-only; SMA200 follows the hovered bar."""
+    bits: list[str] = []
+    is_daily = (freq or "").lower() == "daily"
+    if is_daily:
+        adr_txt = format_legend_adr(legend_adr_pct(daily_rows))
+        if adr_txt:
+            bits.append(adr_txt)
+        rvol_txt = format_legend_rvol(legend_rvol(rows, idx))
+        if rvol_txt:
+            bits.append(rvol_txt)
+    bar_close = close
+    if rows is not None and idx is not None:
+        try:
+            bar = rows[idx]
+        except (IndexError, TypeError):
+            bar = None
+        if isinstance(bar, dict) and bar.get("close") is not None:
+            bar_close = bar.get("close")
+    if is_daily:
+        gap_txt = format_legend_52h_gap(
+            legend_gap_from_52h_pct(bar_close, legend_high52(rows, idx))
+        )
+        if gap_txt:
+            bits.append(gap_txt)
+    dist_txt = format_legend_sma200_dist(legend_sma200_dist_pct(close, sma200))
+    if dist_txt:
+        bits.append(dist_txt)
+    return bits
+
+
+def position_size(
+    price,
+    atr,
+    risk_dollars: float = 100.0,
+    atr_mult: float = 1.5,
+    *,
+    stop_price: float | None = None,
+) -> dict:
+    """Shares such that stop distance ≈ risk_dollars.
+
+    Prefer a user/structural stop (`stop_price`). Fall back to atr_mult×ATR
+    when no stop is provided (Brandt / Neumann risk box).
+    """
+    if not price or risk_dollars <= 0:
+        return {
+            "shares": None,
+            "risk_dollars": risk_dollars,
+            "stop_distance": None,
+            "notional": None,
+            "stop_source": None,
+        }
+    stop_source = "atr"
+    if stop_price is not None and float(stop_price) > 0:
+        stop_distance = abs(float(price) - float(stop_price))
+        stop_source = "user_stop"
+    elif atr and atr > 0:
+        stop_distance = float(atr) * atr_mult
+        stop_source = "atr"
+    else:
+        return {
+            "shares": None,
+            "risk_dollars": risk_dollars,
+            "stop_distance": None,
+            "notional": None,
+            "stop_source": None,
+        }
+    shares = int(risk_dollars // stop_distance) if stop_distance > 0 else 0
     return {
         "shares": shares,
         "risk_dollars": risk_dollars,
         "stop_distance": round(stop_distance, 2),
         "notional": round(shares * float(price), 2) if shares else 0.0,
+        "stop_source": stop_source,
+    }
+
+
+def darvas_box(df: pd.DataFrame, lookback: int = 20, confirm: int = 3) -> dict | None:
+    """Detect a simple Darvas-style consolidation box on OHLCV.
+
+    Box top = rolling N-bar high that held for `confirm` bars without a new high.
+    Box low = lowest low during that hold window. State is in_box / breakout / failed.
+    Never conflated with KAMA/RSI (see METHODOLOGY_REVIEW.md).
+    """
+    if df is None or df.empty or len(df) < lookback + confirm + 2:
+        return None
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+    close = df["close"].astype(float)
+    # Find last bar where a lookback-high held for `confirm` bars
+    roll_hi = high.rolling(lookback).max()
+    box_top = None
+    box_low = None
+    since_idx = None
+    for i in range(len(df) - confirm - 1, lookback - 1, -1):
+        top = float(roll_hi.iloc[i])
+        if pd.isna(top):
+            continue
+        window = high.iloc[i + 1 : i + 1 + confirm]
+        if len(window) < confirm:
+            continue
+        if float(window.max()) <= top + 1e-9:
+            # Confirmed: no new high for `confirm` bars after the pivot
+            hold = df.iloc[max(0, i - lookback + 1) : i + 1 + confirm]
+            box_top = top
+            box_low = float(hold["low"].astype(float).min())
+            since_idx = i - lookback + 1
+            break
+    if box_top is None or box_low is None or box_top <= box_low:
+        return None
+    last = float(close.iloc[-1])
+    if last > box_top:
+        state = "breakout"
+    elif last < box_low:
+        state = "failed"
+    else:
+        state = "in_box"
+    since = None
+    try:
+        since = str(df.index[max(0, since_idx)].date()) if since_idx is not None else None
+    except Exception:
+        since = None
+    height = box_top - box_low
+    return {
+        "top": round(box_top, 2),
+        "bottom": round(box_low, 2),
+        "height": round(height, 2),
+        "state": state,
+        "since": since,
+        "target": round(box_top + height, 2),  # 1× measured move
+        "pct_to_top": round((last / box_top - 1.0) * 100, 2) if box_top else None,
     }
 
 
@@ -128,14 +713,51 @@ def snapshot_symbol(symbol: str) -> dict:
     close = df["close"].astype(float)
     high = df["high"].astype(float)
     low = df["low"].astype(float)
+    open_ = df["open"].astype(float)
+    volume = df["volume"].astype(float)
     last = float(close.iloc[-1])
     prev = float(close.iloc[-2]) if len(close) > 1 else last
     chg = last - prev
     chg_pct = (chg / prev * 100) if prev else 0.0
 
+    # ── Momentum / breakout metrics (Qullamaggie loop) ──────────────
+    # Distance from N-day high, 0 = sitting at the high (near-high queue).
+    def _dist_from_high(n: int):
+        window = high.tail(min(n, len(high)))
+        hi = float(window.max()) if len(window) else None
+        return round((last / hi - 1.0) * 100, 2) if hi else None
+
+    dist_20d_high = _dist_from_high(20)
+    dist_63d_high = _dist_from_high(63)
+
+    # Volume surge: today's bar vs 20-bar average volume.
+    vol_avg20 = float(volume.tail(21).iloc[:-1].mean()) if len(volume) > 21 else (
+        float(volume.iloc[:-1].mean()) if len(volume) > 1 else None
+    )
+    vol_today = float(volume.iloc[-1])
+    vol_ratio = round(vol_today / vol_avg20, 2) if vol_avg20 and vol_avg20 > 0 else None
+
+    # Gap %: today's open vs prior close — episodic-pivot (EP) path.
+    today_open = float(open_.iloc[-1])
+    gap_pct = round((today_open / prev - 1.0) * 100, 2) if prev else None
+
+    is_near_high = dist_20d_high is not None and dist_20d_high >= -5.0
+    is_vol_surge = vol_ratio is not None and vol_ratio >= 1.5
+    is_ep = (
+        gap_pct is not None and vol_ratio is not None
+        and gap_pct >= 4.0 and vol_ratio >= 1.5
+    )
+    breakout_score = (
+        (1 if is_near_high else 0)
+        + (1 if is_vol_surge else 0)
+        + (1 if is_ep else 0)
+    )
+
     rsi14 = _last_valid(_rsi(close, 14))
     kama20 = _last_valid(_kama(close, 20))
     atr14 = _last_valid(_atr(high, low, close, 14))
+    sma200 = last_sma(close, SMA200_BARS)
+    dist_sma200_pct = legend_sma200_dist_pct(last, sma200)
 
     vs_kama = None
     regime = "n/a"
@@ -148,7 +770,7 @@ def snapshot_symbol(symbol: str) -> dict:
         else:
             regime = "range"
 
-    atr_pct = (atr14 / last * 100) if atr14 and last else None
+    atr_pct = tape_atr_pct(atr14, last)
     stop_long = round(last - 1.5 * atr14, 2) if atr14 else None
     stop_short = round(last + 1.5 * atr14, 2) if atr14 else None
 
@@ -184,6 +806,8 @@ def snapshot_symbol(symbol: str) -> dict:
         "ret_21d_pct": round(ret_21d, 2) if ret_21d is not None else None,
         "rsi14": round(rsi14, 1) if rsi14 is not None else None,
         "rsi_zone": _rsi_zone(rsi14),
+        "sma200": round(sma200, 2) if sma200 is not None else None,
+        "dist_sma200_pct": round(dist_sma200_pct, 2) if dist_sma200_pct is not None else None,
         "kama20": round(kama20, 2) if kama20 is not None else None,
         "vs_kama20_pct": round(vs_kama, 2) if vs_kama is not None else None,
         "regime": regime,
@@ -193,6 +817,16 @@ def snapshot_symbol(symbol: str) -> dict:
         "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
         "stop_long_1_5atr": stop_long,
         "stop_short_1_5atr": stop_short,
+        # Momentum / breakout (Qullamaggie loop) — near-high, volume surge, EP/gap
+        "dist_20d_high_pct": dist_20d_high,
+        "dist_63d_high_pct": dist_63d_high,
+        "vol_ratio_5_20": vol_ratio,
+        "gap_pct": gap_pct,
+        "is_near_high": is_near_high,
+        "is_vol_surge": is_vol_surge,
+        "is_ep": is_ep,
+        "breakout_score": breakout_score,
+        "darvas": darvas_box(df),
         # last ~30 daily closes for correlation (compact)
         "closes_30": [round(float(x), 4) for x in close.tail(30).tolist()],
     }
@@ -234,7 +868,8 @@ def portfolio_snapshot() -> dict:
         if row.get("ready"):
             row["size_risk_100"] = position_size(row.get("price"), row.get("atr14"), 100.0, 1.5)
 
-    # Relative strength rank by 21D return (1 = strongest)
+    # Watchlist-relative 21D return rank (1 = strongest in this book).
+    # Book RS only — not a published rating.
     ranked = sorted(
         ready,
         key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
@@ -258,6 +893,16 @@ def portfolio_snapshot() -> dict:
 
     by_day = sorted(ready, key=lambda r: r.get("change_pct") or 0, reverse=True)
 
+    # Breakout queue: near-high + volume-confirmed names (Qullamaggie loop),
+    # NOT an RSI OS/weak-RS list. Ranked by breakout_score, then closest to high.
+    breakout_queue = sorted(
+        (r for r in ready if r.get("is_near_high") or r.get("is_vol_surge")),
+        key=lambda r: (
+            -(r.get("breakout_score") or 0),
+            -(r.get("dist_20d_high_pct") if r.get("dist_20d_high_pct") is not None else -999),
+        ),
+    )[:12]
+
     # Group rollup: avg day % by group_tag
     groups = {}
     for row in ready:
@@ -275,9 +920,12 @@ def portfolio_snapshot() -> dict:
         row.pop("closes_30", None)
 
     weak = ranked[-1] if ranked else None
-    focus_news = list(dict.fromkeys(
-        alerts + ([weak["symbol"]] if weak else [])
-    ))
+
+    # Book news defaults to STRONG names — breakout queue + top RS — not
+    # RSI OS/weak-RS. See METHODOLOGY_REVIEW.md must-not-do #3.
+    strong_focus = [r["symbol"] for r in breakout_queue[:3]]
+    strong_focus += [r["symbol"] for r in ranked[:3]]
+    focus_news = list(dict.fromkeys(strong_focus))
 
     # Regime heatmap rows for PM-A
     heatmap = [
@@ -306,4 +954,7 @@ def portfolio_snapshot() -> dict:
         "correlation": corr,
         "group_rollup": group_rollup,
         "news_focus": focus_news,
+        "breakout_queue": breakout_queue,
+        "rs_basis": "watchlist_21d",
+        "rs_note": "Book RS is this watchlist's 21D return rank, not a published rating",
     }
