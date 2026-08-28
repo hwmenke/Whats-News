@@ -174,5 +174,126 @@ console.log(JSON.stringify({both, none, adrOnly, rvolOnly, missing}));
             self.assertNotIn("N/A", html)
 
 
+class SetupScanFilterPersistenceTests(unittest.TestCase):
+    """Reload restores last Scan filter + universe; hit rows stay on the 60s cache."""
+
+    def test_storage_key_and_restore_on_load_contract(self):
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+
+        self.assertIn("SETUP_FILTERS_STORAGE_KEY = 'whats-news-setup-filters'", setup)
+        self.assertIn("whats-news-setup-filters", setup)
+        self.assertIn("function readSetupFilters", setup)
+        self.assertIn("function writeSetupFilters", setup)
+        self.assertIn("function persistSetupFilters", setup)
+        self.assertIn("function restoreSetupFilters", setup)
+        self.assertIn("localStorage.getItem(SETUP_FILTERS_STORAGE_KEY)", setup)
+        self.assertIn("localStorage.setItem(SETUP_FILTERS_STORAGE_KEY", setup)
+        self.assertIn("restoreSetupFilters()", setup)
+        self.assertIn("bindSetupUniverseToggle()", setup)
+        self.assertIn("persistSetupFilters()", setup)
+
+        init = setup[setup.index("async function initSetupScanner") : setup.index("function renderSetupFilterPills")]
+        self.assertLess(init.index("restoreSetupFilters()"), init.index("apiFetch"))
+        self.assertNotIn("loadSetupScan", init)
+
+        restore = setup[setup.index("function restoreSetupFilters") : setup.index("function bindSetupUniverseToggle")]
+        self.assertNotIn("loadSetupScan", restore)
+        self.assertNotIn("sessionStorage", restore)
+        self.assertIn("_setupFilter = saved.filter", restore)
+        self.assertIn("el.checked = !!saved.universe", restore)
+
+        self.assertIn("whats-news-setup-scan", setup)
+        self.assertIn("sessionStorage.getItem(SETUP_SCAN_CACHE_KEY)", setup)
+        self.assertIn("SETUP_SCAN_CACHE_TTL_MS = 60 * 1000", setup)
+
+        self.assertIn("function setupMetricChipsHtml", setup)
+        self.assertIn("setup-metric-chip", setup)
+        self.assertIn("setupMetricChipsHtml(row)", setup)
+
+        self.assertIn('id="chk-setup-universe"', html)
+        self.assertIn('id="setup-filter-pills"', html)
+        self.assertIn("loadSetupScan({ allowStaleRows: true })", app_js)
+        self.assertNotIn("whats-news-setup-filters", app_js)
+
+        self.assertIsNone(re.search(r"ibd", setup, re.IGNORECASE))
+        self.assertIsNone(re.search(r"ibd", html, re.IGNORECASE))
+
+    def test_restore_round_trip_without_scan(self):
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        start = setup.index("function currentSetupUniverse")
+        end = setup.index("async function initSetupScanner")
+        fns = setup[start:end]
+        script = r"""
+const mem = {};
+const session = {};
+let checkbox = { checked: true, addEventListener() {} };
+global.localStorage = {
+    getItem: k => (Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null),
+    setItem: (k, v) => { mem[k] = String(v); },
+};
+global.sessionStorage = {
+    getItem: k => (Object.prototype.hasOwnProperty.call(session, k) ? session[k] : null),
+    setItem: (k, v) => { session[k] = String(v); },
+};
+global.document = {
+    getElementById: id => (id === 'chk-setup-universe' ? checkbox : null),
+};
+let loadSetupScanCalls = 0;
+global.loadSetupScan = () => { loadSetupScanCalls += 1; };
+const SETUP_FILTERS_STORAGE_KEY = 'whats-news-setup-filters';
+let _setupFilter = null;
+""" + fns + r"""
+writeSetupFilters('EP', false);
+const saved = readSetupFilters();
+_setupFilter = null;
+checkbox.checked = true;
+const applied = restoreSetupFilters();
+persistSetupFilters();
+const round = JSON.parse(localStorage.getItem(SETUP_FILTERS_STORAGE_KEY));
+const empty = readSetupFilters();
+localStorage.setItem(SETUP_FILTERS_STORAGE_KEY, 'not-json');
+const bad = readSetupFilters();
+localStorage.setItem(SETUP_FILTERS_STORAGE_KEY, JSON.stringify({ filter: 'ALL', universe: true }));
+const all = readSetupFilters();
+console.log(JSON.stringify({
+    saved,
+    applied,
+    checkbox: checkbox.checked,
+    filterAfter: _setupFilter,
+    round,
+    scanCalls: loadSetupScanCalls,
+    sessionKeys: Object.keys(session),
+    allFilter: all && all.filter,
+    bad,
+    key: SETUP_FILTERS_STORAGE_KEY,
+}));
+"""
+        proc = subprocess.run(
+            ["node", "-e", script],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        import json
+        out = json.loads(proc.stdout)
+        self.assertEqual(out["key"], "whats-news-setup-filters")
+        self.assertEqual(out["saved"], {"filter": "EP", "universe": False})
+        self.assertEqual(out["applied"], {"filter": "EP", "universe": False})
+        self.assertFalse(out["checkbox"])
+        self.assertEqual(out["filterAfter"], "EP")
+        self.assertEqual(out["round"], {"filter": "EP", "universe": False})
+        self.assertEqual(out["scanCalls"], 0)
+        self.assertEqual(out["sessionKeys"], [])
+        self.assertIsNone(out["allFilter"])
+        self.assertIsNone(out["bad"])
+
+
 if __name__ == "__main__":
     unittest.main()
