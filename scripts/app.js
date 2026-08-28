@@ -29,6 +29,7 @@ let state = {
 const JOURNAL_KEY = 'whats-news-journal';
 const PANES_KEY   = 'whats-news-panes';
 const WORKSPACE_KEY = 'whats-news-workspace';
+const FOCUS_MODE_KEY = 'whats-news-focus-mode';
 const LAST_SYMBOL_KEY = 'whats-news-last-symbol';
 let journalFocusDate = null;
 
@@ -2846,16 +2847,24 @@ async function loadWatchlistPreset() {
     }
 }
 
-function toggleFocusMode(force) {
+function toggleFocusMode(force, opts = {}) {
     const on = force ?? !document.body.classList.contains('focus-mode');
     document.body.classList.toggle('focus-mode', on);
     setPressed(document.getElementById('pill-focus'), on);
     const chip = document.getElementById('focus-mode-chip');
     if (chip) chip.hidden = !on;
-    toast(on ? 'Focus mode — press f to restore chrome' : 'Chrome restored', 'info', 2200);
+    try { localStorage.setItem(FOCUS_MODE_KEY, on ? '1' : '0'); } catch { /* ignore quota */ }
+    if (!opts.silent) toast(on ? 'Focus mode — press f to restore chrome' : 'Chrome restored', 'info', 2200);
     window.resizeAllCharts?.();
     return on;
 }
+
+function restoreFocusMode() {
+    let saved = null;
+    try { saved = localStorage.getItem(FOCUS_MODE_KEY); } catch { saved = null; }
+    if (saved === '1') toggleFocusMode(true, { silent: true });
+}
+
 window.toggleFocusMode = toggleFocusMode;
 
 function isKbdHelpOpen() {
@@ -3410,6 +3419,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         try { ws = localStorage.getItem(WORKSPACE_KEY) || 'chart'; } catch { ws = 'chart'; }
         if (ws === 'scan') setWorkspace('scan', { skipChart: true });
     }
+    // After workspace restore so Chart/Scan/Review chrome matches the saved desk.
+    restoreFocusMode();
 });
 
 // ── Indicator pane visibility (RSI / MACD / Trend) — persisted, price-first ──
