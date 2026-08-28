@@ -443,6 +443,18 @@ function tapeSma200Span(row) {
     return txt ? `<span class="tape-sma200">${txt}</span>` : '';
 }
 
+// Compact ATR% — ATR(14) / close * 100 from snapshot. Omit if missing.
+function formatTapeAtrPct(row) {
+    const pct = row && row.atr_pct;
+    if (pct == null || !Number.isFinite(Number(pct))) return '';
+    return `ATR ${Number(pct).toFixed(1)}%`;
+}
+
+function tapeAtrPctSpan(row) {
+    const txt = formatTapeAtrPct(row);
+    return txt ? `<span class="tape-atr">${txt}</span>` : '';
+}
+
 function renderPortfolioTape(data) {
     const bar = document.getElementById('portfolio-tape');
     const chips = document.getElementById('tape-chips');
@@ -511,14 +523,16 @@ function renderAllChips(tapeAll, chips) {
             ? ` D:${row.regime?.[0] || '?'} W:${row.regime_weekly[0]}`
             : '';
         const smaTxt = sma200DistText(row);
+        const atrTxt = formatTapeAtrPct(row);
         chip.innerHTML = `
             <span>${row.symbol}</span>
             <span class="tape-pct ${pos ? 'positive' : 'negative'}">${pos ? '+' : ''}${row.change_pct?.toFixed(1) ?? '—'}%</span>
             ${tapeSma200Span(row)}
+            ${tapeAtrPctSpan(row)}
             <span class="tape-rs">${bookRsLabel(row)}${dw}</span>
             ${row.alert ? `<span class="tape-alert">${row.alert}</span>` : ''}
         `;
-        chip.title = `D ${row.regime || ''} / W ${row.regime_weekly || ''} · RSI ${row.rsi14 ?? '—'}${smaTxt ? ` · ${smaTxt}` : ''}`;
+        chip.title = `D ${row.regime || ''} / W ${row.regime_weekly || ''} · RSI ${row.rsi14 ?? '—'}${smaTxt ? ` · ${smaTxt}` : ''}${atrTxt ? ` · ${atrTxt}` : ''}`;
         chip.addEventListener('click', () => selectSymbol(row.symbol));
         chips.appendChild(chip);
     });
@@ -540,14 +554,16 @@ function renderBreakoutChips(data, chips) {
         const distTxt = dist != null ? `${dist > 0 ? '+' : ''}${dist.toFixed(1)}% fr Hi` : '—';
         const volTxt = row.vol_ratio_5_20 != null ? `Vol ${row.vol_ratio_5_20.toFixed(1)}×` : '—';
         const smaTxt = sma200DistText(row);
+        const atrTxt = formatTapeAtrPct(row);
         chip.innerHTML = `
             <span>${row.symbol}</span>
             <span class="tape-rs">${distTxt}</span>
             <span class="tape-rs">${volTxt}</span>
             ${tapeSma200Span(row)}
+            ${tapeAtrPctSpan(row)}
             ${row.is_ep ? '<span class="bq-ep-flag" title="Gap ≥4% on volume surge">EP</span>' : ''}
         `;
-        chip.title = `${row.symbol} · ${distTxt} · ${volTxt}${row.gap_pct != null ? ` · gap ${row.gap_pct.toFixed(1)}%` : ''}${smaTxt ? ` · ${smaTxt}` : ''}`;
+        chip.title = `${row.symbol} · ${distTxt} · ${volTxt}${row.gap_pct != null ? ` · gap ${row.gap_pct.toFixed(1)}%` : ''}${smaTxt ? ` · ${smaTxt}` : ''}${atrTxt ? ` · ${atrTxt}` : ''}`;
         chip.addEventListener('click', () => selectSymbol(row.symbol));
         chips.appendChild(chip);
     });
@@ -565,13 +581,15 @@ function renderAlertChips(data, chips) {
         chip.type = 'button';
         chip.className = 'tape-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
         const smaTxt = sma200DistText(row);
+        const atrTxt = formatTapeAtrPct(row);
         chip.innerHTML = `
             <span>${row.symbol}</span>
             <span class="tape-alert">${row.alert}</span>
             <span class="tape-rs">RSI ${row.rsi14 ?? '—'}</span>
             ${tapeSma200Span(row)}
+            ${tapeAtrPctSpan(row)}
         `;
-        chip.title = `${row.symbol} · ${row.alert} · RSI ${row.rsi14 ?? '—'}${smaTxt ? ` · ${smaTxt}` : ''}`;
+        chip.title = `${row.symbol} · ${row.alert} · RSI ${row.rsi14 ?? '—'}${smaTxt ? ` · ${smaTxt}` : ''}${atrTxt ? ` · ${atrTxt}` : ''}`;
         chip.addEventListener('click', () => selectSymbol(row.symbol));
         chips.appendChild(chip);
     });
@@ -1084,6 +1102,15 @@ function renderSymbolList() {
             smaEl.textContent = smaTxt;
             smaEl.title = 'Distance to SMA200';
             item.appendChild(smaEl);
+        }
+
+        const atrTxt = formatTapeAtrPct(snap);
+        if (atrTxt) {
+            const atrEl = document.createElement('span');
+            atrEl.className = 'sym-atr';
+            atrEl.textContent = atrTxt;
+            atrEl.title = 'ATR(14) as percent of close';
+            item.appendChild(atrEl);
         }
 
         if (snap?.rs_rank_21d) {
