@@ -11,7 +11,7 @@
   <!-- Chart.js for statistics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
+<body class="workspace-chart">
 
 <div class="app">
 
@@ -26,8 +26,13 @@
 
     <nav class="topbar-nav" aria-label="Primary">
       <a href="/" class="topbar-nav-link active">Dashboard</a>
-      <a href="/news" class="topbar-nav-link" title="Headlines for your whole watchlist">News</a>
+      <a href="/news" class="topbar-nav-link" title="Headlines for every symbol on the watchlist">Watchlist news</a>
     </nav>
+    <div class="workspace-switch" role="group" aria-label="Desk workspace">
+      <button type="button" class="workspace-btn active" data-workspace="chart" aria-pressed="true" title="Chart workspace (1)">Chart</button>
+      <button type="button" class="workspace-btn" data-workspace="scan" aria-pressed="false" title="Scan workspace (2) — list stays up; Enter opens the chart">Scan</button>
+      <button type="button" class="workspace-btn" data-workspace="review" aria-pressed="false" title="Review workspace (3) — this-ticker news, journal, book scan">Review</button>
+    </div>
 
     <div class="topbar-spacer"></div>
 
@@ -57,8 +62,12 @@
           spellcheck="false"
         />
         <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add symbol (or type comma-separated)">+</button>
-        <button id="btn-bulk-add"   class="btn btn-ghost   btn-icon" title="Bulk import a list of tickers">≡</button>
+        <button type="button" id="btn-bulk-add" class="btn btn-ghost btn-icon"
+                title="Bulk import a list of tickers" aria-haspopup="dialog" aria-controls="bulk-modal">≡</button>
       </div>
+      <input id="watchlist-filter" type="text" class="watchlist-filter"
+             placeholder="Filter list…" autocomplete="off" spellcheck="false"
+             title="Filter visible tickers (j/k follow this list)" />
     </div>
 
     <div id="symbol-list" class="symbol-list">
@@ -80,10 +89,10 @@
     <!-- Portfolio tape — All / Breakout / Alerts share one slim chip row -->
     <div id="portfolio-tape" class="portfolio-tape" style="display:none;" aria-label="Portfolio tape">
       <div class="tape-meta" id="tape-meta">Book tape</div>
-      <div class="tape-mode" role="tablist" aria-label="Tape filter">
-        <button type="button" class="tape-mode-btn active" data-mode="all" title="All names by day %">All</button>
-        <button type="button" class="tape-mode-btn" data-mode="breakout" title="Near 20D high and/or volume surge — book-relative breakout queue, not a formal published breakout signal">Breakout</button>
-        <button type="button" class="tape-mode-btn" data-mode="alerts" title="RSI overbought/oversold only">Alerts</button>
+      <div class="tape-mode" role="group" aria-label="Tape filter">
+        <button type="button" class="tape-mode-btn active" data-mode="all" aria-pressed="true" title="All names by day %">All</button>
+        <button type="button" class="tape-mode-btn" data-mode="breakout" aria-pressed="false" title="Near 20D high and/or volume surge — book-relative breakout queue, not a formal published breakout signal">Breakout</button>
+        <button type="button" class="tape-mode-btn" data-mode="alerts" aria-pressed="false" title="RSI overbought/oversold only">Alerts</button>
       </div>
       <button type="button" id="tape-book-news" class="btn btn-ghost btn-sm" title="News for breakout queue + top Book RS names">Book news</button>
       <button type="button" id="btn-book-drawer" class="btn btn-ghost btn-sm" title="Open regime map &amp; alert log (h)">Book ▾</button>
@@ -120,6 +129,7 @@
       <div class="symbol-header-name">
         <span id="sym-title" class="sym-title">--</span>
         <span id="sym-subtitle" class="sym-subtitle"></span>
+        <span id="focus-mode-chip" class="focus-mode-chip" title="Focus mode is on — press f to restore chrome">Focus (f)</span>
       </div>
 
       <div class="sym-price-block">
@@ -156,7 +166,10 @@
         </div>
         <div class="pm-metric">
           <span class="pm-label">Book RS</span>
-          <span id="pm-book-rs" class="pm-val" title="Book RS (21D) — watchlist rank only, not a published RS Rating">—</span>
+          <span id="pm-book-rs" class="pm-val"
+                title="Book RS (21D) — this watchlist’s 21-day return rank, not a published rating"
+                aria-label="Book RS, watchlist 21-day rank, not a published rating">—</span>
+          <span class="pm-hint">watchlist 21D</span>
         </div>
         <div class="pm-metric">
           <span class="pm-label">ATR%</span>
@@ -212,13 +225,20 @@
         <strong>Trade journal</strong>
         <button type="button" id="btn-journal-close" class="btn btn-ghost btn-sm">✕</button>
       </div>
+      <form id="journal-compose" class="journal-compose">
+        <div class="journal-compose-row">
+          <input type="date" id="journal-date" aria-label="Journal date" />
+          <button type="submit" id="journal-note-save" class="btn btn-primary btn-sm">Save note</button>
+        </div>
+        <input type="text" id="journal-note" maxlength="280" placeholder="One-line note" aria-label="Journal note" />
+      </form>
       <div id="journal-list" class="journal-list"><div class="alert-log-empty">No setups saved yet</div></div>
     </aside>
 
     <!-- Merged nav + indicator toggles (one chrome row) -->
     <nav class="main-nav-tabs" aria-label="Views">
       <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')">Charts</button>
-      <button id="tab-news" class="tab-btn" onclick="switchTab('news')" title="This symbol">News</button>
+      <button id="tab-news" class="tab-btn" onclick="switchTab('news')" title="Headlines for the selected ticker only — Watchlist news is in the top bar">News · this ticker</button>
       <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">Stats</button>
       <button id="tab-dist" class="tab-btn" onclick="switchTab('dist')" title="Conditional forward-return distributions">Distributions</button>
       <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">KNN</button>
@@ -229,9 +249,9 @@
       <div class="tab-spacer"></div>
       <div id="chart-overlays-bar" class="indicator-toggles chart-overlays-bar">
         <span class="overlay-section-label">Panes</span>
-        <button id="pill-pane-rsi" class="ind-pill" title="RSI pane — off by default (price-first)">RSI</button>
-        <button id="pill-pane-macd" class="ind-pill" title="MACD pane — off by default">MACD</button>
-        <button id="pill-pane-trend" class="ind-pill" title="Trend score — off by default">Trend</button>
+        <button type="button" id="pill-pane-rsi" class="ind-pill" aria-pressed="false" title="RSI pane — off by default (price-first)">RSI</button>
+        <button type="button" id="pill-pane-macd" class="ind-pill" aria-pressed="false" title="MACD pane — off by default">MACD</button>
+        <button type="button" id="pill-pane-trend" class="ind-pill" aria-pressed="false" title="Trend score — off by default">Trend</button>
         <span class="overlay-section-label">KAMA</span>
         <div id="kama-pills"></div>
         <div class="kama-add-form">
@@ -242,11 +262,26 @@
         <button id="pill-ema-10" class="ind-pill" data-ema="10" title="EMA 10 — optional">10</button>
         <button id="pill-ema-21" class="ind-pill" data-ema="21" title="EMA 21 — optional">21</button>
         <button id="pill-ema-50" class="ind-pill" data-ema="50" title="EMA 50 — optional">50</button>
+        <span class="overlay-section-label">Packs</span>
+        <button id="pill-pack-minervini" class="ind-pill" data-chart-pack="minervini"
+                title="SMA 50/150/200 — Minervini-style trend MAs (not a rating)">50/150/200</button>
+        <button id="pill-pack-stockbee" class="ind-pill" data-chart-pack="stockbee"
+                title="EMA 9/20 — Stockbee-style momentum MAs">9/20</button>
+        <button id="pill-pack-weinstein" class="ind-pill" data-chart-pack="weinstein"
+                title="SMA 10/40 — weekly trend MAs (not a rating)">10/40w</button>
         <span class="overlay-section-label">Overlays</span>
-        <button id="pill-bb" class="ind-pill active-bb">BB</button>
+        <button type="button" id="pill-bb" class="ind-pill" aria-pressed="false" title="Bollinger Bands — off by default so candles stay readable">BB</button>
+        <button type="button" id="pill-spy-rs" class="ind-pill" aria-pressed="false"
+                title="vs SPY — close/SPY close comparison line on daily and weekly panes, not a published rating">vs SPY</button>
+        <button type="button" id="pill-vwap" class="ind-pill" aria-pressed="false"
+                title="Session VWAP — rolling anchored from the first loaded daily bar (typical price × volume / cum volume). Daily only; not a published rating">VWAP</button>
         <button id="pill-ep-markers" class="ind-pill active-ep" title="EP gap+volume markers">EP</button>
+        <button type="button" id="pill-news-markers" class="ind-pill" aria-pressed="false"
+                title="News dates on the daily pane — this-ticker headlines, not a rating">News</button>
         <button id="pill-darvas" class="ind-pill active-darvas" title="Darvas box high/low">Box</button>
-        <button id="pill-focus" class="ind-pill" title="Focus mode (f) — hide tape">Focus</button>
+        <button type="button" id="pill-price-alerts" class="ind-pill" aria-pressed="false"
+                title="Shift+click the daily price pane to drop a user alert line (not RSI). Pressed = this ticker has alerts. Click to clear.">Alerts</button>
+        <button type="button" id="pill-focus" class="ind-pill" aria-pressed="false" title="Focus mode (f) — hide extra chrome so daily and weekly charts grow">Focus (f)</button>
       </div>
     </nav>
     <!-- Legacy tab-bar stub kept empty for any leftover selectors -->
@@ -259,9 +294,18 @@
       <p>Your local watchlist for charts, analysis, and real Yahoo Finance headlines.</p>
       <ol class="onboarding-steps">
         <li>Type a ticker in the sidebar (try <strong>AAPL</strong>) and press <strong>+</strong></li>
-        <li>Click the symbol, then use <strong>Refresh</strong> if the chart is empty</li>
-        <li>Open <a href="/news">News</a> for headlines across your whole watchlist</li>
+        <li>Press <kbd>/</kbd> to jump without adding · <kbd>⌘K</kbd> for commands · <kbd>j</kbd>/<kbd>k</kbd> walk the list</li>
+        <li>Tab <strong>News · this ticker</strong> is the selected symbol · top-bar <a href="/news">Watchlist news</a> is the whole list</li>
+        <li>Press <kbd>f</kbd> for focus mode (hides extra chrome; Scan list and Review drawers stay)</li>
+        <li><kbd>1</kbd> Chart · <kbd>2</kbd> Scan (list stays up) · <kbd>3</kbd> Review</li>
       </ol>
+      <p class="kbd-hint-row" id="kbd-hint-row">
+        <span><kbd>/</kbd> jump</span>
+        <span><kbd>⌘K</kbd> commands</span>
+        <span><kbd>j</kbd>/<kbd>k</kbd> list</span>
+        <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> desk</span>
+        <span><kbd>?</kbd> shortcuts</span>
+      </p>
     </div>
 
     <!-- ── Chart Area ── -->
@@ -273,11 +317,22 @@
         Loading chart data…
       </div>
 
+      <div id="yahoo-throttle-banner" class="yahoo-throttle-banner" hidden>
+        <div class="yahoo-throttle-card">
+          <strong>Yahoo is rate-limiting</strong>
+          <p id="yahoo-throttle-message" aria-live="polite">Charts stay empty until Yahoo lets us through. Try again in a minute.</p>
+          <button type="button" id="btn-yahoo-retry" class="btn btn-primary">Retry fetch</button>
+        </div>
+      </div>
+
       <!-- ── Daily Panel ── -->
       <div class="chart-panel">
         <div class="panel-header">Daily</div>
         <div class="chart-wrapper chart-wrapper-main">
-          <div class="chart-label">PRICE</div>
+          <div class="chart-label">PRICE <span id="chart-daily-ep-badge" class="ep-glance-badge" style="display:none;"></span></div>
+          <div id="chart-legend-daily" class="chart-ohlc-legend" aria-live="polite"></div>
+          <div id="chart-legend-daily-twin" class="chart-ohlc-legend chart-ohlc-twin" aria-live="polite"></div>
+          <div id="price-alert-chips" class="price-alert-chips" hidden></div>
           <div id="chart-daily-main" style="width:100%;height:100%;"></div>
         </div>
         <div class="chart-divider"></div>
@@ -309,7 +364,9 @@
       <div class="chart-panel">
         <div class="panel-header">Weekly</div>
         <div class="chart-wrapper chart-wrapper-main">
-          <div class="chart-label">PRICE</div>
+          <div class="chart-label">PRICE <span id="chart-weekly-ep-badge" class="ep-glance-badge" style="display:none;"></span></div>
+          <div id="chart-legend-weekly" class="chart-ohlc-legend" aria-live="polite"></div>
+          <div id="chart-legend-weekly-twin" class="chart-ohlc-legend chart-ohlc-twin" aria-live="polite"></div>
           <div id="chart-weekly-main" style="width:100%;height:100%;"></div>
         </div>
         <div class="chart-divider"></div>
@@ -344,11 +401,14 @@
         <span class="spinner"></span> Loading news…
       </div>
 
-      <!-- News header -->
+      <!-- News header — this ticker only; watchlist-wide headlines live at /news -->
       <div class="news-header">
-        <h3 class="news-title">Latest News Headlines</h3>
+        <h3 id="news-title" class="news-title">News for this ticker</h3>
         <div class="news-meta">
+          <span id="news-scope-label">Selected symbol only</span>
+          <span>•</span>
           <span id="news-provider-label">Source: Yahoo Finance</span>
+          <a href="/news" class="news-watchlist-link" title="Open headlines for every symbol on the watchlist">Watchlist news →</a>
         </div>
       </div>
 
@@ -360,7 +420,7 @@
       <!-- Empty state -->
       <div id="news-empty" class="news-empty" style="display:none;">
         <div class="empty-icon">📰</div>
-        <p>No news available for this symbol.</p>
+        <p>No news available for this ticker.</p>
       </div>
 
       <!-- Error state -->
@@ -793,12 +853,21 @@
       <div class="setup-scanner-panel">
         <div class="setup-scanner-header">
           <strong>Setup scanner</strong>
-          <button id="btn-setup-scan" type="button" class="btn btn-primary btn-sm" onclick="loadSetupScan()">Scan setups</button>
+          <button id="btn-setup-scan" type="button" class="btn btn-primary btn-sm" onclick="loadSetupScan({force:true})">Scan setups</button>
           <label class="setup-universe-toggle" title="Scan full archive vs desk only">
             <input type="checkbox" id="chk-setup-universe" checked />
             Full universe
           </label>
+          <div class="setup-sort-control" title="Sort already-fetched hits by ADR% or RVOL — not a published rating">
+            <span class="setup-sort-label">Sort</span>
+            <div id="setup-sort-pills" class="setup-sort-pills" role="group" aria-label="Sort scan hits">
+              <button type="button" class="ind-pill setup-sort-pill setup-sort-on" data-setup-sort="scan" aria-pressed="true" title="Default scanner ranking">Scan</button>
+              <button type="button" class="ind-pill setup-sort-pill" data-setup-sort="adr" aria-pressed="false" title="Highest ADR% first">ADR%</button>
+              <button type="button" class="ind-pill setup-sort-pill" data-setup-sort="rvol" aria-pressed="false" title="Highest RVOL first">RVOL</button>
+            </div>
+          </div>
           <span id="setup-scan-meta" class="scanner-ts"></span>
+          <span class="setup-scan-hint"><kbd>j</kbd>/<kbd>k</kbd> · <kbd>Enter</kbd> chart</span>
         </div>
         <div id="setup-filter-pills" class="setup-filter-pills"></div>
         <div id="setup-scan-loading" class="chart-loading setup-scan-loading" style="display:none;">
@@ -995,12 +1064,14 @@
 
 <!-- ══ Bulk Add Modal ══════════════════════════════════════════ -->
 <div id="bulk-modal" class="bulk-modal-overlay" style="display:none;"
+     aria-hidden="true"
      onclick="if(event.target===this)closeBulkModal()">
-  <div class="bulk-modal-card" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title">
+  <div class="bulk-modal-card" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title"
+       aria-describedby="bulk-hint">
 
     <div class="bulk-modal-header">
       <span id="bulk-modal-title">Bulk Import Tickers</span>
-      <button class="bulk-modal-close" onclick="closeBulkModal()" title="Close">×</button>
+      <button type="button" class="bulk-modal-close" onclick="closeBulkModal()" title="Close">×</button>
     </div>
 
     <div class="bulk-modal-body">
@@ -1011,31 +1082,85 @@
         rows="9"
         spellcheck="false"
       ></textarea>
-      <p class="bulk-hint">Duplicates and already-tracked symbols are skipped automatically.</p>
+      <p id="bulk-hint" class="bulk-hint">Duplicates and already-tracked symbols are skipped. History downloads from Yahoo one ticker at a time. Tab stays inside this dialog.</p>
 
       <!-- Progress (hidden until import starts) -->
-      <div id="bulk-progress" class="bulk-progress" style="display:none;">
+      <div id="bulk-progress" class="bulk-progress" style="display:none;" aria-live="polite">
         <div class="bulk-progress-bar">
           <div id="bulk-progress-fill" class="bulk-progress-fill"></div>
         </div>
         <div id="bulk-progress-label" class="bulk-progress-label">Starting…</div>
+        <div id="bulk-progress-counts" class="bulk-progress-counts"></div>
+        <ul id="bulk-progress-log" class="bulk-progress-log"></ul>
       </div>
     </div>
 
     <div class="bulk-modal-footer">
-      <button class="btn btn-ghost" onclick="closeBulkModal()">Cancel</button>
-      <button id="btn-bulk-submit" class="btn btn-primary" onclick="bulkAddSymbols()">Import Tickers</button>
+      <button type="button" class="btn btn-ghost" onclick="closeBulkModal()">Cancel</button>
+      <button type="button" id="btn-bulk-submit" class="btn btn-primary" onclick="bulkAddSymbols()">Import Tickers</button>
     </div>
 
   </div>
 </div>
 
+</div>
+
+<!-- ══ Jump / command palette ══════════════════════════════════ -->
+<div id="desk-palette" class="desk-palette-overlay" hidden>
+  <div class="desk-palette-card" role="dialog" aria-modal="true" aria-labelledby="desk-palette-title">
+    <div class="desk-palette-head">
+      <span id="desk-palette-title">Jump to symbol</span>
+      <kbd class="desk-palette-kbd">esc</kbd>
+    </div>
+    <input id="desk-palette-input" type="text" class="desk-palette-input"
+           placeholder="Ticker or command…" autocomplete="off" spellcheck="false" />
+    <div id="desk-palette-results" class="desk-palette-results" role="listbox"></div>
+    <p class="desk-palette-hint">/ jump · ⌘K commands · Enter opens (never adds) · Shift+Enter adds · ? shortcuts</p>
+  </div>
+</div>
+
+<!-- ══ Keyboard cheatsheet (? ) ════════════════════════════════ -->
+<div id="kbd-help" class="kbd-help-overlay" hidden>
+  <div class="kbd-help-card" role="dialog" aria-modal="true" aria-labelledby="kbd-help-title" tabindex="-1">
+    <div class="kbd-help-head">
+      <strong id="kbd-help-title">Keyboard</strong>
+      <button type="button" class="bulk-modal-close" id="kbd-help-close" title="Close">×</button>
+    </div>
+    <dl class="kbd-help-list">
+      <div><dt><kbd>/</kbd></dt><dd>Jump to symbol — Enter never adds</dd></div>
+      <div><dt><kbd>⌘K</kbd></dt><dd>Command palette</dd></div>
+      <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Watchlist, or Scan rows in Scan workspace</dd></div>
+      <div><dt><kbd>Enter</kbd></dt><dd>Scan workspace — open highlighted row on the chart (list stays)</dd></div>
+      <div><dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Chart / Scan / Review workspace</dd></div>
+      <div><dt><kbd>f</kbd></dt><dd>Focus mode (hide extra chrome; Scan list and Review drawers stay)</dd></div>
+      <div><dt><kbd>h</kbd></dt><dd>Book scan drawer</dd></div>
+      <div><dt><kbd>⇧J</kbd></dt><dd>Trade journal</dd></div>
+      <div><dt><kbd>⇧-click</kbd></dt><dd>Daily price — user alert line</dd></div>
+      <div><dt><kbd>r</kbd></dt><dd>Refresh active symbol</dd></div>
+      <div><dt><kbd>c</kbd></dt><dd>Copy setup (after checklist)</dd></div>
+      <div><dt><kbd>y</kbd></dt><dd>Copy painted OHLC (hovered/held daily bar)</dd></div>
+      <div><dt><kbd>.</kbd></dt><dd>Jump to latest bar (restore ~126-session daily window)</dd></div>
+      <div><dt><kbd>?</kbd></dt><dd>This cheatsheet</dd></div>
+      <div><dt><kbd>esc</kbd></dt><dd>Close drawers, palettes, dialogs</dd></div>
+    </dl>
+  </div>
+</div>
+
 <!-- Scripts -->
 <script src="scripts/charts.js"></script>
+<script src="scripts/legend_stats.js"></script>
+<script src="scripts/linked_ohlc.js"></script>
+<script src="scripts/copy_ohlc.js"></script>
+<script src="scripts/spy_rs.js"></script>
+<script src="scripts/vwap.js"></script>
+<script src="scripts/price_alerts.js"></script>
+<script src="scripts/darvas_fill.js"></script>
+<script src="scripts/news_markers.js"></script>
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
 <script src="scripts/setup_scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
+<script src="scripts/desk_palette.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>

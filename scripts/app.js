@@ -23,15 +23,33 @@ let state = {
     checklist: { regime: false, stop: false, size: false, plan: false },
     stopMode: 'atr',   // 'atr' | 'box' | 'user'
     riskBox: null,     // last-applied { entry, stop, target } for the active symbol
+    workspace: 'chart', // 'chart' | 'scan' | 'review'
 };
 
 const JOURNAL_KEY = 'whats-news-journal';
 const PANES_KEY   = 'whats-news-panes';
+const WORKSPACE_KEY = 'whats-news-workspace';
+const FOCUS_MODE_KEY = 'whats-news-focus-mode';
+const LAST_SYMBOL_KEY = 'whats-news-last-symbol';
+const WATCHLIST_FILTER_KEY = 'whats-news-watchlist-filter';
+let journalFocusDate = null;
 
 let statsCharts = {};
 let distCharts = {};
 let backtestEquityChart = null;
 let scannerPollTimer = null;
+let lastFetchError = null;
+let _chartLoadSeq = 0;
+
+class ApiError extends Error {
+    constructor(message, extras = {}) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = extras.status;
+        this.code = extras.code;
+        this.payload = extras.payload;
+    }
+}
 
 // ── Toast system ─────────────────────────────────────────────
 function toast(message, type = 'info', duration = 3500) {
@@ -46,15 +64,218 @@ function toast(message, type = 'info', duration = 3500) {
     }, duration);
 }
 
+function isYahooThrottle(err) {
+    if (!err) return false;
+    if (err.status === 429 || err.code === 'yahoo_throttle') return true;
+    const payloadCode = err.payload && err.payload.code;
+    if (payloadCode === 'yahoo_throttle') return true;
+    const msg = String(err.message || err).toLowerCase();
+    return /too many requests|rate.?limit|yahoo is rate-limiting|yfratelimit/.test(msg);
+}
+
+// Auto-retry a throttled chart/OHLCV load twice with backoff. Do not hammer Yahoo.
+const YAHOO_THROTTLE_AUTO_RETRY_DELAYS_MS = [4000, 12000];
+const YAHOO_THROTTLE_AUTO_RETRY_MAX = 2;
+const YAHOO_THROTTLE_AUTO_RETRY_JITTER = 0.2;
+let _yahooThrottleRetryGen = 0;
+let _yahooThrottleRetryTimer = null;
+let _yahooThrottleRetryCountdown = null;
+let _yahooThrottleRetryAttempt = 0;
+let _yahooThrottleRetrySymbol = null;
+let _yahooThrottleRetryInFlight = false;
+
+function yahooThrottleRetryDelayMs(attemptIndex, random) {
+    const delays = YAHOO_THROTTLE_AUTO_RETRY_DELAYS_MS;
+    const idx = Math.min(Math.max(0, attemptIndex), delays.length - 1);
+    const base = delays[idx];
+    const j = YAHOO_THROTTLE_AUTO_RETRY_JITTER;
+    const r = typeof random === 'number' ? random : Math.random();
+    const factor = 1 + (r * 2 - 1) * j;
+    return Math.max(1000, Math.round(base * factor));
+}
+
+function yahooThrottleShouldCancelOnTickerChange(retrySymbol, nextSymbol) {
+    if (!retrySymbol) return false;
+    return String(nextSymbol || '').toUpperCase() !== String(retrySymbol).toUpperCase();
+}
+
+function yahooThrottleAutoRetriesRemain(attempt) {
+    return attempt < YAHOO_THROTTLE_AUTO_RETRY_MAX;
+}
+
+function clearYahooThrottleRetryTimers() {
+    if (_yahooThrottleRetryTimer) {
+        clearTimeout(_yahooThrottleRetryTimer);
+        _yahooThrottleRetryTimer = null;
+    }
+    if (_yahooThrottleRetryCountdown) {
+        clearInterval(_yahooThrottleRetryCountdown);
+        _yahooThrottleRetryCountdown = null;
+    }
+}
+
+function cancelYahooThrottleAutoRetry() {
+    _yahooThrottleRetryGen += 1;
+    clearYahooThrottleRetryTimers();
+    _yahooThrottleRetryInFlight = false;
+    _yahooThrottleRetrySymbol = null;
+    _yahooThrottleRetryAttempt = 0;
+}
+
+function paintYahooThrottleMessage(secondsLeft) {
+    const banner = document.getElementById('yahoo-throttle-banner');
+    const msg = document.getElementById('yahoo-throttle-message');
+    if (!msg) return;
+    const name = (banner && banner.dataset.symbol) || 'this ticker';
+    if (secondsLeft != null && secondsLeft > 0) {
+        msg.textContent = `${name}: Yahoo is rate-limiting. Retrying in ${secondsLeft}s.`;
+    } else if (secondsLeft === 0) {
+        msg.textContent = `${name}: Yahoo is rate-limiting. Retrying…`;
+    } else {
+        msg.textContent = `${name}: Yahoo is rate-limiting. Try again in a minute — the chart stays here instead of going blank.`;
+    }
+}
+
+function armYahooThrottleAutoRetry() {
+    if (!yahooThrottleAutoRetriesRemain(_yahooThrottleRetryAttempt)) {
+        paintYahooThrottleMessage(null);
+        return;
+    }
+    clearYahooThrottleRetryTimers();
+    const gen = _yahooThrottleRetryGen;
+    const delayMs = yahooThrottleRetryDelayMs(_yahooThrottleRetryAttempt);
+    const deadline = Date.now() + delayMs;
+    const tick = () => {
+        if (gen !== _yahooThrottleRetryGen) return;
+        const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+        paintYahooThrottleMessage(left);
+        if (left <= 0 && _yahooThrottleRetryCountdown) {
+            clearInterval(_yahooThrottleRetryCountdown);
+            _yahooThrottleRetryCountdown = null;
+        }
+    };
+    tick();
+    _yahooThrottleRetryCountdown = setInterval(tick, 250);
+    _yahooThrottleRetryTimer = setTimeout(async () => {
+        if (gen !== _yahooThrottleRetryGen) return;
+        clearYahooThrottleRetryTimers();
+        paintYahooThrottleMessage(0);
+        _yahooThrottleRetryAttempt += 1;
+        _yahooThrottleRetryInFlight = true;
+        try {
+            await retryYahooFetch({ auto: true });
+        } finally {
+            if (gen === _yahooThrottleRetryGen) _yahooThrottleRetryInFlight = false;
+        }
+    }, delayMs);
+}
+
+function scheduleYahooThrottleAutoRetry(symbol) {
+    const code = String(symbol || '').toUpperCase();
+    if (!code) return;
+    if (_yahooThrottleRetryInFlight && _yahooThrottleRetrySymbol === code) return;
+    if ((_yahooThrottleRetryTimer || _yahooThrottleRetryCountdown) && _yahooThrottleRetrySymbol === code) {
+        return;
+    }
+    if (_yahooThrottleRetrySymbol && _yahooThrottleRetrySymbol !== code) {
+        cancelYahooThrottleAutoRetry();
+    }
+    if (!_yahooThrottleRetrySymbol) {
+        _yahooThrottleRetrySymbol = code;
+        _yahooThrottleRetryAttempt = 0;
+        _yahooThrottleRetryGen += 1;
+    }
+    armYahooThrottleAutoRetry();
+}
+
+function showYahooThrottleBanner(symbol) {
+    const banner = document.getElementById('yahoo-throttle-banner');
+    if (!banner) return;
+    const code = symbol || state.activeSymbol || '';
+    const active = String(state.activeSymbol || '').toUpperCase();
+    if (active && code && String(code).toUpperCase() !== active) return;
+    const empty = document.getElementById('empty-state');
+    const charts = document.getElementById('chart-area');
+    if (empty) empty.style.display = 'none';
+    if (charts) charts.style.display = 'flex';
+    banner.hidden = false;
+    banner.dataset.symbol = code;
+    const waiting = !!(
+        _yahooThrottleRetryTimer || _yahooThrottleRetryCountdown || _yahooThrottleRetryInFlight
+    );
+    if (!waiting) paintYahooThrottleMessage(null);
+    scheduleYahooThrottleAutoRetry(banner.dataset.symbol);
+}
+
+function hideYahooThrottleBanner(forSymbol) {
+    const banner = document.getElementById('yahoo-throttle-banner');
+    if (forSymbol && banner && banner.dataset.symbol) {
+        if (String(banner.dataset.symbol).toUpperCase() !== String(forSymbol).toUpperCase()) {
+            return;
+        }
+    }
+    cancelYahooThrottleAutoRetry();
+    if (banner) {
+        banner.hidden = true;
+        delete banner.dataset.symbol;
+    }
+}
+
+async function retryYahooFetch(opts = {}) {
+    const auto = opts && opts.auto === true;
+    const gen = _yahooThrottleRetryGen;
+    if (!auto) cancelYahooThrottleAutoRetry();
+    const banner = document.getElementById('yahoo-throttle-banner');
+    const symbol = (banner && banner.dataset.symbol) || state.activeSymbol;
+    if (!symbol) {
+        toast('Pick a symbol first', 'warning');
+        return;
+    }
+    const ok = await fetchSymbolData(symbol, auto);
+    const tickerMoved = String(state.activeSymbol || '').toUpperCase() !== String(symbol || '').toUpperCase();
+    if (ok) {
+        hideYahooThrottleBanner(symbol);
+        if (tickerMoved) return;
+        await loadChartData(symbol);
+        return;
+    }
+    if (tickerMoved || (auto && gen !== _yahooThrottleRetryGen)) return;
+    if (auto) armYahooThrottleAutoRetry();
+}
+
+function syncNewsSurfaceLabels(symbol) {
+    const tab = document.getElementById('tab-news');
+    if (tab) {
+        tab.textContent = symbol ? `News · ${symbol}` : 'News · this ticker';
+        tab.title = symbol
+            ? `Headlines for ${symbol} only — Watchlist news is in the top bar`
+            : 'Headlines for the selected ticker only — Watchlist news is in the top bar';
+    }
+    const title = document.getElementById('news-title');
+    if (title) title.textContent = symbol ? `News for ${symbol}` : 'News for this ticker';
+    const scope = document.getElementById('news-scope-label');
+    if (scope) scope.textContent = symbol ? `${symbol} only` : 'Selected symbol only';
+}
+
 // ── API helpers ──────────────────────────────────────────────
 async function apiFetch(url, opts = {}) {
     console.log(`>> API Fetch: ${url}`, opts.method || 'GET');
     const res  = await fetch(url, opts);
     console.log(`<< API Response: ${res.status} ${res.statusText}`);
-    const data = await res.json();
+    let data = {};
+    try {
+        data = await res.json();
+    } catch {
+        data = {};
+    }
     if (!res.ok) {
-        console.error('!! API Error:', data.error || `HTTP ${res.status}`);
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const err = new ApiError(data.error || `HTTP ${res.status}`, {
+            status: res.status,
+            code: data.code,
+            payload: data,
+        });
+        console.error('!! API Error:', err.message);
+        throw err;
     }
     return data;
 }
@@ -214,6 +435,29 @@ function bookRsLabel(row) {
     return `Book RS #${row.rs_rank_21d}/${row.rs_n ?? '—'}`;
 }
 
+// Compact SMA200 distance — same (close/sma200 − 1)*100 format as legend_stats.js.
+function sma200DistText(row) {
+    if (typeof formatSma200DistLegend !== 'function') return '';
+    return formatSma200DistLegend(row && row.dist_sma200_pct) || '';
+}
+
+function tapeSma200Span(row) {
+    const txt = sma200DistText(row);
+    return txt ? `<span class="tape-sma200">${txt}</span>` : '';
+}
+
+// Compact ATR% — ATR(14) / close * 100 from snapshot. Omit if missing.
+function formatTapeAtrPct(row) {
+    const pct = row && row.atr_pct;
+    if (pct == null || !Number.isFinite(Number(pct))) return '';
+    return `ATR ${Number(pct).toFixed(1)}%`;
+}
+
+function tapeAtrPctSpan(row) {
+    const txt = formatTapeAtrPct(row);
+    return txt ? `<span class="tape-atr">${txt}</span>` : '';
+}
+
 function renderPortfolioTape(data) {
     const bar = document.getElementById('portfolio-tape');
     const chips = document.getElementById('tape-chips');
@@ -269,11 +513,12 @@ function renderPortfolioTape(data) {
 }
 
 function renderAllChips(tapeAll, chips) {
-    if (!tapeAll.length) {
+    const rows = filterByWatchlistQuery(tapeAll);
+    if (!rows.length) {
         chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No names yet</span>';
         return;
     }
-    tapeAll.forEach(row => {
+    rows.forEach(row => {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'tape-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
@@ -281,13 +526,17 @@ function renderAllChips(tapeAll, chips) {
         const dw = row.regime_weekly && row.regime_weekly !== 'n/a'
             ? ` D:${row.regime?.[0] || '?'} W:${row.regime_weekly[0]}`
             : '';
+        const smaTxt = sma200DistText(row);
+        const atrTxt = formatTapeAtrPct(row);
         chip.innerHTML = `
             <span>${row.symbol}</span>
             <span class="tape-pct ${pos ? 'positive' : 'negative'}">${pos ? '+' : ''}${row.change_pct?.toFixed(1) ?? '—'}%</span>
+            ${tapeSma200Span(row)}
+            ${tapeAtrPctSpan(row)}
             <span class="tape-rs">${bookRsLabel(row)}${dw}</span>
             ${row.alert ? `<span class="tape-alert">${row.alert}</span>` : ''}
         `;
-        chip.title = `D ${row.regime || ''} / W ${row.regime_weekly || ''} · RSI ${row.rsi14 ?? '—'}`;
+        chip.title = `D ${row.regime || ''} / W ${row.regime_weekly || ''} · RSI ${row.rsi14 ?? '—'}${smaTxt ? ` · ${smaTxt}` : ''}${atrTxt ? ` · ${atrTxt}` : ''}`;
         chip.addEventListener('click', () => selectSymbol(row.symbol));
         chips.appendChild(chip);
     });
@@ -296,7 +545,7 @@ function renderAllChips(tapeAll, chips) {
 // Breakout chips — near-high + volume-confirmed names (Qullamaggie loop),
 // with an EP flag and distance-from-high, shown when tape mode = "breakout".
 function renderBreakoutChips(data, chips) {
-    const queue = data.breakout_queue || [];
+    const queue = filterByWatchlistQuery(data.breakout_queue || []);
     if (!queue.length) {
         chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No breakout names</span>';
         return;
@@ -308,13 +557,17 @@ function renderBreakoutChips(data, chips) {
         const dist = row.dist_20d_high_pct;
         const distTxt = dist != null ? `${dist > 0 ? '+' : ''}${dist.toFixed(1)}% fr Hi` : '—';
         const volTxt = row.vol_ratio_5_20 != null ? `Vol ${row.vol_ratio_5_20.toFixed(1)}×` : '—';
+        const smaTxt = sma200DistText(row);
+        const atrTxt = formatTapeAtrPct(row);
         chip.innerHTML = `
             <span>${row.symbol}</span>
             <span class="tape-rs">${distTxt}</span>
             <span class="tape-rs">${volTxt}</span>
+            ${tapeSma200Span(row)}
+            ${tapeAtrPctSpan(row)}
             ${row.is_ep ? '<span class="bq-ep-flag" title="Gap ≥4% on volume surge">EP</span>' : ''}
         `;
-        chip.title = `${row.symbol} · ${distTxt} · ${volTxt}${row.gap_pct != null ? ` · gap ${row.gap_pct.toFixed(1)}%` : ''}`;
+        chip.title = `${row.symbol} · ${distTxt} · ${volTxt}${row.gap_pct != null ? ` · gap ${row.gap_pct.toFixed(1)}%` : ''}${smaTxt ? ` · ${smaTxt}` : ''}${atrTxt ? ` · ${atrTxt}` : ''}`;
         chip.addEventListener('click', () => selectSymbol(row.symbol));
         chips.appendChild(chip);
     });
@@ -322,7 +575,7 @@ function renderBreakoutChips(data, chips) {
 
 // Alerts chips — RSI overbought/oversold names only, shown when tape mode = "alerts".
 function renderAlertChips(data, chips) {
-    const alertRows = (data.tape || data.symbols || []).filter(r => r.alert);
+    const alertRows = filterByWatchlistQuery((data.tape || data.symbols || []).filter(r => r.alert));
     if (!alertRows.length) {
         chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No alerting names</span>';
         return;
@@ -331,21 +584,31 @@ function renderAlertChips(data, chips) {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'tape-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
+        const smaTxt = sma200DistText(row);
+        const atrTxt = formatTapeAtrPct(row);
         chip.innerHTML = `
             <span>${row.symbol}</span>
             <span class="tape-alert">${row.alert}</span>
             <span class="tape-rs">RSI ${row.rsi14 ?? '—'}</span>
+            ${tapeSma200Span(row)}
+            ${tapeAtrPctSpan(row)}
         `;
-        chip.title = `${row.symbol} · ${row.alert} · RSI ${row.rsi14 ?? '—'}`;
+        chip.title = `${row.symbol} · ${row.alert} · RSI ${row.rsi14 ?? '—'}${smaTxt ? ` · ${smaTxt}` : ''}${atrTxt ? ` · ${atrTxt}` : ''}`;
         chip.addEventListener('click', () => selectSymbol(row.symbol));
         chips.appendChild(chip);
     });
 }
 
+function setPressed(el, on, className = 'active') {
+    if (!el) return;
+    el.classList.toggle(className, !!on);
+    el.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
 function setTapeMode(mode) {
     state.tapeMode = mode;
     document.querySelectorAll('.tape-mode-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.mode === mode);
+        setPressed(btn, btn.dataset.mode === mode);
     });
     if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
 }
@@ -475,6 +738,58 @@ function openJournal() {
     renderJournal();
 }
 
+// One-line date stamp for an empty compose field — not a published rating.
+function journalNoteStamp(date) {
+    const key = String(date || '').slice(0, 10);
+    return key ? `${key} ` : '';
+}
+
+function hasJournalNoteForSymbolDate(symbol, date) {
+    const key = String(date || '').slice(0, 10);
+    const sym = String(symbol || '');
+    if (!key) return false;
+    return loadJournalEntries().some(e =>
+        String(e.symbol || '') === sym
+        && String(e.date || '').slice(0, 10) === key
+        && String(e.note || '').trim()
+    );
+}
+
+// Click-bar hook from charts.js subscribeClick. Daily uses the session date;
+// weekly uses the week-ending date on the bar.
+function onChartBarClick(payload) {
+    const date = payload && payload.date ? String(payload.date).slice(0, 10) : '';
+    if (!date) return;
+    openJournalForDate(date, payload && payload.freq);
+}
+
+function openJournalForDate(date, freq) {
+    const key = String(date || '').slice(0, 10);
+    if (!key) return;
+    journalFocusDate = key;
+    openJournal();
+    const dateEl = document.getElementById('journal-date');
+    const noteEl = document.getElementById('journal-note');
+    if (dateEl) dateEl.value = key;
+    if (noteEl) {
+        noteEl.placeholder = freq === 'weekly'
+            ? `Note for ${key} week-ending`
+            : `Note for ${key}`;
+        // Stamp only when compose is empty and this symbol+date has no stored note.
+        // Date stamp only — not a published rating. Do not persist until Save.
+        const empty = !(noteEl.value || '').trim();
+        const symbol = state.activeSymbol || '—';
+        if (empty && !hasJournalNoteForSymbolDate(symbol, key)) {
+            noteEl.value = journalNoteStamp(key);
+        }
+        noteEl.focus();
+        if (typeof noteEl.setSelectionRange === 'function') {
+            const n = (noteEl.value || '').length;
+            noteEl.setSelectionRange(n, n);
+        }
+    }
+}
+
 function closeJournal() {
     const drawer = document.getElementById('journal-drawer');
     if (!drawer) return;
@@ -547,37 +862,86 @@ function deleteJournalEntry(id) {
     renderJournal();
 }
 
+function saveJournalNote(ev) {
+    if (ev) ev.preventDefault();
+    const dateEl = document.getElementById('journal-date');
+    const noteEl = document.getElementById('journal-note');
+    const date = (dateEl && dateEl.value ? dateEl.value : journalFocusDate || '').slice(0, 10);
+    const note = (noteEl && noteEl.value ? noteEl.value : '').trim();
+    if (!date) {
+        toast('Pick a date', 'warning');
+        return;
+    }
+    if (!note) {
+        toast('Add a one-line note', 'warning');
+        return;
+    }
+    const symbol = state.activeSymbol || '—';
+    const entry = {
+        id: `${symbol}-${Date.now()}`,
+        symbol,
+        date,
+        note,
+        closed: false,
+        result_r: null,
+    };
+    const entries = loadJournalEntries();
+    entries.unshift(entry);
+    saveJournalEntries(entries);
+    journalFocusDate = date;
+    if (noteEl) noteEl.value = '';
+    renderJournal();
+    toast(`${symbol} ${date} saved`, 'success');
+}
+
 function renderJournal() {
     const list = document.getElementById('journal-list');
     if (!list) return;
+    const dateEl = document.getElementById('journal-date');
+    if (dateEl && !dateEl.value) {
+        dateEl.value = (journalFocusDate || new Date().toISOString().slice(0, 10));
+    }
     const entries = loadJournalEntries();
     if (!entries.length) {
         list.innerHTML = '<div class="alert-log-empty">No setups saved yet</div>';
         return;
     }
+    const focus = journalFocusDate || (dateEl && dateEl.value) || '';
     const fmt = v => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
-    list.innerHTML = entries.map(e => `
-      <div class="journal-item ${e.closed ? 'journal-item-closed' : ''}" data-id="${e.id}">
+    const sorted = entries.slice().sort((a, b) => {
+        const aHit = focus && String(a.date || '').slice(0, 10) === focus ? 0 : 1;
+        const bHit = focus && String(b.date || '').slice(0, 10) === focus ? 0 : 1;
+        return aHit - bHit;
+    });
+    list.innerHTML = sorted.map(e => {
+        const d = (e.date || '').slice(0, 10);
+        const focused = focus && d === focus;
+        const noteLine = e.note
+            ? `<span class="journal-note-text">${escapeHtml(e.note)}</span>`
+            : `<span>Entry ${fmt(e.entry)} · Stop ${fmt(e.stop)} · Target ${fmt(e.target)}</span>
+          <span>R ${e.r_multiple ?? '—'}${e.closed ? ` · Closed @ ${e.result_r ?? '—'}R` : ''}</span>`;
+        return `
+      <div class="journal-item ${e.closed ? 'journal-item-closed' : ''} ${focused ? 'journal-item-focus' : ''}" data-id="${e.id}" data-date="${d}">
         <div class="journal-item-head">
-          <span class="journal-sym">${e.symbol}</span>
-          <span class="journal-date">${(e.date || '').slice(0, 10)}</span>
+          <span class="journal-sym">${escapeHtml(e.symbol || '')}</span>
+          <span class="journal-date">${d}</span>
         </div>
         <div class="journal-item-body">
-          <span>Entry ${fmt(e.entry)} · Stop ${fmt(e.stop)} · Target ${fmt(e.target)}</span>
-          <span>R ${e.r_multiple ?? '—'}${e.closed ? ` · Closed @ ${e.result_r ?? '—'}R` : ''}</span>
+          ${noteLine}
         </div>
         <div class="journal-item-actions">
           <button type="button" class="btn btn-ghost btn-sm journal-close-btn" data-id="${e.id}">${e.closed ? 'Edit result' : 'Close'}</button>
           <button type="button" class="btn btn-ghost btn-sm journal-del-btn" data-id="${e.id}">Delete</button>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
     list.querySelectorAll('.journal-close-btn').forEach(btn => {
         btn.addEventListener('click', () => closeJournalEntry(btn.dataset.id));
     });
     list.querySelectorAll('.journal-del-btn').forEach(btn => {
         btn.addEventListener('click', () => deleteJournalEntry(btn.dataset.id));
     });
+    list.querySelector('.journal-item-focus')?.scrollIntoView({ block: 'nearest' });
 }
 
 // ── PM tools popover (risk box, checklist, copy/journal) ───────────────
@@ -710,9 +1074,56 @@ async function openBookNews() {
     }
 }
 
+function readWatchlistFilter() {
+    try {
+        const raw = localStorage.getItem(WATCHLIST_FILTER_KEY);
+        return raw == null ? '' : String(raw);
+    } catch {
+        return '';
+    }
+}
+
+function writeWatchlistFilter(value) {
+    try {
+        const text = value == null ? '' : String(value);
+        if (text) localStorage.setItem(WATCHLIST_FILTER_KEY, text);
+        else localStorage.removeItem(WATCHLIST_FILTER_KEY);
+    } catch { /* ignore quota */ }
+}
+
+function persistWatchlistFilter() {
+    const el = document.getElementById('watchlist-filter');
+    writeWatchlistFilter(el ? el.value : '');
+}
+
+function restoreWatchlistFilter() {
+    const el = document.getElementById('watchlist-filter');
+    if (el) el.value = readWatchlistFilter();
+    renderSymbolList();
+    if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
+}
+
+function watchlistFilterQuery() {
+    return (document.getElementById('watchlist-filter')?.value || '').trim().toUpperCase();
+}
+
+function matchesWatchlistFilter(symbol, groupTag, q) {
+    if (!q) return true;
+    const code = String(symbol || '').toUpperCase();
+    const tag = String(groupTag || '').toUpperCase();
+    return code.includes(q) || tag.includes(q);
+}
+
+function filterByWatchlistQuery(rows) {
+    const q = watchlistFilterQuery();
+    if (!q) return rows || [];
+    return (rows || []).filter(row => matchesWatchlistFilter(row && row.symbol, row && row.group_tag, q));
+}
+
 function renderSymbolList() {
     const list = document.getElementById('symbol-list');
     list.innerHTML = '';
+    const q = watchlistFilterQuery();
 
     if (!state.symbols.length) {
         list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No symbols yet.</div>';
@@ -738,6 +1149,9 @@ function renderSymbolList() {
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
         item.dataset.symbol = sym.symbol;
+        if (!matchesWatchlistFilter(sym.symbol, tag, q)) {
+            item.hidden = true;
+        }
 
         const ticker = document.createElement('span');
         ticker.className = 'sym-ticker';
@@ -758,6 +1172,24 @@ function renderSymbolList() {
 
         item.appendChild(ticker);
         item.appendChild(chgEl);
+
+        const smaTxt = sma200DistText(snap);
+        if (smaTxt) {
+            const smaEl = document.createElement('span');
+            smaEl.className = 'sym-sma200';
+            smaEl.textContent = smaTxt;
+            smaEl.title = 'Distance to SMA200';
+            item.appendChild(smaEl);
+        }
+
+        const atrTxt = formatTapeAtrPct(snap);
+        if (atrTxt) {
+            const atrEl = document.createElement('span');
+            atrEl.className = 'sym-atr';
+            atrEl.textContent = atrTxt;
+            atrEl.title = 'ATR(14) as percent of close';
+            item.appendChild(atrEl);
+        }
 
         if (snap?.rs_rank_21d) {
             const rs = document.createElement('span');
@@ -846,6 +1278,12 @@ function startTagEdit(symbol, currentTag, badgeEl) {
     });
 }
 
+async function addSymbolByCode(code) {
+    const input = document.getElementById('new-symbol-input');
+    if (input) input.value = String(code || '').trim().toUpperCase();
+    await addSymbol();
+}
+
 async function addSymbol() {
     const input = document.getElementById('new-symbol-input');
     const raw   = input.value.trim();
@@ -898,38 +1336,134 @@ async function removeSymbol(symbol) {
 // silent=true suppresses per-symbol toasts (used during bulk import)
 async function fetchSymbolData(symbol, silent = false) {
     console.log(`[App] Fetching data for ${symbol}...`);
+    lastFetchError = null;
     if (!silent) toast(`Downloading ${symbol} from Yahoo Finance…`, 'info', 5000);
     try {
         const res = await apiFetch(`${API}/fetch/${symbol}`, { method: 'POST' });
         console.log(`[App] Fetch complete for ${symbol}:`, res);
+        hideYahooThrottleBanner(symbol);
+        if (typeof forgetChartBundle === 'function') forgetChartBundle(symbol);
         if (!silent) toast(`${symbol}: ${res.daily_rows} daily / ${res.weekly_rows} weekly bars loaded`, 'success', 5000);
         return true;
     } catch (e) {
         console.error(`[App] Fetch failed for ${symbol}:`, e);
-        if (!silent) toast(`${symbol} fetch failed: ` + e.message, 'error');
+        lastFetchError = e;
+        if (isYahooThrottle(e)) {
+            showYahooThrottleBanner(symbol);
+            if (!silent) toast('Yahoo is rate-limiting. Try again in a minute.', 'warning', 6000);
+        } else if (!silent) {
+            toast(`${symbol} fetch failed: ` + e.message, 'error');
+        }
         return false;
     }
+}
+
+// ── Focus trap (bulk import + keyboard cheatsheet) ────────────
+function trapFocusIn(root, e) {
+    if (e.key !== 'Tab' || !root) return;
+    const nodes = [...root.querySelectorAll(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )].filter(el => !el.disabled && el.getClientRects().length > 0);
+    if (!nodes.length) {
+        e.preventDefault();
+        return;
+    }
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+    }
+}
+
+function setAppInert(on) {
+    const app = document.querySelector('.app');
+    if (app) app.inert = !!on;
+}
+
+let _bulkPrevFocus = null;
+
+function isBulkModalOpen() {
+    const modal = document.getElementById('bulk-modal');
+    return !!(modal && modal.style.display === 'flex');
+}
+
+function onBulkModalKeydown(e) {
+    if (e.key === 'Escape') {
+        if (!document.getElementById('btn-bulk-submit')?.disabled) {
+            e.preventDefault();
+            closeBulkModal();
+        }
+        return;
+    }
+    trapFocusIn(document.querySelector('#bulk-modal .bulk-modal-card'), e);
 }
 
 // ── Bulk Import ───────────────────────────────────────────────
 function openBulkModal() {
     const modal = document.getElementById('bulk-modal');
+    if (!modal) return;
+    closeKbdHelp();
+    _bulkPrevFocus = document.activeElement;
     modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    setAppInert(true);
     // Reset progress state from any previous run
     document.getElementById('bulk-progress').style.display        = 'none';
     document.getElementById('bulk-progress-fill').style.width     = '0%';
     document.getElementById('bulk-progress-label').style.color    = '';
+    document.getElementById('bulk-progress-label').textContent    = 'Starting…';
+    const counts = document.getElementById('bulk-progress-counts');
+    if (counts) counts.textContent = '';
+    const log = document.getElementById('bulk-progress-log');
+    if (log) log.innerHTML = '';
     document.getElementById('btn-bulk-submit').disabled           = false;
     document.getElementById('bulk-symbols-input').disabled        = false;
+    modal.addEventListener('keydown', onBulkModalKeydown);
     setTimeout(() => document.getElementById('bulk-symbols-input').focus(), 50);
 }
 
 function closeBulkModal() {
     // Only close if not in the middle of an import
-    if (document.getElementById('btn-bulk-submit').disabled) return;
-    document.getElementById('bulk-modal').style.display = 'none';
-    document.getElementById('bulk-symbols-input').value = '';
-    document.getElementById('bulk-progress').style.display = 'none';
+    if (document.getElementById('btn-bulk-submit')?.disabled) return;
+    const modal = document.getElementById('bulk-modal');
+    if (!modal || modal.style.display === 'none') return;
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+    modal.removeEventListener('keydown', onBulkModalKeydown);
+    setAppInert(false);
+    const input = document.getElementById('bulk-symbols-input');
+    if (input) input.value = '';
+    const progress = document.getElementById('bulk-progress');
+    if (progress) progress.style.display = 'none';
+    if (_bulkPrevFocus && typeof _bulkPrevFocus.focus === 'function') {
+        _bulkPrevFocus.focus();
+    }
+    _bulkPrevFocus = null;
+}
+
+function appendBulkLog(symbol, status, detail) {
+    const log = document.getElementById('bulk-progress-log');
+    if (!log) return;
+    const li = document.createElement('li');
+    li.className = status;
+    li.textContent = `${symbol}  —  ${detail}`;
+    log.appendChild(li);
+    log.scrollTop = log.scrollHeight;
+}
+
+function setBulkCounts(done, total, added, skipped, failed, paused) {
+    const counts = document.getElementById('bulk-progress-counts');
+    if (!counts) return;
+    const bits = [`${done} / ${total}`];
+    if (added) bits.push(`${added} fetched`);
+    if (skipped) bits.push(`${skipped} skipped`);
+    if (failed) bits.push(`${failed} failed`);
+    if (paused) bits.push(`${paused} waiting`);
+    counts.textContent = bits.join('  ·  ');
 }
 
 async function bulkAddSymbols() {
@@ -953,80 +1487,112 @@ async function bulkAddSymbols() {
     const progressEl = document.getElementById('bulk-progress');
     const fillEl     = document.getElementById('bulk-progress-fill');
     const labelEl    = document.getElementById('bulk-progress-label');
+    const logEl      = document.getElementById('bulk-progress-log');
 
-    // Lock UI
     submitBtn.disabled  = true;
     textarea.disabled   = true;
     progressEl.style.display = 'block';
     labelEl.style.color = '';
+    if (logEl) logEl.innerHTML = '';
 
     const existing = new Set(state.symbols.map(s => s.symbol));
-    let added = 0, failed = 0, skipped = 0;
+    const toFetch = [];
+    let skipped = 0, added = 0, failed = 0, paused = 0;
     const failedSymbols = [];
 
-    for (let i = 0; i < symbols.length; i++) {
-        const sym = symbols[i];
-
-        // Update progress bar
-        fillEl.style.width  = `${Math.round((i / symbols.length) * 100)}%`;
-        labelEl.textContent = `${i + 1} / ${symbols.length}  ·  ${sym}`;
-
+    symbols.forEach(sym => {
         if (existing.has(sym)) {
             skipped++;
-            continue;
+            appendBulkLog(sym, 'skip', 'already on watchlist');
+        } else {
+            toFetch.push(sym);
         }
+    });
 
-        // Register symbol in DB (may already exist — ignore that error)
+    labelEl.textContent = toFetch.length
+        ? `Adding ${toFetch.length} ticker${toFetch.length === 1 ? '' : 's'} to the watchlist…`
+        : 'Nothing new to add';
+    setBulkCounts(0, symbols.length, 0, skipped, 0, 0);
+
+    if (toFetch.length) {
         try {
             await apiFetch(`${API}/symbols`, {
-                method:  'POST',
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ symbol: sym }),
+                body: JSON.stringify({ symbols: toFetch }),
             });
-        } catch (_) { /* already exists or other — still try data fetch */ }
+        } catch (_) {
+            // Fall through — per-symbol register still happens below if needed
+        }
+        await loadSymbols();
+        toFetch.forEach(s => existing.add(s));
+    }
 
-        // Download market data
+    let throttled = false;
+    for (let i = 0; i < toFetch.length; i++) {
+        const sym = toFetch[i];
+        const done = skipped + i;
+        fillEl.style.width = `${Math.round((done / symbols.length) * 100)}%`;
+        labelEl.textContent = `Downloading ${sym} from Yahoo…  ${i + 1} / ${toFetch.length}`;
+        setBulkCounts(done, symbols.length, added, skipped, failed, 0);
+        appendBulkLog(sym, 'work', 'downloading from Yahoo…');
+
+        try {
+            await apiFetch(`${API}/symbols`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol: sym }),
+            });
+        } catch (_) { /* already registered */ }
+
         const ok = await fetchSymbolData(sym, true);
         if (ok) {
             added++;
-            existing.add(sym);
+            appendBulkLog(sym, 'ok', 'history loaded');
+        } else if (isYahooThrottle(lastFetchError)) {
+            failed++;
+            failedSymbols.push(sym);
+            throttled = true;
+            appendBulkLog(sym, 'pause', 'Yahoo is rate-limiting — stopped here');
+            const leftover = toFetch.slice(i + 1);
+            leftover.forEach(s => appendBulkLog(s, 'pause', 'waiting — fetch later'));
+            paused = leftover.length;
+            break;
         } else {
             failed++;
             failedSymbols.push(sym);
+            appendBulkLog(sym, 'fail', lastFetchError?.message || 'fetch failed');
         }
     }
 
-    // Finalise progress bar
     fillEl.style.width = '100%';
     const parts = [
-        added   ? `${added} added`   : null,
+        added   ? `${added} fetched` : null,
         skipped ? `${skipped} skipped` : null,
-        failed  ? `${failed} failed`  : null,
+        failed  ? `${failed} failed` : null,
+        paused  ? `${paused} waiting` : null,
     ].filter(Boolean);
-    const summary = parts.join(', ');
-    labelEl.textContent = `Done — ${summary}`;
-    labelEl.style.color = failed ? 'var(--red)' : 'var(--green)';
+    const summary = parts.join(', ') || 'nothing to do';
+    labelEl.textContent = throttled
+        ? `Paused — Yahoo is rate-limiting. Try again in a minute.`
+        : `Done — ${summary}`;
+    labelEl.style.color = throttled ? 'var(--yellow)' : (failed ? 'var(--red)' : 'var(--green)');
+    setBulkCounts(symbols.length, symbols.length, added, skipped, failed, paused);
 
-    // Unlock UI
     submitBtn.disabled = false;
     textarea.disabled  = false;
 
-    // Refresh sidebar
     await loadSymbols();
+    if (added && !state.activeSymbol) selectSymbol(toFetch[0] || symbols[0]);
 
-    // If something was added, select the first new one
-    const firstNew = symbols.find(s => existing.has(s) && !state.symbols.find(x => x.symbol === s));
-    if (added && !state.activeSymbol) selectSymbol(symbols[0]);
-
-    // Toast summary
     toast(
-        `Bulk import: ${summary}` + (failedSymbols.length ? ` (${failedSymbols.join(', ')})` : ''),
-        failed ? 'warning' : 'success',
+        (throttled ? 'Yahoo rate-limit — ' : 'Bulk import: ') + summary
+            + (failedSymbols.length ? ` (${failedSymbols.join(', ')})` : ''),
+        throttled || failed ? 'warning' : 'success',
         6000
     );
 
-    // Auto-close after 2 s if everything succeeded
-    if (failed === 0) setTimeout(closeBulkModal, 2000);
+    if (failed === 0 && !throttled) setTimeout(closeBulkModal, 2500);
 }
 
 async function refreshAll() {
@@ -1050,25 +1616,157 @@ async function refreshAll() {
 }
 
 // ── Symbol selection & chart loading ─────────────────────────
+// Neighbor prefetch: after a selection change, warm next/prev visible
+// watchlist names so j/k chart switches reuse daily+weekly OHLCV + indicators.
+
+let _prefetchGen = 0;
+const _prefetchControllers = new Map();
+const _chartPayloadCache = new Map();
+const _inflightChartBundles = new Map();
+const CHART_BUNDLE_CACHE_MAX = 12;
+
+function chartBundleKey(symbol) {
+    return `${String(symbol || '').toUpperCase()}|${kamaApiParam()}`;
+}
+
+function peekChartBundle(symbol) {
+    return _chartPayloadCache.get(chartBundleKey(symbol)) || null;
+}
+
+function rememberChartBundle(symbol, bundle) {
+    if (!symbol || !bundle) return;
+    const key = chartBundleKey(symbol);
+    if (_chartPayloadCache.has(key)) _chartPayloadCache.delete(key);
+    _chartPayloadCache.set(key, bundle);
+    while (_chartPayloadCache.size > CHART_BUNDLE_CACHE_MAX) {
+        const oldest = _chartPayloadCache.keys().next().value;
+        _chartPayloadCache.delete(oldest);
+    }
+}
+
+function forgetChartBundle(symbol) {
+    const prefix = `${String(symbol || '').toUpperCase()}|`;
+    for (const key of [..._chartPayloadCache.keys()]) {
+        if (key.startsWith(prefix)) _chartPayloadCache.delete(key);
+    }
+    for (const key of [..._inflightChartBundles.keys()]) {
+        if (key.startsWith(prefix)) _inflightChartBundles.delete(key);
+    }
+    const code = String(symbol || '').toUpperCase();
+    const ac = _prefetchControllers.get(code);
+    if (ac) {
+        ac.abort();
+        _prefetchControllers.delete(code);
+    }
+}
+
+function neighborVisibleSymbols(symbol) {
+    const codes = (typeof visibleSymbolCodes === 'function' ? visibleSymbolCodes() : null) || [];
+    if (!codes.length || !symbol) return [];
+    const idx = codes.indexOf(symbol);
+    if (idx < 0) return [];
+    const neighbors = [];
+    const prev = codes[(idx - 1 + codes.length) % codes.length];
+    const next = codes[(idx + 1) % codes.length];
+    if (prev && prev !== symbol) neighbors.push(prev);
+    if (next && next !== symbol && next !== prev) neighbors.push(next);
+    return neighbors;
+}
+
+function abortChartPrefetch(keepSymbol) {
+    _prefetchGen += 1;
+    const keep = keepSymbol ? String(keepSymbol).toUpperCase() : '';
+    for (const [sym, ac] of [..._prefetchControllers.entries()]) {
+        if (keep && String(sym).toUpperCase() === keep) continue;
+        ac.abort();
+        _prefetchControllers.delete(sym);
+    }
+}
+
+async function fetchChartBundle(symbol, { signal } = {}) {
+    const key = chartBundleKey(symbol);
+    if (_inflightChartBundles.has(key)) {
+        return _inflightChartBundles.get(key);
+    }
+    const kama = kamaApiParam();
+    const opts = signal ? { signal } : {};
+    const pending = Promise.all([
+        apiFetch(`${API}/ohlcv/${symbol}?freq=daily`, opts),
+        apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`, opts),
+        apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`, opts),
+        apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`, opts),
+    ]).then(([dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd]) => ({
+        dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd,
+    }));
+    _inflightChartBundles.set(key, pending);
+    try {
+        return await pending;
+    } finally {
+        if (_inflightChartBundles.get(key) === pending) _inflightChartBundles.delete(key);
+    }
+}
+
+async function prefetchChartBundle(symbol, gen, signal) {
+    if (peekChartBundle(symbol)) return;
+    try {
+        const bundle = await fetchChartBundle(symbol, { signal });
+        if (gen !== _prefetchGen || (signal && signal.aborted)) return; // ignore stale prefetch
+        rememberChartBundle(symbol, bundle);
+    } catch (e) {
+        if (e && (e.name === 'AbortError' || (signal && signal.aborted))) return; // ignore stale prefetch
+        if (gen !== _prefetchGen) return; // ignore stale prefetch
+        if (isYahooThrottle(e)) lastFetchError = e;
+    }
+}
+
+function scheduleNeighborPrefetch(anchorSymbol) {
+    abortChartPrefetch(anchorSymbol);
+    if (!anchorSymbol) return;
+    // j/k walk setup rows; do not prefetch-spam the universe
+    if (state.workspace === 'scan') return;
+    // Skip prefetch after a 429 so we do not pile onto Yahoo.
+    if (isYahooThrottle(lastFetchError)) return;
+    const neighbors = neighborVisibleSymbols(anchorSymbol);
+    if (!neighbors.length) return;
+    const gen = _prefetchGen;
+    neighbors.forEach(sym => {
+        const code = String(sym).toUpperCase();
+        if (peekChartBundle(sym) || _prefetchControllers.has(code)) return;
+        const ac = new AbortController();
+        _prefetchControllers.set(code, ac);
+        prefetchChartBundle(sym, gen, ac.signal).finally(() => {
+            if (_prefetchControllers.get(code) === ac) _prefetchControllers.delete(code);
+        });
+    });
+}
+
 async function selectSymbol(symbol) {
+    // Cancel auto-retry if the user changes ticker (or re-selects while a retry is pending).
+    if (yahooThrottleShouldCancelOnTickerChange(_yahooThrottleRetrySymbol, symbol) || _yahooThrottleRetrySymbol) {
+        cancelYahooThrottleAutoRetry();
+    }
     state.activeSymbol = symbol;
+    try { if (symbol) localStorage.setItem(LAST_SYMBOL_KEY, symbol); } catch { /* ignore quota */ }
     renderSymbolList();
-    if (state.activeTab === 'charts') {
+    if (state.workspace === 'scan' || state.activeTab === 'charts') {
         await loadChartData(symbol);
-    } else if (state.activeTab === 'news') {
-        await loadNewsData(symbol);
-    } else if (state.activeTab === 'stats') {
-        await loadStatsData(symbol);
-    } else if (state.activeTab === 'knn') {
-        await loadKNN(symbol);
-    } else if (state.activeTab === 'backtest') {
-        // Backtest is triggered manually via the Run button; just update header
-        updateSymbolHeader(symbol, null);
-    } else if (state.activeTab === 'trend') {
-        await loadAdaptiveTrendData(symbol);
-    } else if (state.activeTab === 'dist') {
-        updateSymbolHeader(symbol, null);
-        // Distribution is triggered manually via Run; keep prior results cleared.
+    } else {
+        scheduleNeighborPrefetch(symbol);
+        if (state.activeTab === 'news') {
+            await loadNewsData(symbol);
+        } else if (state.activeTab === 'stats') {
+            await loadStatsData(symbol);
+        } else if (state.activeTab === 'knn') {
+            await loadKNN(symbol);
+        } else if (state.activeTab === 'backtest') {
+            // Backtest is triggered manually via the Run button; just update header
+            updateSymbolHeader(symbol, null);
+        } else if (state.activeTab === 'trend') {
+            await loadAdaptiveTrendData(symbol);
+        } else if (state.activeTab === 'dist') {
+            updateSymbolHeader(symbol, null);
+            // Distribution is triggered manually via Run; keep prior results cleared.
+        }
     }
     // Scanner tab doesn't depend on the selected symbol
 }
@@ -1088,7 +1786,10 @@ async function loadStatsData(symbol) {
             if (e.message.includes('404') || e.message.includes('No data')) {
                 toast(`No data for ${symbol}. Downloading…`, 'info');
                 const ok = await fetchSymbolData(symbol);
-                if (!ok) throw e;
+                if (!ok) {
+                    if (isYahooThrottle(lastFetchError)) throw lastFetchError;
+                    throw e;
+                }
                 await loadSymbols();
                 return Promise.all([
                     apiFetch(`${API}/ohlcv/${symbol}?freq=daily&limit=2`),
@@ -1207,8 +1908,13 @@ function renderNews(articles) {
     articles.forEach(article => {
         const newsItem = document.createElement('div');
         newsItem.className = 'news-item';
-        newsItem.addEventListener('click', () => {
-            if (article.url) window.open(article.url, '_blank');
+        newsItem.title = 'Jump daily chart to this headline date';
+        newsItem.addEventListener('click', ev => {
+            if (ev.metaKey || ev.ctrlKey) {
+                if (article.url) window.open(article.url, '_blank');
+                return;
+            }
+            onThisTickerNewsClick(article);
         });
         
         // No thumbnail in main's API format - it doesn't include images
@@ -1265,34 +1971,97 @@ function renderNews(articles) {
     });
 }
 
+function _newsJumpMiss() {
+    if (typeof toast === 'function') toast('No matching daily bar for that headline', 'warning');
+    return false;
+}
+
+// Reveal the daily pane without leaving Scan / Chart / Review.
+// Scan already shows the chart — never call setWorkspace from this path.
+function revealDailyChartKeepingWorkspace() {
+    // Stay in Scan / Chart / Review — never call setWorkspace from this path.
+    // Scan already shows the chart.
+    if (typeof showChartArea === 'function') showChartArea();
+    state.activeTab = 'charts';
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        const scanOn = state.workspace === 'scan';
+        btn.classList.toggle('active', btn.id === 'tab-charts' || (scanOn && btn.id === 'tab-scanner'));
+    });
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => window.resizeAllCharts?.());
+    }
+}
+
+function onThisTickerNewsClick(article) {
+    const key = (typeof newsDateKey === 'function')
+        ? newsDateKey(article && article.publish_time)
+        : null;
+    if (!key) return _newsJumpMiss();
+
+    const applyJump = () => {
+        const bars = (typeof rawRows !== 'undefined' && rawRows && rawRows.daily) ? rawRows.daily : [];
+        const idx = (typeof dailyBarIndexForDate === 'function')
+            ? dailyBarIndexForDate(key, bars)
+            : -1;
+        if (idx < 0) return _newsJumpMiss();
+        // Show the pane first so setVisibleRange runs on a laid-out chart.
+        revealDailyChartKeepingWorkspace();
+        requestAnimationFrame(() => {
+            if (typeof scrollDailyToDate === 'function') scrollDailyToDate(key);
+        });
+        return true;
+    };
+
+    const rows = (typeof rawRows !== 'undefined' && rawRows && Array.isArray(rawRows.daily))
+        ? rawRows.daily : [];
+    const live = typeof chartsAreLive === 'function' && chartsAreLive();
+    const sameSym = !!(state.chartedSymbol && state.chartedSymbol === state.activeSymbol);
+    if (live && sameSym && rows.length) return applyJump();
+
+    const sym = state.activeSymbol;
+    if (!sym || typeof loadChartData !== 'function') return _newsJumpMiss();
+    Promise.resolve(loadChartData(sym)).then(applyJump);
+    return true;
+}
+
 async function loadChartData(symbol) {
     if (!symbol) return;
+    const seq = ++_chartLoadSeq;
+    scheduleNeighborPrefetch(symbol);
+    const cached = peekChartBundle(symbol);
     state.loading = true;
     showChartArea();
-    showLoadingOverlay(true);
+    showLoadingOverlay(!cached);
     updateSymbolHeader(symbol, null);
 
-    const kama = kamaApiParam();
-
     try {
-        let [dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd] = await Promise.all([
-            apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
-            apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`),
-            apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`),
-            apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
-        ]).catch(async e => {
-            // No data yet — auto-fetch then retry
-            toast(`No data for ${symbol}. Downloading…`, 'info');
-            const ok = await fetchSymbolData(symbol);
-            if (!ok) throw e;
-            await loadSymbols();
-            return Promise.all([
-                apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
-                apiFetch(`${API}/ohlcv/${symbol}?freq=weekly`),
-                apiFetch(`${API}/indicators/${symbol}?freq=daily&kama=${kama}`),
-                apiFetch(`${API}/indicators/${symbol}?freq=weekly&kama=${kama}`),
-            ]);
-        });
+        let dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd;
+        if (cached) {
+            rememberChartBundle(symbol, cached);
+            ({ dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd } = cached);
+        } else {
+            let bundle;
+            try {
+                bundle = await fetchChartBundle(symbol);
+            } catch (e) {
+                if (e && e.name === 'AbortError') throw e;
+                // No data yet — auto-fetch then retry
+                toast(`No data for ${symbol}. Downloading…`, 'info');
+                const ok = await fetchSymbolData(symbol);
+                if (!ok) {
+                    if (isYahooThrottle(lastFetchError)) {
+                        throw lastFetchError;
+                    }
+                    throw e;
+                }
+                await loadSymbols();
+                bundle = await fetchChartBundle(symbol);
+            }
+            rememberChartBundle(symbol, bundle);
+            ({ dailyOhlcv, weeklyOhlcv, dailyInd, weeklyInd } = bundle);
+        }
+
+        if (seq !== _chartLoadSeq) return;
 
         initCharts();
 
@@ -1310,17 +2079,34 @@ async function loadChartData(symbol) {
         loadOHLCV('weekly', weeklyOhlcv);
         loadIndicatorsToPanel('daily',  dailyInd);
         loadIndicatorsToPanel('weekly', weeklyInd);
+        state.chartedSymbol = symbol;
         fitContent();
+        const pending = window._pendingChartPack;
+        if (pending && pending.symbol === symbol && typeof setChartPacksForSetups === 'function') {
+            setChartPacksForSetups(pending.setups || []);
+        }
 
         const last = dailyOhlcv[dailyOhlcv.length - 1];
         const prev = dailyOhlcv[dailyOhlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
+        hideYahooThrottleBanner(symbol);
     } catch (e) {
-        toast('Chart load failed: ' + e.message, 'error');
-        showEmptyState();
+        if (seq !== _chartLoadSeq) return;
+        if (e && e.name === 'AbortError') return;
+        if (isYahooThrottle(e) || isYahooThrottle(lastFetchError)) {
+            showYahooThrottleBanner(symbol);
+        } else {
+            toast('Chart load failed: ' + e.message, 'error');
+            showEmptyState();
+        }
     } finally {
-        state.loading = false;
-        showLoadingOverlay(false);
+        if (seq === _chartLoadSeq && window._pendingChartPack && window._pendingChartPack.symbol === symbol) {
+            window._pendingChartPack = null;
+        }
+        if (seq === _chartLoadSeq) {
+            state.loading = false;
+            showLoadingOverlay(false);
+        }
     }
 }
 
@@ -1348,7 +2134,10 @@ async function loadAdaptiveTrendData(symbol) {
             if (e.message.includes('404') || e.message.includes('No data')) {
                 toast(`No data for ${symbol}. Downloading…`, 'info');
                 const ok = await fetchSymbolData(symbol);
-                if (!ok) throw e;
+                if (!ok) {
+                    if (isYahooThrottle(lastFetchError)) throw lastFetchError;
+                    throw e;
+                }
                 await loadSymbols();
                 return Promise.all([
                     apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
@@ -1374,6 +2163,7 @@ async function loadAdaptiveTrendData(symbol) {
 
 // ── UI helpers ───────────────────────────────────────────────
 function showEmptyState() {
+    hideYahooThrottleBanner();
     document.getElementById('empty-state').style.display       = 'flex';
     document.getElementById('chart-area').style.display        = 'none';
     document.getElementById('news-area').style.display         = 'none';
@@ -1435,8 +2225,114 @@ function showLoadingOverlay(show) {
     document.getElementById('chart-loading').style.display = show ? 'flex' : 'none';
 }
 
+function syncWorkspacePills() {
+    document.querySelectorAll('.workspace-btn').forEach(btn => {
+        setPressed(btn, btn.dataset.workspace === state.workspace);
+    });
+}
+
+function showScanSplit() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('news-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    document.getElementById('chart-area').style.display        = 'flex';
+    document.getElementById('scanner-area').style.display      = 'flex';
+    state.activeTab = 'charts';
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.id === 'tab-scanner' || btn.id === 'tab-charts');
+    });
+}
+
+function applyReviewDrawerLayout(on) {
+    const book = document.getElementById('book-drawer');
+    const journal = document.getElementById('journal-drawer');
+    const backdrop = document.getElementById('book-drawer-backdrop');
+    if (backdrop) backdrop.hidden = true;
+    if (book) {
+        if (on) {
+            book.classList.add('open');
+            book.setAttribute('aria-hidden', 'false');
+            book.style.transform = 'translateX(0)';
+            book.style.right = '280px';
+            book.style.zIndex = '220';
+            book.style.width = '340px';
+        } else {
+            book.style.transform = '';
+            book.style.right = '';
+            book.style.zIndex = '';
+            book.style.width = '';
+        }
+    }
+    if (journal) {
+        if (on) {
+            journal.style.transform = 'translateX(0)';
+            journal.style.width = '280px';
+            journal.style.zIndex = '221';
+        } else {
+            journal.style.transform = '';
+            journal.style.width = '';
+            journal.style.zIndex = '';
+        }
+    }
+}
+
+function setWorkspace(id, opts = {}) {
+    const next = id === 'scan' || id === 'review' ? id : 'chart';
+    state.workspace = next;
+    document.body.classList.toggle('workspace-scan', next === 'scan');
+    document.body.classList.toggle('workspace-review', next === 'review');
+    document.body.classList.toggle('workspace-chart', next === 'chart');
+    syncWorkspacePills();
+    try {
+        localStorage.setItem(WORKSPACE_KEY, next === 'review' ? 'chart' : next);
+    } catch { /* ignore quota */ }
+
+    if (next === 'scan') {
+        applyReviewDrawerLayout(false);
+        showScanSplit();
+        if (typeof initSetupScanner === 'function') initSetupScanner();
+        loadSetupScan({ allowStaleRows: true });
+        if (!opts.skipChart && state.activeSymbol) loadChartData(state.activeSymbol);
+        requestAnimationFrame(() => window.resizeAllCharts?.());
+        return next;
+    }
+
+    if (next === 'review') {
+        switchTab('news', { keepWorkspace: true });
+        openJournal();
+        openBookDrawer();
+        applyReviewDrawerLayout(true);
+        return next;
+    }
+
+    applyReviewDrawerLayout(false);
+    closeJournal();
+    closeBookDrawer();
+    if (!opts.fromTab) switchTab('charts', { keepWorkspace: true });
+    requestAnimationFrame(() => window.resizeAllCharts?.());
+    return next;
+}
+
+window.setWorkspace = setWorkspace;
+
 // ── Tab Switching ─────────────────────────────────────────────
-async function switchTab(tabId) {
+async function switchTab(tabId, opts = {}) {
+    if (tabId === 'scanner') {
+        setWorkspace('scan');
+        return;
+    }
+
+    if (!opts.keepWorkspace) {
+        state.workspace = 'chart';
+        document.body.classList.remove('workspace-scan', 'workspace-review');
+        document.body.classList.add('workspace-chart');
+        syncWorkspacePills();
+    }
+
     state.activeTab = tabId;
 
     // Update tab buttons
@@ -1480,11 +2376,6 @@ async function switchTab(tabId) {
         showTrendArea();
         if (typeof renderTrendConfig === 'function') renderTrendConfig();
         if (state.activeSymbol) loadAdaptiveTrendData(state.activeSymbol);
-    } else if (tabId === 'scanner') {
-        showScannerArea();
-        if (typeof initSetupScanner === 'function') initSetupScanner();
-        loadSetupScan();
-        loadScannerData();
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
@@ -1527,7 +2418,8 @@ function showChartArea() {
     document.getElementById('backtest-area').style.display     = 'none';
     document.getElementById('chart-area').style.display        = 'flex';
     document.getElementById('trend-area').style.display        = 'none';
-    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('scanner-area').style.display      =
+        state.workspace === 'scan' ? 'flex' : 'none';
     document.getElementById('data-manager-area').style.display = 'none';
 }
 
@@ -2000,6 +2892,7 @@ function updateSymbolHeader(symbol, last, prev) {
     document.getElementById('sym-title').textContent = symbol;
     const symInfo = state.symbols.find(s => s.symbol === symbol);
     document.getElementById('sym-subtitle').textContent = symInfo?.name || '';
+    syncNewsSurfaceLabels(symbol);
 
     if (!last) {
         document.getElementById('sym-price').textContent   = '--';
@@ -2105,7 +2998,8 @@ function renderPmDesk(snap) {
     const bookRsEl = document.getElementById('pm-book-rs');
     if (bookRsEl) {
         bookRsEl.textContent = bookRsLabel(snap);
-        bookRsEl.title = 'Book RS (21D) — watchlist rank only, not a published RS Rating';
+        bookRsEl.title = 'Book RS (21D) — this watchlist’s 21-day return rank, not a published rating';
+        bookRsEl.setAttribute('aria-label', `${bookRsLabel(snap)}, watchlist 21-day rank, not a published rating`);
     }
 
     const peer = document.getElementById('pm-peer');
@@ -2197,8 +3091,9 @@ function copySetupCard() {
 }
 
 function moveSymbolSelection(delta) {
-    if (!state.symbols.length) return;
-    const codes = state.symbols.map(s => s.symbol);
+    const codes = (typeof visibleSymbolCodes === 'function' ? visibleSymbolCodes() : null)
+        || (state.symbols || []).map(s => s.symbol);
+    if (!codes.length) return;
     let idx = codes.indexOf(state.activeSymbol);
     if (idx < 0) idx = 0;
     else idx = (idx + delta + codes.length) % codes.length;
@@ -2251,12 +3146,69 @@ async function loadWatchlistPreset() {
     }
 }
 
-function toggleFocusMode(force) {
+function toggleFocusMode(force, opts = {}) {
     const on = force ?? !document.body.classList.contains('focus-mode');
     document.body.classList.toggle('focus-mode', on);
-    document.getElementById('pill-focus')?.classList.toggle('active', on);
+    setPressed(document.getElementById('pill-focus'), on);
+    const chip = document.getElementById('focus-mode-chip');
+    if (chip) chip.hidden = !on;
+    try { localStorage.setItem(FOCUS_MODE_KEY, on ? '1' : '0'); } catch { /* ignore quota */ }
+    if (!opts.silent) toast(on ? 'Focus mode — press f to restore chrome' : 'Chrome restored', 'info', 2200);
     window.resizeAllCharts?.();
     return on;
+}
+
+function restoreFocusMode() {
+    let saved = null;
+    try { saved = localStorage.getItem(FOCUS_MODE_KEY); } catch { saved = null; }
+    if (saved === '1') toggleFocusMode(true, { silent: true });
+}
+
+window.toggleFocusMode = toggleFocusMode;
+
+function isKbdHelpOpen() {
+    const el = document.getElementById('kbd-help');
+    return !!(el && !el.hidden);
+}
+
+let _kbdHelpPrevFocus = null;
+
+function onKbdHelpKeydown(e) {
+    if (e.key === 'Escape' || e.key === '?') {
+        e.preventDefault();
+        closeKbdHelp();
+        return;
+    }
+    trapFocusIn(document.querySelector('#kbd-help .kbd-help-card'), e);
+}
+
+function openKbdHelp() {
+    const el = document.getElementById('kbd-help');
+    const card = el?.querySelector('.kbd-help-card');
+    if (!el) return;
+    if (typeof closeDeskPalette === 'function') closeDeskPalette();
+    _kbdHelpPrevFocus = document.activeElement;
+    el.hidden = false;
+    setAppInert(true);
+    el.addEventListener('keydown', onKbdHelpKeydown);
+    requestAnimationFrame(() => (card || el).focus());
+}
+
+function closeKbdHelp() {
+    const el = document.getElementById('kbd-help');
+    if (!el || el.hidden) return;
+    el.hidden = true;
+    el.removeEventListener('keydown', onKbdHelpKeydown);
+    setAppInert(false);
+    if (_kbdHelpPrevFocus && typeof _kbdHelpPrevFocus.focus === 'function') {
+        _kbdHelpPrevFocus.focus();
+    }
+    _kbdHelpPrevFocus = null;
+}
+
+function toggleKbdHelp() {
+    if (isKbdHelpOpen()) closeKbdHelp();
+    else openKbdHelp();
 }
 
 function setupPmKeyboard() {
@@ -2266,6 +3218,37 @@ function setupPmKeyboard() {
         if (typing) {
             if (e.key === 'Escape') e.target.blur();
             return;
+        }
+        if (typeof isPaletteOpen === 'function' && isPaletteOpen()) return;
+        if (isBulkModalOpen()) return;
+        if (isKbdHelpOpen()) {
+            if (e.key === 'Escape' || e.key === '?') {
+                e.preventDefault();
+                closeKbdHelp();
+            }
+            return;
+        }
+        if (!e.metaKey && !e.ctrlKey && !e.altKey && (e.key === '1' || e.key === '2' || e.key === '3')) {
+            e.preventDefault();
+            setWorkspace(e.key === '1' ? 'chart' : e.key === '2' ? 'scan' : 'review');
+            return;
+        }
+        if (state.workspace === 'scan' && !e.metaKey && !e.ctrlKey) {
+            if (e.key === 'j' && !e.shiftKey) {
+                e.preventDefault();
+                window.moveSetupScanSelection?.(1);
+                return;
+            }
+            if (e.key === 'k' && !e.shiftKey) {
+                e.preventDefault();
+                window.moveSetupScanSelection?.(-1);
+                return;
+            }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                window.openSelectedSetupRow?.();
+                return;
+            }
         }
         // Shift+J → toggle trade journal drawer (plain j/k stay reserved for list nav).
         if (e.shiftKey && (e.key === 'J' || e.key === 'j')) {
@@ -2282,19 +3265,36 @@ function setupPmKeyboard() {
             if (state.activeSymbol) fetchSymbolData(state.activeSymbol);
             else refreshAll();
         }
-        else if (e.key === '/') {
+        else if (e.key === '?' || (e.shiftKey && e.key === '/')) {
             e.preventDefault();
-            const input = document.getElementById('new-symbol-input');
-            if (input) { input.focus(); input.select(); }
+            openKbdHelp();
+        }
+        else if (e.key === '/' && !e.shiftKey) {
+            e.preventDefault();
+            if (typeof openDeskPalette === 'function') openDeskPalette('jump');
+            else {
+                const input = document.getElementById('new-symbol-input');
+                if (input) { input.focus(); input.select(); }
+            }
         }
         else if (e.key === 'c' && !e.metaKey && !e.ctrlKey) {
             e.preventDefault();
             copySetupCard();
         }
+        else if ((e.key === 'y' || e.key === 'Y') && !e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            if (typeof copyPaintedOhlc === 'function') copyPaintedOhlc();
+        }
+        else if (e.key === '.' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            e.preventDefault();
+            if (typeof scrollToLatestBar === 'function') scrollToLatestBar();
+        }
         else if (e.key === 'Escape') {
             closeBookDrawer();
             closeJournal();
             closePmToolsPopover();
+            closeKbdHelp();
+            if (typeof closeDeskPalette === 'function') closeDeskPalette();
         }
     });
 }
@@ -2563,6 +3563,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     bbPill.addEventListener('click', () => {
         const on = toggleOverlay('bb');
         bbPill.classList.toggle('active-bb', on);
+        bbPill.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
 
     // EP markers pill (gap ≥4% on volume surge) — on by default
@@ -2584,6 +3585,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
+    document.querySelectorAll('[data-chart-pack]').forEach(pill => {
+        pill.addEventListener('click', () => {
+            toggleChartPack(pill.dataset.chartPack);
+        });
+    });
+
     // Darvas box overlay pill — on by default (structural, not KAMA)
     const darvasPill = document.getElementById('pill-darvas');
     darvasPill?.addEventListener('click', () => {
@@ -2595,8 +3602,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Persisted to localStorage so the layout survives reloads.
     setupPaneToggles();
 
-    // Focus mode pill — hides the portfolio tape for a chart-only view.
+    // Focus mode pill — body.focus-mode hides extra chrome (CSS per workspace).
     document.getElementById('pill-focus')?.addEventListener('click', () => toggleFocusMode());
+    document.getElementById('btn-yahoo-retry')?.addEventListener('click', retryYahooFetch);
 
     // Buttons
     document.getElementById('btn-add-symbol').addEventListener('click', addSymbol);
@@ -2604,6 +3612,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-refresh-all').addEventListener('click', refreshAll);
     document.getElementById('chk-desk-only')?.addEventListener('change', e => {
         toggleDeskOnly(e.target.checked);
+    });
+    document.getElementById('watchlist-filter')?.addEventListener('input', () => {
+        persistWatchlistFilter();
+        renderSymbolList();
+        if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
     });
     document.getElementById('new-symbol-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') addSymbol();
@@ -2620,7 +3633,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         else toast('Select a symbol first', 'warning');
     });
 
-    // Close bulk modal on Escape
+    // Close bulk modal on Escape (also trapped inside the dialog)
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') closeBulkModal();
     });
@@ -2629,6 +3642,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.tape-mode-btn').forEach(btn => {
         btn.addEventListener('click', () => setTapeMode(btn.dataset.mode));
     });
+    setTapeMode(state.tapeMode);
+
+    document.getElementById('kbd-help')?.addEventListener('click', e => {
+        if (e.target.id === 'kbd-help') closeKbdHelp();
+    });
+    document.getElementById('kbd-help-close')?.addEventListener('click', closeKbdHelp);
     document.getElementById('tape-book-news')?.addEventListener('click', openBookNews);
 
     // Book drawer (regime heatmap / alert log / theme leaders)
@@ -2639,6 +3658,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Trade journal drawer
     document.getElementById('btn-journal')?.addEventListener('click', toggleJournal);
     document.getElementById('btn-journal-close')?.addEventListener('click', closeJournal);
+    document.getElementById('journal-compose')?.addEventListener('submit', saveJournalNote);
 
     // PM tools popover (risk box, stop mode, checklist, copy/journal)
     document.getElementById('btn-pm-tools')?.addEventListener('click', e => {
@@ -2683,13 +3703,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     setupPmKeyboard();
 
-    await loadSymbols();
+    document.querySelectorAll('.workspace-btn').forEach(btn => {
+        btn.addEventListener('click', () => setWorkspace(btn.dataset.workspace));
+    });
+    syncWorkspacePills();
 
-    if (state.symbols.length && state.symbols[0].last_fetch) {
-        selectSymbol(state.symbols[0].symbol);
-    } else {
+    await loadSymbols();
+    restoreWatchlistFilter();
+
+    const codes = (state.symbols || []).map(s => s.symbol).filter(Boolean);
+    if (!codes.length) {
         showEmptyState();
+    } else {
+        let last = null;
+        try { last = localStorage.getItem(LAST_SYMBOL_KEY); } catch { last = null; }
+        const pick = (last && codes.includes(last)) ? last : codes[0];
+        await selectSymbol(pick);
+        let ws = 'chart';
+        try { ws = localStorage.getItem(WORKSPACE_KEY) || 'chart'; } catch { ws = 'chart'; }
+        if (ws === 'scan') setWorkspace('scan', { skipChart: true });
     }
+    // After workspace restore so Chart/Scan/Review chrome matches the saved desk.
+    restoreFocusMode();
 });
 
 // ── Indicator pane visibility (RSI / MACD / Trend) — persisted, price-first ──
@@ -2716,8 +3751,7 @@ function setPaneVisible(name, visible) {
         document.querySelectorAll(`.chart-divider-${name}`).forEach(el => { el.hidden = !visible; });
         window.resizeAllCharts?.();
     }
-    const pill = document.getElementById(`pill-pane-${name}`);
-    if (pill) pill.classList.toggle('active', visible);
+    setPressed(document.getElementById(`pill-pane-${name}`), visible);
     savePane(name, visible);
 }
 

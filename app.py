@@ -154,6 +154,38 @@ def pm_desk(symbol):
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/spy-rs/<string:symbol>", methods=["GET"])
+def spy_rs_api(symbol):
+    """Daily close/SPY close comparison line — not a published rating."""
+    try:
+        try:
+            limit = int(request.args.get("limit", 500))
+        except (TypeError, ValueError):
+            return jsonify({"error": "limit must be an integer"}), 400
+        if limit <= 0:
+            return jsonify({"error": "limit must be a positive integer"}), 400
+        sym = symbol.upper()
+        if sym == "SPY":
+            payload = portfolio.spy_rs_overlay([], [])
+            payload.update({
+                "symbol": "SPY",
+                "ready": False,
+                "error": "SPY vs SPY is not a comparison",
+            })
+            return jsonify(payload)
+        rows = md.get_ohlcv(sym, "daily", limit)
+        if not rows:
+            return jsonify({"error": "No data. Fetch the symbol first."}), 404
+        spy_rows = md.get_ohlcv("SPY", "daily", limit)
+        payload = portfolio.spy_rs_overlay(rows, spy_rows)
+        payload["symbol"] = sym
+        if not payload.get("ready") and not spy_rows:
+            payload["error"] = "No SPY daily data — fetch SPY first"
+        return jsonify(payload)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/darvas-box/<string:symbol>", methods=["GET"])
 def darvas_box_api(symbol):
     """Darvas box levels for chart overlay — distinct from KAMA/RSI."""
@@ -281,7 +313,8 @@ def fetch_symbol(symbol):
     try:
         result = md.fetch_symbol(symbol.upper())
         if "error" in result:
-            return jsonify(result), 400
+            from data_fetcher import fetch_error_http_status
+            return jsonify(result), fetch_error_http_status(result)
         return jsonify(result)
     except Exception as exc:
         return _data_error(exc)
