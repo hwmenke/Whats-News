@@ -1121,5 +1121,92 @@ class PriceAlertLineTests(unittest.TestCase):
             self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
 
 
+class CopyOhlcHotkeyTests(unittest.TestCase):
+    """Yank the sticky daily OHLC legend — y, not c (setup card)."""
+
+    def test_copy_painted_ohlc_hotkey_helper_cheatsheet(self):
+        with open("scripts/copy_ohlc.js", encoding="utf-8") as fh:
+            copy_js = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("scripts/linked_ohlc.js", encoding="utf-8") as fh:
+            linked = fh.read()
+        with open("scripts/spy_rs.js", encoding="utf-8") as fh:
+            spy_js = fh.read()
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        with open("portfolio.py", encoding="utf-8") as fh:
+            port = fh.read()
+
+        self.assertIn("function formatPaintedOhlcLine", copy_js)
+        self.assertIn("function copyPaintedOhlc", copy_js)
+        self.assertIn("function paintedDailyOhlcIndex", copy_js)
+        self.assertIn("lastLegend.daily", copy_js)
+        self.assertIn("legend-held", copy_js)
+        self.assertIn("not always the last print", copy_js)
+        self.assertIn("AAPL 2026-08-27 O 226.10 H 228.40 L 225.00 C 227.55 +0.82%", copy_js)
+        self.assertIn("typeof toast === 'function') toast('No OHLC to copy'", copy_js)
+        self.assertIn("navigator.clipboard.writeText", copy_js)
+        self.assertIn("linkedBarFor('daily'", copy_js)
+        self.assertIn("not a published rating", copy_js)
+        self.assertIn("O ${_copyOhlcPx(row.open)} H ${_copyOhlcPx(row.high)} L ${_copyOhlcPx(row.low)} C ${_copyOhlcPx(row.close)}", copy_js)
+
+        self.assertIn("e.key === 'y'", app_js)
+        self.assertIn("copyPaintedOhlc()", app_js)
+        y_at = app_js.index("e.key === 'y'")
+        c_at = app_js.index("e.key === 'c' && !e.metaKey && !e.ctrlKey")
+        self.assertIn("copySetupCard()", app_js[c_at : c_at + 180])
+        self.assertIn("copyPaintedOhlc()", app_js[y_at : y_at + 220])
+        self.assertNotIn("copyPaintedOhlc()", app_js[c_at : c_at + 120])
+
+        self.assertIn("<kbd>y</kbd>", html)
+        self.assertIn("Copy painted OHLC (hovered/held daily bar)", html)
+        self.assertIn("scripts/copy_ohlc.js", html)
+        self.assertLess(html.index("scripts/charts.js"), html.index("scripts/copy_ohlc.js"))
+        self.assertLess(html.index("scripts/linked_ohlc.js"), html.index("scripts/copy_ohlc.js"))
+        self.assertLess(html.index("scripts/copy_ohlc.js"), html.index("scripts/app.js"))
+
+        self.assertIn("keep the last hovered bar", charts)
+        self.assertIn("legend-held", charts)
+        self.assertIn("function paintOhlcLegend", charts)
+        self.assertIn("function linkedBarFor", linked)
+
+        for blob in (copy_js, app_js, html, charts, linked, spy_js, setup, port):
+            self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
+
+    def test_painted_index_uses_held_bar_not_always_last(self):
+        rows = [
+            {"date": "2026-08-26", "open": 220, "high": 222, "low": 219, "close": 221},
+            {"date": "2026-08-27", "open": 226.10, "high": 228.40, "low": 225.00, "close": 227.55},
+            {"date": "2026-08-28", "open": 228, "high": 230, "low": 227, "close": 229},
+        ]
+        # Mirrors paintedDailyOhlcIndex in scripts/copy_ohlc.js
+        def painted_idx(legend_idx):
+            if not rows:
+                return -1
+            if legend_idx is not None and 0 <= legend_idx < len(rows):
+                return legend_idx
+            return len(rows) - 1
+
+        self.assertEqual(painted_idx(1), 1)
+        self.assertEqual(painted_idx(None), 2)
+        self.assertEqual(painted_idx(99), 2)
+        prev_close = 225.70
+        chg = (227.55 / prev_close - 1) * 100
+        self.assertEqual(f"{chg:+.2f}%", "+0.82%")
+        line = (
+            f"AAPL 2026-08-27 O {226.10:.2f} H {228.40:.2f} "
+            f"L {225.00:.2f} C {227.55:.2f} {chg:+.2f}%"
+        )
+        self.assertEqual(
+            line,
+            "AAPL 2026-08-27 O 226.10 H 228.40 L 225.00 C 227.55 +0.82%",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
