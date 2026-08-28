@@ -292,6 +292,8 @@
                 title="Session VWAP — rolling anchored from the first loaded daily bar (typical price × volume / cum volume). Daily only; not a published rating">VWAP</button>
         <button type="button" id="pill-last" class="ind-pill" aria-pressed="false"
                 title="Last — rightmost bar close (current last print, not prior-session PDC). Daily and weekly; not a published rating">Last</button>
+        <button type="button" id="pill-gap" class="ind-pill" aria-pressed="false"
+                title="Gap — most recent unfilled daily gap (open vs prior close). Two lines at gap high / gap low. Daily only; not a published rating">Gap</button>
         <button id="pill-ep-markers" class="ind-pill active-ep" title="EP gap+volume markers">EP</button>
         <button type="button" id="pill-news-markers" class="ind-pill" aria-pressed="false"
                 title="News dates on the daily pane — this-ticker headlines, not a rating">News</button>
@@ -1172,6 +1174,7 @@
 <script src="scripts/spy_rs.js"></script>
 <script src="scripts/vwap.js"></script>
 <script src="scripts/last_price.js"></script>
+<script src="scripts/gap_fill.js"></script>
 <script src="scripts/price_alerts.js"></script>
 <script src="scripts/darvas_fill.js"></script>
 <script src="scripts/news_markers.js"></script>

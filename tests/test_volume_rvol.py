@@ -159,6 +159,7 @@ desk.applySavedOverlays();
 const fresh = desk.collectOverlayState();
 assert(fresh.vwap === false, 'VWAP default off');
 assert(fresh.last === false, 'Last default off');
+assert(fresh.gap === false, 'Gap default off');
 assert(fresh.spy_rs === false, 'vs-SPY default off');
 assert(fresh.rvol == null, 'always-on coloring must not add an overlay key');
 assert(store.getItem(OVERLAYS) === null, 'must not write overlays before a user toggle');
@@ -168,6 +169,7 @@ desk.setLastPriceOn(true, { persist: true, apply: false });
 const afterToggle = JSON.parse(store.getItem(OVERLAYS));
 assert(afterToggle.vwap === true, 'VWAP saved on');
 assert(afterToggle.last === true, 'Last saved on');
+assert(afterToggle.gap === false, 'Gap stays independently off');
 assert(afterToggle.rvol == null, 'toggle persist must not add rvol');
 
 desk = loadDesk(store);
@@ -176,6 +178,7 @@ assert(desk.vwapIsOn() === true, 'VWAP restored on');
 assert(desk.lastPriceIsOn() === true, 'Last restored on');
 assert(desk.collectOverlayState().vwap === true, 'collect VWAP restored');
 assert(desk.collectOverlayState().last === true, 'collect Last restored');
+assert(desk.collectOverlayState().gap === false, 'collect Gap stays off');
 assert(desk.collectOverlayState().rvol == null, 'reload must not invent rvol');
 
 const blank = makeStore();
@@ -326,7 +329,7 @@ class VolumeRvolColorContractTests(unittest.TestCase):
         self.assertAlmostEqual(payload["lastSma"], (100 * 18 + 50 + 300) / 20)
         self.assertEqual(
             payload["overlayKeys"],
-            ["bb", "darvas", "ep", "last", "news_markers", "spy_rs", "vwap"],
+            ["bb", "darvas", "ep", "gap", "last", "news_markers", "spy_rs", "vwap"],
         )
 
 
