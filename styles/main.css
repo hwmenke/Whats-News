@@ -3052,6 +3052,14 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
 .chart-ohlc-legend .lg-l { color: #7dd3fc; }
 .chart-ohlc-legend .lg-v { color: #cbd5e1; }
 .chart-ohlc-legend .lg-ma { font-weight: 600; }
+.chart-ohlc-legend.chart-ohlc-twin {
+  top: 30px;
+  font-size: 10px;
+  font-weight: 500;
+  z-index: 10;
+  opacity: 0.95;
+}
+.chart-ohlc-legend.chart-ohlc-twin:empty { display: none; }
 
 .desk-palette-overlay {
   position: fixed;

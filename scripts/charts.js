@@ -339,7 +339,11 @@ function paintOhlcLegend(freq, param) {
     const el = document.getElementById(`chart-legend-${freq}`);
     if (!el) return;
     const rows = rawRows[freq] || [];
-    if (!rows.length) { el.textContent = ''; return; }
+    if (!rows.length) {
+        el.textContent = '';
+        if (typeof paintLinkedTwinIfLive === 'function') paintLinkedTwinIfLive(freq);
+        return;
+    }
     const key = _legendTimeKey(param && param.time);
     let idx;
     if (key) {
@@ -355,7 +359,11 @@ function paintOhlcLegend(freq, param) {
     }
     const row = rows[idx];
     const prev = rows[idx - 1];
-    if (!row) { el.textContent = ''; return; }
+    if (!row) {
+        el.textContent = '';
+        if (typeof paintLinkedTwinIfLive === 'function') paintLinkedTwinIfLive(freq);
+        return;
+    }
     const chg = prev && prev.close ? ((row.close / prev.close - 1) * 100) : null;
     const up = chg == null ? true : chg >= 0;
     const held = idx !== rows.length - 1;
@@ -374,6 +382,8 @@ function paintOhlcLegend(freq, param) {
         + (chgStr ? ` <span class="${tone}">${chgStr}</span>` : '')
         + ` <span class="lg-v">V ${vol}</span>`
         + (maBits ? ` ${maBits}` : '');
+    // Twin readout: matching weekly (or daily) bar. Helper lives in linked_ohlc.js.
+    if (typeof paintLinkedTwinIfLive === 'function') paintLinkedTwinIfLive(freq);
 }
 
 function setupCrosshairLegend() {

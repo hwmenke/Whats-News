@@ -313,6 +313,7 @@
         <div class="chart-wrapper chart-wrapper-main">
           <div class="chart-label">PRICE <span id="chart-daily-ep-badge" class="ep-glance-badge" style="display:none;"></span></div>
           <div id="chart-legend-daily" class="chart-ohlc-legend" aria-live="polite"></div>
+          <div id="chart-legend-daily-twin" class="chart-ohlc-legend chart-ohlc-twin" aria-live="polite"></div>
           <div id="chart-daily-main" style="width:100%;height:100%;"></div>
         </div>
         <div class="chart-divider"></div>
@@ -346,6 +347,7 @@
         <div class="chart-wrapper chart-wrapper-main">
           <div class="chart-label">PRICE <span id="chart-weekly-ep-badge" class="ep-glance-badge" style="display:none;"></span></div>
           <div id="chart-legend-weekly" class="chart-ohlc-legend" aria-live="polite"></div>
+          <div id="chart-legend-weekly-twin" class="chart-ohlc-legend chart-ohlc-twin" aria-live="polite"></div>
           <div id="chart-weekly-main" style="width:100%;height:100%;"></div>
         </div>
         <div class="chart-divider"></div>
@@ -1082,6 +1084,7 @@
 
 <!-- Scripts -->
 <script src="scripts/charts.js"></script>
+<script src="scripts/linked_ohlc.js"></script>
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
 <script src="scripts/setup_scanner.js"></script>
