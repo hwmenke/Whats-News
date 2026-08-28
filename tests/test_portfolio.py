@@ -1425,5 +1425,83 @@ class TapeSma200ChipTests(unittest.TestCase):
             self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
 
 
+class OverlayPackPersistenceTests(unittest.TestCase):
+    """Reload keeps overlay + method-pack pills; vs-SPY and News stay off until toggled."""
+
+    def test_storage_keys_defaults_and_get_set_hooks(self):
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("scripts/spy_rs.js", encoding="utf-8") as fh:
+            spy_js = fh.read()
+        with open("scripts/news_markers.js", encoding="utf-8") as fh:
+            news_js = fh.read()
+        with open("scripts/price_alerts.js", encoding="utf-8") as fh:
+            alerts = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("portfolio.py", encoding="utf-8") as fh:
+            port = fh.read()
+
+        self.assertIn("OVERLAYS_STORAGE_KEY = 'whats-news-chart-overlays'", charts)
+        self.assertIn("PACKS_STORAGE_KEY = 'whats-news-chart-packs'", charts)
+        self.assertIn("PRICE_ALERTS_KEY = 'whats-news-price-alerts'", alerts)
+        self.assertIn("whats-news-price-alerts", alerts)
+        self.assertIn("function persistOverlays", charts)
+        self.assertIn("function applySavedOverlays", charts)
+        self.assertIn("function persistPacks", charts)
+        self.assertIn("function applySavedPacks", charts)
+        self.assertIn("applySavedOverlays()", charts)
+        self.assertIn("bb: false", charts)
+        self.assertIn("ep: true", charts)
+        self.assertIn("darvas: true", charts)
+        self.assertIn("spy_rs: false", charts)
+        self.assertIn("news_markers: false", charts)
+        self.assertIn("let spyRsOn = false", spy_js)
+        self.assertIn("let newsMarkersOn = false", news_js)
+        self.assertIn("function setSpyRsOn", spy_js)
+        self.assertIn("function getSpyRsOn", spy_js)
+        self.assertIn("function spyRsIsOn", spy_js)
+        self.assertIn("function setNewsMarkersOn", news_js)
+        self.assertIn("function getNewsMarkersOn", news_js)
+        self.assertIn("function newsMarkersIsOn", news_js)
+        self.assertIn("function getPriceAlertsOn", alerts)
+        self.assertIn("persist: true", spy_js)
+        self.assertIn("persist: true", news_js)
+        self.assertIn("persistOverlays()", charts)
+
+        apply_start = charts.index("function applySavedOverlays")
+        apply_end = charts.index("function setChartPack")
+        apply_body = charts[apply_start:apply_end]
+        self.assertNotIn("persistOverlays()", apply_body)
+        self.assertNotIn("localStorage.setItem", apply_body)
+        self.assertIn("if (!saved)", apply_body)
+        self.assertIn("persist: false", apply_body)
+        self.assertIn("OVERLAY_DEFAULTS", apply_body)
+
+        toggle_start = charts.index("function toggleOverlay")
+        toggle_end = charts.index("function clearRiskBox")
+        self.assertIn("persistOverlays()", charts[toggle_start:toggle_end])
+
+        spy_idx = html.index('id="pill-spy-rs"')
+        spy_snip = html[spy_idx : spy_idx + 280]
+        self.assertIn('aria-pressed="false"', spy_snip)
+        self.assertNotIn("active-spy-rs", spy_snip)
+        news_idx = html.index('id="pill-news-markers"')
+        news_snip = html[news_idx : news_idx + 280]
+        self.assertIn('aria-pressed="false"', news_snip)
+        self.assertNotIn("active-news-markers", news_snip)
+
+        self.assertIn("not a published rating", spy_js)
+        collect_start = charts.index("function collectOverlayState")
+        collect_end = charts.index("function persistOverlays")
+        collect_body = charts[collect_start:collect_end]
+        self.assertNotIn("price_alerts", collect_body)
+
+        for blob in (charts, spy_js, news_js, alerts, html, app_js, port):
+            self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
+
+
 if __name__ == "__main__":
     unittest.main()

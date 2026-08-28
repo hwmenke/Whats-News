@@ -22,12 +22,22 @@ function nextKamaColor() {
     return c;
 }
 
-// Overlay state
+// Overlay state. Defaults: BB off, EP on, Darvas on. vs-SPY / News live in
+// spy_rs.js / news_markers.js (off until the user toggles). Alert lines use
+// whats-news-price-alerts in price_alerts.js, not this overlay blob.
 const activeOverlays = { bb: false, ep: true, darvas: true };
+const OVERLAY_DEFAULTS = {
+    bb: false,
+    ep: true,
+    darvas: true,
+    spy_rs: false,
+    news_markers: false,
+};
 
 // Persisted indicator-pane visibility key — mirrors scripts/app.js.
 const PANES_STORAGE_KEY = 'whats-news-panes';
 const PACKS_STORAGE_KEY = 'whats-news-chart-packs';
+const OVERLAYS_STORAGE_KEY = 'whats-news-chart-overlays';
 
 // Risk box (entry/stop/target) and Darvas box price lines — kept separate
 // from the KAMA/BB/EMA overlay series since they're structural levels, not
@@ -312,6 +322,7 @@ function initCharts() {
     setupBarClickJournal();
     setupFitAllOnDoubleClick();
     applySavedPaneVisibility();
+    applySavedOverlays();
     applySavedPacks();
 }
 
@@ -805,6 +816,8 @@ function toggleOverlay(key) {
         if (key === 'ep') applyPriceMarkers(f);
     });
     if (key === 'darvas') applyDarvasBox(lastDarvasBox);
+    persistOverlays();
+    syncOverlayPills();
     return activeOverlays[key];
 }
 
@@ -981,6 +994,67 @@ function persistPacks() {
     try { localStorage.setItem(PACKS_STORAGE_KEY, JSON.stringify(activePacks)); } catch (_) {}
 }
 
+function readStoredObject(key) {
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw == null || raw === '') return null;
+        const parsed = JSON.parse(raw);
+        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function syncOverlayPills() {
+    const bb = document.getElementById('pill-bb');
+    if (bb) {
+        bb.classList.toggle('active-bb', !!activeOverlays.bb);
+        bb.setAttribute('aria-pressed', activeOverlays.bb ? 'true' : 'false');
+    }
+    const ep = document.getElementById('pill-ep-markers');
+    if (ep) {
+        ep.classList.toggle('active-ep', !!activeOverlays.ep);
+    }
+    const box = document.getElementById('pill-darvas');
+    if (box) {
+        box.classList.toggle('active-darvas', !!activeOverlays.darvas);
+    }
+}
+
+function collectOverlayState() {
+    return {
+        bb: !!activeOverlays.bb,
+        ep: !!activeOverlays.ep,
+        darvas: !!activeOverlays.darvas,
+        spy_rs: (typeof spyRsIsOn === 'function') ? !!spyRsIsOn() : false,
+        news_markers: (typeof newsMarkersIsOn === 'function') ? !!newsMarkersIsOn() : false,
+    };
+}
+
+function persistOverlays() {
+    try { localStorage.setItem(OVERLAYS_STORAGE_KEY, JSON.stringify(collectOverlayState())); } catch (_) {}
+}
+
+function applySavedOverlays() {
+    const saved = readStoredObject(OVERLAYS_STORAGE_KEY);
+    // No key → user never toggled. Keep defaults (vs-SPY / News stay off).
+    if (!saved) {
+        syncOverlayPills();
+        return;
+    }
+    const merged = Object.assign({}, OVERLAY_DEFAULTS, saved);
+    activeOverlays.bb = !!merged.bb;
+    activeOverlays.ep = !!merged.ep;
+    activeOverlays.darvas = !!merged.darvas;
+    if (typeof setSpyRsOn === 'function') {
+        setSpyRsOn(!!merged.spy_rs, { persist: false, apply: false });
+    }
+    if (typeof setNewsMarkersOn === 'function') {
+        setNewsMarkersOn(!!merged.news_markers, { persist: false, apply: false });
+    }
+    syncOverlayPills();
+}
+
 function setChartPack(id, on, opts = {}) {
     const pack = CHART_PACKS[id];
     if (!pack) return false;
@@ -1009,10 +1083,13 @@ function setChartPacksForSetups(setups) {
 }
 
 function applySavedPacks() {
-    let saved = {};
-    try { saved = JSON.parse(localStorage.getItem(PACKS_STORAGE_KEY) || '{}') || {}; } catch (_) { saved = {}; }
+    const saved = readStoredObject(PACKS_STORAGE_KEY);
+    if (!saved) {
+        syncPackPills();
+        return;
+    }
     Object.keys(CHART_PACKS).forEach(id => {
-        if (saved[id]) setChartPack(id, true, { persist: false });
+        if (saved[id] != null) setChartPack(id, !!saved[id], { persist: false });
     });
     syncPackPills();
 }
@@ -1130,3 +1207,10 @@ window.setChartPack      = setChartPack;
 window.setChartPacksForSetups = setChartPacksForSetups;
 window.chartsAreLive     = chartsAreLive;
 window.fitAllContent     = fitAllContent;
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('DOMContentLoaded', () => {
+        applySavedOverlays();
+        applySavedPacks();
+    });
+}
