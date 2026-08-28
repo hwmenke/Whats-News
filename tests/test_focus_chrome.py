@@ -118,6 +118,7 @@ class FocusChromeDensityTests(unittest.TestCase):
         self.assertIn("display: flex !important", overlay_block)
         self.assertIn('id="chart-overlays-bar"', html)
         self.assertIn('id="pill-spy-rs"', html)
+        self.assertIn('id="pill-vwap"', html)
         self.assertIn('id="pill-pane-rsi"', html)
         self.assertIn('id="pill-pane-macd"', html)
         self.assertIn('id="pill-pane-trend"', html)
