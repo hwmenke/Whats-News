@@ -127,12 +127,24 @@ function formatSetupRvolChip(rvol) {
     return `RVOL ${Number(rvol).toFixed(1)}\u00d7`;
 }
 
+function formatSetup52hChip(gap) {
+    // Same last-close vs 52-week high label as the daily legend — not a published rating.
+    if (gap == null || !Number.isFinite(Number(gap))) return '';
+    const n = Number(gap);
+    const mag = Math.abs(n).toFixed(1);
+    if (mag === '0.0') return '52H 0.0%';
+    const sign = n > 0 ? '+' : '\u2212';
+    return `52H ${sign}${mag}%`;
+}
+
 function setupMetricChipsHtml(row) {
     const chips = [];
     const adrTxt = formatSetupAdrChip(row ? row.adr_pct : null);
     if (adrTxt) chips.push(`<span class="setup-metric-chip">${adrTxt}</span>`);
     const rvolTxt = formatSetupRvolChip(row ? row.vol_ratio_5_20 : null);
     if (rvolTxt) chips.push(`<span class="setup-metric-chip">${rvolTxt}</span>`);
+    const gapTxt = formatSetup52hChip(row ? row.gap_52h_pct : null);
+    if (gapTxt) chips.push(`<span class="setup-metric-chip">${gapTxt}</span>`);
     if (!chips.length) return '';
     return `<div class="setup-metric-chips">${chips.join('')}</div>`;
 }

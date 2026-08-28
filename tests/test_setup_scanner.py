@@ -764,6 +764,205 @@ console.log(JSON.stringify({
         self.assertEqual(out["meta"], "4 hits · scanned 4 symbols")
 
 
+class SetupScan52hChipTests(unittest.TestCase):
+    """52H gap chip on Scan hit rows — last close vs 52-week high, not a published rating."""
+
+    def test_52h_gap_field_chip_contract_no_yahoo(self):
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        with open("setup_scanner.py", encoding="utf-8") as fh:
+            py = fh.read()
+        with open("styles/main.css", encoding="utf-8") as fh:
+            css = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+
+        self.assertIn("function formatSetup52hChip", setup)
+        self.assertIn("function formatSetupAdrChip", setup)
+        self.assertIn("function formatSetupRvolChip", setup)
+        self.assertIn("function setupMetricChipsHtml", setup)
+        self.assertIn("row.gap_52h_pct", setup)
+        self.assertIn("row.adr_pct", setup)
+        self.assertIn("row.vol_ratio_5_20", setup)
+        self.assertIn("52H ${", setup)
+        self.assertIn("setup-metric-chip", setup)
+        self.assertIn("setupMetricChipsHtml(row)", setup)
+        self.assertIn("${row.symbol}${metricChips}", setup)
+        self.assertNotIn("N/A", setup)
+        self.assertNotIn("yahoo", setup.lower())
+        self.assertNotIn("apiFetch", setup[setup.index("function formatSetup52hChip"):setup.index("function renderSetupScanTable")])
+
+        chip_fns = setup[setup.index("function formatSetupAdrChip"):setup.index("function renderSetupScanTable")]
+        self.assertIn("formatSetup52hChip", chip_fns)
+        self.assertNotIn("yahoo", chip_fns.lower())
+        self.assertNotIn("fetch(", chip_fns)
+
+        self.assertIn("def scan_52h_gap_pct", py)
+        self.assertIn("legend_high52", py)
+        self.assertIn("legend_gap_from_52h_pct", py)
+        self.assertIn("SCAN_52H_BARS", py)
+        self.assertIn("LEGEND_52W_BARS", py)
+        self.assertIn('"gap_52h_pct": scan_52h_gap_pct(daily_rows)', py)
+        self.assertIn("max(SCAN_ADR_BARS, SCAN_52H_BARS)", py)
+        self.assertEqual(py.lower().count("get_ohlcv("), 1)
+        self.assertNotIn("yahoo", py.lower())
+        self.assertNotIn("fetch_symbol", py)
+        self.assertNotIn("yfinance", py.lower())
+
+        self.assertIn(".setup-metric-chip", css)
+        self.assertIn(".setup-metric-chips", css)
+
+        # Chip-only v1 — no 52H sort fetch. Scan / ADR% / RVOL pills stay.
+        self.assertIn('data-setup-sort="scan"', html)
+        self.assertIn('data-setup-sort="adr"', html)
+        self.assertIn('data-setup-sort="rvol"', html)
+        self.assertNotIn("data-setup-sort=\"52", html.lower())
+        self.assertNotIn("data-setup-sort='52", html.lower())
+        sort_html = html[html.index('id="setup-sort-pills"'):html.index('id="setup-filter-pills"')]
+        self.assertNotIn("52H", sort_html)
+        self.assertNotIn("yahoo", sort_html.lower())
+        normalize = setup[setup.index("function normalizeSetupSort"):setup.index("function readSetupSort")]
+        self.assertIn("adr", normalize)
+        self.assertIn("rvol", setup[setup.index("function normalizeSetupSort"):setup.index("function readSetupSort")])
+        self.assertNotIn("52", normalize)
+
+        # Enter stays in Scan; row highlight of the charted ticker still wired.
+        self.assertIn("Stay in Scan workspace", setup)
+        self.assertNotIn("switchTab('charts')", setup)
+        self.assertIn("function syncSetupHitHighlight", setup)
+        self.assertIn("SETUP_SCAN_ACTIVE_CLASS = 'setup-scan-active'", setup)
+        self.assertIn("function sortedSetupScanRows", setup)
+
+        for blob in (setup, py, css, html):
+            self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
+
+    def test_chip_html_when_gap_exists_omits_when_missing(self):
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        start = setup.index("function formatSetupAdrChip")
+        end = setup.index("function renderSetupScanTable")
+        fns = setup[start:end]
+        script = fns + r"""
+const both = setupMetricChipsHtml({adr_pct: 2.41, vol_ratio_5_20: 1.84, gap_52h_pct: -4.2});
+const gapOnly = setupMetricChipsHtml({gap_52h_pct: -4.2});
+const plusGap = setupMetricChipsHtml({gap_52h_pct: 1.04});
+const zeroGap = setupMetricChipsHtml({gap_52h_pct: 0.04});
+const none = setupMetricChipsHtml({});
+const missing = setupMetricChipsHtml({adr_pct: 2.4, vol_ratio_5_20: 1.8, gap_52h_pct: null});
+const invalid = setupMetricChipsHtml({gap_52h_pct: 'n/a'});
+console.log(JSON.stringify({both, gapOnly, plusGap, zeroGap, none, missing, invalid}));
+"""
+        proc = subprocess.run(
+            ["node", "-e", script],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        import json
+        out = json.loads(proc.stdout)
+        self.assertIn('class="setup-metric-chip"', out["both"])
+        self.assertIn("ADR 2.4%", out["both"])
+        self.assertIn("RVOL 1.8\u00d7", out["both"])
+        self.assertIn("52H \u22124.2%", out["both"])
+        self.assertIn("52H \u22124.2%", out["gapOnly"])
+        self.assertNotIn("ADR", out["gapOnly"])
+        self.assertNotIn("RVOL", out["gapOnly"])
+        self.assertIn("52H +1.0%", out["plusGap"])
+        self.assertIn("52H 0.0%", out["zeroGap"])
+        self.assertEqual(out["none"], "")
+        self.assertIn("ADR 2.4%", out["missing"])
+        self.assertIn("RVOL 1.8\u00d7", out["missing"])
+        self.assertNotIn("52H", out["missing"])
+        self.assertEqual(out["invalid"], "")
+        for html in out.values():
+            self.assertNotIn("N/A", html)
+            self.assertIsNone(re.search(r"ibd", html, re.IGNORECASE))
+            self.assertNotIn("yahoo", html.lower())
+
+    def test_scan_52h_gap_matches_legend_math_no_extra_yahoo(self):
+        old = {"high": 500.0, "close": 400.0, "volume": 100}
+        recent = {"high": 100.0, "low": 90.0, "close": 95.8, "volume": 100}
+        rows = [old] + [recent] * 252
+        expected = round(
+            portfolio.legend_gap_from_52h_pct(
+                rows[-1]["close"],
+                portfolio.legend_high52(rows, len(rows) - 1),
+            ),
+            2,
+        )
+        self.assertAlmostEqual(setup_scanner.scan_52h_gap_pct(rows), expected)
+        self.assertAlmostEqual(expected, -4.2)
+        self.assertEqual(portfolio.format_legend_52h_gap(expected), "52H \u22124.2%")
+        self.assertEqual(setup_scanner.SCAN_52H_BARS, portfolio.LEGEND_52W_BARS)
+        self.assertEqual(setup_scanner.SCAN_52H_BARS, 252)
+
+        self.assertIsNone(setup_scanner.scan_52h_gap_pct(None))
+        self.assertIsNone(setup_scanner.scan_52h_gap_pct([]))
+        self.assertIsNone(setup_scanner.scan_52h_gap_pct([{"high": 0, "close": 0}]))
+        self.assertIsNone(setup_scanner.scan_52h_gap_pct([{"close": 95.8}]))
+
+        at_high = [{"high": 100.0, "close": 100.0}] * 20
+        self.assertAlmostEqual(setup_scanner.scan_52h_gap_pct(at_high), 0.0)
+
+        with open("setup_scanner.py", encoding="utf-8") as fh:
+            py = fh.read()
+        gap_fn = py[py.index("def scan_52h_gap_pct"):py.index("def _scan_one_setup")]
+        self.assertNotIn("yahoo", gap_fn.lower())
+        self.assertNotIn("fetch_symbol", gap_fn)
+        self.assertNotIn("get_ohlcv", gap_fn)
+        scan_one = py[py.index("def _scan_one_setup"):py.index("def scan_setups")]
+        self.assertEqual(scan_one.count("get_ohlcv("), 1)
+        self.assertNotIn("yahoo", scan_one.lower())
+        self.assertNotIn("fetch_symbol", scan_one)
+
+    def test_scan_payload_includes_gap_52h_from_stored_ohlcv(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        db_path = os.path.join(tmp.name, "setup_52h.db")
+        path_patch = patch.object(db, "DB_PATH", db_path)
+        path_patch.start()
+        self.addCleanup(path_patch.stop)
+        db.init_db()
+
+        n = 260
+        idx = pd.date_range("2023-01-01", periods=n, freq="D")
+        close = np.linspace(90.0, 95.8, n)
+        high = np.full(n, 100.0)
+        high[0] = 500.0  # outside the last 252 sessions
+        frame = pd.DataFrame(
+            {
+                "open": close,
+                "high": high,
+                "low": np.full(n, 90.0),
+                "close": close,
+                "volume": np.full(n, 1_000_000.0),
+            },
+            index=idx,
+        )
+        db.add_symbol("GAP52")
+        db.upsert_ohlcv("GAP52", "daily", frame)
+
+        with patch("setup_scanner.md.list_symbols_with_ohlcv", return_value=["GAP52"]):
+            out = setup_scanner.scan_setups(limit=10)
+        ready = [r for r in out["results"] if r.get("ready")]
+        self.assertTrue(ready)
+        row = ready[0]
+        self.assertIn("gap_52h_pct", row)
+        daily = db.get_ohlcv("GAP52", "daily", limit=max(
+            setup_scanner.SCAN_ADR_BARS, setup_scanner.SCAN_52H_BARS,
+        ))
+        expected = setup_scanner.scan_52h_gap_pct(daily)
+        self.assertIsNotNone(expected)
+        self.assertAlmostEqual(row["gap_52h_pct"], expected)
+        last = daily[-1]
+        legend = portfolio.legend_gap_from_52h_pct(
+            last["close"], portfolio.legend_high52(daily, len(daily) - 1),
+        )
+        self.assertAlmostEqual(row["gap_52h_pct"], round(legend, 2))
+        self.assertAlmostEqual(expected, -4.2, places=1)
+
+
 if __name__ == "__main__":
     unittest.main()
 
