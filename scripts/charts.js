@@ -190,6 +190,7 @@ function destroyCharts() {
     riskLines = { daily: [], weekly: [] };
     darvasLines = { daily: [] };
     sessionLevels = { daily: [] };
+    if (typeof forgetPriceAlertLines === 'function') forgetPriceAlertLines();
 }
 
 // ── Build one panel (daily or weekly) ────────────────────────
@@ -413,11 +414,16 @@ function setupCrosshairLegend() {
 
 // Click a daily price bar → journal focused on that date.
 // Weekly uses the week-ending date on the bar (same handler; empty click is a no-op).
+// Daily Shift/modifier-click is delegated to onDailyPriceAlertClick when present;
+// a true return skips onChartBarClick so the journal path is not stolen.
 function setupBarClickJournal() {
     ['daily', 'weekly'].forEach(freq => {
         const chart = charts[freq].main;
         if (!chart) return;
         chart.subscribeClick(param => {
+            if (freq === 'daily' && typeof onDailyPriceAlertClick === 'function') {
+                if (onDailyPriceAlertClick(param)) return;
+            }
             const date = _legendTimeKey(param && param.time);
             if (!date) return;
             if (typeof onChartBarClick === 'function') onChartBarClick({ freq, date });
@@ -599,6 +605,8 @@ function loadOHLCV(freq, rows) {
     if (freq === 'daily') applySessionLevels();
     // vs-SPY comparison line lives in spy_rs.js (off by default).
     if (freq === 'daily' && typeof applySpyRsIfOn === 'function') applySpyRsIfOn();
+    // User price-alert lines live in price_alerts.js (per-symbol localStorage).
+    if (freq === 'daily' && typeof applyPriceAlerts === 'function') applyPriceAlerts();
     paintOhlcLegend(freq, {});
 }
 
