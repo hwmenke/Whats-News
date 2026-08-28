@@ -28,8 +28,11 @@ import knn_model
 import backtester
 import scanner
 import adaptive_trend as adaptive
+import conditional_dist
 import yfinance as yf
 import portfolio
+import setup_scanner
+import index_universe
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -101,9 +104,100 @@ def pm_desk(symbol):
             risk = float(request.args.get("risk", 100))
         except (TypeError, ValueError):
             risk = 100.0
-        snap["size"] = portfolio.position_size(snap.get("price"), snap.get("atr14"), risk, 1.5)
+        stop_mode = (request.args.get("stop") or "atr").strip().lower()
+        stop_price = None
+        if stop_mode == "box":
+            box = snap.get("darvas") or {}
+            stop_price = box.get("bottom")
+        elif stop_mode == "user":
+            try:
+                stop_price = float(request.args.get("stop_price"))
+            except (TypeError, ValueError):
+                stop_price = None
+        snap["size"] = portfolio.position_size(
+            snap.get("price"),
+            snap.get("atr14"),
+            risk,
+            1.5,
+            stop_price=stop_price,
+        )
+        # Structural risk box: entry / stop / target for chart overlays
+        entry = snap.get("price")
+        if stop_mode == "user" and stop_price:
+            stop = stop_price
+        elif stop_mode == "box" and stop_price:
+            stop = stop_price
+        else:
+            stop = snap.get("stop_long_1_5atr")
+        target = None
+        try:
+            t = request.args.get("target")
+            if t is not None and str(t).strip() != "":
+                target = float(t)
+        except (TypeError, ValueError):
+            target = None
+        if target is None and snap.get("darvas"):
+            target = snap["darvas"].get("target")
+        r_mult = None
+        if entry and stop and target and abs(entry - stop) > 1e-9:
+            r_mult = round((target - entry) / abs(entry - stop), 2)
+        snap["risk_box"] = {
+            "entry": entry,
+            "stop": stop,
+            "target": target,
+            "r_multiple": r_mult,
+            "stop_mode": stop_mode,
+        }
         snap.pop("closes_30", None)
         return jsonify(snap)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/spy-rs/<string:symbol>", methods=["GET"])
+def spy_rs_api(symbol):
+    """Daily close/SPY close comparison line — not a published rating."""
+    try:
+        try:
+            limit = int(request.args.get("limit", 500))
+        except (TypeError, ValueError):
+            return jsonify({"error": "limit must be an integer"}), 400
+        if limit <= 0:
+            return jsonify({"error": "limit must be a positive integer"}), 400
+        sym = symbol.upper()
+        if sym == "SPY":
+            payload = portfolio.spy_rs_overlay([], [])
+            payload.update({
+                "symbol": "SPY",
+                "ready": False,
+                "error": "SPY vs SPY is not a comparison",
+            })
+            return jsonify(payload)
+        rows = md.get_ohlcv(sym, "daily", limit)
+        if not rows:
+            return jsonify({"error": "No data. Fetch the symbol first."}), 404
+        spy_rows = md.get_ohlcv("SPY", "daily", limit)
+        payload = portfolio.spy_rs_overlay(rows, spy_rows)
+        payload["symbol"] = sym
+        if not payload.get("ready") and not spy_rows:
+            payload["error"] = "No SPY daily data — fetch SPY first"
+        return jsonify(payload)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/darvas-box/<string:symbol>", methods=["GET"])
+def darvas_box_api(symbol):
+    """Darvas box levels for chart overlay — distinct from KAMA/RSI."""
+    try:
+        freq = request.args.get("freq", "daily")
+        if freq not in ("daily", "weekly"):
+            return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+        df = md.get_ohlcv_df(symbol.upper(), freq, limit=260)
+        box = portfolio.darvas_box(df)
+        if not box:
+            return jsonify({"symbol": symbol.upper(), "ready": False, "error": "No box"}), 404
+        return jsonify({"symbol": symbol.upper(), "ready": True, "freq": freq, **box})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -113,7 +207,33 @@ def pm_desk(symbol):
 @app.route("/api/symbols", methods=["GET"])
 def get_symbols():
     try:
+        desk = request.args.get("desk", "").lower() in ("1", "true", "yes")
+        if desk:
+            return jsonify(md.list_desk_symbols())
         return jsonify(md.list_symbols())
+    except Exception as exc:
+        return _data_error(exc)
+
+
+@app.route("/api/symbols/with-data", methods=["GET"])
+def symbols_with_data():
+    try:
+        freq = request.args.get("freq", "daily")
+        try:
+            min_bars = int(request.args.get("min_bars", 30))
+        except (TypeError, ValueError):
+            return jsonify({"error": "min_bars must be an integer"}), 400
+        codes = md.list_symbols_with_ohlcv(freq, min_bars)
+        return jsonify({"symbols": codes, "count": len(codes)})
+    except Exception as exc:
+        return _data_error(exc)
+
+
+@app.route("/api/symbols/<string:symbol>/promote", methods=["POST"])
+def promote_symbol_to_desk(symbol):
+    """Move a universe-only symbol onto the trading desk."""
+    try:
+        return jsonify(md.promote_to_desk(symbol.upper()))
     except Exception as exc:
         return _data_error(exc)
 
@@ -193,7 +313,8 @@ def fetch_symbol(symbol):
     try:
         result = md.fetch_symbol(symbol.upper())
         if "error" in result:
-            return jsonify(result), 400
+            from data_fetcher import fetch_error_http_status
+            return jsonify(result), fetch_error_http_status(result)
         return jsonify(result)
     except Exception as exc:
         return _data_error(exc)
@@ -202,7 +323,12 @@ def fetch_symbol(symbol):
 @app.route("/api/refresh", methods=["POST"])
 def refresh_all():
     try:
-        return jsonify(md.refresh_all())
+        body = request.get_json(force=True, silent=True) or {}
+        try:
+            overlap = int(body.get("overlap_days", 3))
+        except (TypeError, ValueError):
+            overlap = 3
+        return jsonify(md.refresh_all(overlap_days=overlap))
     except Exception as exc:
         return _data_error(exc)
 
@@ -265,6 +391,39 @@ def get_stats(symbol):
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# -- Conditional forward-return distribution ------------------------------------
+
+@app.route("/api/conditional-distribution/<string:symbol>", methods=["POST"])
+def conditional_distribution(symbol):
+    body = request.get_json(silent=True) or {}
+    conditions = body.get("conditions", [])
+    if not isinstance(conditions, list):
+        return jsonify({"error": "conditions must be a list"}), 400
+
+    horizons = body.get("horizons", [5, 10])
+    try:
+        horizons = [int(h) for h in horizons]
+    except (TypeError, ValueError):
+        return jsonify({"error": "horizons must be integers"}), 400
+    if not horizons:
+        horizons = [5, 10]
+    if any(h < 1 or h > 250 for h in horizons):
+        return jsonify({"error": "horizons must be between 1 and 250"}), 400
+
+    try:
+        result = conditional_dist.compute_conditional_distribution(
+            symbol.upper(), conditions, horizons
+        )
+    except conditional_dist.ConditionError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001 - surface as JSON, don't 500 the UI
+        return jsonify({"error": str(exc)}), 500
+
+    if "error" in result:
+        return jsonify(result), 404
+    return jsonify(result)
 
 
 # -- KNN Lookalike --------------------------------------------------------------
@@ -470,15 +629,192 @@ def run_scanner():
 
 @app.route("/api/scanner", methods=["GET"])
 def get_scanner():
-    """Compute multi-timeframe scanner metrics for every watched symbol."""
+    """Compute multi-timeframe scanner metrics for symbols with stored data."""
     try:
-        symbols = md.list_symbol_codes()
+        universe = request.args.get("universe", "1").lower() in ("1", "true", "yes")
+        if universe:
+            symbols = md.list_symbols_with_ohlcv("daily", min_bars=30)
+        else:
+            symbols = [s["symbol"] for s in md.list_desk_symbols()]
         if not symbols:
             return jsonify([])
         data = scanner.compute_scanner(symbols)
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/setups/catalog", methods=["GET"])
+def setups_catalog():
+    return jsonify({"setups": setup_scanner.SETUP_IDS})
+
+
+@app.route("/api/setups/scan", methods=["GET"])
+def setups_scan():
+    """Scan stored universe for named trading setups."""
+    try:
+        setup_filter = request.args.get("setup") or None
+        try:
+            limit = int(request.args.get("limit", 250))
+        except (TypeError, ValueError):
+            limit = 250
+        try:
+            min_score = int(request.args.get("min_score", 0))
+        except (TypeError, ValueError):
+            min_score = 0
+        universe_only = request.args.get("universe", "1").lower() in ("1", "true", "yes")
+        symbols = None
+        if not universe_only:
+            symbols = [s["symbol"] for s in md.list_desk_symbols()]
+        return jsonify(
+            setup_scanner.scan_setups(
+                symbols=symbols,
+                setup_filter=setup_filter,
+                limit=limit,
+                min_score=min_score,
+            )
+        )
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/universe/registry", methods=["GET"])
+def universe_registry():
+    return jsonify({"indices": index_universe.registry_for_api()})
+
+
+@app.route("/api/universe/sync", methods=["POST"])
+def universe_sync():
+    """Register index constituents in DB (no Yahoo download)."""
+    try:
+        body = request.get_json(force=True) or {}
+        indices = body.get("indices") or ["all"]
+        merged = index_universe.merged_universe(indices)
+        if data_client.use_embedded():
+            import database as db
+            sync = db.add_universe_symbols(merged.get("symbol_indices") or {})
+        else:
+            sync = {"error": "universe sync requires embedded mode"}
+        return jsonify({
+            "total_unique": merged.get("total_unique"),
+            "per_index": merged.get("per_index"),
+            "errors": merged.get("errors"),
+            "sync": sync,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/universe/archive", methods=["POST"])
+def universe_archive():
+    """
+    SSE batch: full history download for symbols in DB (optionally only missing).
+    Body: {start_date, delay, only_missing, limit}
+    """
+    body = request.get_json(force=True) or {}
+    start_date = body.get("start_date", "2000-01-01")
+    delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
+    only_missing = bool(body.get("only_missing", False))
+    limit = int(body.get("limit", 0) or 0)
+
+    if not data_client.use_embedded():
+        return jsonify({"error": "universe archive requires embedded mode"}), 400
+
+    import time
+    import database as db
+    import data_fetcher as fetcher
+
+    if only_missing:
+        have = set(db.list_symbols_with_ohlcv("daily", min_bars=1))
+        tickers = [s for s in db.list_symbol_codes() if s not in have]
+    else:
+        tickers = db.list_symbol_codes()
+    if limit > 0:
+        tickers = tickers[:limit]
+
+    def generate():
+        ok_count = fail_count = 0
+        yield f"data: {json.dumps({'type': 'start', 'total': len(tickers)})}\n\n"
+        for i, sym in enumerate(tickers):
+            try:
+                result = fetcher.fetch_full_history(sym, start=start_date)
+                if "error" in result:
+                    fail_count += 1
+                    ok, msg = False, result["error"]
+                else:
+                    ok_count += 1
+                    ok, msg = True, (
+                        f"{result.get('daily_rows', 0)}d / "
+                        f"{result.get('weekly_rows', 0)}w rows stored"
+                    )
+                yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': ok, 'msg': msg})}\n\n"
+            except Exception as exc:
+                fail_count += 1
+                yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': False, 'msg': str(exc)})}\n\n"
+            if i < len(tickers) - 1:
+                time.sleep(delay)
+        if ok_count:
+            db.optimize_db()
+        yield f"data: {json.dumps({'type': 'done', 'ok': ok_count, 'failed': fail_count})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.route("/api/universe/refresh", methods=["POST"])
+def universe_refresh():
+    """SSE incremental refresh for all symbols in DB."""
+    body = request.get_json(force=True) or {}
+    delay = max(0.2, min(float(body.get("delay", 0.8)), 10.0))
+    try:
+        overlap = int(body.get("overlap_days", 5))
+    except (TypeError, ValueError):
+        overlap = 5
+    limit = int(body.get("limit", 0) or 0)
+
+    if not data_client.use_embedded():
+        return jsonify({"error": "universe refresh requires embedded mode"}), 400
+
+    import time
+    import database as db
+    import data_fetcher as fetcher
+
+    tickers = db.list_symbol_codes()
+    if limit > 0:
+        tickers = tickers[:limit]
+
+    def generate():
+        ok_count = fail_count = skip_count = 0
+        yield f"data: {json.dumps({'type': 'start', 'total': len(tickers)})}\n\n"
+        for i, sym in enumerate(tickers):
+            try:
+                if db.is_recently_fetched(sym, hours=4):
+                    skip_count += 1
+                    yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': True, 'msg': 'skipped (recent)'})}\n\n"
+                else:
+                    result = fetcher.fetch_and_store(sym, overlap_days=overlap)
+                    if "error" in result:
+                        fail_count += 1
+                        ok, msg = False, result["error"]
+                    else:
+                        ok_count += 1
+                        ok, msg = True, f"{result.get('daily_rows', 0)}d updated"
+                    yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': ok, 'msg': msg})}\n\n"
+            except Exception as exc:
+                fail_count += 1
+                yield f"data: {json.dumps({'type': 'result', 'index': i, 'symbol': sym, 'ok': False, 'msg': str(exc)})}\n\n"
+            if i < len(tickers) - 1:
+                time.sleep(delay)
+        yield f"data: {json.dumps({'type': 'done', 'ok': ok_count, 'failed': fail_count, 'skipped': skip_count})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # -- News -----------------------------------------------------------------------
