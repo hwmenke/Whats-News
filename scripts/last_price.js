@@ -6,6 +6,7 @@
  * a live reference while scrolling history. Daily pane uses the last daily
  * close; weekly pane uses the last weekly close. Off by default. Not a
  * published rating. No extra market-data fetch — uses rawRows already on the desk.
+ * Overlay only — not a published rating.
  *
  * Isolated so chart specialists can keep editing packs / legend / prefetch
  * without a rewrite here. charts.js calls applyLastPriceIfOn() after daily
