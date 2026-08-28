@@ -306,8 +306,9 @@ assert(selectCalls.length === 0, 'must not navigate via selectSymbol');
 assert(workspaceCalls.length === 0, 'must not leave Review/Book');
 assert(watchlistFilterQuery() === 'AI CHIPS', 'query is trimmed upper');
 assert(matchesWatchlistFilter('NVDA', 'AI chips', watchlistFilterQuery()) === true, 'group_tag match');
+assert(matchesWatchlistFilter('NVDA', '', watchlistFilterQuery()) === false, 'ticker without tag does not match');
 assert(matchesWatchlistFilter('MSFT', 'software', watchlistFilterQuery()) === false, 'other group hidden');
-assert(matchesWatchlistFilter('AICH', '', watchlistFilterQuery()) === true, 'symbol OR group_tag');
+assert(matchesWatchlistFilter('AI CHIPS', '', watchlistFilterQuery()) === true, 'symbol OR group_tag');
 const taped = filterByWatchlistQuery(meta.tape);
 assert(taped.length === 1 && taped[0].symbol === 'NVDA', 'tape follows matchesWatchlistFilter');
 
