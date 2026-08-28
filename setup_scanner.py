@@ -27,6 +27,8 @@ SETUP_IDS = {
 
 # Last N daily bars for ADR% — legend uses 20 valid (H,L,C>0) bars, min 5.
 SCAN_ADR_BARS = 30
+# Same 252-session window as the daily legend 52H gap (last close vs 52-week high).
+SCAN_52H_BARS = portfolio.LEGEND_52W_BARS
 
 
 def scan_adr_pct(rows: Optional[list] = None) -> Optional[float]:
@@ -39,6 +41,31 @@ def scan_adr_pct(rows: Optional[list] = None) -> Optional[float]:
         return None
     try:
         n = float(adr)
+    except (TypeError, ValueError):
+        return None
+    if n != n:  # NaN
+        return None
+    return round(n, 2)
+
+
+def scan_52h_gap_pct(rows: Optional[list] = None) -> Optional[float]:
+    """Scan-row 52H gap — last close vs 52-week high, same as the daily legend.
+
+    high52 is the max high over the last 252 sessions including the last bar.
+    Omit (None) when close or high52 is missing/invalid. Not a published rating.
+    """
+    if not rows:
+        return None
+    last_idx = len(rows) - 1
+    last = rows[last_idx]
+    if not isinstance(last, dict):
+        return None
+    high52 = portfolio.legend_high52(rows, last_idx)
+    gap = portfolio.legend_gap_from_52h_pct(last.get("close"), high52)
+    if gap is None:
+        return None
+    try:
+        n = float(gap)
     except (TypeError, ValueError):
         return None
     if n != n:  # NaN
@@ -89,7 +116,11 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             if snap["dist_20d_high_pct"] >= -2:
                 score += 1
 
-        daily_rows = md.get_ohlcv(snap["symbol"], "daily", limit=SCAN_ADR_BARS)
+        daily_rows = md.get_ohlcv(
+            snap["symbol"],
+            "daily",
+            limit=max(SCAN_ADR_BARS, SCAN_52H_BARS),
+        )
 
         return {
             "symbol": snap["symbol"],
@@ -104,6 +135,7 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             "dist_20d_high_pct": snap.get("dist_20d_high_pct"),
             "vol_ratio_5_20": snap.get("vol_ratio_5_20"),
             "adr_pct": scan_adr_pct(daily_rows),
+            "gap_52h_pct": scan_52h_gap_pct(daily_rows),
             "gap_pct": snap.get("gap_pct"),
             "regime": snap.get("regime"),
             "regime_weekly": snap.get("regime_weekly"),
