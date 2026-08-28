@@ -2725,6 +2725,10 @@ function setupPmKeyboard() {
             e.preventDefault();
             copySetupCard();
         }
+        else if ((e.key === 'y' || e.key === 'Y') && !e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            if (typeof copyPaintedOhlc === 'function') copyPaintedOhlc();
+        }
         else if (e.key === 'Escape') {
             closeBookDrawer();
             closeJournal();
