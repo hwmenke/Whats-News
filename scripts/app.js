@@ -33,6 +33,7 @@ const WORKSPACE_KEY = 'whats-news-workspace';
 const FOCUS_MODE_KEY = 'whats-news-focus-mode';
 const LAST_SYMBOL_KEY = 'whats-news-last-symbol';
 const WATCHLIST_FILTER_KEY = 'whats-news-watchlist-filter';
+const TAPE_SORT_KEY = 'whats-news-tape-sort';
 let journalFocusDate = null;
 
 let statsCharts = {};
@@ -645,10 +646,44 @@ function setTapeMode(mode) {
 
 function setTapeSort(mode) {
     state.tapeSort = mode === 'sma200' ? 'sma200' : 'default';
+    persistTapeSort();
     document.querySelectorAll('.tape-sort-btn').forEach(btn => {
         setPressed(btn, btn.dataset.sort === state.tapeSort);
     });
     if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
+}
+
+function normalizeTapeSort(value) {
+    return String(value == null ? '' : value).trim().toLowerCase() === 'sma200' ? 'sma200' : 'default';
+}
+
+function readTapeSort() {
+    try {
+        const raw = localStorage.getItem(TAPE_SORT_KEY);
+        if (raw == null || raw === '') return null;
+        return normalizeTapeSort(raw);
+    } catch {
+        return null;
+    }
+}
+
+function writeTapeSort(sort) {
+    try {
+        localStorage.setItem(TAPE_SORT_KEY, normalizeTapeSort(sort));
+    } catch { /* quota */ }
+}
+
+function persistTapeSort() {
+    writeTapeSort(state.tapeSort);
+}
+
+function restoreTapeSort() {
+    const saved = readTapeSort();
+    state.tapeSort = saved || 'default';
+    document.querySelectorAll('.tape-sort-btn').forEach(btn => {
+        setPressed(btn, btn.dataset.sort === state.tapeSort);
+    });
+    return state.tapeSort;
 }
 
 function renderRegimeHeatmap(data) {
@@ -3683,6 +3718,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     setTapeMode(state.tapeMode);
 
     // Tape sort — Default (API order) / SMA200 distance. Client-side only.
+    // Restore after DOM ready, before loadSymbols so the first tape render uses it.
+    restoreTapeSort();
     document.querySelectorAll('.tape-sort-btn').forEach(btn => {
         btn.addEventListener('click', () => setTapeSort(btn.dataset.sort));
     });
