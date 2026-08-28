@@ -265,9 +265,13 @@ class TapeSortSma200ContractTests(unittest.TestCase):
         self.assertIn("sortTapeRows(filterByWatchlistQuery(rows))", prep)
 
         sort = _chunk(js, "function sortTapeRows", "function prepareTapeRows")
-        self.assertIn("dist_sma200_pct", sort)
+        self.assertIn("tapeSma200Dist", sort)
         self.assertIn("vb - va", sort)
         self.assertIn("visibleSymbolCodes()", sort)
+
+        dist = _chunk(js, "function tapeSma200Dist", "function sortTapeRows")
+        self.assertIn("dist_sma200_pct", dist)
+        self.assertIn("v == null", dist)
 
     def test_filter_then_sort_and_jk_walks_visible_list(self):
         js = self.app_js

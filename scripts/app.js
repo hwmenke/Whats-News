@@ -458,7 +458,9 @@ function tapeAtrPctSpan(row) {
 }
 
 function tapeSma200Dist(row) {
-    const n = Number(row && row.dist_sma200_pct);
+    const v = row && row.dist_sma200_pct;
+    if (v == null || v === '') return null;
+    const n = Number(v);
     return Number.isFinite(n) ? n : null;
 }
 
