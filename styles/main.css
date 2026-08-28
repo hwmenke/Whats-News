@@ -3008,6 +3008,9 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
   background: var(--accent-glow);
   box-shadow: inset 2px 0 0 var(--accent);
 }
+.setup-scan-row.setup-scan-active {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
 .setup-scan-table td.setup-sym {
   white-space: normal;
   line-height: 1.25;

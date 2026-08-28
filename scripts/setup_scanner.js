@@ -65,6 +65,7 @@ async function initSetupScanner() {
     // Scan reopen with allowStaleRows uses the last key (cache, not a forced scan).
     restoreSetupFilters();
     bindSetupUniverseToggle();
+    bindSetupHitHighlight();
     try {
         const data = await apiFetch(`${API}/setups/catalog`);
         _setupCatalog = data.setups || {};
@@ -199,27 +200,89 @@ function renderSetupScanTable(results) {
         tbody.appendChild(tr);
     });
 
-    const current = (typeof state !== 'undefined' && state.activeSymbol) || '';
-    if (current && tbody.querySelector(`tr[data-symbol="${current}"]`)) {
-        highlightSetupRow(current);
-    } else {
-        const first = tbody.querySelector('tr.setup-scan-row');
-        if (first) highlightSetupRow(first.dataset.symbol);
+    syncSetupHitHighlight(currentActiveSymbol());
+}
+
+const SETUP_SCAN_ACTIVE_CLASS = 'setup-scan-active';
+
+function currentActiveSymbol() {
+    if (typeof state === 'undefined' || !state || state.activeSymbol == null || state.activeSymbol === '') {
+        return '';
     }
+    return String(state.activeSymbol);
+}
+
+function setupScanHitRows() {
+    if (typeof document === 'undefined' || !document.querySelectorAll) return [];
+    return [...document.querySelectorAll('#setup-scan-tbody tr.setup-scan-row')];
+}
+
+function symbolMatchesSetupRow(tr, symbol) {
+    if (!tr || symbol == null || symbol === '') return false;
+    return String(tr.dataset.symbol || '').toUpperCase() === String(symbol).toUpperCase();
 }
 
 function highlightSetupRow(symbol) {
-    const rows = [...document.querySelectorAll('#setup-scan-tbody tr.setup-scan-row')];
-    let idx = 0;
+    const rows = setupScanHitRows();
+    let idx = -1;
     rows.forEach((tr, i) => {
-        const on = tr.dataset.symbol === symbol;
+        const on = symbolMatchesSetupRow(tr, symbol);
         tr.classList.toggle('setup-scan-selected', on);
         if (on) {
             idx = i;
-            tr.scrollIntoView({ block: 'nearest' });
+            if (typeof tr.scrollIntoView === 'function') {
+                tr.scrollIntoView({ block: 'nearest' });
+            }
         }
     });
-    _setupScanCursor = idx;
+    if (idx >= 0) _setupScanCursor = idx;
+}
+
+function syncSetupHitHighlight(symbol) {
+    const needle = (symbol == null || symbol === '') ? currentActiveSymbol() : String(symbol);
+    const rows = setupScanHitRows();
+    let foundIdx = -1;
+    rows.forEach((tr, i) => {
+        const on = symbolMatchesSetupRow(tr, needle);
+        tr.classList.toggle(SETUP_SCAN_ACTIVE_CLASS, on);
+        if (on) foundIdx = i;
+    });
+    if (foundIdx >= 0) {
+        highlightSetupRow(rows[foundIdx].dataset.symbol);
+        return true;
+    }
+    rows.forEach(tr => {
+        tr.classList.remove('setup-scan-selected', SETUP_SCAN_ACTIVE_CLASS);
+    });
+    return false;
+}
+
+function bindSetupHitHighlight() {
+    const root = typeof window !== 'undefined' ? window : globalThis;
+    if (typeof root.selectSymbol === 'function' && !root.selectSymbol._setupHitBound) {
+        const orig = root.selectSymbol;
+        function wrapped(symbol) {
+            const result = orig.apply(this, arguments);
+            syncSetupHitHighlight(symbol);
+            return result;
+        }
+        wrapped._setupHitBound = true;
+        root.selectSymbol = wrapped;
+    }
+    if (typeof state !== 'undefined' && state && !state._setupHitHighlightBound) {
+        let current = state.activeSymbol;
+        Object.defineProperty(state, 'activeSymbol', {
+            configurable: true,
+            enumerable: true,
+            get() { return current; },
+            set(v) {
+                current = v;
+                syncSetupHitHighlight(v);
+            },
+        });
+        state._setupHitHighlightBound = true;
+    }
+    syncSetupHitHighlight(currentActiveSymbol());
 }
 
 function moveSetupScanSelection(delta) {
@@ -251,8 +314,13 @@ function openSetupOnChart(row) {
 }
 
 window.highlightSetupRow = highlightSetupRow;
+window.syncSetupHitHighlight = syncSetupHitHighlight;
+window.bindSetupHitHighlight = bindSetupHitHighlight;
 window.moveSetupScanSelection = moveSetupScanSelection;
 window.openSelectedSetupRow = openSelectedSetupRow;
+if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('DOMContentLoaded', bindSetupHitHighlight);
+}
 
 function setupScanCacheKey(filter, universe) {
     return `${filter || 'ALL'}|${universe ? '1' : '0'}`;
@@ -315,10 +383,14 @@ async function loadSetupScan(opts) {
         const cached = readSetupScanCache(key);
         if (cached) {
             if (!tbody || !tbody.children.length) applySetupScanPayload(cached);
+            else syncSetupHitHighlight(currentActiveSymbol());
             return;
         }
         // Reopening Scan keeps the last table; a filter change still refreshes.
-        if (allowStaleRows && tbody && tbody.children.length) return;
+        if (allowStaleRows && tbody && tbody.children.length) {
+            syncSetupHitHighlight(currentActiveSymbol());
+            return;
+        }
     }
 
     if (loadEl) loadEl.style.display = 'flex';
