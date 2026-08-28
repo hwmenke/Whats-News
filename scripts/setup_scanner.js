@@ -8,7 +8,10 @@ let _setupScanCursor = 0;
 const SETUP_SCAN_CACHE_TTL_MS = 60 * 1000;
 const SETUP_SCAN_CACHE_KEY = 'whats-news-setup-scan';
 const SETUP_FILTERS_STORAGE_KEY = 'whats-news-setup-filters';
+const SETUP_SORT_STORAGE_KEY = 'whats-news-setup-sort';
 let _setupScanCache = null;
+let _setupSort = 'scan';
+let _setupScanRows = [];
 
 function currentSetupUniverse() {
     return document.getElementById('chk-setup-universe')?.checked ?? true;
@@ -66,6 +69,8 @@ async function initSetupScanner() {
     restoreSetupFilters();
     bindSetupUniverseToggle();
     bindSetupHitHighlight();
+    restoreSetupSort();
+    bindSetupSortControl();
     try {
         const data = await apiFetch(`${API}/setups/catalog`);
         _setupCatalog = data.setups || {};
@@ -203,6 +208,102 @@ function renderSetupScanTable(results) {
     syncSetupHitHighlight(currentActiveSymbol());
 }
 
+// Client-side sort of already-fetched hit rows (ADR% / RVOL) — not a published rating.
+function normalizeSetupSort(value) {
+    const v = String(value == null ? '' : value).toLowerCase();
+    if (v === 'adr' || v === 'rvol') return v;
+    return 'scan';
+}
+
+function readSetupSort() {
+    try {
+        const raw = localStorage.getItem(SETUP_SORT_STORAGE_KEY);
+        if (raw == null || raw === '') return null;
+        return normalizeSetupSort(raw);
+    } catch {
+        return null;
+    }
+}
+
+function writeSetupSort(sort) {
+    try {
+        localStorage.setItem(SETUP_SORT_STORAGE_KEY, normalizeSetupSort(sort));
+    } catch { /* quota */ }
+}
+
+function persistSetupSort() {
+    writeSetupSort(_setupSort);
+}
+
+function restoreSetupSort() {
+    const saved = readSetupSort();
+    _setupSort = saved || 'scan';
+    syncSetupSortPills();
+    return _setupSort;
+}
+
+function setupScanSortValue(row, key) {
+    if (!row) return null;
+    const raw = key === 'adr' ? row.adr_pct : row.vol_ratio_5_20;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+}
+
+function sortedSetupScanRows(rows, sort) {
+    const list = Array.isArray(rows) ? rows.slice() : [];
+    const mode = normalizeSetupSort(sort);
+    if (mode === 'scan' || !list.length) return list;
+    return list
+        .map((row, i) => ({ row, i }))
+        .sort((a, b) => {
+            const va = setupScanSortValue(a.row, mode);
+            const vb = setupScanSortValue(b.row, mode);
+            const aMissing = va == null;
+            const bMissing = vb == null;
+            if (aMissing && bMissing) return a.i - b.i;
+            if (aMissing) return 1;
+            if (bMissing) return -1;
+            if (vb !== va) return vb - va;
+            return a.i - b.i;
+        })
+        .map(item => item.row);
+}
+
+function applySetupScanSort() {
+    renderSetupScanTable(sortedSetupScanRows(_setupScanRows, _setupSort));
+}
+
+function syncSetupSortPills() {
+    const wrap = document.getElementById('setup-sort-pills');
+    if (!wrap || !wrap.querySelectorAll) return;
+    wrap.querySelectorAll('[data-setup-sort]').forEach(btn => {
+        const on = String(btn.getAttribute('data-setup-sort') || '') === _setupSort;
+        btn.classList.toggle('setup-sort-on', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+}
+
+function setSetupSort(sort) {
+    _setupSort = normalizeSetupSort(sort);
+    persistSetupSort();
+    syncSetupSortPills();
+    applySetupScanSort();
+}
+
+function bindSetupSortControl() {
+    const wrap = document.getElementById('setup-sort-pills');
+    if (!wrap || wrap._setupSortBound) return;
+    wrap._setupSortBound = true;
+    wrap.addEventListener('click', e => {
+        const t = e && e.target;
+        const btn = t && typeof t.closest === 'function'
+            ? t.closest('[data-setup-sort]')
+            : (t && t.getAttribute && t.getAttribute('data-setup-sort') != null ? t : null);
+        if (!btn || (wrap.contains && !wrap.contains(btn))) return;
+        setSetupSort(btn.getAttribute('data-setup-sort'));
+    });
+}
+
 const SETUP_SCAN_ACTIVE_CLASS = 'setup-scan-active';
 
 function currentActiveSymbol() {
@@ -327,7 +428,8 @@ function setupScanCacheKey(filter, universe) {
 }
 
 function applySetupScanPayload(data) {
-    renderSetupScanTable((data && data.results) || []);
+    _setupScanRows = Array.isArray(data && data.results) ? data.results.slice() : [];
+    renderSetupScanTable(sortedSetupScanRows(_setupScanRows, _setupSort));
     const meta = document.getElementById('setup-scan-meta');
     if (meta) {
         meta.textContent = `${(data && data.count) || 0} hits · scanned ${(data && data.scanned) || 0} symbols`;

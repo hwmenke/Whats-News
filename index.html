@@ -821,6 +821,14 @@
             <input type="checkbox" id="chk-setup-universe" checked />
             Full universe
           </label>
+          <div class="setup-sort-control" title="Sort already-fetched hits by ADR% or RVOL — not a published rating">
+            <span class="setup-sort-label">Sort</span>
+            <div id="setup-sort-pills" class="setup-sort-pills" role="group" aria-label="Sort scan hits">
+              <button type="button" class="ind-pill setup-sort-pill setup-sort-on" data-setup-sort="scan" aria-pressed="true" title="Default scanner ranking">Scan</button>
+              <button type="button" class="ind-pill setup-sort-pill" data-setup-sort="adr" aria-pressed="false" title="Highest ADR% first">ADR%</button>
+              <button type="button" class="ind-pill setup-sort-pill" data-setup-sort="rvol" aria-pressed="false" title="Highest RVOL first">RVOL</button>
+            </div>
+          </div>
           <span id="setup-scan-meta" class="scanner-ts"></span>
           <span class="setup-scan-hint"><kbd>j</kbd>/<kbd>k</kbd> · <kbd>Enter</kbd> chart</span>
         </div>
