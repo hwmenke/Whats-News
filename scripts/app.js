@@ -30,6 +30,7 @@ const JOURNAL_KEY = 'whats-news-journal';
 const PANES_KEY   = 'whats-news-panes';
 const WORKSPACE_KEY = 'whats-news-workspace';
 const LAST_SYMBOL_KEY = 'whats-news-last-symbol';
+const WATCHLIST_FILTER_KEY = 'whats-news-watchlist-filter';
 let journalFocusDate = null;
 
 let statsCharts = {};
@@ -510,11 +511,12 @@ function renderPortfolioTape(data) {
 }
 
 function renderAllChips(tapeAll, chips) {
-    if (!tapeAll.length) {
+    const rows = filterByWatchlistQuery(tapeAll);
+    if (!rows.length) {
         chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No names yet</span>';
         return;
     }
-    tapeAll.forEach(row => {
+    rows.forEach(row => {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'tape-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
@@ -541,7 +543,7 @@ function renderAllChips(tapeAll, chips) {
 // Breakout chips — near-high + volume-confirmed names (Qullamaggie loop),
 // with an EP flag and distance-from-high, shown when tape mode = "breakout".
 function renderBreakoutChips(data, chips) {
-    const queue = data.breakout_queue || [];
+    const queue = filterByWatchlistQuery(data.breakout_queue || []);
     if (!queue.length) {
         chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No breakout names</span>';
         return;
@@ -571,7 +573,7 @@ function renderBreakoutChips(data, chips) {
 
 // Alerts chips — RSI overbought/oversold names only, shown when tape mode = "alerts".
 function renderAlertChips(data, chips) {
-    const alertRows = (data.tape || data.symbols || []).filter(r => r.alert);
+    const alertRows = filterByWatchlistQuery((data.tape || data.symbols || []).filter(r => r.alert));
     if (!alertRows.length) {
         chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No alerting names</span>';
         return;
@@ -1042,10 +1044,56 @@ async function openBookNews() {
     }
 }
 
+function readWatchlistFilter() {
+    try {
+        const raw = localStorage.getItem(WATCHLIST_FILTER_KEY);
+        return raw == null ? '' : String(raw);
+    } catch {
+        return '';
+    }
+}
+
+function writeWatchlistFilter(value) {
+    try {
+        const text = value == null ? '' : String(value);
+        if (text) localStorage.setItem(WATCHLIST_FILTER_KEY, text);
+        else localStorage.removeItem(WATCHLIST_FILTER_KEY);
+    } catch { /* ignore quota */ }
+}
+
+function persistWatchlistFilter() {
+    const el = document.getElementById('watchlist-filter');
+    writeWatchlistFilter(el ? el.value : '');
+}
+
+function restoreWatchlistFilter() {
+    const el = document.getElementById('watchlist-filter');
+    if (el) el.value = readWatchlistFilter();
+    renderSymbolList();
+    if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
+}
+
+function watchlistFilterQuery() {
+    return (document.getElementById('watchlist-filter')?.value || '').trim().toUpperCase();
+}
+
+function matchesWatchlistFilter(symbol, groupTag, q) {
+    if (!q) return true;
+    const code = String(symbol || '').toUpperCase();
+    const tag = String(groupTag || '').toUpperCase();
+    return code.includes(q) || tag.includes(q);
+}
+
+function filterByWatchlistQuery(rows) {
+    const q = watchlistFilterQuery();
+    if (!q) return rows || [];
+    return (rows || []).filter(row => matchesWatchlistFilter(row && row.symbol, row && row.group_tag, q));
+}
+
 function renderSymbolList() {
     const list = document.getElementById('symbol-list');
     list.innerHTML = '';
-    const q = (document.getElementById('watchlist-filter')?.value || '').trim().toUpperCase();
+    const q = watchlistFilterQuery();
 
     if (!state.symbols.length) {
         list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No symbols yet.</div>';
@@ -1071,7 +1119,7 @@ function renderSymbolList() {
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
         item.dataset.symbol = sym.symbol;
-        if (q && !sym.symbol.includes(q) && !(tag || '').toUpperCase().includes(q)) {
+        if (!matchesWatchlistFilter(sym.symbol, tag, q)) {
             item.hidden = true;
         }
 
@@ -3305,7 +3353,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('chk-desk-only')?.addEventListener('change', e => {
         toggleDeskOnly(e.target.checked);
     });
-    document.getElementById('watchlist-filter')?.addEventListener('input', () => renderSymbolList());
+    document.getElementById('watchlist-filter')?.addEventListener('input', () => {
+        persistWatchlistFilter();
+        renderSymbolList();
+        if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
+    });
     document.getElementById('new-symbol-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') addSymbol();
     });
@@ -3397,6 +3449,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncWorkspacePills();
 
     await loadSymbols();
+    restoreWatchlistFilter();
 
     const codes = (state.symbols || []).map(s => s.symbol).filter(Boolean);
     if (!codes.length) {
