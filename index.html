@@ -94,6 +94,10 @@
         <button type="button" class="tape-mode-btn" data-mode="breakout" aria-pressed="false" title="Near 20D high and/or volume surge — book-relative breakout queue, not a formal published breakout signal">Breakout</button>
         <button type="button" class="tape-mode-btn" data-mode="alerts" aria-pressed="false" title="RSI overbought/oversold only">Alerts</button>
       </div>
+      <div class="tape-sort" role="group" aria-label="Tape sort">
+        <button type="button" class="tape-sort-btn active" data-sort="default" aria-pressed="true" title="Default tape order (All = day %, Breakout = queue rank, Alerts = RSI list)">Default</button>
+        <button type="button" class="tape-sort-btn" data-sort="sma200" aria-pressed="false" title="Sort by SMA200 distance, farthest above first — not a published rating">200</button>
+      </div>
       <button type="button" id="tape-book-news" class="btn btn-ghost btn-sm" title="News for breakout queue + top Book RS names">Book news</button>
       <button type="button" id="btn-book-drawer" class="btn btn-ghost btn-sm" title="Open regime map &amp; alert log (h)">Book ▾</button>
       <button type="button" id="btn-journal" class="btn btn-ghost btn-sm" title="Trade journal (J)">Journal</button>

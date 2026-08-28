@@ -552,6 +552,37 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
   background: var(--accent);
   color: #fff;
 }
+.tape-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tape-sort-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.tape-sort-btn:hover { color: var(--text-primary); }
+.tape-sort-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tape-sort-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
 .tape-chip {
   display: inline-flex;
   align-items: center;
