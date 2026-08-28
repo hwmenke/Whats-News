@@ -1,7 +1,7 @@
 """
 setup_scanner.py — Scan stored universe for trading setups (not generic metrics only).
 
-Setups are honest labels from portfolio/darvas metrics — not IBD/CAN SLIM claims.
+Setups are honest labels from portfolio/darvas metrics — not published-rating claims.
 """
 
 from __future__ import annotations
@@ -24,6 +24,26 @@ SETUP_IDS = {
     "RSI_OB": "RSI overbought (swing alert)",
     "RSI_OS": "RSI oversold (swing alert)",
 }
+
+# Last N daily bars for ADR% — legend uses 20 valid (H,L,C>0) bars, min 5.
+SCAN_ADR_BARS = 30
+
+
+def scan_adr_pct(rows: Optional[list] = None) -> Optional[float]:
+    """Scan-row ADR% — same 20-bar mean((H-L)/C)*100 as portfolio.legend_adr_pct.
+
+    Omit (None) when the series is too short or invalid. Not a published rating.
+    """
+    adr = portfolio.legend_adr_pct(rows)
+    if adr is None:
+        return None
+    try:
+        n = float(adr)
+    except (TypeError, ValueError):
+        return None
+    if n != n:  # NaN
+        return None
+    return round(n, 2)
 
 
 def _scan_one_setup(symbol: str) -> Optional[dict]:
@@ -69,6 +89,8 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             if snap["dist_20d_high_pct"] >= -2:
                 score += 1
 
+        daily_rows = md.get_ohlcv(snap["symbol"], "daily", limit=SCAN_ADR_BARS)
+
         return {
             "symbol": snap["symbol"],
             "ready": True,
@@ -81,6 +103,7 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             "rs_n": snap.get("rs_n"),
             "dist_20d_high_pct": snap.get("dist_20d_high_pct"),
             "vol_ratio_5_20": snap.get("vol_ratio_5_20"),
+            "adr_pct": scan_adr_pct(daily_rows),
             "gap_pct": snap.get("gap_pct"),
             "regime": snap.get("regime"),
             "regime_weekly": snap.get("regime_weekly"),
