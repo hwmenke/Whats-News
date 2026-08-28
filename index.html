@@ -378,20 +378,25 @@
         <div class="kpi-card">
           <div class="kpi-label">Volatility (Ann.)</div>
           <div id="stat-vol" class="kpi-value">--</div>
+          <div class="kpi-sub">Annualized &sigma; of daily returns</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Sharpe Ratio</div>
           <div id="stat-sharpe" class="kpi-value">--</div>
+          <div class="kpi-sub">Return / &sigma;, r<sub>f</sub>=0, annualized</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Max Drawdown</div>
           <div id="stat-drawdown" class="kpi-value">--</div>
+          <div class="kpi-sub">Worst peak-to-trough decline</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Win Rate</div>
           <div id="stat-winrate" class="kpi-value">--</div>
+          <div class="kpi-sub">Share of up days</div>
         </div>
       </div>
+      <div id="stats-sample" class="stats-sample">&nbsp;</div>
 
       <!-- Feature Analysis Row -->
       <div class="stats-grid">
@@ -409,6 +414,7 @@
         </div>
         <div class="stats-card">
           <div class="stats-card-header">Returns Distribution</div>
+          <div id="dist-stats" class="chart-subnote">&nbsp;</div>
           <div class="chart-container-js">
             <canvas id="chart-dist"></canvas>
           </div>

@@ -1582,10 +1582,37 @@ function renderStats(data) {
         return values;
     };
     
-    document.getElementById('stat-vol').textContent      = fmt(m.volatility, true);
-    document.getElementById('stat-sharpe').textContent   = fmt(m.sharpe);
-    document.getElementById('stat-drawdown').textContent = fmt(m.max_drawdown, true);
-    document.getElementById('stat-winrate').textContent  = fmt(m.win_rate, true);
+    const GREEN = '#22c55e', RED = '#ef4444', AMBER = '#eab308';
+    const setKpi = (id, text, color) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = text;
+        el.style.color = color || '';
+    };
+    const grade = (v, good, ok) => (!Number.isFinite(v) ? '' : v >= good ? GREEN : v >= ok ? AMBER : RED);
+
+    setKpi('stat-vol', fmt(m.volatility, true));
+    setKpi('stat-sharpe', fmt(m.sharpe), grade(m.sharpe, 1, 0));
+    setKpi('stat-drawdown', fmt(m.max_drawdown, true), Number.isFinite(m.max_drawdown) ? RED : '');
+    setKpi('stat-winrate', fmt(m.win_rate, true), Number.isFinite(m.win_rate) ? (m.win_rate >= 0.5 ? GREEN : RED) : '');
+
+    // Sample window: quants want to know what the numbers were computed over.
+    const sampleEl = document.getElementById('stats-sample');
+    if (sampleEl) {
+        const s = data.sample || {};
+        sampleEl.textContent = Number.isFinite(s.n) && s.n > 0
+            ? `Based on ${s.n.toLocaleString()} daily returns · ${s.start} → ${s.end}`
+            : '';
+    }
+
+    // Distribution shape readout, shown next to the histogram.
+    const distEl = document.getElementById('dist-stats');
+    if (distEl) {
+        const d = data.dist_stats || {};
+        const p2 = v => (Number.isFinite(v) ? (v * 100).toFixed(2) + '%' : '--');
+        const n2 = v => (Number.isFinite(v) ? v.toFixed(2) : '--');
+        distEl.textContent = `μ ${p2(d.mean)} · med ${p2(d.median)} · σ ${p2(d.std)} · skew ${n2(d.skew)} · kurt ${n2(d.kurtosis)} (excess)`;
+    }
 
     // Common Chart.js options
     const baseChartOpts = {
@@ -1617,8 +1644,10 @@ function renderStats(data) {
         y: { beginAtZero, grid: { color: zeroGrid }, ticks: { color: '#8b949e', font: { size: 10 }, callback: pctTick } },
         x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } }
     });
+    const labelPadding = { padding: { top: 18 } };
     const returnBarOpts = {
         ...baseChartOpts,
+        layout: labelPadding,
         scales: returnScales(true),
         plugins: { legend: { display: false }, tooltip: { callbacks: { label: pctTooltip } } }
     };
@@ -1629,16 +1658,44 @@ function renderStats(data) {
     };
     const returnMultiBarOpts = {
         ...baseChartOpts,
+        layout: labelPadding,
         scales: returnScales(true),
         plugins: { legend: { display: true, labels: legendLabels }, tooltip: { callbacks: { label: pctTooltip } } }
     };
     const countBarOpts = {
         ...baseChartOpts,
+        layout: labelPadding,
         scales: {
             y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 10 }, precision: 0 } },
             x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } }
         }
     };
+
+    // Draw each value on top of its bar so readers do not have to hover. Small,
+    // dependency-free replacement for chartjs-plugin-datalabels.
+    const pctLabel = v => (Math.abs(v) < 1 ? v.toFixed(2) : v.toFixed(1)) + '%';
+    const countLabel = v => (Number.isFinite(v) ? String(v) : '');
+    const valueLabels = (fmt) => ({
+        id: 'valueLabels',
+        afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            ctx.save();
+            ctx.font = '600 10px system-ui, -apple-system, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#c9d1d9';
+            chart.getSortedVisibleDatasetMetas().forEach(meta => {
+                const ds = chart.data.datasets[meta.index];
+                meta.data.forEach((el, i) => {
+                    const raw = ds.data[i];
+                    if (raw === null || raw === undefined || !Number.isFinite(raw)) return;
+                    const y = el.y + (raw >= 0 ? -8 : 10);
+                    ctx.fillText(fmt(raw), el.x, y);
+                });
+            });
+            ctx.restore();
+        }
+    });
 
     const destroy = (id) => { if (statsCharts[id]) statsCharts[id].destroy(); };
 
@@ -1654,7 +1711,8 @@ function renderStats(data) {
                 backgroundColor: data.rsi_analysis.fwd_1d.map(d => pctColor(d.value)),
             }]
         },
-        options: returnBarOpts
+        options: returnBarOpts,
+        plugins: [valueLabels(pctLabel)]
     });
 
     // 2b. Price vs KAMA distance deciles (1D)
@@ -1690,7 +1748,8 @@ function renderStats(data) {
                 backgroundColor: data.rsi_analysis.fwd_5d.map(d => pctColor(d.value)),
             }]
         },
-        options: returnBarOpts
+        options: returnBarOpts,
+        plugins: [valueLabels(pctLabel)]
     });
 
     // 2c. Price vs KAMA distance deciles (5D)
@@ -1759,7 +1818,8 @@ function renderStats(data) {
                 backgroundColor: data.seasonality.map(d => Number.isFinite(d.value) && d.value >= 0 ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'),
             }]
         },
-        options: returnBarOpts
+        options: returnBarOpts,
+        plugins: [valueLabels(pctLabel)]
     });
 
     // 4b. KAMA cross forward returns
@@ -1785,7 +1845,8 @@ function renderStats(data) {
                 }
             ]
         },
-        options: returnMultiBarOpts
+        options: returnMultiBarOpts,
+        plugins: [valueLabels(pctLabel)]
     });
 
     // 4c. KAMA cross event counts
@@ -1802,7 +1863,8 @@ function renderStats(data) {
                 borderWidth: 1,
             }]
         },
-        options: countBarOpts
+        options: countBarOpts,
+        plugins: [valueLabels(countLabel)]
     });
 }
 

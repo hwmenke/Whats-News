@@ -87,6 +87,35 @@ class StatsEdgeCaseTests(unittest.TestCase):
         self.assertEqual(len(result["kama_cross_analysis"]), 6)
         self.assertGreater(sum(item["count_1d"] for item in result["kama_cross_analysis"]), 0)
 
+    @patch("stats.db.get_ohlcv_df")
+    def test_sample_and_distribution_stats(self, mock_get_ohlcv_df):
+        index = pd.date_range("2024-01-01", periods=160, freq="D")
+        close = 100 + np.sin(np.linspace(0, 18, 160)) * 6 + np.linspace(0, 4, 160)
+        mock_get_ohlcv_df.return_value = pd.DataFrame(
+            {
+                "open": close - 0.5,
+                "high": close + 1.0,
+                "low": close - 1.0,
+                "close": close,
+                "volume": np.full(160, 1_000.0),
+            },
+            index=index,
+        )
+
+        result = stats.compute_stats("AAPL")
+
+        sample = result["sample"]
+        self.assertEqual(sample["n"], 159)  # 160 bars, first pct_change is NaN
+        self.assertEqual(sample["start"], "2024-01-01")
+        self.assertEqual(sample["end"], "2024-06-08")
+
+        ds = result["dist_stats"]
+        returns = pd.Series(close, index=index).pct_change().dropna()
+        self.assertAlmostEqual(ds["mean"], float(returns.mean()), places=9)
+        self.assertAlmostEqual(ds["std"], float(returns.std()), places=9)
+        self.assertAlmostEqual(ds["skew"], float(returns.skew()), places=9)
+        self.assertAlmostEqual(ds["kurtosis"], float(returns.kurt()), places=9)
+
 
 class SeasonalityTests(unittest.TestCase):
     """Seasonality must be the realized monthly return averaged by calendar month."""
