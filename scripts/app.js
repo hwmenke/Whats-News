@@ -735,6 +735,23 @@ function openJournal() {
     renderJournal();
 }
 
+// One-line date stamp for an empty compose field — not a published rating.
+function journalNoteStamp(date) {
+    const key = String(date || '').slice(0, 10);
+    return key ? `${key} ` : '';
+}
+
+function hasJournalNoteForSymbolDate(symbol, date) {
+    const key = String(date || '').slice(0, 10);
+    const sym = String(symbol || '');
+    if (!key) return false;
+    return loadJournalEntries().some(e =>
+        String(e.symbol || '') === sym
+        && String(e.date || '').slice(0, 10) === key
+        && String(e.note || '').trim()
+    );
+}
+
 // Click-bar hook from charts.js subscribeClick. Daily uses the session date;
 // weekly uses the week-ending date on the bar.
 function onChartBarClick(payload) {
@@ -755,7 +772,18 @@ function openJournalForDate(date, freq) {
         noteEl.placeholder = freq === 'weekly'
             ? `Note for ${key} week-ending`
             : `Note for ${key}`;
+        // Stamp only when compose is empty and this symbol+date has no stored note.
+        // Date stamp only — not a published rating. Do not persist until Save.
+        const empty = !(noteEl.value || '').trim();
+        const symbol = state.activeSymbol || '—';
+        if (empty && !hasJournalNoteForSymbolDate(symbol, key)) {
+            noteEl.value = journalNoteStamp(key);
+        }
         noteEl.focus();
+        if (typeof noteEl.setSelectionRange === 'function') {
+            const n = (noteEl.value || '').length;
+            noteEl.setSelectionRange(n, n);
+        }
     }
 }
 
