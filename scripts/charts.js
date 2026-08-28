@@ -106,11 +106,11 @@ let charts = {
 // ── Series references ────────────────────────────────────────
 let series = {
     daily: {
-        candle: null, volume: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, volumeSma: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
     weekly: {
-        candle: null, volume: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, volumeSma: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
 };
@@ -136,12 +136,14 @@ const C = {
     vol_surge_down: '#fb7185',
     vol_climax_up:  '#fdba74',
     vol_climax_down:'#fda4af',
+    vol_sma:        '#7d93b0',
 };
 
 // Volume-surge / EP thresholds — mirror portfolio.py so chart markers agree with the tape.
 const VOL_SURGE_RATIO = 1.5;
 const VOL_CLIMAX_RATIO = 2.0;
 const EP_GAP_PCT = 4.0;
+const VOL_SMA_PERIOD = 20;
 
 // ── Base chart options ────────────────────────────────────────
 function baseOpts() {
@@ -186,7 +188,7 @@ function destroyCharts() {
         Object.values(charts[freq]).forEach(c => { if (c) c.remove(); });
         charts[freq] = { main: null, volume: null, rsi: null, macd: null, trend: null };
         series[freq] = {
-            candle: null, volume: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
+            candle: null, volume: null, volumeSma: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
             macdSig: null, macdHist: null, trend: null,
         };
         lastLegend[freq] = { idx: null, time: null };
@@ -260,6 +262,16 @@ function buildPanel(freq) {
     series[freq].volume = charts[freq].volume.addHistogramSeries({
         priceFormat: { type: 'volume' },
         priceLineVisible: false, lastValueVisible: true,
+    });
+    // 20-bar volume SMA on the histogram pane (same window length as _avg20Vol).
+    // Always-on and muted so relative volume is glanceable — not a published rating.
+    series[freq].volumeSma = charts[freq].volume.addLineSeries({
+        color: C.vol_sma,
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+        priceFormat: { type: 'volume' },
     });
 
     // RSI chart
@@ -564,6 +576,19 @@ function _avg20Vol(rows, i) {
     return windowVols.reduce((a, b) => a + b, 0) / windowVols.length;
 }
 
+// 20-bar SMA of volume (includes the current bar). Window length matches
+// _avg20Vol / RVOL so bars vs the line are glanceable relative volume —
+// not a published rating.
+function volumeSmaPoints(rows, period) {
+    const p = period || VOL_SMA_PERIOD;
+    const list = rows || [];
+    const vols = list.map(r => r.volume || 0);
+    const smaVals = computeSma(vols, p);
+    return list.map((r, i) => (
+        smaVals[i] == null ? { time: r.date } : { time: r.date, value: smaVals[i] }
+    ));
+}
+
 function loadOHLCV(freq, rows) {
     if (freq === 'daily') clearSessionLevels();
     if (!series[freq].candle || !rows?.length) return;
@@ -592,6 +617,9 @@ function loadOHLCV(freq, rows) {
             return { time: r.date, value: r.volume || 0, color };
         });
         series[freq].volume.setData(volData);
+        if (series[freq].volumeSma) {
+            series[freq].volumeSma.setData(volumeSmaPoints(rows, VOL_SMA_PERIOD));
+        }
         updateVolBadge(freq, volRatios);
     }
 
