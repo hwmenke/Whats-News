@@ -2604,10 +2604,11 @@ function toggleFocusMode(force) {
     setPressed(document.getElementById('pill-focus'), on);
     const chip = document.getElementById('focus-mode-chip');
     if (chip) chip.hidden = !on;
-    toast(on ? 'Focus mode — press f to show the tape' : 'Tape restored', 'info', 2200);
+    toast(on ? 'Focus mode — press f to restore chrome' : 'Chrome restored', 'info', 2200);
     window.resizeAllCharts?.();
     return on;
 }
+window.toggleFocusMode = toggleFocusMode;
 
 function isKbdHelpOpen() {
     const el = document.getElementById('kbd-help');
@@ -3037,7 +3038,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Persisted to localStorage so the layout survives reloads.
     setupPaneToggles();
 
-    // Focus mode pill — hides the portfolio tape for a chart-only view.
+    // Focus mode pill — body.focus-mode hides extra chrome (CSS per workspace).
     document.getElementById('pill-focus')?.addEventListener('click', () => toggleFocusMode());
     document.getElementById('btn-yahoo-retry')?.addEventListener('click', retryYahooFetch);
 

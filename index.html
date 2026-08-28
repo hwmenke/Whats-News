@@ -11,7 +11,7 @@
   <!-- Chart.js for statistics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
+<body class="workspace-chart">
 
 <div class="app">
 
@@ -129,7 +129,7 @@
       <div class="symbol-header-name">
         <span id="sym-title" class="sym-title">--</span>
         <span id="sym-subtitle" class="sym-subtitle"></span>
-        <span id="focus-mode-chip" class="focus-mode-chip" title="Focus mode is on — press f to show the portfolio tape">Focus (f)</span>
+        <span id="focus-mode-chip" class="focus-mode-chip" title="Focus mode is on — press f to restore chrome">Focus (f)</span>
       </div>
 
       <div class="sym-price-block">
@@ -276,7 +276,7 @@
         <button id="pill-darvas" class="ind-pill active-darvas" title="Darvas box high/low">Box</button>
         <button type="button" id="pill-price-alerts" class="ind-pill" aria-pressed="false"
                 title="Shift+click the daily price pane to drop a user alert line (not RSI). Pressed = this ticker has alerts. Click to clear.">Alerts</button>
-        <button type="button" id="pill-focus" class="ind-pill" aria-pressed="false" title="Focus mode (f) — hide the tape for a chart-only view">Focus (f)</button>
+        <button type="button" id="pill-focus" class="ind-pill" aria-pressed="false" title="Focus mode (f) — hide extra chrome so daily and weekly charts grow">Focus (f)</button>
       </div>
     </nav>
     <!-- Legacy tab-bar stub kept empty for any leftover selectors -->
@@ -291,7 +291,7 @@
         <li>Type a ticker in the sidebar (try <strong>AAPL</strong>) and press <strong>+</strong></li>
         <li>Press <kbd>/</kbd> to jump without adding · <kbd>⌘K</kbd> for commands · <kbd>j</kbd>/<kbd>k</kbd> walk the list</li>
         <li>Tab <strong>News · this ticker</strong> is the selected symbol · top-bar <a href="/news">Watchlist news</a> is the whole list</li>
-        <li>Press <kbd>f</kbd> for focus mode (chart only — hides the tape)</li>
+        <li>Press <kbd>f</kbd> for focus mode (hides extra chrome; Scan list and Review drawers stay)</li>
         <li><kbd>1</kbd> Chart · <kbd>2</kbd> Scan (list stays up) · <kbd>3</kbd> Review</li>
       </ol>
       <p class="kbd-hint-row" id="kbd-hint-row">
@@ -1085,7 +1085,7 @@
       <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Watchlist, or Scan rows in Scan workspace</dd></div>
       <div><dt><kbd>Enter</kbd></dt><dd>Scan workspace — open highlighted row on the chart (list stays)</dd></div>
       <div><dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Chart / Scan / Review workspace</dd></div>
-      <div><dt><kbd>f</kbd></dt><dd>Focus mode (hide tape)</dd></div>
+      <div><dt><kbd>f</kbd></dt><dd>Focus mode (hide extra chrome; Scan list and Review drawers stay)</dd></div>
       <div><dt><kbd>h</kbd></dt><dd>Book scan drawer</dd></div>
       <div><dt><kbd>⇧J</kbd></dt><dd>Trade journal</dd></div>
       <div><dt><kbd>⇧-click</kbd></dt><dd>Daily price — user alert line</dd></div>
