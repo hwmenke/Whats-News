@@ -1664,8 +1664,13 @@ function renderNews(articles) {
     articles.forEach(article => {
         const newsItem = document.createElement('div');
         newsItem.className = 'news-item';
-        newsItem.addEventListener('click', () => {
-            if (article.url) window.open(article.url, '_blank');
+        newsItem.title = 'Jump daily chart to this headline date';
+        newsItem.addEventListener('click', ev => {
+            if (ev.metaKey || ev.ctrlKey) {
+                if (article.url) window.open(article.url, '_blank');
+                return;
+            }
+            onThisTickerNewsClick(article);
         });
         
         // No thumbnail in main's API format - it doesn't include images
@@ -1720,6 +1725,59 @@ function renderNews(articles) {
         newsItem.appendChild(contentDiv);
         listEl.appendChild(newsItem);
     });
+}
+
+function _newsJumpMiss() {
+    if (typeof toast === 'function') toast('No matching daily bar for that headline', 'warning');
+    return false;
+}
+
+// Reveal the daily pane without leaving Scan / Chart / Review.
+// Scan already shows the chart — never call setWorkspace from this path.
+function revealDailyChartKeepingWorkspace() {
+    // Stay in Scan / Chart / Review — never call setWorkspace from this path.
+    // Scan already shows the chart.
+    if (typeof showChartArea === 'function') showChartArea();
+    state.activeTab = 'charts';
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        const scanOn = state.workspace === 'scan';
+        btn.classList.toggle('active', btn.id === 'tab-charts' || (scanOn && btn.id === 'tab-scanner'));
+    });
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => window.resizeAllCharts?.());
+    }
+}
+
+function onThisTickerNewsClick(article) {
+    const key = (typeof newsDateKey === 'function')
+        ? newsDateKey(article && article.publish_time)
+        : null;
+    if (!key) return _newsJumpMiss();
+
+    const applyJump = () => {
+        const bars = (typeof rawRows !== 'undefined' && rawRows && rawRows.daily) ? rawRows.daily : [];
+        const idx = (typeof dailyBarIndexForDate === 'function')
+            ? dailyBarIndexForDate(key, bars)
+            : -1;
+        if (idx < 0) return _newsJumpMiss();
+        // Show the pane first so setVisibleRange runs on a laid-out chart.
+        revealDailyChartKeepingWorkspace();
+        requestAnimationFrame(() => {
+            if (typeof scrollDailyToDate === 'function') scrollDailyToDate(key);
+        });
+        return true;
+    };
+
+    const rows = (typeof rawRows !== 'undefined' && rawRows && Array.isArray(rawRows.daily))
+        ? rawRows.daily : [];
+    const live = typeof chartsAreLive === 'function' && chartsAreLive();
+    const sameSym = !!(state.chartedSymbol && state.chartedSymbol === state.activeSymbol);
+    if (live && sameSym && rows.length) return applyJump();
+
+    const sym = state.activeSymbol;
+    if (!sym || typeof loadChartData !== 'function') return _newsJumpMiss();
+    Promise.resolve(loadChartData(sym)).then(applyJump);
+    return true;
 }
 
 async function loadChartData(symbol) {
@@ -1777,6 +1835,7 @@ async function loadChartData(symbol) {
         loadOHLCV('weekly', weeklyOhlcv);
         loadIndicatorsToPanel('daily',  dailyInd);
         loadIndicatorsToPanel('weekly', weeklyInd);
+        state.chartedSymbol = symbol;
         fitContent();
         const pending = window._pendingChartPack;
         if (pending && pending.symbol === symbol && typeof setChartPacksForSetups === 'function') {
