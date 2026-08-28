@@ -7,12 +7,71 @@ let _setupCatalog = {};
 let _setupScanCursor = 0;
 const SETUP_SCAN_CACHE_TTL_MS = 60 * 1000;
 const SETUP_SCAN_CACHE_KEY = 'whats-news-setup-scan';
+const SETUP_FILTERS_STORAGE_KEY = 'whats-news-setup-filters';
 let _setupScanCache = null;
 
+function currentSetupUniverse() {
+    return document.getElementById('chk-setup-universe')?.checked ?? true;
+}
+
+function readSetupFilters() {
+    try {
+        const raw = localStorage.getItem(SETUP_FILTERS_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+        let filter = parsed.filter;
+        if (filter == null || filter === '' || filter === 'ALL') filter = null;
+        else filter = String(filter);
+        const universe = parsed.universe !== false;
+        return { filter, universe };
+    } catch {
+        return null;
+    }
+}
+
+function writeSetupFilters(filter, universe) {
+    const payload = {
+        filter: filter || null,
+        universe: universe !== false,
+    };
+    try {
+        localStorage.setItem(SETUP_FILTERS_STORAGE_KEY, JSON.stringify(payload));
+    } catch { /* quota */ }
+}
+
+function persistSetupFilters() {
+    writeSetupFilters(_setupFilter, currentSetupUniverse());
+}
+
+function restoreSetupFilters() {
+    const saved = readSetupFilters();
+    if (!saved) return null;
+    _setupFilter = saved.filter;
+    const el = document.getElementById('chk-setup-universe');
+    if (el) el.checked = !!saved.universe;
+    return saved;
+}
+
+function bindSetupUniverseToggle() {
+    const el = document.getElementById('chk-setup-universe');
+    if (!el || el._setupFiltersBound) return;
+    el._setupFiltersBound = true;
+    el.addEventListener('change', () => persistSetupFilters());
+}
+
 async function initSetupScanner() {
+    // Restore filter + universe before the catalog fetch so a parallel
+    // Scan reopen with allowStaleRows uses the last key (cache, not a forced scan).
+    restoreSetupFilters();
+    bindSetupUniverseToggle();
     try {
         const data = await apiFetch(`${API}/setups/catalog`);
         _setupCatalog = data.setups || {};
+        if (_setupFilter && !(_setupFilter in _setupCatalog)) {
+            _setupFilter = null;
+            persistSetupFilters();
+        }
         renderSetupFilterPills();
     } catch (e) {
         console.warn('Setup catalog failed:', e);
@@ -30,6 +89,7 @@ function renderSetupFilterPills() {
     all.textContent = 'All';
     all.addEventListener('click', () => {
         _setupFilter = null;
+        persistSetupFilters();
         renderSetupFilterPills();
         loadSetupScan();
     });
@@ -43,6 +103,7 @@ function renderSetupFilterPills() {
         btn.title = _setupCatalog[id] || id;
         btn.addEventListener('click', () => {
             _setupFilter = id;
+            persistSetupFilters();
             renderSetupFilterPills();
             loadSetupScan();
         });
@@ -245,7 +306,8 @@ async function loadSetupScan(opts) {
     const allowStaleRows = !!(opts && opts.allowStaleRows);
     const loadEl = document.getElementById('setup-scan-loading');
     const btn = document.getElementById('btn-setup-scan');
-    const universe = document.getElementById('chk-setup-universe')?.checked ?? true;
+    persistSetupFilters();
+    const universe = currentSetupUniverse();
     const key = setupScanCacheKey(_setupFilter, universe);
     const tbody = document.getElementById('setup-scan-tbody');
 
