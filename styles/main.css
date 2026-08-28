@@ -773,6 +773,12 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
   align-items: center;
   gap: 8px;
   padding: 2px 4px;
+  cursor: pointer;
+}
+.theme-leader-item:hover { background: var(--bg-hover); }
+.theme-leader-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .theme-leader-name {
   flex: 1;
