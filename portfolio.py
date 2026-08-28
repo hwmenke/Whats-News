@@ -325,6 +325,33 @@ def format_legend_sma200_dist(pct) -> str:
     return f"200 {sign}{abs(n):.1f}%"
 
 
+def tape_atr_pct(atr, close) -> float | None:
+    """ATR / close * 100. Omit if ATR or close is missing or not > 0."""
+    try:
+        a = float(atr)
+        c = float(close)
+    except (TypeError, ValueError):
+        return None
+    if a != a or c != c:  # NaN
+        return None
+    if a > 0 and c > 0:
+        return (a / c) * 100
+    return None
+
+
+def format_tape_atr_pct(pct) -> str:
+    """Muted tape chip: 'ATR 2.1%'. Empty if ATR% is missing."""
+    if pct is None:
+        return ""
+    try:
+        n = float(pct)
+    except (TypeError, ValueError):
+        return ""
+    if n != n:
+        return ""
+    return f"ATR {n:.1f}%"
+
+
 SMA200_BARS = 200
 
 
@@ -743,7 +770,7 @@ def snapshot_symbol(symbol: str) -> dict:
         else:
             regime = "range"
 
-    atr_pct = (atr14 / last * 100) if atr14 and last else None
+    atr_pct = tape_atr_pct(atr14, last)
     stop_long = round(last - 1.5 * atr14, 2) if atr14 else None
     stop_short = round(last + 1.5 * atr14, 2) if atr14 else None
 
