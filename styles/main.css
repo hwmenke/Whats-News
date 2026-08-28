@@ -804,6 +804,22 @@ body.workspace-review .heatmap-sort-btn {
 }
 .alert-log-item:hover { background: var(--bg-hover); }
 .alert-log-item .al-flag { color: var(--orange); font-weight: 700; }
+.alert-log-item[hidden] { display: none !important; }
+.alert-log-filter {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 6px;
+  flex-shrink: 0;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+}
+.alert-log-filter:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ── Theme leaders (group rollup) — book drawer, third panel ──────── */
 .theme-leaders {
@@ -3714,16 +3730,19 @@ body.focus-mode:not(.workspace-review) #journal-drawer,
 body.focus-mode:not(.workspace-review) #book-drawer-backdrop,
 body.focus-mode:not(.workspace-review) #regime-heatmap,
 body.focus-mode:not(.workspace-review) #alert-log,
+body.focus-mode:not(.workspace-review) #alert-log-filter,
 body.focus-mode:not(.workspace-review) #theme-leaders,
 body.focus-mode:not(.workspace-review) #pm-tools-popover,
 body.focus-mode.workspace-chart #book-drawer,
 body.focus-mode.workspace-chart #journal-drawer,
 body.focus-mode.workspace-chart #regime-heatmap,
 body.focus-mode.workspace-chart #alert-log,
+body.focus-mode.workspace-chart #alert-log-filter,
 body.focus-mode.workspace-scan #book-drawer,
 body.focus-mode.workspace-scan #journal-drawer,
 body.focus-mode.workspace-scan #regime-heatmap,
-body.focus-mode.workspace-scan #alert-log {
+body.focus-mode.workspace-scan #alert-log,
+body.focus-mode.workspace-scan #alert-log-filter {
   display: none !important;
 }
 
@@ -3786,6 +3805,9 @@ body.focus-mode.workspace-review #journal-drawer {
 body.focus-mode.workspace-review #regime-heatmap,
 body.focus-mode.workspace-review #alert-log {
   display: flex;
+}
+body.focus-mode.workspace-review #alert-log-filter {
+  display: block;
 }
 
 
