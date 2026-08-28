@@ -493,6 +493,24 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIsNone(re.search(r"ibd", html, re.IGNORECASE))
         self.assertIsNone(re.search(r"ibd", port, re.IGNORECASE))
 
+    def test_price_first_bb_off_hollow_up_volume_last(self):
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        self.assertIn("bb: false", charts)
+        self.assertIn("upColor: '#0d1117'", charts)
+        self.assertIn("lastValueVisible: true", charts)
+        idx = html.index('id="pill-bb"')
+        snippet = html[idx : idx + 180]
+        self.assertIn("aria-pressed", snippet)
+        self.assertNotIn("active-bb", snippet)
+        self.assertIn("classList.toggle('active-bb', on)", app_js)
+        self.assertNotRegex(charts, r"\bIBD\b")
+        self.assertNotRegex(html, r"\bIBD\b")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,7 +23,7 @@ function nextKamaColor() {
 }
 
 // Overlay state
-const activeOverlays = { bb: true, ep: true, darvas: true };
+const activeOverlays = { bb: false, ep: true, darvas: true };
 
 // Persisted indicator-pane visibility key — mirrors scripts/app.js.
 const PANES_STORAGE_KEY = 'whats-news-panes';
@@ -198,7 +198,7 @@ function buildPanel(freq) {
         ...baseOpts(), width: mainEl.clientWidth, height: mainEl.clientHeight,
     });
     series[freq].candle = charts[freq].main.addCandlestickSeries({
-        upColor: '#22c55e', downColor: '#ef4444',
+        upColor: '#0d1117', downColor: '#ef4444',
         borderUpColor: '#22c55e', borderDownColor: '#ef4444',
         wickUpColor: '#22c55e', wickDownColor: '#ef4444',
     });
@@ -239,7 +239,7 @@ function buildPanel(freq) {
     });
     series[freq].volume = charts[freq].volume.addHistogramSeries({
         priceFormat: { type: 'volume' },
-        priceLineVisible: false, lastValueVisible: false,
+        priceLineVisible: false, lastValueVisible: true,
     });
 
     // RSI chart

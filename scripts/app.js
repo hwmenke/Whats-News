@@ -2924,6 +2924,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     bbPill.addEventListener('click', () => {
         const on = toggleOverlay('bb');
         bbPill.classList.toggle('active-bb', on);
+        bbPill.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
 
     // EP markers pill (gap ≥4% on volume surge) — on by default
