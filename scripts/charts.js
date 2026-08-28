@@ -1186,6 +1186,46 @@ function fitAllContent() {
     _unlockCrossSync();
 }
 
+// News headline → daily bar. Exact YYYY-MM-DD match against rawRows.daily
+// (same key newsDateKey emits). No weekend snap — caller toasts a miss.
+function dailyBarIndexForDate(date, rows) {
+    const key = String(date || '').slice(0, 10);
+    if (!key) return -1;
+    const bars = Array.isArray(rows) ? rows : ((typeof rawRows !== 'undefined' && rawRows && rawRows.daily) ? rawRows.daily : []);
+    for (let i = 0; i < bars.length; i++) {
+        const barKey = String(bars[i] && bars[i].date != null ? bars[i].date : '').slice(0, 10);
+        if (barKey === key) return i;
+    }
+    return -1;
+}
+
+function scrollDailyToDate(date, rowsOpt) {
+    const rows = Array.isArray(rowsOpt)
+        ? rowsOpt
+        : ((typeof rawRows !== 'undefined' && rawRows && rawRows.daily) ? rawRows.daily : []);
+    const idx = dailyBarIndexForDate(date, rows);
+    if (idx < 0) return false;
+    const chart = charts.daily && charts.daily.main;
+    if (!chart || !chart.timeScale) return false;
+    const n = rows.length;
+    const pad = Math.max(8, Math.floor(DAILY_DEFAULT_BARS / 2));
+    const fromIdx = Math.max(0, idx - pad);
+    const toIdx = Math.min(n - 1, Math.max(fromIdx, idx + pad));
+    const fromTime = rows[fromIdx] && rows[fromIdx].date;
+    const toTime = rows[toIdx] && rows[toIdx].date;
+    try {
+        const scale = chart.timeScale();
+        if (fromTime && toTime && fromIdx !== toIdx) {
+            scale.setVisibleRange({ from: fromTime, to: toTime });
+        } else {
+            const fromEnd = (n - 1) - idx;
+            scale.scrollToPosition(-fromEnd, false);
+        }
+        scale.setVisibleLogicalRange({ from: fromIdx, to: toIdx + 1 });
+    } catch (_) { /* chart disposed or range rejected */ }
+    return true;
+}
+
 function setupFitAllOnDoubleClick() {
     ['chart-daily-main', 'chart-weekly-main'].forEach(id => {
         const el = document.getElementById(id);
@@ -1207,6 +1247,8 @@ window.setChartPack      = setChartPack;
 window.setChartPacksForSetups = setChartPacksForSetups;
 window.chartsAreLive     = chartsAreLive;
 window.fitAllContent     = fitAllContent;
+window.scrollDailyToDate = scrollDailyToDate;
+window.dailyBarIndexForDate = dailyBarIndexForDate;
 
 if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('DOMContentLoaded', () => {
