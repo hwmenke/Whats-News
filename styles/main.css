@@ -1141,6 +1141,11 @@ body.workspace-review .heatmap-sort-btn {
 }
 .journal-filter:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .journal-item[hidden] { display: none !important; }
+.journal-export-btn {
+  flex-shrink: 0;
+  font-size: 10px;
+  padding: 3px 8px;
+}
 
 /* ── Tab Bar ──────────────────────────────────────────────── */
 .tab-bar {
