@@ -31,6 +31,7 @@ const PANES_KEY   = 'whats-news-panes';
 let statsCharts = {};
 let backtestEquityChart = null;
 let scannerPollTimer = null;
+let _chartLoadSeq = 0;
 
 // ── Toast system ─────────────────────────────────────────────
 function toast(message, type = 'info', duration = 3500) {
@@ -1273,6 +1274,7 @@ function renderNews(articles) {
 
 async function loadChartData(symbol) {
     if (!symbol) return;
+    const seq = ++_chartLoadSeq;
     state.loading = true;
     showChartArea();
     showLoadingOverlay(true);
@@ -1300,6 +1302,8 @@ async function loadChartData(symbol) {
             ]);
         });
 
+        if (seq !== _chartLoadSeq) return;
+
         initCharts();
 
         // Fresh symbol → clear any previously-drawn risk box so a stale
@@ -1317,16 +1321,26 @@ async function loadChartData(symbol) {
         loadIndicatorsToPanel('daily',  dailyInd);
         loadIndicatorsToPanel('weekly', weeklyInd);
         fitContent();
+        const pending = window._pendingChartPack;
+        if (pending && pending.symbol === symbol && typeof setChartPacksForSetups === 'function') {
+            setChartPacksForSetups(pending.setups || []);
+        }
 
         const last = dailyOhlcv[dailyOhlcv.length - 1];
         const prev = dailyOhlcv[dailyOhlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
     } catch (e) {
+        if (seq !== _chartLoadSeq) return;
         toast('Chart load failed: ' + e.message, 'error');
         showEmptyState();
     } finally {
-        state.loading = false;
-        showLoadingOverlay(false);
+        if (seq === _chartLoadSeq && window._pendingChartPack && window._pendingChartPack.symbol === symbol) {
+            window._pendingChartPack = null;
+        }
+        if (seq === _chartLoadSeq) {
+            state.loading = false;
+            showLoadingOverlay(false);
+        }
     }
 }
 
@@ -2374,6 +2388,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             pill.style.borderColor = on ? EMA_COLORS[p] : '';
             pill.style.color = on ? EMA_COLORS[p] : '';
             pill.style.background = on ? EMA_COLORS[p] + '20' : '';
+        });
+    });
+
+    document.querySelectorAll('[data-chart-pack]').forEach(pill => {
+        pill.addEventListener('click', () => {
+            toggleChartPack(pill.dataset.chartPack);
         });
     });
 

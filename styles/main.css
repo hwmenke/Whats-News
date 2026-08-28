@@ -1012,6 +1012,8 @@ html, body {
 .ind-pill.active-bb { background: rgba(34,197,94,0.18); border-color: #22c55e; color: #22c55e; }
 .ind-pill.active-ep { background: rgba(249,115,22,0.18); border-color: #f97316; color: #f97316; }
 .ind-pill.active-darvas { background: rgba(249,115,22,0.18); border-color: #f97316; color: #f97316; }
+.ind-pill.active-pack { background: rgba(232,121,249,0.16); border-color: #e879f9; color: #e879f9; }
+#pill-pack-stockbee.ind-pill.active-pack { background: rgba(244,114,182,0.16); border-color: #f472b6; color: #f472b6; }
 /* Generic active state — indicator-pane pills (RSI/MACD/Trend) + Focus pill,
    toggled via .classList in app.js rather than a bespoke class per pill. */
 .ind-pill.active { background: rgba(59,130,246,0.18); border-color: var(--accent); color: var(--accent-bright); }
@@ -1125,7 +1127,7 @@ html, body {
   flex-shrink: 0;
 }
 
-.chart-wrapper-volume { height: 70px;  flex-shrink: 0; }
+.chart-wrapper-volume { height: 84px;  flex-shrink: 0; }
 .chart-wrapper-rsi     { height: 110px; flex-shrink: 0; }
 .chart-wrapper-macd    { height: 100px; flex-shrink: 0; }
 .chart-wrapper-trend   { height: 80px;  flex-shrink: 0; }
@@ -1150,6 +1152,23 @@ html, body {
   color: var(--orange);
   letter-spacing: 0.02em;
   margin-left: 4px;
+  pointer-events: auto;
+}
+.vol-surge-badge.vol-surge-now {
+  background: #f97316;
+  color: #111827;
+  box-shadow: 0 0 0 1px #fdba74, 0 0 10px rgba(249, 115, 22, 0.55);
+}
+.ep-glance-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #fde047;
+  color: #111827;
+  letter-spacing: 0.02em;
+  margin-left: 6px;
+  text-transform: none;
   pointer-events: auto;
 }
 
@@ -2856,21 +2875,36 @@ html, body {
 
 .chart-ohlc-legend {
   position: absolute;
-  top: 8px;
-  left: 58px;
+  top: 6px;
+  left: 118px;
   z-index: 11;
   pointer-events: none;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
+  color: #e6edf3;
   white-space: nowrap;
-  max-width: calc(100% - 70px);
+  max-width: calc(100% - 72px);
   overflow: hidden;
   text-overflow: ellipsis;
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid #3d4965;
+  border-radius: 4px;
+  padding: 3px 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
 }
-.chart-ohlc-legend.legend-up { color: #86efac; }
-.chart-ohlc-legend.legend-down { color: #fca5a5; }
+.chart-ohlc-legend.legend-up { color: #4ade80; }
+.chart-ohlc-legend.legend-down { color: #f87171; }
+.chart-ohlc-legend.legend-held { border-color: #8b949e; }
+.chart-ohlc-legend .lg-date { color: #e6edf3; margin-right: 4px; }
+.chart-ohlc-legend .lg-up { color: #4ade80; }
+.chart-ohlc-legend .lg-down { color: #f87171; }
+.chart-ohlc-legend .lg-h { color: #fde68a; }
+.chart-ohlc-legend .lg-l { color: #7dd3fc; }
+.chart-ohlc-legend .lg-v { color: #cbd5e1; }
+.chart-ohlc-legend .lg-ma { font-weight: 600; }
 
 .desk-palette-overlay {
   position: fixed;

@@ -244,6 +244,11 @@
         <button id="pill-ema-10" class="ind-pill" data-ema="10" title="EMA 10 — optional">10</button>
         <button id="pill-ema-21" class="ind-pill" data-ema="21" title="EMA 21 — optional">21</button>
         <button id="pill-ema-50" class="ind-pill" data-ema="50" title="EMA 50 — optional">50</button>
+        <span class="overlay-section-label">Packs</span>
+        <button id="pill-pack-minervini" class="ind-pill" data-chart-pack="minervini"
+                title="SMA 50/150/200 — Minervini-style trend MAs (not a rating)">50/150/200</button>
+        <button id="pill-pack-stockbee" class="ind-pill" data-chart-pack="stockbee"
+                title="EMA 9/20 — Stockbee-style momentum MAs">9/20</button>
         <span class="overlay-section-label">Overlays</span>
         <button id="pill-bb" class="ind-pill active-bb">BB</button>
         <button id="pill-ep-markers" class="ind-pill active-ep" title="EP gap+volume markers">EP</button>
@@ -279,7 +284,7 @@
       <div class="chart-panel">
         <div class="panel-header">Daily</div>
         <div class="chart-wrapper chart-wrapper-main">
-          <div class="chart-label">PRICE</div>
+          <div class="chart-label">PRICE <span id="chart-daily-ep-badge" class="ep-glance-badge" style="display:none;"></span></div>
           <div id="chart-legend-daily" class="chart-ohlc-legend" aria-live="polite"></div>
           <div id="chart-daily-main" style="width:100%;height:100%;"></div>
         </div>
@@ -312,7 +317,7 @@
       <div class="chart-panel">
         <div class="panel-header">Weekly</div>
         <div class="chart-wrapper chart-wrapper-main">
-          <div class="chart-label">PRICE</div>
+          <div class="chart-label">PRICE <span id="chart-weekly-ep-badge" class="ep-glance-badge" style="display:none;"></span></div>
           <div id="chart-legend-weekly" class="chart-ohlc-legend" aria-live="polite"></div>
           <div id="chart-weekly-main" style="width:100%;height:100%;"></div>
         </div>

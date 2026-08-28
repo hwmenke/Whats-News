@@ -204,6 +204,29 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="watchlist-filter"', html)
         self.assertIn("scripts/desk_palette.js", html)
 
+    def test_chart_sticky_legend_reuse_and_packs(self):
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        self.assertIn("keep the last hovered bar", charts)
+        self.assertIn("function chartsAreLive", charts)
+        self.assertIn("if (chartsAreLive()) return", charts)
+        self.assertIn("function computeSma", charts)
+        self.assertIn("minervini", charts)
+        self.assertIn("stockbee", charts)
+        self.assertIn("function applyPriceMarkers", charts)
+        self.assertIn("VOL_CLIMAX_RATIO", charts)
+        self.assertIn("NOW ${last.toFixed(1)}", charts)
+        self.assertIn('data-chart-pack="minervini"', html)
+        self.assertIn('data-chart-pack="stockbee"', html)
+        self.assertIn("chart-daily-ep-badge", html)
+        self.assertIn("_pendingChartPack", setup)
+        self.assertNotRegex(charts, r"\bIBD\b")
+        self.assertNotRegex(html, r"\bIBD\b")
+
 
 if __name__ == "__main__":
     unittest.main()
