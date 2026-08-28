@@ -272,6 +272,8 @@
         <button type="button" id="pill-bb" class="ind-pill" aria-pressed="false" title="Bollinger Bands — off by default so candles stay readable">BB</button>
         <button type="button" id="pill-spy-rs" class="ind-pill" aria-pressed="false"
                 title="vs SPY — close/SPY close comparison line on daily and weekly panes, not a published rating">vs SPY</button>
+        <button type="button" id="pill-vwap" class="ind-pill" aria-pressed="false"
+                title="Session VWAP — rolling anchored from the first loaded daily bar (typical price × volume / cum volume). Daily only; not a published rating">VWAP</button>
         <button id="pill-ep-markers" class="ind-pill active-ep" title="EP gap+volume markers">EP</button>
         <button type="button" id="pill-news-markers" class="ind-pill" aria-pressed="false"
                 title="News dates on the daily pane — this-ticker headlines, not a rating">News</button>
@@ -1107,6 +1109,7 @@
 <script src="scripts/linked_ohlc.js"></script>
 <script src="scripts/copy_ohlc.js"></script>
 <script src="scripts/spy_rs.js"></script>
+<script src="scripts/vwap.js"></script>
 <script src="scripts/price_alerts.js"></script>
 <script src="scripts/darvas_fill.js"></script>
 <script src="scripts/news_markers.js"></script>
