@@ -55,9 +55,11 @@ const EMA_COLORS = { 9: '#f472b6', 10: '#fbbf24', 20: '#22d3ee', 21: '#38bdf8', 
 const activeEma = { 9: false, 10: false, 20: false, 21: false, 50: false };
 
 // SMA 50/150/200 — Minervini-style trend MAs (honest MA overlay, not a rating).
-const SMA_PERIODS = [50, 150, 200];
-const SMA_COLORS = { 50: '#e879f9', 150: '#c084fc', 200: '#818cf8' };
-const activeSma = { 50: false, 150: false, 200: false };
+// SMA 10/40 — weekly trend MAs (Weinstein-style stage, not a rating); daily no-ops.
+const SMA_PERIODS = [10, 40, 50, 150, 200];
+const SMA_COLORS = { 10: '#4ade80', 40: '#f59e0b', 50: '#e879f9', 150: '#c084fc', 200: '#818cf8' };
+const SMA_WEEKLY_ONLY = new Set([10, 40]);
+const activeSma = { 10: false, 40: false, 50: false, 150: false, 200: false };
 
 // Method packs keyed from existing setup-scanner tags (EP / Darvas / near-high).
 const CHART_PACKS = {
@@ -71,8 +73,13 @@ const CHART_PACKS = {
         ema: [9, 20],
         setups: ['EP', 'VOL_SURGE', 'BREAKOUT_QUEUE'],
     },
+    weinstein: {
+        sma: [10, 40],
+        ema: [],
+        setups: [],
+    },
 };
-const activePacks = { minervini: false, stockbee: false };
+const activePacks = { minervini: false, stockbee: false, weinstein: false };
 
 // Last hovered OHLC index/time per pane — keep it when the crosshair leaves.
 const lastLegend = { daily: { idx: null, time: null }, weekly: { idx: null, time: null } };
@@ -224,10 +231,11 @@ function buildPanel(freq) {
         });
     });
 
-    // SMA 50/150/200 — Minervini-style pack, off until toggled.
+    // SMA packs — weekly-only 10/40 are not created on the daily pane.
     SMA_PERIODS.forEach(p => {
+        if (SMA_WEEKLY_ONLY.has(p) && freq !== 'weekly') return;
         series[freq].sma[p] = charts[freq].main.addLineSeries({
-            color: SMA_COLORS[p], lineWidth: p === 200 ? 2 : 1.5, lineStyle: p === 200 ? 2 : 0,
+            color: SMA_COLORS[p], lineWidth: p === 40 || p === 200 ? 2 : 1.5, lineStyle: p === 200 ? 2 : 0,
             priceLineVisible: false, lastValueVisible: false, visible: false,
         });
     });
@@ -318,10 +326,14 @@ function _fmtPx(v) {
     return (v == null || !Number.isFinite(Number(v))) ? '—' : Number(v).toFixed(2);
 }
 
+function smaShown(freq, p) {
+    return !!activeSma[p] && !(SMA_WEEKLY_ONLY.has(p) && freq !== 'weekly');
+}
+
 function _maLegendBits(freq, idx) {
     const bits = [];
     SMA_PERIODS.forEach(p => {
-        if (!activeSma[p]) return;
+        if (!smaShown(freq, p)) return;
         const v = maCache[freq]?.sma?.[p]?.[idx];
         if (v == null) return;
         bits.push(`<span class="lg-ma" style="color:${SMA_COLORS[p]}">S${p} ${_fmtPx(v)}</span>`);
@@ -556,6 +568,7 @@ function loadOHLCV(freq, rows) {
         s.setData(rows.map((r, i) => (vals[i] == null ? { time: r.date } : { time: r.date, value: vals[i] })));
     });
     SMA_PERIODS.forEach(p => {
+        if (SMA_WEEKLY_ONLY.has(p) && freq !== 'weekly') return;
         const s = series[freq].sma[p];
         const vals = computeSma(closes, p);
         maCache[freq].sma[p] = vals;
@@ -732,11 +745,12 @@ function applyOverlayVisibility(freq) {
         }
     });
 
-    // SMA 50/150/200 pack
+    // SMA packs (10/40 weekly-only; 50/150/200 both panes)
     SMA_PERIODS.forEach(p => {
-        showHide(series[freq].sma[p], activeSma[p], SMA_COLORS[p], p === 200 ? 2 : 1.5, p === 200 ? 2 : 0);
+        const on = smaShown(freq, p);
+        showHide(series[freq].sma[p], on, SMA_COLORS[p], p === 40 || p === 200 ? 2 : 1.5, p === 200 ? 2 : 0);
         if (series[freq].sma[p]) {
-            series[freq].sma[p].applyOptions({ lastValueVisible: !!activeSma[p] });
+            series[freq].sma[p].applyOptions({ lastValueVisible: on });
         }
     });
 }

@@ -306,6 +306,22 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotRegex(charts, r"\bIBD\b")
         self.assertNotRegex(html, r"\bIBD\b")
 
+    def test_weekly_trend_ma_pack(self):
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        self.assertIn('data-chart-pack="weinstein"', html)
+        self.assertIn("weekly trend MAs", html)
+        self.assertIn("not a rating", html)
+        self.assertIn("weinstein", charts)
+        self.assertIn("SMA_WEEKLY_ONLY", charts)
+        self.assertIn("sma: [10, 40]", charts)
+        self.assertIn("function smaShown", charts)
+        self.assertIn("freq !== 'weekly'", charts)
+        self.assertNotRegex(charts, r"\bIBD\b")
+        self.assertNotRegex(html, r"\bIBD\b")
+
     def test_desk_workspaces_and_scanner_enter(self):
         with open("index.html", encoding="utf-8") as fh:
             html = fh.read()
