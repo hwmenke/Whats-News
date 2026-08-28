@@ -186,5 +186,24 @@ class LabelHonestyTests(unittest.TestCase):
             )
 
 
+class FrontendContractTests(unittest.TestCase):
+    def test_jump_palette_never_adds_on_enter(self):
+        with open("scripts/desk_palette.js", encoding="utf-8") as fh:
+            pal = fh.read()
+        self.assertIn("Enter never mutates", pal)
+        self.assertIn("Shift+Enter", pal)
+        self.assertIn("function visibleSymbolCodes", pal)
+
+    def test_ohlc_legend_and_watchlist_filter(self):
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        self.assertIn("function paintOhlcLegend", charts)
+        self.assertIn('id="chart-legend-daily"', html)
+        self.assertIn('id="watchlist-filter"', html)
+        self.assertIn("scripts/desk_palette.js", html)
+
+
 if __name__ == "__main__":
     unittest.main()

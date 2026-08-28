@@ -712,6 +712,7 @@ async function openBookNews() {
 function renderSymbolList() {
     const list = document.getElementById('symbol-list');
     list.innerHTML = '';
+    const q = (document.getElementById('watchlist-filter')?.value || '').trim().toUpperCase();
 
     if (!state.symbols.length) {
         list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No symbols yet.</div>';
@@ -737,6 +738,9 @@ function renderSymbolList() {
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
         item.dataset.symbol = sym.symbol;
+        if (q && !sym.symbol.includes(q) && !(tag || '').toUpperCase().includes(q)) {
+            item.hidden = true;
+        }
 
         const ticker = document.createElement('span');
         ticker.className = 'sym-ticker';
@@ -843,6 +847,12 @@ function startTagEdit(symbol, currentTag, badgeEl) {
         if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
         if (e.key === 'Escape') { input.replaceWith(badgeEl); }
     });
+}
+
+async function addSymbolByCode(code) {
+    const input = document.getElementById('new-symbol-input');
+    if (input) input.value = String(code || '').trim().toUpperCase();
+    await addSymbol();
 }
 
 async function addSymbol() {
@@ -1974,8 +1984,9 @@ function copySetupCard() {
 }
 
 function moveSymbolSelection(delta) {
-    if (!state.symbols.length) return;
-    const codes = state.symbols.map(s => s.symbol);
+    const codes = (typeof visibleSymbolCodes === 'function' ? visibleSymbolCodes() : null)
+        || (state.symbols || []).map(s => s.symbol);
+    if (!codes.length) return;
     let idx = codes.indexOf(state.activeSymbol);
     if (idx < 0) idx = 0;
     else idx = (idx + delta + codes.length) % codes.length;
@@ -2044,6 +2055,7 @@ function setupPmKeyboard() {
             if (e.key === 'Escape') e.target.blur();
             return;
         }
+        if (typeof isPaletteOpen === 'function' && isPaletteOpen()) return;
         // Shift+J → toggle trade journal drawer (plain j/k stay reserved for list nav).
         if (e.shiftKey && (e.key === 'J' || e.key === 'j')) {
             e.preventDefault();
@@ -2061,8 +2073,11 @@ function setupPmKeyboard() {
         }
         else if (e.key === '/') {
             e.preventDefault();
-            const input = document.getElementById('new-symbol-input');
-            if (input) { input.focus(); input.select(); }
+            if (typeof openDeskPalette === 'function') openDeskPalette('jump');
+            else {
+                const input = document.getElementById('new-symbol-input');
+                if (input) { input.focus(); input.select(); }
+            }
         }
         else if (e.key === 'c' && !e.metaKey && !e.ctrlKey) {
             e.preventDefault();
@@ -2072,6 +2087,7 @@ function setupPmKeyboard() {
             closeBookDrawer();
             closeJournal();
             closePmToolsPopover();
+            if (typeof closeDeskPalette === 'function') closeDeskPalette();
         }
     });
 }
@@ -2382,6 +2398,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('chk-desk-only')?.addEventListener('change', e => {
         toggleDeskOnly(e.target.checked);
     });
+    document.getElementById('watchlist-filter')?.addEventListener('input', () => renderSymbolList());
     document.getElementById('new-symbol-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') addSymbol();
     });

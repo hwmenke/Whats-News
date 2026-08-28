@@ -59,6 +59,9 @@
         <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add symbol (or type comma-separated)">+</button>
         <button id="btn-bulk-add"   class="btn btn-ghost   btn-icon" title="Bulk import a list of tickers">≡</button>
       </div>
+      <input id="watchlist-filter" type="text" class="watchlist-filter"
+             placeholder="Filter list…" autocomplete="off" spellcheck="false"
+             title="Filter visible tickers (j/k follow this list)" />
     </div>
 
     <div id="symbol-list" class="symbol-list">
@@ -258,7 +261,7 @@
       <p>Your local watchlist for charts, analysis, and real Yahoo Finance headlines.</p>
       <ol class="onboarding-steps">
         <li>Type a ticker in the sidebar (try <strong>AAPL</strong>) and press <strong>+</strong></li>
-        <li>Click the symbol, then use <strong>Refresh</strong> if the chart is empty</li>
+        <li>Press <kbd>/</kbd> to jump without adding · <kbd>⌘K</kbd> for commands · <kbd>j</kbd>/<kbd>k</kbd> walk the list</li>
         <li>Open <a href="/news">News</a> for headlines across your whole watchlist</li>
       </ol>
     </div>
@@ -277,6 +280,7 @@
         <div class="panel-header">Daily</div>
         <div class="chart-wrapper chart-wrapper-main">
           <div class="chart-label">PRICE</div>
+          <div id="chart-legend-daily" class="chart-ohlc-legend" aria-live="polite"></div>
           <div id="chart-daily-main" style="width:100%;height:100%;"></div>
         </div>
         <div class="chart-divider"></div>
@@ -309,6 +313,7 @@
         <div class="panel-header">Weekly</div>
         <div class="chart-wrapper chart-wrapper-main">
           <div class="chart-label">PRICE</div>
+          <div id="chart-legend-weekly" class="chart-ohlc-legend" aria-live="polite"></div>
           <div id="chart-weekly-main" style="width:100%;height:100%;"></div>
         </div>
         <div class="chart-divider"></div>
@@ -995,12 +1000,29 @@
   </div>
 </div>
 
+</div>
+
+<!-- ══ Jump / command palette ══════════════════════════════════ -->
+<div id="desk-palette" class="desk-palette-overlay" hidden>
+  <div class="desk-palette-card" role="dialog" aria-modal="true" aria-labelledby="desk-palette-title">
+    <div class="desk-palette-head">
+      <span id="desk-palette-title">Jump to symbol</span>
+      <kbd class="desk-palette-kbd">esc</kbd>
+    </div>
+    <input id="desk-palette-input" type="text" class="desk-palette-input"
+           placeholder="Ticker or command…" autocomplete="off" spellcheck="false" />
+    <div id="desk-palette-results" class="desk-palette-results" role="listbox"></div>
+    <p class="desk-palette-hint">/ jump · ⌘K commands · Enter opens (never adds) · Shift+Enter adds</p>
+  </div>
+</div>
+
 <!-- Scripts -->
 <script src="scripts/charts.js"></script>
 <script src="scripts/trend_chart.js"></script>
 <script src="scripts/scanner.js"></script>
 <script src="scripts/setup_scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
+<script src="scripts/desk_palette.js"></script>
 <script src="scripts/app.js"></script>
 
 </body>
