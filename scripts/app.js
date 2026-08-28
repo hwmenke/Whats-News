@@ -28,6 +28,8 @@ let state = {
 
 const JOURNAL_KEY = 'whats-news-journal';
 const PANES_KEY   = 'whats-news-panes';
+const WORKSPACE_KEY = 'whats-news-workspace';
+const LAST_SYMBOL_KEY = 'whats-news-last-symbol';
 
 let statsCharts = {};
 let backtestEquityChart = null;
@@ -1403,6 +1405,7 @@ function scheduleNeighborPrefetch(anchorSymbol) {
 
 async function selectSymbol(symbol) {
     state.activeSymbol = symbol;
+    try { if (symbol) localStorage.setItem(LAST_SYMBOL_KEY, symbol); } catch { /* ignore quota */ }
     renderSymbolList();
     if (state.workspace === 'scan' || state.activeTab === 'charts') {
         await loadChartData(symbol);
@@ -1881,6 +1884,9 @@ function setWorkspace(id, opts = {}) {
     document.body.classList.toggle('workspace-review', next === 'review');
     document.body.classList.toggle('workspace-chart', next === 'chart');
     syncWorkspacePills();
+    try {
+        localStorage.setItem(WORKSPACE_KEY, next === 'review' ? 'chart' : next);
+    } catch { /* ignore quota */ }
 
     if (next === 'scan') {
         applyReviewDrawerLayout(false);
@@ -3060,10 +3066,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadSymbols();
 
-    if (state.symbols.length && state.symbols[0].last_fetch) {
-        selectSymbol(state.symbols[0].symbol);
-    } else {
+    const codes = (state.symbols || []).map(s => s.symbol).filter(Boolean);
+    if (!codes.length) {
         showEmptyState();
+    } else {
+        let last = null;
+        try { last = localStorage.getItem(LAST_SYMBOL_KEY); } catch { last = null; }
+        const pick = (last && codes.includes(last)) ? last : codes[0];
+        await selectSymbol(pick);
+        let ws = 'chart';
+        try { ws = localStorage.getItem(WORKSPACE_KEY) || 'chart'; } catch { ws = 'chart'; }
+        if (ws === 'scan') setWorkspace('scan', { skipChart: true });
     }
 });
 

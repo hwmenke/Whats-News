@@ -336,6 +336,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotRegex(app_js, r"\bIBD\b")
         self.assertNotRegex(setup, r"\bIBD\b")
 
+    def test_desk_restores_last_symbol_and_workspace(self):
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        self.assertIn("whats-news-workspace", app_js)
+        self.assertIn("whats-news-last-symbol", app_js)
+        self.assertIn("LAST_SYMBOL_KEY", app_js)
+        self.assertIn("WORKSPACE_KEY", app_js)
+        self.assertIn("setWorkspace('scan', { skipChart: true })", app_js)
+        self.assertNotRegex(app_js, r"\bIBD\b")
+
     def test_neighbor_chart_prefetch_for_jk(self):
         with open("scripts/app.js", encoding="utf-8") as fh:
             app_js = fh.read()
