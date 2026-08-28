@@ -634,7 +634,10 @@ function setIndicatorPane(pane, visible) {
     document.querySelectorAll(`.pane-optional[data-pane="${pane}"]`).forEach(el => { el.hidden = !visible; });
     document.querySelectorAll(`.chart-divider-${pane}`).forEach(el => { el.hidden = !visible; });
     const pill = document.getElementById(`pill-pane-${pane}`);
-    if (pill) pill.classList.toggle('active', visible);
+    if (pill) {
+        pill.classList.toggle('active', visible);
+        pill.setAttribute('aria-pressed', visible ? 'true' : 'false');
+    }
     resizeAllCharts();
 }
 

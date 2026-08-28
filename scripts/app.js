@@ -341,10 +341,16 @@ function renderAlertChips(data, chips) {
     });
 }
 
+function setPressed(el, on, className = 'active') {
+    if (!el) return;
+    el.classList.toggle(className, !!on);
+    el.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
 function setTapeMode(mode) {
     state.tapeMode = mode;
     document.querySelectorAll('.tape-mode-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.mode === mode);
+        setPressed(btn, btn.dataset.mode === mode);
     });
     if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
 }
@@ -920,25 +926,86 @@ async function fetchSymbolData(symbol, silent = false) {
     }
 }
 
+// ── Focus trap (bulk import + keyboard cheatsheet) ────────────
+function trapFocusIn(root, e) {
+    if (e.key !== 'Tab' || !root) return;
+    const nodes = [...root.querySelectorAll(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )].filter(el => !el.disabled && el.getClientRects().length > 0);
+    if (!nodes.length) {
+        e.preventDefault();
+        return;
+    }
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+    }
+}
+
+function setAppInert(on) {
+    const app = document.querySelector('.app');
+    if (app) app.inert = !!on;
+}
+
+let _bulkPrevFocus = null;
+
+function isBulkModalOpen() {
+    const modal = document.getElementById('bulk-modal');
+    return !!(modal && modal.style.display === 'flex');
+}
+
+function onBulkModalKeydown(e) {
+    if (e.key === 'Escape') {
+        if (!document.getElementById('btn-bulk-submit')?.disabled) {
+            e.preventDefault();
+            closeBulkModal();
+        }
+        return;
+    }
+    trapFocusIn(document.querySelector('#bulk-modal .bulk-modal-card'), e);
+}
+
 // ── Bulk Import ───────────────────────────────────────────────
 function openBulkModal() {
     const modal = document.getElementById('bulk-modal');
+    if (!modal) return;
+    closeKbdHelp();
+    _bulkPrevFocus = document.activeElement;
     modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    setAppInert(true);
     // Reset progress state from any previous run
     document.getElementById('bulk-progress').style.display        = 'none';
     document.getElementById('bulk-progress-fill').style.width     = '0%';
     document.getElementById('bulk-progress-label').style.color    = '';
     document.getElementById('btn-bulk-submit').disabled           = false;
     document.getElementById('bulk-symbols-input').disabled        = false;
+    modal.addEventListener('keydown', onBulkModalKeydown);
     setTimeout(() => document.getElementById('bulk-symbols-input').focus(), 50);
 }
 
 function closeBulkModal() {
     // Only close if not in the middle of an import
-    if (document.getElementById('btn-bulk-submit').disabled) return;
-    document.getElementById('bulk-modal').style.display = 'none';
-    document.getElementById('bulk-symbols-input').value = '';
-    document.getElementById('bulk-progress').style.display = 'none';
+    if (document.getElementById('btn-bulk-submit')?.disabled) return;
+    const modal = document.getElementById('bulk-modal');
+    if (!modal || modal.style.display === 'none') return;
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+    modal.removeEventListener('keydown', onBulkModalKeydown);
+    setAppInert(false);
+    const input = document.getElementById('bulk-symbols-input');
+    if (input) input.value = '';
+    const progress = document.getElementById('bulk-progress');
+    if (progress) progress.style.display = 'none';
+    if (_bulkPrevFocus && typeof _bulkPrevFocus.focus === 'function') {
+        _bulkPrevFocus.focus();
+    }
+    _bulkPrevFocus = null;
 }
 
 async function bulkAddSymbols() {
@@ -1892,7 +1959,8 @@ function renderPmDesk(snap) {
     const bookRsEl = document.getElementById('pm-book-rs');
     if (bookRsEl) {
         bookRsEl.textContent = bookRsLabel(snap);
-        bookRsEl.title = 'Book RS (21D) — watchlist rank only, not a published RS Rating';
+        bookRsEl.title = 'Book RS (21D) — this watchlist’s 21-day return rank, not a published rating';
+        bookRsEl.setAttribute('aria-label', `${bookRsLabel(snap)}, watchlist 21-day rank, not a published rating`);
     }
 
     const peer = document.getElementById('pm-peer');
@@ -2042,9 +2110,54 @@ async function loadWatchlistPreset() {
 function toggleFocusMode(force) {
     const on = force ?? !document.body.classList.contains('focus-mode');
     document.body.classList.toggle('focus-mode', on);
-    document.getElementById('pill-focus')?.classList.toggle('active', on);
+    setPressed(document.getElementById('pill-focus'), on);
     window.resizeAllCharts?.();
     return on;
+}
+
+function isKbdHelpOpen() {
+    const el = document.getElementById('kbd-help');
+    return !!(el && !el.hidden);
+}
+
+let _kbdHelpPrevFocus = null;
+
+function onKbdHelpKeydown(e) {
+    if (e.key === 'Escape' || e.key === '?') {
+        e.preventDefault();
+        closeKbdHelp();
+        return;
+    }
+    trapFocusIn(document.querySelector('#kbd-help .kbd-help-card'), e);
+}
+
+function openKbdHelp() {
+    const el = document.getElementById('kbd-help');
+    const card = el?.querySelector('.kbd-help-card');
+    if (!el) return;
+    if (typeof closeDeskPalette === 'function') closeDeskPalette();
+    _kbdHelpPrevFocus = document.activeElement;
+    el.hidden = false;
+    setAppInert(true);
+    el.addEventListener('keydown', onKbdHelpKeydown);
+    requestAnimationFrame(() => (card || el).focus());
+}
+
+function closeKbdHelp() {
+    const el = document.getElementById('kbd-help');
+    if (!el || el.hidden) return;
+    el.hidden = true;
+    el.removeEventListener('keydown', onKbdHelpKeydown);
+    setAppInert(false);
+    if (_kbdHelpPrevFocus && typeof _kbdHelpPrevFocus.focus === 'function') {
+        _kbdHelpPrevFocus.focus();
+    }
+    _kbdHelpPrevFocus = null;
+}
+
+function toggleKbdHelp() {
+    if (isKbdHelpOpen()) closeKbdHelp();
+    else openKbdHelp();
 }
 
 function setupPmKeyboard() {
@@ -2056,6 +2169,14 @@ function setupPmKeyboard() {
             return;
         }
         if (typeof isPaletteOpen === 'function' && isPaletteOpen()) return;
+        if (isBulkModalOpen()) return;
+        if (isKbdHelpOpen()) {
+            if (e.key === 'Escape' || e.key === '?') {
+                e.preventDefault();
+                closeKbdHelp();
+            }
+            return;
+        }
         // Shift+J → toggle trade journal drawer (plain j/k stay reserved for list nav).
         if (e.shiftKey && (e.key === 'J' || e.key === 'j')) {
             e.preventDefault();
@@ -2071,7 +2192,11 @@ function setupPmKeyboard() {
             if (state.activeSymbol) fetchSymbolData(state.activeSymbol);
             else refreshAll();
         }
-        else if (e.key === '/') {
+        else if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+            e.preventDefault();
+            openKbdHelp();
+        }
+        else if (e.key === '/' && !e.shiftKey) {
             e.preventDefault();
             if (typeof openDeskPalette === 'function') openDeskPalette('jump');
             else {
@@ -2087,6 +2212,7 @@ function setupPmKeyboard() {
             closeBookDrawer();
             closeJournal();
             closePmToolsPopover();
+            closeKbdHelp();
             if (typeof closeDeskPalette === 'function') closeDeskPalette();
         }
     });
@@ -2414,7 +2540,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         else toast('Select a symbol first', 'warning');
     });
 
-    // Close bulk modal on Escape
+    // Close bulk modal on Escape (also trapped inside the dialog)
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') closeBulkModal();
     });
@@ -2423,6 +2549,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.tape-mode-btn').forEach(btn => {
         btn.addEventListener('click', () => setTapeMode(btn.dataset.mode));
     });
+    setTapeMode(state.tapeMode);
+
+    document.getElementById('kbd-help')?.addEventListener('click', e => {
+        if (e.target.id === 'kbd-help') closeKbdHelp();
+    });
+    document.getElementById('kbd-help-close')?.addEventListener('click', closeKbdHelp);
     document.getElementById('tape-book-news')?.addEventListener('click', openBookNews);
 
     // Book drawer (regime heatmap / alert log / theme leaders)
@@ -2510,8 +2642,7 @@ function setPaneVisible(name, visible) {
         document.querySelectorAll(`.chart-divider-${name}`).forEach(el => { el.hidden = !visible; });
         window.resizeAllCharts?.();
     }
-    const pill = document.getElementById(`pill-pane-${name}`);
-    if (pill) pill.classList.toggle('active', visible);
+    setPressed(document.getElementById(`pill-pane-${name}`), visible);
     savePane(name, visible);
 }
 

@@ -57,7 +57,8 @@
           spellcheck="false"
         />
         <button id="btn-add-symbol" class="btn btn-primary btn-icon" title="Add symbol (or type comma-separated)">+</button>
-        <button id="btn-bulk-add"   class="btn btn-ghost   btn-icon" title="Bulk import a list of tickers">≡</button>
+        <button type="button" id="btn-bulk-add" class="btn btn-ghost btn-icon"
+                title="Bulk import a list of tickers" aria-haspopup="dialog" aria-controls="bulk-modal">≡</button>
       </div>
       <input id="watchlist-filter" type="text" class="watchlist-filter"
              placeholder="Filter list…" autocomplete="off" spellcheck="false"
@@ -83,10 +84,10 @@
     <!-- Portfolio tape — All / Breakout / Alerts share one slim chip row -->
     <div id="portfolio-tape" class="portfolio-tape" style="display:none;" aria-label="Portfolio tape">
       <div class="tape-meta" id="tape-meta">Book tape</div>
-      <div class="tape-mode" role="tablist" aria-label="Tape filter">
-        <button type="button" class="tape-mode-btn active" data-mode="all" title="All names by day %">All</button>
-        <button type="button" class="tape-mode-btn" data-mode="breakout" title="Near 20D high and/or volume surge — book-relative breakout queue, not a formal published breakout signal">Breakout</button>
-        <button type="button" class="tape-mode-btn" data-mode="alerts" title="RSI overbought/oversold only">Alerts</button>
+      <div class="tape-mode" role="group" aria-label="Tape filter">
+        <button type="button" class="tape-mode-btn active" data-mode="all" aria-pressed="true" title="All names by day %">All</button>
+        <button type="button" class="tape-mode-btn" data-mode="breakout" aria-pressed="false" title="Near 20D high and/or volume surge — book-relative breakout queue, not a formal published breakout signal">Breakout</button>
+        <button type="button" class="tape-mode-btn" data-mode="alerts" aria-pressed="false" title="RSI overbought/oversold only">Alerts</button>
       </div>
       <button type="button" id="tape-book-news" class="btn btn-ghost btn-sm" title="News for breakout queue + top Book RS names">Book news</button>
       <button type="button" id="btn-book-drawer" class="btn btn-ghost btn-sm" title="Open regime map &amp; alert log (h)">Book ▾</button>
@@ -159,7 +160,10 @@
         </div>
         <div class="pm-metric">
           <span class="pm-label">Book RS</span>
-          <span id="pm-book-rs" class="pm-val" title="Book RS (21D) — watchlist rank only, not a published RS Rating">—</span>
+          <span id="pm-book-rs" class="pm-val"
+                title="Book RS (21D) — this watchlist’s 21-day return rank, not a published rating"
+                aria-label="Book RS, watchlist 21-day rank, not a published rating">—</span>
+          <span class="pm-hint">watchlist 21D</span>
         </div>
         <div class="pm-metric">
           <span class="pm-label">ATR%</span>
@@ -231,9 +235,9 @@
       <div class="tab-spacer"></div>
       <div id="chart-overlays-bar" class="indicator-toggles chart-overlays-bar">
         <span class="overlay-section-label">Panes</span>
-        <button id="pill-pane-rsi" class="ind-pill" title="RSI pane — off by default (price-first)">RSI</button>
-        <button id="pill-pane-macd" class="ind-pill" title="MACD pane — off by default">MACD</button>
-        <button id="pill-pane-trend" class="ind-pill" title="Trend score — off by default">Trend</button>
+        <button type="button" id="pill-pane-rsi" class="ind-pill" aria-pressed="false" title="RSI pane — off by default (price-first)">RSI</button>
+        <button type="button" id="pill-pane-macd" class="ind-pill" aria-pressed="false" title="MACD pane — off by default">MACD</button>
+        <button type="button" id="pill-pane-trend" class="ind-pill" aria-pressed="false" title="Trend score — off by default">Trend</button>
         <span class="overlay-section-label">KAMA</span>
         <div id="kama-pills"></div>
         <div class="kama-add-form">
@@ -248,7 +252,7 @@
         <button id="pill-bb" class="ind-pill active-bb">BB</button>
         <button id="pill-ep-markers" class="ind-pill active-ep" title="EP gap+volume markers">EP</button>
         <button id="pill-darvas" class="ind-pill active-darvas" title="Darvas box high/low">Box</button>
-        <button id="pill-focus" class="ind-pill" title="Focus mode (f) — hide tape">Focus</button>
+        <button type="button" id="pill-focus" class="ind-pill" aria-pressed="false" title="Focus mode (f) — hide tape">Focus</button>
       </div>
     </nav>
     <!-- Legacy tab-bar stub kept empty for any leftover selectors -->
@@ -261,9 +265,14 @@
       <p>Your local watchlist for charts, analysis, and real Yahoo Finance headlines.</p>
       <ol class="onboarding-steps">
         <li>Type a ticker in the sidebar (try <strong>AAPL</strong>) and press <strong>+</strong></li>
-        <li>Press <kbd>/</kbd> to jump without adding · <kbd>⌘K</kbd> for commands · <kbd>j</kbd>/<kbd>k</kbd> walk the list</li>
         <li>Open <a href="/news">News</a> for headlines across your whole watchlist</li>
       </ol>
+      <p class="kbd-hint-row" id="kbd-hint-row">
+        <span><kbd>/</kbd> jump</span>
+        <span><kbd>⌘K</kbd> commands</span>
+        <span><kbd>j</kbd>/<kbd>k</kbd> list</span>
+        <span><kbd>?</kbd> shortcuts</span>
+      </p>
     </div>
 
     <!-- ── Chart Area ── -->
@@ -965,12 +974,14 @@
 
 <!-- ══ Bulk Add Modal ══════════════════════════════════════════ -->
 <div id="bulk-modal" class="bulk-modal-overlay" style="display:none;"
+     aria-hidden="true"
      onclick="if(event.target===this)closeBulkModal()">
-  <div class="bulk-modal-card" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title">
+  <div class="bulk-modal-card" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title"
+       aria-describedby="bulk-hint">
 
     <div class="bulk-modal-header">
       <span id="bulk-modal-title">Bulk Import Tickers</span>
-      <button class="bulk-modal-close" onclick="closeBulkModal()" title="Close">×</button>
+      <button type="button" class="bulk-modal-close" onclick="closeBulkModal()" title="Close">×</button>
     </div>
 
     <div class="bulk-modal-body">
@@ -981,7 +992,7 @@
         rows="9"
         spellcheck="false"
       ></textarea>
-      <p class="bulk-hint">Duplicates and already-tracked symbols are skipped automatically.</p>
+      <p id="bulk-hint" class="bulk-hint">Duplicates and already-tracked symbols are skipped automatically. Tab stays inside this dialog.</p>
 
       <!-- Progress (hidden until import starts) -->
       <div id="bulk-progress" class="bulk-progress" style="display:none;">
@@ -993,8 +1004,8 @@
     </div>
 
     <div class="bulk-modal-footer">
-      <button class="btn btn-ghost" onclick="closeBulkModal()">Cancel</button>
-      <button id="btn-bulk-submit" class="btn btn-primary" onclick="bulkAddSymbols()">Import Tickers</button>
+      <button type="button" class="btn btn-ghost" onclick="closeBulkModal()">Cancel</button>
+      <button type="button" id="btn-bulk-submit" class="btn btn-primary" onclick="bulkAddSymbols()">Import Tickers</button>
     </div>
 
   </div>
@@ -1012,7 +1023,29 @@
     <input id="desk-palette-input" type="text" class="desk-palette-input"
            placeholder="Ticker or command…" autocomplete="off" spellcheck="false" />
     <div id="desk-palette-results" class="desk-palette-results" role="listbox"></div>
-    <p class="desk-palette-hint">/ jump · ⌘K commands · Enter opens (never adds) · Shift+Enter adds</p>
+    <p class="desk-palette-hint">/ jump · ⌘K commands · Enter opens (never adds) · Shift+Enter adds · ? shortcuts</p>
+  </div>
+</div>
+
+<!-- ══ Keyboard cheatsheet (? ) ════════════════════════════════ -->
+<div id="kbd-help" class="kbd-help-overlay" hidden>
+  <div class="kbd-help-card" role="dialog" aria-modal="true" aria-labelledby="kbd-help-title" tabindex="-1">
+    <div class="kbd-help-head">
+      <strong id="kbd-help-title">Keyboard</strong>
+      <button type="button" class="bulk-modal-close" id="kbd-help-close" title="Close">×</button>
+    </div>
+    <dl class="kbd-help-list">
+      <div><dt><kbd>/</kbd></dt><dd>Jump to symbol — Enter never adds</dd></div>
+      <div><dt><kbd>⌘K</kbd></dt><dd>Command palette</dd></div>
+      <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Walk the filtered watchlist</dd></div>
+      <div><dt><kbd>f</kbd></dt><dd>Focus mode (hide tape)</dd></div>
+      <div><dt><kbd>h</kbd></dt><dd>Book scan drawer</dd></div>
+      <div><dt><kbd>⇧J</kbd></dt><dd>Trade journal</dd></div>
+      <div><dt><kbd>r</kbd></dt><dd>Refresh active symbol</dd></div>
+      <div><dt><kbd>c</kbd></dt><dd>Copy setup (after checklist)</dd></div>
+      <div><dt><kbd>?</kbd></dt><dd>This cheatsheet</dd></div>
+      <div><dt><kbd>esc</kbd></dt><dd>Close drawers, palettes, dialogs</dd></div>
+    </dl>
   </div>
 </div>
 

@@ -10,6 +10,7 @@ const PALETTE_COMMANDS = [
     { id: 'focus', label: 'Toggle focus mode', hint: 'f', run: () => toggleFocusMode?.() },
     { id: 'journal', label: 'Trade journal', hint: 'Shift+J', run: () => toggleJournal?.() },
     { id: 'book', label: 'Book scan drawer', hint: 'h', run: () => toggleBookDrawer?.() },
+    { id: 'help', label: 'Keyboard shortcuts', hint: '?', run: () => toggleKbdHelp?.() },
 ];
 
 let _paletteMode = 'jump';
@@ -173,7 +174,7 @@ function initDeskPalette() {
             return;
         }
         if (typing) return;
-        if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
             e.preventDefault();
             openDeskPalette('jump');
         }
