@@ -594,6 +594,8 @@ function loadOHLCV(freq, rows) {
     applyPriceMarkers(freq);
     applyOverlayVisibility(freq);
     if (freq === 'daily') applySessionLevels();
+    // vs-SPY comparison line lives in spy_rs.js (off by default).
+    if (freq === 'daily' && typeof applySpyRsIfOn === 'function') applySpyRsIfOn();
     paintOhlcLegend(freq, {});
 }
 

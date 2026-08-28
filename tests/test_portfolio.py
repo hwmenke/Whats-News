@@ -558,10 +558,157 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotRegex(charts, r"\bIBD\b")
         self.assertNotRegex(html, r"\bIBD\b")
 
+    def test_spy_rs_overlay_contract(self):
+        with open("scripts/spy_rs.js", encoding="utf-8") as fh:
+            spy_js = fh.read()
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("portfolio.py", encoding="utf-8") as fh:
+            port = fh.read()
+        self.assertIn("function applySpyRsIfOn", spy_js)
+        self.assertIn("function toggleSpyRs", spy_js)
+        self.assertIn("let spyRsOn = false", spy_js)
+        self.assertIn("not a published rating", spy_js)
+        self.assertIn("${_spyRsApi()}/spy-rs/", spy_js)
+        self.assertIn("applySpyRsIfOn()", charts)
+        self.assertIn("scripts/spy_rs.js", html)
+        self.assertIn('id="pill-spy-rs"', html)
+        idx = html.index('id="pill-spy-rs"')
+        snippet = html[idx : idx + 280]
+        self.assertIn("aria-pressed", snippet)
+        self.assertIn("not a published rating", snippet)
+        self.assertNotIn("active-spy-rs", snippet)
+        self.assertIn("def spy_rs_overlay", port)
+        self.assertIn("SPY_RS_NOTE", port)
+        self.assertIn("close_ratio", port)
+        self.assertIn("not a published rating", port)
+        for blob in (spy_js, charts, html, app_js, port):
+            self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
 
-if __name__ == "__main__":
-    unittest.main()
 
+class SpyRsOverlayTests(unittest.TestCase):
+    """close/SPY close comparison — not a published rating."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self._tmpdir.name, "p.db")
+        self._path_patch = patch.object(db, "DB_PATH", self.db_path)
+        self._path_patch.start()
+        db.init_db()
+        self.client = app_module.app.test_client()
+
+    def tearDown(self):
+        self._path_patch.stop()
+        self._tmpdir.cleanup()
+
+    def test_overlay_is_close_ratio_rebased_to_last_print(self):
+        symbol = [
+            {"date": "2024-01-02", "close": 100},
+            {"date": "2024-01-03", "close": 110},
+        ]
+        spy = [
+            {"date": "2024-01-02", "close": 50},
+            {"date": "2024-01-03", "close": 50},
+        ]
+        out = portfolio.spy_rs_overlay(symbol, spy)
+        self.assertTrue(out["ready"])
+        self.assertEqual(out["benchmark"], "SPY")
+        self.assertEqual(out["basis"], "close_ratio")
+        self.assertIn("not a published", out["note"].lower())
+        self.assertEqual(out["last_ratio"], 2.2)
+        self.assertAlmostEqual(out["points"][0]["value"], 100.0)
+        self.assertAlmostEqual(out["points"][-1]["value"], 110.0)
+        self.assertAlmostEqual(out["points"][0]["ratio"], 2.0)
+
+    def test_overlay_skips_unaligned_and_missing_spy(self):
+        empty = portfolio.spy_rs_overlay([], [])
+        self.assertFalse(empty["ready"])
+        self.assertEqual(empty["points"], [])
+        missing = portfolio.spy_rs_overlay(
+            [{"date": "2024-01-02", "close": 10}],
+            [],
+        )
+        self.assertFalse(missing["ready"])
+        skipped = portfolio.spy_rs_overlay(
+            [{"date": "2024-01-02", "close": 10}, {"date": "2024-01-03", "close": 12}],
+            [{"date": "2024-01-03", "close": 4}],
+        )
+        self.assertTrue(skipped["ready"])
+        self.assertEqual(skipped["n"], 1)
+        self.assertEqual(skipped["points"][0]["date"], "2024-01-03")
+
+    def test_underperform_overlay_starts_above_last_close(self):
+        # Stock +10%, SPY +20% → relative line declines into the last print.
+        symbol = [
+            {"date": "2024-01-02", "close": 100},
+            {"date": "2024-01-03", "close": 110},
+        ]
+        spy = [
+            {"date": "2024-01-02", "close": 100},
+            {"date": "2024-01-03", "close": 120},
+        ]
+        out = portfolio.spy_rs_overlay(symbol, spy)
+        self.assertAlmostEqual(out["points"][-1]["value"], 110.0)
+        self.assertGreater(out["points"][0]["value"], out["points"][-1]["value"])
+
+    def test_spy_rs_endpoint_ready_when_spy_seeded(self):
+        idx = pd.date_range("2024-01-01", periods=40, freq="D")
+        aapl = 100 + np.linspace(0, 8, 40)
+        spy = 50 + np.linspace(0, 2, 40)
+        for sym, close in (("AAPL", aapl), ("SPY", spy)):
+            db.add_symbol(sym)
+            df = pd.DataFrame(
+                {
+                    "open": close - 0.4,
+                    "high": close + 0.8,
+                    "low": close - 0.8,
+                    "close": close,
+                    "volume": np.full(40, 1_000_000.0),
+                },
+                index=idx,
+            )
+            db.upsert_ohlcv(sym, "daily", df)
+        res = self.client.get("/api/spy-rs/AAPL")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data["ready"])
+        self.assertEqual(data["symbol"], "AAPL")
+        self.assertEqual(data["benchmark"], "SPY")
+        self.assertGreater(data["n"], 10)
+        self.assertIn("not a published", (data.get("note") or "").lower())
+        self.assertAlmostEqual(data["points"][-1]["value"], float(aapl[-1]), places=2)
+
+    def test_spy_rs_endpoint_ready_false_without_spy(self):
+        idx = pd.date_range("2024-01-01", periods=30, freq="D")
+        close = 100 + np.linspace(0, 3, 30)
+        db.add_symbol("AAPL")
+        df = pd.DataFrame(
+            {
+                "open": close - 0.4,
+                "high": close + 0.8,
+                "low": close - 0.8,
+                "close": close,
+                "volume": np.full(30, 1_000_000.0),
+            },
+            index=idx,
+        )
+        db.upsert_ohlcv("AAPL", "daily", df)
+        res = self.client.get("/api/spy-rs/AAPL")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertFalse(data["ready"])
+        self.assertIn("SPY", data.get("error") or "")
+
+    def test_spy_rs_endpoint_rejects_spy_vs_spy(self):
+        res = self.client.get("/api/spy-rs/SPY")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertFalse(data["ready"])
+        self.assertIn("not a comparison", (data.get("error") or "").lower())
 
 
 if __name__ == "__main__":
