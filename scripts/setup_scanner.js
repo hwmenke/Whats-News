@@ -5,6 +5,9 @@
 let _setupFilter = null;
 let _setupCatalog = {};
 let _setupScanCursor = 0;
+const SETUP_SCAN_CACHE_TTL_MS = 60 * 1000;
+const SETUP_SCAN_CACHE_KEY = 'whats-news-setup-scan';
+let _setupScanCache = null;
 
 async function initSetupScanner() {
     try {
@@ -169,11 +172,71 @@ window.highlightSetupRow = highlightSetupRow;
 window.moveSetupScanSelection = moveSetupScanSelection;
 window.openSelectedSetupRow = openSelectedSetupRow;
 
-async function loadSetupScan() {
+function setupScanCacheKey(filter, universe) {
+    return `${filter || 'ALL'}|${universe ? '1' : '0'}`;
+}
+
+function applySetupScanPayload(data) {
+    renderSetupScanTable((data && data.results) || []);
+    const meta = document.getElementById('setup-scan-meta');
+    if (meta) {
+        meta.textContent = `${(data && data.count) || 0} hits · scanned ${(data && data.scanned) || 0} symbols`;
+    }
+}
+
+function readSetupScanCache(key) {
+    const now = Date.now();
+    if (
+        _setupScanCache
+        && _setupScanCache.key === key
+        && (now - _setupScanCache.ts) < SETUP_SCAN_CACHE_TTL_MS
+        && _setupScanCache.data
+    ) {
+        return _setupScanCache.data;
+    }
+    try {
+        const raw = sessionStorage.getItem(SETUP_SCAN_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (
+            parsed
+            && parsed.key === key
+            && (now - parsed.ts) < SETUP_SCAN_CACHE_TTL_MS
+            && parsed.data
+        ) {
+            _setupScanCache = parsed;
+            return parsed.data;
+        }
+    } catch { /* quota / parse */ }
+    return null;
+}
+
+function writeSetupScanCache(key, data) {
+    const entry = { key, data, ts: Date.now() };
+    _setupScanCache = entry;
+    try {
+        sessionStorage.setItem(SETUP_SCAN_CACHE_KEY, JSON.stringify(entry));
+    } catch { /* quota */ }
+}
+
+async function loadSetupScan(opts) {
+    const force = opts === true || (opts && opts.force === true);
+    const allowStaleRows = !!(opts && opts.allowStaleRows);
     const loadEl = document.getElementById('setup-scan-loading');
     const btn = document.getElementById('btn-setup-scan');
-    const meta = document.getElementById('setup-scan-meta');
     const universe = document.getElementById('chk-setup-universe')?.checked ?? true;
+    const key = setupScanCacheKey(_setupFilter, universe);
+    const tbody = document.getElementById('setup-scan-tbody');
+
+    if (!force) {
+        const cached = readSetupScanCache(key);
+        if (cached) {
+            if (!tbody || !tbody.children.length) applySetupScanPayload(cached);
+            return;
+        }
+        // Reopening Scan keeps the last table; a filter change still refreshes.
+        if (allowStaleRows && tbody && tbody.children.length) return;
+    }
 
     if (loadEl) loadEl.style.display = 'flex';
     if (btn) { btn.disabled = true; btn.textContent = 'Scanning…'; }
@@ -184,10 +247,8 @@ async function loadSetupScan() {
         url += `&universe=${universe ? '1' : '0'}`;
 
         const data = await apiFetch(url);
-        renderSetupScanTable(data.results || []);
-        if (meta) {
-            meta.textContent = `${data.count || 0} hits · scanned ${data.scanned || 0} symbols`;
-        }
+        applySetupScanPayload(data);
+        writeSetupScanCache(key, data);
     } catch (e) {
         toast('Setup scan failed: ' + e.message, 'error');
     } finally {
@@ -195,6 +256,8 @@ async function loadSetupScan() {
         if (btn) { btn.disabled = false; btn.textContent = 'Scan setups'; }
     }
 }
+
+window.loadSetupScan = loadSetupScan;
 
 async function promoteSymbolToDesk(symbol) {
     try {

@@ -455,6 +455,49 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIsNone(portfolio.linked_ohlc_bar("daily", "", daily, weekly))
         self.assertIsNone(portfolio.linked_ohlc_bar("daily", "2024-01-08", daily, []))
 
+    def test_setup_scan_cache_reuse_within_ttl(self):
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("portfolio.py", encoding="utf-8") as fh:
+            port = fh.read()
+        self.assertIn("SETUP_SCAN_CACHE_TTL_MS = 60 * 1000", setup)
+        self.assertIn("SETUP_SCAN_CACHE_KEY", setup)
+        self.assertIn("whats-news-setup-scan", setup)
+        self.assertIn("function setupScanCacheKey", setup)
+        self.assertIn("function readSetupScanCache", setup)
+        self.assertIn("function writeSetupScanCache", setup)
+        self.assertIn("sessionStorage.getItem(SETUP_SCAN_CACHE_KEY)", setup)
+        self.assertIn("sessionStorage.setItem(SETUP_SCAN_CACHE_KEY", setup)
+        self.assertIn("async function loadSetupScan(opts)", setup)
+        self.assertIn("opts.force === true", setup)
+        self.assertIn("opts.allowStaleRows", setup)
+        self.assertIn("readSetupScanCache(key)", setup)
+        self.assertIn("writeSetupScanCache(key, data)", setup)
+        self.assertIn("${API}/setups/scan?limit=300", setup)
+        self.assertIn("loadSetupScan({ allowStaleRows: true })", app_js)
+        self.assertIn('onclick="loadSetupScan({force:true})"', html)
+        self.assertIn("function moveSetupScanSelection", setup)
+        self.assertIn("function openSelectedSetupRow", setup)
+        self.assertIn("Stay in Scan workspace", setup)
+        self.assertNotIn("switchTab('charts')", setup)
+        self.assertNotRegex(setup, r"\bIBD\b")
+        self.assertNotRegex(app_js, r"\bIBD\b")
+        self.assertNotRegex(html, r"\bIBD\b")
+        self.assertNotRegex(port, r"\bIBD\b")
+        self.assertIsNone(re.search(r"ibd", setup, re.IGNORECASE))
+        self.assertIsNone(re.search(r"ibd", app_js, re.IGNORECASE))
+        self.assertIsNone(re.search(r"ibd", html, re.IGNORECASE))
+        self.assertIsNone(re.search(r"ibd", port, re.IGNORECASE))
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
 
 if __name__ == "__main__":
     unittest.main()
