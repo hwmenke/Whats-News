@@ -50,6 +50,26 @@ function renderSetupFilterPills() {
     });
 }
 
+function formatSetupAdrChip(adr) {
+    if (adr == null || !Number.isFinite(Number(adr))) return '';
+    return `ADR ${Number(adr).toFixed(1)}%`;
+}
+
+function formatSetupRvolChip(rvol) {
+    if (rvol == null || !Number.isFinite(Number(rvol))) return '';
+    return `RVOL ${Number(rvol).toFixed(1)}\u00d7`;
+}
+
+function setupMetricChipsHtml(row) {
+    const chips = [];
+    const adrTxt = formatSetupAdrChip(row ? row.adr_pct : null);
+    if (adrTxt) chips.push(`<span class="setup-metric-chip">${adrTxt}</span>`);
+    const rvolTxt = formatSetupRvolChip(row ? row.vol_ratio_5_20 : null);
+    if (rvolTxt) chips.push(`<span class="setup-metric-chip">${rvolTxt}</span>`);
+    if (!chips.length) return '';
+    return `<div class="setup-metric-chips">${chips.join('')}</div>`;
+}
+
 function renderSetupScanTable(results) {
     const tbody = document.getElementById('setup-scan-tbody');
     const empty = document.getElementById('setup-scan-empty');
@@ -86,11 +106,12 @@ function renderSetupScanTable(results) {
         const vol = row.vol_ratio_5_20 != null
             ? row.vol_ratio_5_20.toFixed(2)
             : '—';
+        const metricChips = setupMetricChipsHtml(row);
 
         tr.dataset.setups = JSON.stringify(row.setups || []);
 
         tr.innerHTML = `
-            <td class="setup-sym">${row.symbol}</td>
+            <td class="setup-sym">${row.symbol}${metricChips}</td>
             <td class="setup-tags">${setups || '—'}</td>
             <td class="${chgCls}">${chg}</td>
             <td>${rs}</td>
