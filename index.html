@@ -26,7 +26,7 @@
 
     <nav class="topbar-nav" aria-label="Primary">
       <a href="/" class="topbar-nav-link active">Dashboard</a>
-      <a href="/news" class="topbar-nav-link" title="Headlines for your whole watchlist">News</a>
+      <a href="/news" class="topbar-nav-link" title="Headlines for every symbol on the watchlist">Watchlist news</a>
     </nav>
 
     <div class="topbar-spacer"></div>
@@ -123,6 +123,7 @@
       <div class="symbol-header-name">
         <span id="sym-title" class="sym-title">--</span>
         <span id="sym-subtitle" class="sym-subtitle"></span>
+        <span id="focus-mode-chip" class="focus-mode-chip" title="Focus mode is on — press f to show the portfolio tape">Focus (f)</span>
       </div>
 
       <div class="sym-price-block">
@@ -221,7 +222,7 @@
     <!-- Merged nav + indicator toggles (one chrome row) -->
     <nav class="main-nav-tabs" aria-label="Views">
       <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')">Charts</button>
-      <button id="tab-news" class="tab-btn" onclick="switchTab('news')" title="This symbol">News</button>
+      <button id="tab-news" class="tab-btn" onclick="switchTab('news')" title="Headlines for the selected ticker only — Watchlist news is in the top bar">News · this ticker</button>
       <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">Stats</button>
       <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">KNN</button>
       <button id="tab-backtest" class="tab-btn" onclick="switchTab('backtest')">Backtest</button>
@@ -248,7 +249,7 @@
         <button id="pill-bb" class="ind-pill active-bb">BB</button>
         <button id="pill-ep-markers" class="ind-pill active-ep" title="EP gap+volume markers">EP</button>
         <button id="pill-darvas" class="ind-pill active-darvas" title="Darvas box high/low">Box</button>
-        <button id="pill-focus" class="ind-pill" title="Focus mode (f) — hide tape">Focus</button>
+        <button id="pill-focus" class="ind-pill" title="Focus mode (f) — hide the tape for a chart-only view">Focus (f)</button>
       </div>
     </nav>
     <!-- Legacy tab-bar stub kept empty for any leftover selectors -->
@@ -262,7 +263,8 @@
       <ol class="onboarding-steps">
         <li>Type a ticker in the sidebar (try <strong>AAPL</strong>) and press <strong>+</strong></li>
         <li>Press <kbd>/</kbd> to jump without adding · <kbd>⌘K</kbd> for commands · <kbd>j</kbd>/<kbd>k</kbd> walk the list</li>
-        <li>Open <a href="/news">News</a> for headlines across your whole watchlist</li>
+        <li>Tab <strong>News · this ticker</strong> is the selected symbol · top-bar <a href="/news">Watchlist news</a> is the whole list</li>
+        <li>Press <kbd>f</kbd> for focus mode (chart only — hides the tape)</li>
       </ol>
     </div>
 
@@ -273,6 +275,14 @@
       <div id="chart-loading" class="chart-loading" style="display:none;">
         <span class="spinner"></span>
         Loading chart data…
+      </div>
+
+      <div id="yahoo-throttle-banner" class="yahoo-throttle-banner" hidden>
+        <div class="yahoo-throttle-card">
+          <strong>Yahoo is rate-limiting</strong>
+          <p id="yahoo-throttle-message">Charts stay empty until Yahoo lets us through. Try again in a minute.</p>
+          <button type="button" id="btn-yahoo-retry" class="btn btn-primary">Retry fetch</button>
+        </div>
       </div>
 
       <!-- ── Daily Panel ── -->
@@ -348,11 +358,14 @@
         <span class="spinner"></span> Loading news…
       </div>
 
-      <!-- News header -->
+      <!-- News header — this ticker only; watchlist-wide headlines live at /news -->
       <div class="news-header">
-        <h3 class="news-title">Latest News Headlines</h3>
+        <h3 id="news-title" class="news-title">News for this ticker</h3>
         <div class="news-meta">
+          <span id="news-scope-label">Selected symbol only</span>
+          <span>•</span>
           <span id="news-provider-label">Source: Yahoo Finance</span>
+          <a href="/news" class="news-watchlist-link" title="Open headlines for every symbol on the watchlist">Watchlist news →</a>
         </div>
       </div>
 
@@ -364,7 +377,7 @@
       <!-- Empty state -->
       <div id="news-empty" class="news-empty" style="display:none;">
         <div class="empty-icon">📰</div>
-        <p>No news available for this symbol.</p>
+        <p>No news available for this ticker.</p>
       </div>
 
       <!-- Error state -->
@@ -981,14 +994,16 @@
         rows="9"
         spellcheck="false"
       ></textarea>
-      <p class="bulk-hint">Duplicates and already-tracked symbols are skipped automatically.</p>
+      <p class="bulk-hint">Duplicates and already-tracked symbols are skipped. History downloads from Yahoo one ticker at a time.</p>
 
       <!-- Progress (hidden until import starts) -->
-      <div id="bulk-progress" class="bulk-progress" style="display:none;">
+      <div id="bulk-progress" class="bulk-progress" style="display:none;" aria-live="polite">
         <div class="bulk-progress-bar">
           <div id="bulk-progress-fill" class="bulk-progress-fill"></div>
         </div>
         <div id="bulk-progress-label" class="bulk-progress-label">Starting…</div>
+        <div id="bulk-progress-counts" class="bulk-progress-counts"></div>
+        <ul id="bulk-progress-log" class="bulk-progress-log"></ul>
       </div>
     </div>
 
