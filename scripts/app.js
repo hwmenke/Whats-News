@@ -300,6 +300,17 @@ function bookRsLabel(row) {
     return `Book RS #${row.rs_rank_21d}/${row.rs_n ?? '—'}`;
 }
 
+// Compact SMA200 distance — same (close/sma200 − 1)*100 format as legend_stats.js.
+function sma200DistText(row) {
+    if (typeof formatSma200DistLegend !== 'function') return '';
+    return formatSma200DistLegend(row && row.dist_sma200_pct) || '';
+}
+
+function tapeSma200Span(row) {
+    const txt = sma200DistText(row);
+    return txt ? `<span class="tape-sma200">${txt}</span>` : '';
+}
+
 function renderPortfolioTape(data) {
     const bar = document.getElementById('portfolio-tape');
     const chips = document.getElementById('tape-chips');
@@ -367,13 +378,15 @@ function renderAllChips(tapeAll, chips) {
         const dw = row.regime_weekly && row.regime_weekly !== 'n/a'
             ? ` D:${row.regime?.[0] || '?'} W:${row.regime_weekly[0]}`
             : '';
+        const smaTxt = sma200DistText(row);
         chip.innerHTML = `
             <span>${row.symbol}</span>
             <span class="tape-pct ${pos ? 'positive' : 'negative'}">${pos ? '+' : ''}${row.change_pct?.toFixed(1) ?? '—'}%</span>
+            ${tapeSma200Span(row)}
             <span class="tape-rs">${bookRsLabel(row)}${dw}</span>
             ${row.alert ? `<span class="tape-alert">${row.alert}</span>` : ''}
         `;
-        chip.title = `D ${row.regime || ''} / W ${row.regime_weekly || ''} · RSI ${row.rsi14 ?? '—'}`;
+        chip.title = `D ${row.regime || ''} / W ${row.regime_weekly || ''} · RSI ${row.rsi14 ?? '—'}${smaTxt ? ` · ${smaTxt}` : ''}`;
         chip.addEventListener('click', () => selectSymbol(row.symbol));
         chips.appendChild(chip);
     });
@@ -394,13 +407,15 @@ function renderBreakoutChips(data, chips) {
         const dist = row.dist_20d_high_pct;
         const distTxt = dist != null ? `${dist > 0 ? '+' : ''}${dist.toFixed(1)}% fr Hi` : '—';
         const volTxt = row.vol_ratio_5_20 != null ? `Vol ${row.vol_ratio_5_20.toFixed(1)}×` : '—';
+        const smaTxt = sma200DistText(row);
         chip.innerHTML = `
             <span>${row.symbol}</span>
             <span class="tape-rs">${distTxt}</span>
             <span class="tape-rs">${volTxt}</span>
+            ${tapeSma200Span(row)}
             ${row.is_ep ? '<span class="bq-ep-flag" title="Gap ≥4% on volume surge">EP</span>' : ''}
         `;
-        chip.title = `${row.symbol} · ${distTxt} · ${volTxt}${row.gap_pct != null ? ` · gap ${row.gap_pct.toFixed(1)}%` : ''}`;
+        chip.title = `${row.symbol} · ${distTxt} · ${volTxt}${row.gap_pct != null ? ` · gap ${row.gap_pct.toFixed(1)}%` : ''}${smaTxt ? ` · ${smaTxt}` : ''}`;
         chip.addEventListener('click', () => selectSymbol(row.symbol));
         chips.appendChild(chip);
     });
@@ -417,12 +432,14 @@ function renderAlertChips(data, chips) {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'tape-chip' + (state.activeSymbol === row.symbol ? ' active' : '');
+        const smaTxt = sma200DistText(row);
         chip.innerHTML = `
             <span>${row.symbol}</span>
             <span class="tape-alert">${row.alert}</span>
             <span class="tape-rs">RSI ${row.rsi14 ?? '—'}</span>
+            ${tapeSma200Span(row)}
         `;
-        chip.title = `${row.symbol} · ${row.alert} · RSI ${row.rsi14 ?? '—'}`;
+        chip.title = `${row.symbol} · ${row.alert} · RSI ${row.rsi14 ?? '—'}${smaTxt ? ` · ${smaTxt}` : ''}`;
         chip.addEventListener('click', () => selectSymbol(row.symbol));
         chips.appendChild(chip);
     });
@@ -927,6 +944,15 @@ function renderSymbolList() {
 
         item.appendChild(ticker);
         item.appendChild(chgEl);
+
+        const smaTxt = sma200DistText(snap);
+        if (smaTxt) {
+            const smaEl = document.createElement('span');
+            smaEl.className = 'sym-sma200';
+            smaEl.textContent = smaTxt;
+            smaEl.title = 'Distance to SMA200';
+            item.appendChild(smaEl);
+        }
 
         if (snap?.rs_rank_21d) {
             const rs = document.createElement('span');
