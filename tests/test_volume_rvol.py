@@ -260,6 +260,7 @@ class VolumeRvolColorContractTests(unittest.TestCase):
         self.assertNotIn("pill-volume-rvol", html)
         self.assertIn('id="pill-vwap"', html)
         self.assertIn('id="pill-last"', html)
+        self.assertIn('id="pill-atr-stop"', html)
 
         self.assertIn("VOL_SMA_PERIOD = 20", charts)
         self.assertIn("series[freq].volumeSma", charts)
@@ -271,11 +272,16 @@ class VolumeRvolColorContractTests(unittest.TestCase):
             "last: (typeof lastPriceIsOn === 'function') ? !!lastPriceIsOn() : false",
             charts,
         )
+        self.assertIn(
+            "atrStop: (typeof atrStopIsOn === 'function') ? !!atrStopIsOn() : false",
+            charts,
+        )
         apply_start = charts.index("function applySavedOverlays")
         apply_end = charts.index("function setChartPack")
         apply_body = charts[apply_start:apply_end]
         self.assertIn("setVwapOn(!!merged.vwap, { persist: false, apply: false })", apply_body)
         self.assertIn("setLastPriceOn(!!merged.last, { persist: false, apply: false })", apply_body)
+        self.assertIn("setAtrStopOn(!!merged.atrStop, { persist: false, apply: false })", apply_body)
         self.assertNotIn("persistOverlays()", apply_body)
         self.assertNotIn("colorVolumeBarsByRvol", apply_body)
         self.assertNotIn("rvol", apply_body)
@@ -326,7 +332,7 @@ class VolumeRvolColorContractTests(unittest.TestCase):
         self.assertAlmostEqual(payload["lastSma"], (100 * 18 + 50 + 300) / 20)
         self.assertEqual(
             payload["overlayKeys"],
-            ["bb", "darvas", "ep", "last", "news_markers", "spy_rs", "vwap"],
+            ["atrStop", "bb", "darvas", "ep", "last", "news_markers", "spy_rs", "vwap"],
         )
 
 
