@@ -231,7 +231,7 @@ function clearPriceAlertsForSymbol() {
 /**
  * Daily subscribeClick hook from charts.js.
  * Returns true when this click was a modifier-click (journal must not open).
- * Plain click returns false so setupBarClickJournal can call onChartBarClick.
+ * Plain click returns false so the bar-click journal path can run.
  */
 function onDailyPriceAlertClick(param) {
     if (!_clickIsModifier(param)) return false;
