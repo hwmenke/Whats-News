@@ -122,6 +122,8 @@ class PortfolioSnapshotTests(unittest.TestCase):
         self.assertIn("is_near_high", ready_row)
         self.assertIn("vol_ratio_5_20", ready_row)
         self.assertIn("breakout_queue", data)
+        self.assertEqual(data.get("rs_basis"), "watchlist_21d")
+        self.assertIn("not a published", (data.get("rs_note") or "").lower())
 
     def test_pm_desk_endpoint(self):
         self._seed("AAPL")
@@ -176,14 +178,27 @@ class LabelHonestyTests(unittest.TestCase):
 
     def test_frontend_has_no_ibd_or_fake_eps(self):
         roots = ["scripts/app.js", "scripts/charts.js", "index.html", "portfolio.py"]
-        banned = re.compile(r"\bIBD\b|\bEPS\s*Rating\b")
+        ibd = re.compile(r"ibd", re.IGNORECASE)
+        eps = re.compile(r"EPS\s*Rating", re.IGNORECASE)
         for path in roots:
             with open(path, encoding="utf-8") as fh:
                 text = fh.read()
             self.assertIsNone(
-                banned.search(text),
-                msg=f"{path} must not contain banned rating branding",
+                ibd.search(text),
+                msg=f"{path} must not contain the IBD substring",
             )
+            self.assertIsNone(
+                eps.search(text),
+                msg=f"{path} must not contain fake EPS Rating branding",
+            )
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        self.assertIn("Book RS", app_js)
+        self.assertIn("not a published rating", app_js)
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        self.assertIn("not a published rating", html)
+        self.assertIn("watchlist 21D", html)
 
 
 class FrontendContractTests(unittest.TestCase):
@@ -225,6 +240,48 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="chart-legend-daily"', html)
         self.assertIn('id="watchlist-filter"', html)
         self.assertIn("scripts/desk_palette.js", html)
+
+    def test_aria_pressed_on_tape_focus_pane_pills(self):
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        self.assertIn('aria-pressed="true"', html)
+        self.assertIn('id="pill-focus"', html)
+        self.assertIn('aria-pressed="false"', html)
+        self.assertIn("setPressed", app_js)
+        self.assertIn("aria-pressed", charts)
+        for pill_id in ("pill-pane-rsi", "pill-pane-macd", "pill-pane-trend", "pill-focus"):
+            self.assertIn(f'id="{pill_id}"', html)
+            idx = html.index(f'id="{pill_id}"')
+            snippet = html[idx : idx + 160]
+            self.assertIn("aria-pressed", snippet, msg=f"{pill_id} missing aria-pressed")
+
+    def test_bulk_modal_focus_trap(self):
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        self.assertIn("function trapFocusIn", app_js)
+        self.assertIn("onBulkModalKeydown", app_js)
+        self.assertIn("setAppInert", app_js)
+        self.assertIn('aria-hidden="true"', html)
+        self.assertIn('aria-modal="true"', html)
+        self.assertIn('aria-haspopup="dialog"', html)
+
+    def test_empty_state_keyboard_hint_row(self):
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        self.assertIn('id="kbd-hint-row"', html)
+        self.assertIn("<kbd>?</kbd>", html)
+        self.assertIn("<kbd>/</kbd>", html)
+        self.assertIn("<kbd>j</kbd>", html)
+        self.assertIn("function openKbdHelp", app_js)
+        self.assertIn('id="kbd-help"', html)
 
 
 if __name__ == "__main__":

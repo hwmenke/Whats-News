@@ -368,7 +368,8 @@ def portfolio_snapshot() -> dict:
         if row.get("ready"):
             row["size_risk_100"] = position_size(row.get("price"), row.get("atr14"), 100.0, 1.5)
 
-    # Relative strength rank by 21D return (1 = strongest)
+    # Watchlist-relative 21D return rank (1 = strongest in this book).
+    # Book RS only — not a published rating.
     ranked = sorted(
         ready,
         key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
@@ -454,4 +455,6 @@ def portfolio_snapshot() -> dict:
         "group_rollup": group_rollup,
         "news_focus": focus_news,
         "breakout_queue": breakout_queue,
+        "rs_basis": "watchlist_21d",
+        "rs_note": "Book RS is this watchlist's 21D return rank, not a published rating",
     }
