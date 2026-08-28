@@ -37,6 +37,42 @@ def peer_etf_for(sector: str | None) -> str:
     return _PEER_ETF.get(str(sector).strip(), "SPY")
 
 
+def _bar_date(row) -> str:
+    raw = row.get("date") if isinstance(row, dict) else row
+    return str(raw)[:10]
+
+
+def linked_ohlc_bar(
+    source_freq: str,
+    date_key: str,
+    daily_rows: list | None,
+    weekly_rows: list | None,
+) -> dict | None:
+    """Match a hovered daily date to its W-FRI weekly bar (and vice versa).
+
+    Daily → first weekly bar with date >= daily (the covering Friday bar).
+    Weekly → last daily bar with date <= weekly (that week's last print).
+    Chart range sync is separate; this is bar readout only.
+    """
+    key = str(date_key or "")[:10]
+    if not key:
+        return None
+    freq = (source_freq or "").lower()
+    if freq == "daily":
+        rows = weekly_rows or []
+        for row in rows:
+            if _bar_date(row) >= key:
+                return row
+        return rows[-1] if rows else None
+    found = None
+    for row in daily_rows or []:
+        if _bar_date(row) <= key:
+            found = row
+        else:
+            break
+    return found
+
+
 def position_size(
     price,
     atr,

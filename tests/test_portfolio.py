@@ -386,6 +386,52 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIsNone(re.search(r"ibd", html, re.IGNORECASE))
         self.assertIsNone(re.search(r"ibd", port, re.IGNORECASE))
 
+    def test_linked_ohlc_twin_readout_contract(self):
+        with open("scripts/linked_ohlc.js", encoding="utf-8") as fh:
+            linked = fh.read()
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("portfolio.py", encoding="utf-8") as fh:
+            port = fh.read()
+        self.assertIn("function linkedBarFor", linked)
+        self.assertIn("function paintLinkedTwin", linked)
+        self.assertIn("function paintLinkedTwinIfLive", linked)
+        self.assertIn("W-FRI", linked)
+        self.assertIn("first weekly bar with date >= daily", linked)
+        self.assertIn("last daily bar with date <= weekly", linked)
+        self.assertIn("paintLinkedTwinIfLive", charts)
+        self.assertIn("keep the last hovered bar", charts)
+        self.assertIn('id="chart-legend-daily-twin"', html)
+        self.assertIn('id="chart-legend-weekly-twin"', html)
+        self.assertIn("scripts/linked_ohlc.js", html)
+        self.assertIn("def linked_ohlc_bar", port)
+        for blob in (linked, charts, html, port):
+            self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
+
+    def test_linked_ohlc_bar_wfri_mapping(self):
+        daily = [
+            {"date": "2024-01-08", "open": 10, "high": 11, "low": 9, "close": 10.5},
+            {"date": "2024-01-09", "open": 10.5, "high": 12, "low": 10, "close": 11},
+            {"date": "2024-01-12", "open": 11, "high": 13, "low": 10.5, "close": 12},
+            {"date": "2024-01-16", "open": 12, "high": 12.5, "low": 11, "close": 11.5},
+        ]
+        weekly = [
+            {"date": "2024-01-12", "open": 10, "high": 13, "low": 9, "close": 12},
+            {"date": "2024-01-19", "open": 12, "high": 12.5, "low": 11, "close": 11.5},
+        ]
+        mon = portfolio.linked_ohlc_bar("daily", "2024-01-08", daily, weekly)
+        self.assertEqual(mon["date"], "2024-01-12")
+        self.assertEqual(mon["high"], 13)
+        fri = portfolio.linked_ohlc_bar("weekly", "2024-01-12", daily, weekly)
+        self.assertEqual(fri["date"], "2024-01-12")
+        self.assertEqual(fri["close"], 12)
+        next_w = portfolio.linked_ohlc_bar("weekly", "2024-01-19", daily, weekly)
+        self.assertEqual(next_w["date"], "2024-01-16")
+        self.assertIsNone(portfolio.linked_ohlc_bar("daily", "", daily, weekly))
+        self.assertIsNone(portfolio.linked_ohlc_bar("daily", "2024-01-08", daily, []))
+
 
 if __name__ == "__main__":
     unittest.main()
