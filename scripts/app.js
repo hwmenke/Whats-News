@@ -70,42 +70,174 @@ function isYahooThrottle(err) {
     return /too many requests|rate.?limit|yahoo is rate-limiting|yfratelimit/.test(msg);
 }
 
+// Auto-retry a throttled chart/OHLCV load twice with backoff. Do not hammer Yahoo.
+const YAHOO_THROTTLE_AUTO_RETRY_DELAYS_MS = [4000, 12000];
+const YAHOO_THROTTLE_AUTO_RETRY_MAX = 2;
+const YAHOO_THROTTLE_AUTO_RETRY_JITTER = 0.2;
+let _yahooThrottleRetryGen = 0;
+let _yahooThrottleRetryTimer = null;
+let _yahooThrottleRetryCountdown = null;
+let _yahooThrottleRetryAttempt = 0;
+let _yahooThrottleRetrySymbol = null;
+let _yahooThrottleRetryInFlight = false;
+
+function yahooThrottleRetryDelayMs(attemptIndex, random) {
+    const delays = YAHOO_THROTTLE_AUTO_RETRY_DELAYS_MS;
+    const idx = Math.min(Math.max(0, attemptIndex), delays.length - 1);
+    const base = delays[idx];
+    const j = YAHOO_THROTTLE_AUTO_RETRY_JITTER;
+    const r = typeof random === 'number' ? random : Math.random();
+    const factor = 1 + (r * 2 - 1) * j;
+    return Math.max(1000, Math.round(base * factor));
+}
+
+function yahooThrottleShouldCancelOnTickerChange(retrySymbol, nextSymbol) {
+    if (!retrySymbol) return false;
+    return String(nextSymbol || '').toUpperCase() !== String(retrySymbol).toUpperCase();
+}
+
+function yahooThrottleAutoRetriesRemain(attempt) {
+    return attempt < YAHOO_THROTTLE_AUTO_RETRY_MAX;
+}
+
+function clearYahooThrottleRetryTimers() {
+    if (_yahooThrottleRetryTimer) {
+        clearTimeout(_yahooThrottleRetryTimer);
+        _yahooThrottleRetryTimer = null;
+    }
+    if (_yahooThrottleRetryCountdown) {
+        clearInterval(_yahooThrottleRetryCountdown);
+        _yahooThrottleRetryCountdown = null;
+    }
+}
+
+function cancelYahooThrottleAutoRetry() {
+    _yahooThrottleRetryGen += 1;
+    clearYahooThrottleRetryTimers();
+    _yahooThrottleRetryInFlight = false;
+    _yahooThrottleRetrySymbol = null;
+    _yahooThrottleRetryAttempt = 0;
+}
+
+function paintYahooThrottleMessage(secondsLeft) {
+    const banner = document.getElementById('yahoo-throttle-banner');
+    const msg = document.getElementById('yahoo-throttle-message');
+    if (!msg) return;
+    const name = (banner && banner.dataset.symbol) || 'this ticker';
+    if (secondsLeft != null && secondsLeft > 0) {
+        msg.textContent = `${name}: Yahoo is rate-limiting. Retrying in ${secondsLeft}s.`;
+    } else if (secondsLeft === 0) {
+        msg.textContent = `${name}: Yahoo is rate-limiting. Retrying…`;
+    } else {
+        msg.textContent = `${name}: Yahoo is rate-limiting. Try again in a minute — the chart stays here instead of going blank.`;
+    }
+}
+
+function armYahooThrottleAutoRetry() {
+    if (!yahooThrottleAutoRetriesRemain(_yahooThrottleRetryAttempt)) {
+        paintYahooThrottleMessage(null);
+        return;
+    }
+    clearYahooThrottleRetryTimers();
+    const gen = _yahooThrottleRetryGen;
+    const delayMs = yahooThrottleRetryDelayMs(_yahooThrottleRetryAttempt);
+    const deadline = Date.now() + delayMs;
+    const tick = () => {
+        if (gen !== _yahooThrottleRetryGen) return;
+        const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+        paintYahooThrottleMessage(left);
+        if (left <= 0 && _yahooThrottleRetryCountdown) {
+            clearInterval(_yahooThrottleRetryCountdown);
+            _yahooThrottleRetryCountdown = null;
+        }
+    };
+    tick();
+    _yahooThrottleRetryCountdown = setInterval(tick, 250);
+    _yahooThrottleRetryTimer = setTimeout(async () => {
+        if (gen !== _yahooThrottleRetryGen) return;
+        clearYahooThrottleRetryTimers();
+        paintYahooThrottleMessage(0);
+        _yahooThrottleRetryAttempt += 1;
+        _yahooThrottleRetryInFlight = true;
+        try {
+            await retryYahooFetch({ auto: true });
+        } finally {
+            if (gen === _yahooThrottleRetryGen) _yahooThrottleRetryInFlight = false;
+        }
+    }, delayMs);
+}
+
+function scheduleYahooThrottleAutoRetry(symbol) {
+    const code = String(symbol || '').toUpperCase();
+    if (!code) return;
+    if (_yahooThrottleRetryInFlight && _yahooThrottleRetrySymbol === code) return;
+    if ((_yahooThrottleRetryTimer || _yahooThrottleRetryCountdown) && _yahooThrottleRetrySymbol === code) {
+        return;
+    }
+    if (_yahooThrottleRetrySymbol && _yahooThrottleRetrySymbol !== code) {
+        cancelYahooThrottleAutoRetry();
+    }
+    if (!_yahooThrottleRetrySymbol) {
+        _yahooThrottleRetrySymbol = code;
+        _yahooThrottleRetryAttempt = 0;
+        _yahooThrottleRetryGen += 1;
+    }
+    armYahooThrottleAutoRetry();
+}
+
 function showYahooThrottleBanner(symbol) {
     const banner = document.getElementById('yahoo-throttle-banner');
     if (!banner) return;
+    const code = symbol || state.activeSymbol || '';
+    const active = String(state.activeSymbol || '').toUpperCase();
+    if (active && code && String(code).toUpperCase() !== active) return;
     const empty = document.getElementById('empty-state');
     const charts = document.getElementById('chart-area');
     if (empty) empty.style.display = 'none';
     if (charts) charts.style.display = 'flex';
     banner.hidden = false;
-    banner.dataset.symbol = symbol || state.activeSymbol || '';
-    const msg = document.getElementById('yahoo-throttle-message');
-    if (msg) {
-        const name = banner.dataset.symbol || 'this ticker';
-        msg.textContent = `${name}: Yahoo is rate-limiting. Try again in a minute — the chart stays here instead of going blank.`;
-    }
+    banner.dataset.symbol = code;
+    const waiting = !!(
+        _yahooThrottleRetryTimer || _yahooThrottleRetryCountdown || _yahooThrottleRetryInFlight
+    );
+    if (!waiting) paintYahooThrottleMessage(null);
+    scheduleYahooThrottleAutoRetry(banner.dataset.symbol);
 }
 
-function hideYahooThrottleBanner() {
+function hideYahooThrottleBanner(forSymbol) {
     const banner = document.getElementById('yahoo-throttle-banner');
+    if (forSymbol && banner && banner.dataset.symbol) {
+        if (String(banner.dataset.symbol).toUpperCase() !== String(forSymbol).toUpperCase()) {
+            return;
+        }
+    }
+    cancelYahooThrottleAutoRetry();
     if (banner) {
         banner.hidden = true;
         delete banner.dataset.symbol;
     }
 }
 
-async function retryYahooFetch() {
+async function retryYahooFetch(opts = {}) {
+    const auto = opts && opts.auto === true;
+    const gen = _yahooThrottleRetryGen;
+    if (!auto) cancelYahooThrottleAutoRetry();
     const banner = document.getElementById('yahoo-throttle-banner');
     const symbol = (banner && banner.dataset.symbol) || state.activeSymbol;
     if (!symbol) {
         toast('Pick a symbol first', 'warning');
         return;
     }
-    const ok = await fetchSymbolData(symbol);
+    const ok = await fetchSymbolData(symbol, auto);
+    const tickerMoved = String(state.activeSymbol || '').toUpperCase() !== String(symbol || '').toUpperCase();
     if (ok) {
-        hideYahooThrottleBanner();
+        hideYahooThrottleBanner(symbol);
+        if (tickerMoved) return;
         await loadChartData(symbol);
+        return;
     }
+    if (tickerMoved || (auto && gen !== _yahooThrottleRetryGen)) return;
+    if (auto) armYahooThrottleAutoRetry();
 }
 
 function syncNewsSurfaceLabels(symbol) {
@@ -1104,7 +1236,7 @@ async function fetchSymbolData(symbol, silent = false) {
     try {
         const res = await apiFetch(`${API}/fetch/${symbol}`, { method: 'POST' });
         console.log(`[App] Fetch complete for ${symbol}:`, res);
-        hideYahooThrottleBanner();
+        hideYahooThrottleBanner(symbol);
         if (typeof forgetChartBundle === 'function') forgetChartBundle(symbol);
         if (!silent) toast(`${symbol}: ${res.daily_rows} daily / ${res.weekly_rows} weekly bars loaded`, 'success', 5000);
         return true;
@@ -1504,6 +1636,10 @@ function scheduleNeighborPrefetch(anchorSymbol) {
 }
 
 async function selectSymbol(symbol) {
+    // Cancel auto-retry if the user changes ticker (or re-selects while a retry is pending).
+    if (yahooThrottleShouldCancelOnTickerChange(_yahooThrottleRetrySymbol, symbol) || _yahooThrottleRetrySymbol) {
+        cancelYahooThrottleAutoRetry();
+    }
     state.activeSymbol = symbol;
     try { if (symbol) localStorage.setItem(LAST_SYMBOL_KEY, symbol); } catch { /* ignore quota */ }
     renderSymbolList();
@@ -1845,7 +1981,7 @@ async function loadChartData(symbol) {
         const last = dailyOhlcv[dailyOhlcv.length - 1];
         const prev = dailyOhlcv[dailyOhlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
-        hideYahooThrottleBanner();
+        hideYahooThrottleBanner(symbol);
     } catch (e) {
         if (seq !== _chartLoadSeq) return;
         if (e && e.name === 'AbortError') return;
