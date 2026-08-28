@@ -67,6 +67,11 @@ const slice = [
     extractFn('filterByWatchlistQuery'),
     extractFn('setPressed'),
     extractFn('setTapeSort'),
+    extractFn('normalizeTapeSort'),
+    extractFn('readTapeSort'),
+    extractFn('writeTapeSort'),
+    extractFn('persistTapeSort'),
+    extractFn('restoreTapeSort'),
 ].join('\n');
 
 function assert(cond, msg) {
@@ -108,6 +113,7 @@ let tapeRenders = 0;
 const storeWrites = [];
 
 const sandbox = {
+    TAPE_SORT_KEY: 'whats-news-tape-sort',
     state: { tapeSort: 'default', portfolioMeta: { tape: [{}] } },
     document: {
         getElementById(id) {
@@ -194,7 +200,10 @@ assert(sandbox.state.tapeSort === 'default', 'back to default');
 assert(defaultBtn.getAttribute('aria-pressed') === 'true', 'Default pressed again');
 assert(smaBtn.getAttribute('aria-pressed') === 'false', '200 unpressed again');
 assert(tapeRenders === 2, 'default click re-renders');
-assert(storeWrites.length === 0, 'tape sort must not write localStorage');
+assert(storeWrites.length === 2, 'setTapeSort persists each click');
+assert(storeWrites[0][0] === 'set' && storeWrites[0][1] === 'whats-news-tape-sort' && storeWrites[0][2] === 'sma200', 'persist sma200');
+assert(storeWrites[1][0] === 'set' && storeWrites[1][1] === 'whats-news-tape-sort' && storeWrites[1][2] === 'default', 'persist default');
+assert(!storeWrites.some(w => w[1] !== 'whats-news-tape-sort'), 'must not write setup-sort or overlay keys');
 
 process.stdout.write(JSON.stringify({
     ok: true,
@@ -240,9 +249,12 @@ class TapeSortSma200ContractTests(unittest.TestCase):
         self.assertIn("querySelectorAll('.tape-sort-btn')", js)
         self.assertIn("setTapeSort(state.tapeSort)", js)
         set_sort = js[js.index("function setTapeSort") : js.index("function renderRegimeHeatmap")]
-        self.assertNotIn("localStorage", set_sort)
+        self.assertIn("persistTapeSort()", set_sort)
         self.assertNotIn("sessionStorage", set_sort)
         self.assertIn("mode === 'sma200' ? 'sma200' : 'default'", set_sort)
+        self.assertNotIn("whats-news-setup-sort", set_sort)
+        self.assertNotIn("whats-news-chart-overlays", set_sort)
+        self.assertNotIn("whats-news-chart-packs", set_sort)
 
         css = self.css
         self.assertIn(".tape-sort {", css)
@@ -333,6 +345,254 @@ class TapeSortSma200ContractTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["defaultOrder"], "AAPL,NVDA,MISS,NVDL,MSFT")
         self.assertEqual(payload["sma200Order"], "NVDA,MSFT,AAPL,NVDL,MISS")
+
+
+class TapeSortPersistTests(unittest.TestCase):
+    """Default/200 tape sort survives reload via whats-news-tape-sort."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(ROOT, "scripts", "app.js"), encoding="utf-8") as fh:
+            cls.app_js = fh.read()
+        with open(os.path.join(ROOT, "scripts", "desk_palette.js"), encoding="utf-8") as fh:
+            cls.palette = fh.read()
+        with open(os.path.join(ROOT, "index.html"), encoding="utf-8") as fh:
+            cls.html = fh.read()
+        with open(os.path.join(ROOT, "scripts", "charts.js"), encoding="utf-8") as fh:
+            cls.charts = fh.read()
+        with open(os.path.join(ROOT, "scripts", "setup_scanner.js"), encoding="utf-8") as fh:
+            cls.setup = fh.read()
+        with open(os.path.join(ROOT, "scripts", "journal_filter.js"), encoding="utf-8") as fh:
+            cls.journal = fh.read()
+        with open(os.path.join(ROOT, "scripts", "vwap.js"), encoding="utf-8") as fh:
+            cls.vwap = fh.read()
+
+    def test_storage_key_restore_before_first_tape_render(self):
+        js = self.app_js
+        self.assertIn("TAPE_SORT_KEY = 'whats-news-tape-sort'", js)
+        self.assertIn("whats-news-tape-sort", js)
+        self.assertIn("function normalizeTapeSort", js)
+        self.assertIn("function readTapeSort", js)
+        self.assertIn("function writeTapeSort", js)
+        self.assertIn("function persistTapeSort", js)
+        self.assertIn("function restoreTapeSort", js)
+        self.assertIn("localStorage.getItem(TAPE_SORT_KEY)", js)
+        self.assertIn("localStorage.setItem(TAPE_SORT_KEY", js)
+        self.assertNotIn("whats-news-setup-sort", js)
+        self.assertNotIn("whats-news-chart-overlays", js)
+        self.assertNotIn("whats-news-chart-packs", js)
+        self.assertNotIn("sessionStorage", js[js.index("function normalizeTapeSort") : js.index("function renderRegimeHeatmap")])
+
+        boot = js[js.index("document.addEventListener('DOMContentLoaded'") :]
+        self.assertIn("restoreTapeSort()", boot)
+        self.assertIn("setTapeSort(state.tapeSort)", boot)
+        self.assertIn("await loadSymbols();", boot)
+        self.assertLess(boot.index("restoreTapeSort()"), boot.index("setTapeSort(state.tapeSort)"))
+        self.assertLess(boot.index("restoreTapeSort()"), boot.index("await loadSymbols();"))
+
+        restore = js[js.index("function restoreTapeSort") : js.index("function renderRegimeHeatmap")]
+        self.assertNotIn("localStorage.setItem", restore)
+        self.assertNotIn("persistTapeSort", restore)
+        self.assertNotIn("writeTapeSort", restore)
+        self.assertNotIn("sessionStorage", restore)
+        self.assertIn("readTapeSort()", restore)
+        self.assertIn("saved || 'default'", restore)
+
+        set_sort = js[js.index("function setTapeSort") : js.index("function normalizeTapeSort")]
+        self.assertIn("persistTapeSort()", set_sort)
+        self.assertNotIn("whats-news-setup-sort", set_sort)
+
+        write = js[js.index("function writeTapeSort") : js.index("function persistTapeSort")]
+        self.assertIn("localStorage.setItem(TAPE_SORT_KEY", write)
+        self.assertNotIn("SETUP_SORT_STORAGE_KEY", write)
+        self.assertNotIn("OVERLAYS_STORAGE_KEY", write)
+
+        prep = js[js.index("function prepareTapeRows") : js.index("function renderPortfolioTape")]
+        self.assertIn("sortTapeRows(filterByWatchlistQuery(rows))", prep)
+        move = js[js.index("function moveSymbolSelection") : js.index("function saveWatchlistPreset")]
+        self.assertIn("visibleSymbolCodes()", move)
+        self.assertNotIn("prepareTapeRows", move)
+        self.assertNotIn("sortTapeRows", move)
+        self.assertIn("function visibleSymbolCodes", self.palette)
+
+        self.assertNotIn("whats-news-tape-sort", self.charts)
+        self.assertNotIn("whats-news-tape-sort", self.setup)
+        self.assertNotIn("whats-news-tape-sort", self.journal)
+        self.assertNotIn("whats-news-tape-sort", self.vwap)
+        self.assertIn("whats-news-setup-sort", self.setup)
+        self.assertIn("not a published rating", self.app_js)
+        tape = self.html[self.html.index("tape-sort") : self.html.index('id="tape-book-news"')]
+        self.assertIn("not a published rating", tape)
+
+    def test_forbidden_files_have_no_published_rating_brand(self):
+        brand = chr(105) + chr(98) + chr(100)
+        needle = re.compile(brand, re.IGNORECASE)
+        for path in FORBIDDEN:
+            with open(os.path.join(ROOT, path), encoding="utf-8") as fh:
+                text = fh.read()
+            self.assertIsNone(needle.search(text), msg=f"{path} must not contain that rating brand")
+
+    def test_reload_round_trip_storage_key(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+
+        js = self.app_js
+        set_pressed = js[js.index("function setPressed") : js.index("function setTapeMode")]
+        persist = js[js.index("function setTapeSort") : js.index("function renderRegimeHeatmap")]
+        sort_fns = js[js.index("function tapeSma200Dist") : js.index("function renderPortfolioTape")]
+        filter_fns = js[js.index("function watchlistFilterQuery") : js.index("function renderSymbolList")]
+
+        script = r"""
+const TAPE_SORT_KEY = 'whats-news-tape-sort';
+const SETUP_SORT = 'whats-news-setup-sort';
+const OVERLAYS = 'whats-news-chart-overlays';
+const PACKS = 'whats-news-chart-packs';
+const mem = {};
+const writes = [];
+mem[SETUP_SORT] = 'adr';
+mem[OVERLAYS] = '{}';
+mem[PACKS] = '{}';
+function makeClassList(el) {
+    const classes = new Set((el.className || '').split(/\s+/).filter(Boolean));
+    return {
+        contains(name) { return classes.has(name); },
+        add(name) { classes.add(name); el.className = [...classes].join(' '); },
+        remove(name) { classes.delete(name); el.className = [...classes].join(' '); },
+        toggle(name, on) {
+            if (on === undefined) {
+                if (classes.has(name)) classes.delete(name); else classes.add(name);
+            } else if (on) classes.add(name); else classes.delete(name);
+            el.className = [...classes].join(' ');
+            return classes.has(name);
+        },
+    };
+}
+function makeBtn(sort, active) {
+    const el = {
+        dataset: { sort },
+        className: active ? 'tape-sort-btn active' : 'tape-sort-btn',
+        attrs: { 'aria-pressed': active ? 'true' : 'false' },
+        setAttribute(k, v) { this.attrs[k] = String(v); },
+        getAttribute(k) { return this.attrs[k]; },
+    };
+    el.classList = makeClassList(el);
+    return el;
+}
+const defaultBtn = makeBtn('default', true);
+const smaBtn = makeBtn('sma200', false);
+let filterValue = '';
+let tapeRenders = 0;
+const localStorage = {
+    getItem(k) { return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null; },
+    setItem(k, v) { mem[k] = String(v); writes.push(['set', k, String(v)]); },
+    removeItem(k) { delete mem[k]; writes.push(['del', k]); },
+};
+const document = {
+    getElementById(id) {
+        if (id === 'watchlist-filter') return { get value() { return filterValue; } };
+        return null;
+    },
+    querySelectorAll(sel) {
+        if (sel === '.tape-sort-btn') return [defaultBtn, smaBtn];
+        if (sel === '.tape-mode-btn') throw new Error('tape sort persist must not query tape-mode-btn');
+        return [];
+    },
+};
+const state = { tapeSort: 'default', portfolioMeta: { tape: [{}] } };
+function renderPortfolioTape() { tapeRenders += 1; }
+function assert(cond, msg) { if (!cond) throw new Error(msg); }
+""" + set_pressed + persist + sort_fns + filter_fns + r"""
+const rows = [
+    { symbol: 'AAPL', dist_sma200_pct: 2.0, group_tag: 'mega' },
+    { symbol: 'NVDA', dist_sma200_pct: 18.5, group_tag: 'chips' },
+    { symbol: 'MISS', dist_sma200_pct: null, group_tag: '' },
+    { symbol: 'NVDL', dist_sma200_pct: -3.2, group_tag: 'chips' },
+    { symbol: 'MSFT', dist_sma200_pct: 8.1, group_tag: 'mega' },
+];
+function codes(list) { return list.map(r => r.symbol).join(','); }
+
+assert(TAPE_SORT_KEY === 'whats-news-tape-sort', 'storage key');
+assert(normalizeTapeSort(null) === 'default', 'null → default');
+assert(normalizeTapeSort('') === 'default', 'empty → default');
+assert(normalizeTapeSort('junk') === 'default', 'junk → default');
+assert(normalizeTapeSort('adr') === 'default', 'setup-sort value is invalid here');
+assert(normalizeTapeSort(' sma200 ') === 'sma200', 'trim + case');
+assert(readTapeSort() === null, 'missing key reads null');
+assert(restoreTapeSort() === 'default', 'missing restore → default');
+assert(state.tapeSort === 'default', 'state default on missing');
+assert(defaultBtn.getAttribute('aria-pressed') === 'true', 'Default pressed when missing');
+assert(smaBtn.getAttribute('aria-pressed') === 'false', '200 unpressed when missing');
+assert(!Object.prototype.hasOwnProperty.call(mem, TAPE_SORT_KEY), 'restore must not create the key');
+assert(writes.length === 0, 'restore of missing must not write');
+assert(codes(sortTapeRows(rows)) === 'AAPL,NVDA,MISS,NVDL,MSFT', 'default keeps API order');
+
+tapeRenders = 0;
+setTapeSort('sma200');
+assert(state.tapeSort === 'sma200', 'click stores sma200');
+assert(mem[TAPE_SORT_KEY] === 'sma200', 'persist sma200');
+assert(smaBtn.getAttribute('aria-pressed') === 'true', '200 pressed');
+assert(defaultBtn.getAttribute('aria-pressed') === 'false', 'Default unpressed');
+assert(tapeRenders === 1, 'setTapeSort re-renders');
+assert(codes(sortTapeRows(rows)) === 'NVDA,MSFT,AAPL,NVDL,MISS', 'sma200 desc, missing last');
+assert(mem[SETUP_SORT] === 'adr', 'must not clobber setup-sort');
+assert(mem[OVERLAYS] === '{}', 'must not clobber overlays');
+assert(mem[PACKS] === '{}', 'must not clobber packs');
+assert(!writes.some(w => w[1] === SETUP_SORT || w[1] === OVERLAYS || w[1] === PACKS), 'writes stay on tape-sort key');
+
+const writesAfterPersist = writes.length;
+state.tapeSort = 'default';
+tapeRenders = 0;
+const restored = restoreTapeSort();
+assert(restored === 'sma200', 'reload restores sma200');
+assert(state.tapeSort === 'sma200', 'state matches saved');
+assert(smaBtn.getAttribute('aria-pressed') === 'true', 'reload presses 200');
+assert(writes.length === writesAfterPersist, 'restore must not write storage');
+assert(tapeRenders === 0, 'restore does not render; boot restores before first tape render');
+assert(codes(sortTapeRows(rows)) === 'NVDA,MSFT,AAPL,NVDL,MISS', 'restored sort is live before tape render');
+
+filterValue = 'mega';
+assert(codes(prepareTapeRows(rows)) === 'MSFT,AAPL', 'watchlist filter still applies first');
+filterValue = '';
+assert(codes(prepareTapeRows(rows)) === 'NVDA,MSFT,AAPL,NVDL,MISS', 'empty filter + restored sma200');
+
+localStorage.setItem(TAPE_SORT_KEY, 'nope');
+restoreTapeSort();
+assert(state.tapeSort === 'default', 'invalid stored value → default');
+assert(defaultBtn.getAttribute('aria-pressed') === 'true', 'invalid restore presses Default');
+
+localStorage.setItem(TAPE_SORT_KEY, 'SMA200');
+restoreTapeSort();
+assert(state.tapeSort === 'sma200', 'stored SMA200 normalizes');
+
+setTapeSort('nope');
+assert(state.tapeSort === 'default', 'invalid click → default');
+assert(mem[TAPE_SORT_KEY] === 'default', 'invalid click persists default');
+
+process.stdout.write(JSON.stringify({
+    ok: true,
+    key: TAPE_SORT_KEY,
+    restored: 'sma200',
+    sma200Order: 'NVDA,MSFT,AAPL,NVDL,MISS',
+    setupSort: mem[SETUP_SORT],
+    overlays: mem[OVERLAYS],
+}));
+"""
+        proc = subprocess.run(
+            [node, "-e", script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr or proc.stdout)
+        payload = json.loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["key"], "whats-news-tape-sort")
+        self.assertEqual(payload["restored"], "sma200")
+        self.assertEqual(payload["sma200Order"], "NVDA,MSFT,AAPL,NVDL,MISS")
+        self.assertEqual(payload["setupSort"], "adr")
+        self.assertEqual(payload["overlays"], "{}")
 
 
 if __name__ == "__main__":
