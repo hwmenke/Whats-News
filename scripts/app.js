@@ -18,6 +18,7 @@ let state = {
     portfolio:    {},   // symbol -> snapshot
     portfolioMeta: null,
     tapeMode: 'all',   // 'all' | 'breakout' | 'alerts'
+    tapeSort: 'default', // 'default' | 'sma200' — client-side tape chip order only
     seenAlerts: new Set(),
     deskOnly: true,    // sidebar: hide univ:* archive tickers
     checklist: { regime: false, stop: false, size: false, plan: false },
@@ -458,6 +459,33 @@ function tapeAtrPctSpan(row) {
     return txt ? `<span class="tape-atr">${txt}</span>` : '';
 }
 
+function tapeSma200Dist(row) {
+    const n = Number(row && row.dist_sma200_pct);
+    return Number.isFinite(n) ? n : null;
+}
+
+// Client-side tape order. Default keeps API order (All = day %, Breakout =
+// queue rank, Alerts = RSI list). sma200 = signed dist_sma200_pct descending
+// (farthest above SMA200 first); missing values sort last. Does not rewrite
+// the watchlist, so j/k still walks visibleSymbolCodes().
+function sortTapeRows(rows) {
+    // Tape-only. j/k still walks visibleSymbolCodes() on the filtered list.
+    const list = Array.isArray(rows) ? rows.slice() : [];
+    if ((state.tapeSort || 'default') !== 'sma200') return list;
+    return list.sort((a, b) => {
+        const va = tapeSma200Dist(a);
+        const vb = tapeSma200Dist(b);
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        return vb - va;
+    });
+}
+
+function prepareTapeRows(rows) {
+    return sortTapeRows(filterByWatchlistQuery(rows));
+}
+
 function renderPortfolioTape(data) {
     const bar = document.getElementById('portfolio-tape');
     const chips = document.getElementById('tape-chips');
@@ -513,7 +541,7 @@ function renderPortfolioTape(data) {
 }
 
 function renderAllChips(tapeAll, chips) {
-    const rows = filterByWatchlistQuery(tapeAll);
+    const rows = prepareTapeRows(tapeAll);
     if (!rows.length) {
         chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No names yet</span>';
         return;
@@ -545,7 +573,7 @@ function renderAllChips(tapeAll, chips) {
 // Breakout chips — near-high + volume-confirmed names (Qullamaggie loop),
 // with an EP flag and distance-from-high, shown when tape mode = "breakout".
 function renderBreakoutChips(data, chips) {
-    const queue = filterByWatchlistQuery(data.breakout_queue || []);
+    const queue = prepareTapeRows(data.breakout_queue || []);
     if (!queue.length) {
         chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No breakout names</span>';
         return;
@@ -575,7 +603,7 @@ function renderBreakoutChips(data, chips) {
 
 // Alerts chips — RSI overbought/oversold names only, shown when tape mode = "alerts".
 function renderAlertChips(data, chips) {
-    const alertRows = filterByWatchlistQuery((data.tape || data.symbols || []).filter(r => r.alert));
+    const alertRows = prepareTapeRows((data.tape || data.symbols || []).filter(r => r.alert));
     if (!alertRows.length) {
         chips.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">No alerting names</span>';
         return;
@@ -609,6 +637,14 @@ function setTapeMode(mode) {
     state.tapeMode = mode;
     document.querySelectorAll('.tape-mode-btn').forEach(btn => {
         setPressed(btn, btn.dataset.mode === mode);
+    });
+    if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
+}
+
+function setTapeSort(mode) {
+    state.tapeSort = mode === 'sma200' ? 'sma200' : 'default';
+    document.querySelectorAll('.tape-sort-btn').forEach(btn => {
+        setPressed(btn, btn.dataset.sort === state.tapeSort);
     });
     if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
 }
@@ -3643,6 +3679,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.addEventListener('click', () => setTapeMode(btn.dataset.mode));
     });
     setTapeMode(state.tapeMode);
+
+    // Tape sort — Default (API order) / SMA200 distance. Client-side only.
+    document.querySelectorAll('.tape-sort-btn').forEach(btn => {
+        btn.addEventListener('click', () => setTapeSort(btn.dataset.sort));
+    });
+    setTapeSort(state.tapeSort);
 
     document.getElementById('kbd-help')?.addEventListener('click', e => {
         if (e.target.id === 'kbd-help') closeKbdHelp();
