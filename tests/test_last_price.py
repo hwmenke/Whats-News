@@ -94,6 +94,37 @@ function loadDesk(store) {
     return ctx;
 }
 
+function seedBars(ctx, dailyRows, weeklyRows) {
+    const payload = JSON.stringify({ daily: dailyRows, weekly: weeklyRows });
+    vm.runInContext(`
+        (function(seed) {
+            function makeCandle() {
+                const created = [];
+                const removed = [];
+                return {
+                    created,
+                    removed,
+                    createPriceLine(opts) { created.push(opts); return { opts }; },
+                    removePriceLine(line) { removed.push(line); },
+                };
+            }
+            series.daily.candle = makeCandle();
+            series.weekly.candle = makeCandle();
+            rawRows.daily = seed.daily;
+            rawRows.weekly = seed.weekly;
+        })(${payload});
+    `, ctx);
+}
+
+function painted(ctx) {
+    return vm.runInContext(`({
+        daily: series.daily.candle.created.map(o => ({ price: o.price, title: o.title, color: o.color })),
+        weekly: series.weekly.candle.created.map(o => ({ price: o.price, title: o.title, color: o.color })),
+        dailyRemoved: series.daily.candle.removed.length,
+        weeklyRemoved: series.weekly.candle.removed.length,
+    })`, ctx);
+}
+
 const store = makeStore();
 let desk = loadDesk(store);
 assert(typeof desk.lastCloseFromRows === 'function', 'lastCloseFromRows missing');
@@ -139,25 +170,24 @@ assert(opts.color !== '#4ade80', 'not PDL');
 assert(opts.axisLabelVisible === true, 'axis label');
 assert(opts.lineStyle === 0, 'solid, not PDC dashed');
 
-desk.rawRows.daily = rows;
-desk.rawRows.weekly = weeklyRows;
+seedBars(desk, rows, weeklyRows);
 desk.setLastPriceOn(true, { persist: false, apply: true });
 assert(desk.lastPriceIsOn() === true, 'toggled on');
-const dailyLines = desk.series.daily.candle.created;
-const weeklyLines = desk.series.weekly.candle.created;
-assert(dailyLines.length === 1, 'one daily last line');
-assert(weeklyLines.length === 1, 'one weekly last line');
-almost(dailyLines[0].price, 12);
-almost(weeklyLines[0].price, 15);
-assert(dailyLines[0].title === 'Last', 'daily title');
-assert(weeklyLines[0].title === 'Last', 'weekly title');
-assert(dailyLines[0].price !== 10, 'daily must not be PDC prior close');
-assert(weeklyLines[0].price !== 11, 'weekly must not be prior week close');
+const linesOn = painted(desk);
+assert(linesOn.daily.length === 1, 'one daily last line');
+assert(linesOn.weekly.length === 1, 'one weekly last line');
+almost(linesOn.daily[0].price, 12);
+almost(linesOn.weekly[0].price, 15);
+assert(linesOn.daily[0].title === 'Last', 'daily title');
+assert(linesOn.weekly[0].title === 'Last', 'weekly title');
+assert(linesOn.daily[0].price !== 10, 'daily must not be PDC prior close');
+assert(linesOn.weekly[0].price !== 11, 'weekly must not be prior week close');
 
 desk.setLastPriceOn(false, { persist: false, apply: true });
-assert(desk.series.daily.candle.created.length === 1, 'cleared then not redrawn');
-assert(desk.series.daily.candle.removed.length >= 1, 'daily line removed when off');
-assert(desk.series.weekly.candle.removed.length >= 1, 'weekly line removed when off');
+const linesOff = painted(desk);
+assert(linesOff.daily.length === 1, 'cleared then not redrawn');
+assert(linesOff.dailyRemoved >= 1, 'daily line removed when off');
+assert(linesOff.weeklyRemoved >= 1, 'weekly line removed when off');
 
 const OVERLAYS = 'whats-news-chart-overlays';
 desk.applySavedOverlays();
