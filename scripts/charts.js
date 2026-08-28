@@ -389,7 +389,7 @@ function paintOhlcLegend(freq, param) {
     const chgStr = chg == null ? '' : `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
     const vol = row.volume != null ? Number(row.volume).toLocaleString() : '—';
     const maBits = _maLegendBits(freq, idx);
-    // Always-on ADR% (daily series) + dist-to-SMA200 (hovered bar). Helper in legend_stats.js.
+    // Always-on ADR% / RVOL / 52H gap (daily) + dist-to-SMA200. Helper in legend_stats.js.
     const statBits = (typeof legendStatHtmlBits === 'function') ? legendStatHtmlBits(freq, idx) : '';
     el.innerHTML = `<span class="lg-date">${row.date}</span>`
         + ` <span class="${tone}">O ${_fmtPx(row.open)}</span>`

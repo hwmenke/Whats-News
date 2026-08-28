@@ -621,6 +621,21 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function formatSma200DistLegend", stats)
         self.assertIn("const ADR_LOOKBACK = 20", stats)
         self.assertIn("const ADR_MIN_BARS = 5", stats)
+        self.assertIn("const LEGEND_RVOL_LOOKBACK = 20", stats)
+        self.assertIn("const LEGEND_52W_BARS = 252", stats)
+        self.assertIn("const LEGEND_TIMES = '\\u00d7'", stats)
+        self.assertIn("function computeRvol", stats)
+        self.assertIn("function high52AsOfBar", stats)
+        self.assertIn("function gapFrom52hPct", stats)
+        self.assertIn("function formatRvolLegend", stats)
+        self.assertIn("function format52hGapLegend", stats)
+        self.assertIn("function _legendAvg20Vol", stats)
+        self.assertIn("rows.slice(Math.max(0, i - 20), i).map(r => r.volume || 0)", stats)
+        self.assertIn("rows.slice(Math.max(0, i - 20), i).map(r => r.volume || 0)", charts)
+        self.assertIn("const FIFTY_TWO_WEEK_BARS = 252", charts)
+        self.assertIn("evaluated per hovered index", stats)
+        self.assertIn("RVOL", stats)
+        self.assertIn("52H", stats)
         self.assertIn("lg-stat", stats)
         self.assertIn("not the hovered window", stats)
         self.assertIn("ADR stays daily", stats)
@@ -639,10 +654,20 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("def format_legend_adr", port)
         self.assertIn("def format_legend_sma200_dist", port)
         self.assertIn("def legend_stat_text_bits", port)
+        self.assertIn("def legend_avg20_vol", port)
+        self.assertIn("def legend_rvol", port)
+        self.assertIn("def legend_high52", port)
+        self.assertIn("def legend_gap_from_52h_pct", port)
+        self.assertIn("def format_legend_rvol", port)
+        self.assertIn("def format_legend_52h_gap", port)
+        self.assertIn("LEGEND_52W_BARS = 252", port)
         self.assertNotIn("activeSma", stats)
         self.assertNotIn("smaShown", stats)
+        self.assertNotIn("activeOverlays", stats)
         self.assertNotIn("share float", stats.lower())
         self.assertNotIn("share_float", stats)
+        self.assertNotIn("share float", port.lower())
+        self.assertNotIn("share_float", port)
         for blob in (stats, charts, html, app_js, port, spy_js, setup):
             self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
 
@@ -673,7 +698,7 @@ class FrontendContractTests(unittest.TestCase):
             self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
 
 class LegendStatsMathTests(unittest.TestCase):
-    """ADR% and dist-to-SMA200 — same formula as scripts/legend_stats.js."""
+    """ADR%, RVOL, 52H gap, and dist-to-SMA200 — same formulas as scripts/legend_stats.js."""
 
     def test_adr_mean_last_20_valid_daily_bars(self):
         bar = {"high": 102.41, "low": 100.0, "close": 100.0}
@@ -727,6 +752,84 @@ class LegendStatsMathTests(unittest.TestCase):
         )
         self.assertEqual(omitted, [])
 
+    def test_rvol_prior_20_excluding_today(self):
+        prior = [{"volume": 100}] * 20
+        rows = prior + [{"volume": 180}]
+        rvol = portfolio.legend_rvol(rows, 20)
+        self.assertAlmostEqual(rvol, 1.8)
+        self.assertEqual(portfolio.format_legend_rvol(rvol), "RVOL 1.8\u00d7")
+        # Partial window still averages whatever prior bars exist.
+        short = [{"volume": 50}, {"volume": 150}, {"volume": 200}]
+        self.assertAlmostEqual(portfolio.legend_rvol(short, 2), 2.0)
+        self.assertIsNone(portfolio.legend_rvol(rows, 0))
+        self.assertIsNone(portfolio.legend_avg20_vol(rows, 0))
+
+    def test_rvol_omits_when_avg_missing_or_zero(self):
+        zeros = [{"volume": 0}] * 20 + [{"volume": 500}]
+        self.assertIsNone(portfolio.legend_rvol(zeros, 20))
+        self.assertEqual(portfolio.format_legend_rvol(None), "")
+        missing_today = [{"volume": 100}] * 20 + [{"high": 10, "close": 10}]
+        self.assertIsNone(portfolio.legend_rvol(missing_today, 20))
+        self.assertIsNone(portfolio.legend_rvol([], 0))
+        self.assertIsNone(portfolio.legend_rvol(None, 5))
+
+    def test_52h_gap_per_bar_252_session_window(self):
+        close = 95.8
+        high52 = 100.0
+        gap = portfolio.legend_gap_from_52h_pct(close, high52)
+        self.assertAlmostEqual(gap, -4.2)
+        self.assertEqual(portfolio.format_legend_52h_gap(gap), "52H \u22124.2%")
+        self.assertEqual(portfolio.format_legend_52h_gap(0.0), "52H 0.0%")
+        self.assertEqual(portfolio.format_legend_52h_gap(0.04), "52H 0.0%")
+        self.assertEqual(
+            portfolio.format_legend_52h_gap(portfolio.legend_gap_from_52h_pct(101.0, 100.0)),
+            "52H +1.0%",
+        )
+        self.assertIsNone(portfolio.legend_gap_from_52h_pct(95.8, None))
+        self.assertIsNone(portfolio.legend_gap_from_52h_pct(95.8, 0))
+        self.assertEqual(portfolio.format_legend_52h_gap(None), "")
+
+        old = {"high": 500.0, "close": 400.0, "volume": 100}
+        recent = {"high": 100.0, "low": 90.0, "close": 95.8, "volume": 100}
+        rows = [old] + [recent] * 252
+        self.assertEqual(len(rows), 253)
+        self.assertAlmostEqual(portfolio.legend_high52(rows, 252), 100.0)
+        self.assertAlmostEqual(portfolio.legend_high52(rows, 0), 500.0)
+        self.assertAlmostEqual(
+            portfolio.legend_gap_from_52h_pct(rows[252]["close"], portfolio.legend_high52(rows, 252)),
+            -4.2,
+        )
+
+    def test_legend_bits_rvol_and_52h_daily_only(self):
+        daily_adr = [{"high": 102.41, "low": 100.0, "close": 100.0, "volume": 100}] * 20
+        hovered = [{"high": 100.0, "low": 90.0, "close": 100.0, "volume": 100}] * 20
+        hovered = hovered + [{"high": 100.0, "low": 90.0, "close": 95.8, "volume": 180}]
+        sma200 = 95.8 / 1.081  # (95.8 / sma − 1) * 100 = +8.1
+        daily_bits = portfolio.legend_stat_text_bits(
+            "daily",
+            close=95.8,
+            sma200=sma200,
+            daily_rows=daily_adr,
+            rows=hovered,
+            idx=20,
+        )
+        weekly_bits = portfolio.legend_stat_text_bits(
+            "weekly",
+            close=96.8,
+            sma200=100.0,
+            daily_rows=daily_adr,
+            rows=hovered,
+            idx=20,
+        )
+        self.assertEqual(
+            daily_bits,
+            ["ADR 2.41%", "RVOL 1.8\u00d7", "52H \u22124.2%", "200 +8.1%"],
+        )
+        self.assertEqual(weekly_bits, ["200 \u22123.2%"])
+        self.assertEqual(
+            " ".join(daily_bits),
+            "ADR 2.41% RVOL 1.8\u00d7 52H \u22124.2% 200 +8.1%",
+        )
 
 
 class NewsDateMarkersContractTests(unittest.TestCase):
