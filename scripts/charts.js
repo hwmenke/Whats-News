@@ -307,6 +307,7 @@ function initCharts() {
     syncPanels();
     setupResizeObserver();
     setupCrosshairLegend();
+    setupBarClickJournal();
     setupFitAllOnDoubleClick();
     applySavedPaneVisibility();
     applySavedPacks();
@@ -404,6 +405,20 @@ function setupCrosshairLegend() {
         if (!chart) return;
         paintOhlcLegend(freq, {});
         chart.subscribeCrosshairMove(param => paintOhlcLegend(freq, param || {}));
+    });
+}
+
+// Click a daily price bar → journal focused on that date.
+// Weekly uses the week-ending date on the bar (same handler; empty click is a no-op).
+function setupBarClickJournal() {
+    ['daily', 'weekly'].forEach(freq => {
+        const chart = charts[freq].main;
+        if (!chart) return;
+        chart.subscribeClick(param => {
+            const date = _legendTimeKey(param && param.time);
+            if (!date) return;
+            if (typeof onChartBarClick === 'function') onChartBarClick({ freq, date });
+        });
     });
 }
 
