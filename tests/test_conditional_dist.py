@@ -59,6 +59,21 @@ class FeatureParsingTests(unittest.TestCase):
             with self.assertRaises(cd.ConditionError):
                 cd.resolve_feature(bad, self.df)
 
+    def test_roc_matches_pandas(self):
+        got = cd.resolve_feature("ROC(20)", self.df)
+        pd.testing.assert_series_equal(got, self.df["close"].pct_change(20) * 100.0, check_names=False)
+        with self.assertRaises(cd.ConditionError):
+            cd.resolve_feature("ROC", self.df)
+
+
+class DescribeTests(unittest.TestCase):
+    def test_std_is_none_for_single_sample(self):
+        d = cd._describe(pd.Series([0.03]))
+        self.assertEqual(d["count"], 1)
+        self.assertIsNone(d["std"])
+        self.assertIsNone(d["skew"])
+        self.assertEqual(d["mean"], 0.03)
+
 
 class ConditionEvalTests(unittest.TestCase):
     def test_constant_threshold_and_nan_excluded(self):
@@ -151,6 +166,18 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(len(hist["baseline"]), 30)
         # Conditional counts cannot exceed the conditional sample size.
         self.assertLessEqual(sum(hist["conditional"]), result["by_horizon"]["5"]["conditional"]["count"])
+
+    @patch("conditional_dist.db.get_ohlcv_df")
+    def test_effective_count_discounts_overlap(self, mock_df):
+        mock_df.return_value = self.df
+        result = cd.compute_conditional_distribution(
+            "AAPL", [{"left": "RSI(14)", "op": "<", "right": 60}], horizons=[10]
+        )
+        block = result["by_horizon"]["10"]["conditional"]
+        self.assertAlmostEqual(block["effective_count"], round(block["count"] / 10, 1))
+        self.assertLess(block["effective_count"], block["count"])
+        self.assertIn("Matched", result["message"])
+        self.assertEqual(result["return_unit"], "fraction")
 
     @patch("conditional_dist.db.get_ohlcv_df")
     def test_empty_match_is_graceful(self, mock_df):

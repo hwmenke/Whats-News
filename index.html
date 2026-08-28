@@ -220,6 +220,7 @@
       <button id="tab-charts" class="tab-btn active" onclick="switchTab('charts')">Charts</button>
       <button id="tab-news" class="tab-btn" onclick="switchTab('news')" title="This symbol">News</button>
       <button id="tab-stats" class="tab-btn" onclick="switchTab('stats')">Stats</button>
+      <button id="tab-dist" class="tab-btn" onclick="switchTab('dist')" title="Conditional forward-return distributions">Distributions</button>
       <button id="tab-knn" class="tab-btn" onclick="switchTab('knn')">KNN</button>
       <button id="tab-backtest" class="tab-btn" onclick="switchTab('backtest')">Backtest</button>
       <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">Trend</button>
@@ -446,6 +447,40 @@
       </div>
 
     </div><!-- #stats-area -->
+
+    <!-- ── Conditional Distributions Area ── -->
+    <div id="dist-area" class="stats-container" style="display:none;">
+      <div class="stats-card dist-builder">
+        <div class="stats-card-header">Conditional Forward-Return Distribution</div>
+        <p class="dist-help">Filter to the bars where every condition holds, then see how this symbol did over the next N trading days versus its unconditional baseline.</p>
+
+        <div class="dist-presets">
+          <span class="dist-section-label">Presets</span>
+          <button class="preset-pill" onclick="applyDistPreset('rsi_os')">RSI(14) &lt; 30</button>
+          <button class="preset-pill" onclick="applyDistPreset('rsi2_os')">RSI(2) &lt; 10</button>
+          <button class="preset-pill" onclick="applyDistPreset('trend_stack')">price &gt; MA(50) &amp; MA(20) &gt; MA(50)</button>
+          <button class="preset-pill" onclick="applyDistPreset('overbought')">RSI(14) &gt; 70</button>
+        </div>
+
+        <div id="dist-conditions"></div>
+        <button class="btn-ghost dist-add" onclick="addConditionRow()">+ Add condition</button>
+
+        <div class="dist-horizons">
+          <span class="dist-section-label">Horizons (trading days)</span>
+          <button class="horizon-pill active" data-h="5" onclick="toggleHorizon(this)">5</button>
+          <button class="horizon-pill active" data-h="10" onclick="toggleHorizon(this)">10</button>
+          <button class="horizon-pill" data-h="21" onclick="toggleHorizon(this)">21</button>
+          <input id="dist-horizon-custom" type="number" min="1" max="250" placeholder="+ N"
+                 onkeydown="if(event.key==='Enter')addHorizonChip()">
+          <button class="btn-ghost dist-add" onclick="addHorizonChip()">Add</button>
+        </div>
+
+        <button id="btn-run-dist" class="btn-run-dist" onclick="runDistribution()">Run distribution</button>
+        <div id="dist-summary" class="dist-summary"></div>
+      </div>
+
+      <div id="dist-results" class="stats-grid"></div>
+    </div><!-- #dist-area -->
 
     <!-- ── KNN Area ── -->
     <div id="knn-area" class="stats-container" style="display:none;">

@@ -1458,6 +1458,163 @@ html, body {
   width: 100%;
 }
 
+/* ═══════════════════ CONDITIONAL DISTRIBUTIONS ═══════════════════ */
+
+.dist-builder { margin-bottom: 20px; }
+
+.dist-help {
+  margin: -8px 0 16px;
+  font-size: 13px;
+  color: var(--text-muted, #8a8a98);
+  line-height: 1.5;
+  max-width: 720px;
+}
+
+.dist-section-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #8a8a98;
+  margin-right: 6px;
+}
+
+.dist-presets,
+.dist-horizons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.preset-pill,
+.horizon-pill {
+  background: #26262e;
+  color: #c9d1d9;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.preset-pill:hover,
+.horizon-pill:hover { background: #303039; }
+
+.horizon-pill.active {
+  background: rgba(79,172,254,0.18);
+  border-color: #4facfe;
+  color: #4facfe;
+  font-weight: 600;
+}
+
+.dist-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.dist-row select,
+.dist-row input,
+#dist-horizon-custom {
+  background: #16161b;
+  color: #e6edf3;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.dist-row input { width: 110px; }
+#dist-horizon-custom { width: 80px; }
+
+.dist-remove {
+  background: transparent;
+  color: #ef4444;
+  border: 1px solid rgba(239,68,68,0.4);
+  border-radius: 8px;
+  width: 30px;
+  height: 32px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dist-remove:hover { background: rgba(239,68,68,0.12); }
+
+.btn-ghost.dist-add {
+  background: transparent;
+  color: #4facfe;
+  border: 1px dashed rgba(79,172,254,0.4);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  margin: 4px 0 8px;
+}
+.btn-ghost.dist-add:hover { background: rgba(79,172,254,0.08); }
+
+.btn-run-dist {
+  background: #4facfe;
+  color: #04121f;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+}
+.btn-run-dist:hover { background: #6fbcff; }
+.btn-run-dist:disabled { opacity: 0.6; cursor: default; }
+
+.dist-summary {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #c9d1d9;
+  font-variant-numeric: tabular-nums;
+}
+
+.dist-effn {
+  margin: -10px 0 12px;
+  font-size: 11px;
+  color: #8a8a98;
+  font-variant-numeric: tabular-nums;
+}
+
+.dist-empty {
+  color: #8a8a98;
+  font-size: 14px;
+  padding: 20px 0;
+  text-align: center;
+}
+
+.dist-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.dist-table th,
+.dist-table td {
+  text-align: right;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.dist-table th {
+  color: #8a8a98;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+.dist-table th:first-child,
+.dist-table td.dist-metric { text-align: left; color: #8a8a98; }
+.dist-table td.dist-base { color: #8a8a98; }
+
 /* ═══════════════════ SCANNER (signal-based) ═══════════════════ */
 
 .scanner-controls {

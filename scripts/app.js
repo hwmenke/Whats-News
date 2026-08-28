@@ -29,6 +29,7 @@ const JOURNAL_KEY = 'whats-news-journal';
 const PANES_KEY   = 'whats-news-panes';
 
 let statsCharts = {};
+let distCharts = {};
 let backtestEquityChart = null;
 let scannerPollTimer = null;
 
@@ -1065,6 +1066,9 @@ async function selectSymbol(symbol) {
         updateSymbolHeader(symbol, null);
     } else if (state.activeTab === 'trend') {
         await loadAdaptiveTrendData(symbol);
+    } else if (state.activeTab === 'dist') {
+        updateSymbolHeader(symbol, null);
+        // Distribution is triggered manually via Run; keep prior results cleared.
     }
     // Scanner tab doesn't depend on the selected symbol
 }
@@ -1445,6 +1449,7 @@ async function switchTab(tabId) {
     document.getElementById('chart-area').style.display        = 'none';
     document.getElementById('news-area').style.display         = 'none';
     document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('dist-area').style.display         = 'none';
     document.getElementById('knn-area').style.display          = 'none';
     document.getElementById('backtest-area').style.display     = 'none';
     document.getElementById('trend-area').style.display        = 'none';
@@ -1460,6 +1465,9 @@ async function switchTab(tabId) {
     } else if (tabId === 'stats') {
         showStatsArea();
         if (state.activeSymbol) loadStatsData(state.activeSymbol);
+    } else if (tabId === 'dist') {
+        showDistArea();
+        if (state.activeSymbol) updateSymbolHeader(state.activeSymbol, null);
     } else if (tabId === 'knn') {
         document.getElementById('knn-area').style.display = 'block';
         if (state.activeSymbol) loadKNN(state.activeSymbol);
@@ -1493,6 +1501,22 @@ function showStatsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+}
+
+function showDistArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('news-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('dist-area').style.display         = 'block';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    if (!document.querySelector('#dist-conditions .dist-row')) {
+        addConditionRow({ left: 'RSI(14)', op: '<', right: 30 });
+    }
 }
 
 function showChartArea() {
@@ -1771,6 +1795,205 @@ function renderStats(data) {
         },
         options: baseChartOpts
     });
+}
+
+// ── Conditional distributions ────────────────────────────────
+const DIST_FEATURES = ['price', 'RSI(14)', 'RSI(2)', 'MA(20)', 'MA(50)', 'MA(200)', 'EMA(20)', 'EMA(50)', 'ROC(20)', 'MACD_HIST', 'volume'];
+const DIST_OPS = ['<', '<=', '>', '>='];
+const DIST_PRESETS = {
+    rsi_os:      [{ left: 'RSI(14)', op: '<', right: 30 }],
+    rsi2_os:     [{ left: 'RSI(2)', op: '<', right: 10 }],
+    overbought:  [{ left: 'RSI(14)', op: '>', right: 70 }],
+    trend_stack: [{ left: 'price', op: '>', right: 'MA(50)' }, { left: 'MA(20)', op: '>', right: 'MA(50)' }],
+};
+
+const featureOptions = sel =>
+    DIST_FEATURES.map(f => `<option value="${f}"${f === sel ? ' selected' : ''}>${f}</option>`).join('');
+
+function buildConditionRow(cond = {}) {
+    const row = document.createElement('div');
+    row.className = 'dist-row';
+    const rightIsFeature = DIST_FEATURES.includes(cond.right);
+    row.innerHTML = `
+        <select class="dist-left">${featureOptions(cond.left)}</select>
+        <select class="dist-op">${DIST_OPS.map(o => `<option${o === cond.op ? ' selected' : ''}>${o}</option>`).join('')}</select>
+        <select class="dist-rmode">
+            <option value="number"${rightIsFeature ? '' : ' selected'}>value</option>
+            <option value="feature"${rightIsFeature ? ' selected' : ''}>feature</option>
+        </select>
+        <input class="dist-rnum" type="number" step="any" placeholder="e.g. 30"
+               style="${rightIsFeature ? 'display:none;' : ''}" value="${rightIsFeature ? '' : (cond.right ?? '')}">
+        <select class="dist-rfeat" style="${rightIsFeature ? '' : 'display:none;'}">${featureOptions(rightIsFeature ? cond.right : undefined)}</select>
+        <button class="dist-remove" title="Remove">&times;</button>`;
+    row.querySelector('.dist-rmode').addEventListener('change', e => {
+        const feat = e.target.value === 'feature';
+        row.querySelector('.dist-rnum').style.display  = feat ? 'none' : '';
+        row.querySelector('.dist-rfeat').style.display = feat ? '' : 'none';
+    });
+    row.querySelector('.dist-remove').addEventListener('click', () => row.remove());
+    return row;
+}
+
+function addConditionRow(cond) {
+    document.getElementById('dist-conditions').appendChild(buildConditionRow(cond));
+}
+
+function collectConditions() {
+    return [...document.querySelectorAll('#dist-conditions .dist-row')].map(row => {
+        const feat = row.querySelector('.dist-rmode').value === 'feature';
+        const right = feat ? row.querySelector('.dist-rfeat').value
+                           : parseFloat(row.querySelector('.dist-rnum').value);
+        return { left: row.querySelector('.dist-left').value, op: row.querySelector('.dist-op').value, right };
+    }).filter(c => c.right !== '' && !(typeof c.right === 'number' && Number.isNaN(c.right)));
+}
+
+function collectHorizons() {
+    return [...document.querySelectorAll('#dist-area .horizon-pill.active[data-h]')]
+        .map(p => parseInt(p.dataset.h, 10))
+        .sort((a, b) => a - b);
+}
+
+function toggleHorizon(el) { el.classList.toggle('active'); }
+
+function addHorizonChip() {
+    const input = document.getElementById('dist-horizon-custom');
+    const h = parseInt(input.value, 10);
+    if (!h || h < 1 || h > 250) { toast('Horizon must be 1–250', 'warning'); return; }
+    if (document.querySelector(`#dist-area .horizon-pill[data-h="${h}"]`)) { input.value = ''; return; }
+    const chip = document.createElement('button');
+    chip.className = 'horizon-pill active';
+    chip.dataset.h = h;
+    chip.textContent = h;
+    chip.onclick = () => toggleHorizon(chip);
+    input.parentElement.insertBefore(chip, input);
+    input.value = '';
+}
+
+function applyDistPreset(name) {
+    const preset = DIST_PRESETS[name];
+    if (!preset) return;
+    document.getElementById('dist-conditions').innerHTML = '';
+    preset.forEach(addConditionRow);
+}
+
+async function runDistribution() {
+    const symbol = state.activeSymbol;
+    if (!symbol) { toast('Select a symbol first', 'warning'); return; }
+    const conditions = collectConditions();
+    const horizons = collectHorizons();
+    if (!conditions.length) { toast('Add at least one condition', 'warning'); return; }
+    if (!horizons.length) { toast('Pick at least one horizon', 'warning'); return; }
+
+    const btn = document.getElementById('btn-run-dist');
+    btn.disabled = true;
+    btn.textContent = 'Running…';
+    try {
+        const data = await apiFetch(`${API}/conditional-distribution/${symbol}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conditions, horizons }),
+        });
+        renderDistribution(data);
+    } catch (e) {
+        toast('Distribution failed: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run distribution';
+    }
+}
+
+function renderDistribution(data) {
+    const summary = document.getElementById('dist-summary');
+    summary.textContent = `${data.symbol}: ${data.message} · ${data.start} → ${data.end}`;
+
+    Object.values(distCharts).forEach(c => c.destroy());
+    distCharts = {};
+
+    const results = document.getElementById('dist-results');
+    results.innerHTML = '';
+    if (!data.match_count) {
+        results.innerHTML = '<div class="stats-card"><div class="dist-empty">No bars matched these conditions. Loosen a threshold and run again.</div></div>';
+        return;
+    }
+
+    data.horizons.forEach(h => {
+        const block = data.by_horizon[String(h)];
+        if (!block) return;
+        const card = document.createElement('div');
+        card.className = 'stats-card';
+        card.innerHTML = `
+            <div class="stats-card-header">${h}-day forward return</div>
+            <div class="dist-effn">n = ${block.conditional.count} matched · effective n ≈ ${block.conditional.effective_count} (overlapping windows)</div>
+            <div class="chart-container-js"><canvas id="dist-canvas-${h}"></canvas></div>
+            <table class="dist-table"><thead><tr><th>Metric</th><th>Conditional</th><th>Baseline</th></tr></thead>
+            <tbody id="dist-tbody-${h}"></tbody></table>`;
+        results.appendChild(card);
+        buildDistChart(document.getElementById(`dist-canvas-${h}`), block.hist, `h${h}`);
+        fillDistStatsTable(document.getElementById(`dist-tbody-${h}`), block.conditional, block.baseline);
+    });
+}
+
+function _density(counts) {
+    const total = counts.reduce((a, b) => a + b, 0) || 1;
+    return counts.map(c => (c / total) * 100);
+}
+
+function buildDistChart(canvas, hist, key) {
+    if (distCharts[key]) distCharts[key].destroy();
+    const labels = hist.centers.map(c => (c * 100).toFixed(1) + '%');
+    distCharts[key] = new Chart(canvas, {
+        data: {
+            labels,
+            datasets: [
+                { type: 'bar', label: 'Baseline', data: _density(hist.baseline),
+                  backgroundColor: 'rgba(139,148,158,0.35)', borderColor: 'rgba(139,148,158,0.5)',
+                  borderWidth: 1, categoryPercentage: 1.0, barPercentage: 1.0, order: 2 },
+                { type: 'line', label: 'Conditional', data: _density(hist.conditional),
+                  borderColor: '#4facfe', backgroundColor: 'rgba(79,172,254,0.18)',
+                  borderWidth: 2, fill: true, tension: 0.3, pointRadius: 0, pointHoverRadius: 4, order: 1 },
+            ],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: true, labels: { color: '#8b949e', usePointStyle: true, boxWidth: 10 } },
+                tooltip: { callbacks: {
+                    title: items => (hist.centers[items[0].dataIndex] * 100).toFixed(2) + '%',
+                    label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}% of samples`,
+                } },
+            },
+            scales: {
+                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 10 }, callback: v => v + '%' } },
+                x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+            },
+        },
+    });
+}
+
+function fillDistStatsTable(tbody, cond, base) {
+    const pctColor = v => (Number.isFinite(v) && v >= 0) ? '#22c55e' : '#ef4444';
+    const rows = [
+        ['Mean', cond.mean, base.mean, 'pct', true],
+        ['Median', cond.median, base.median, 'pct', true],
+        ['Win rate', cond.win_rate, base.win_rate, 'pct', true],
+        ['Std', cond.std, base.std, 'pct', false],
+        ['Skew', cond.skew, base.skew, 'num', false],
+        ['Kurtosis', cond.kurtosis, base.kurtosis, 'num', false],
+        ['P05', cond.p05, base.p05, 'pct', true],
+        ['P25', cond.p25, base.p25, 'pct', true],
+        ['P75', cond.p75, base.p75, 'pct', true],
+        ['P95', cond.p95, base.p95, 'pct', true],
+    ];
+    const fmt = (v, t) => {
+        if (v === null || v === undefined || !Number.isFinite(v)) return '--';
+        return t === 'pct' ? (v * 100).toFixed(2) + '%' : v.toFixed(2);
+    };
+    tbody.innerHTML = rows.map(([label, c, b, t, signed]) => {
+        const cStyle = `font-weight:600;${signed ? `color:${pctColor(c)}` : ''}`;
+        return `<tr><td class="dist-metric">${label}</td>`
+             + `<td style="${cStyle}">${fmt(c, t)}</td>`
+             + `<td class="dist-base">${fmt(b, t)}</td></tr>`;
+    }).join('');
 }
 
 function updateSymbolHeader(symbol, last, prev) {

@@ -87,6 +87,10 @@ def resolve_feature(name, df: pd.DataFrame) -> pd.Series:
         if not period:
             raise ConditionError("Moving average needs a period, e.g. MA(50)")
         return close.rolling(period).mean()
+    if base == "roc":
+        if not period:
+            raise ConditionError("ROC needs a period, e.g. ROC(20)")
+        return close.pct_change(period) * 100.0  # percent momentum over `period` bars
     if base == "ema":
         if not period:
             raise ConditionError("EMA needs a period, e.g. EMA(20)")
@@ -170,7 +174,7 @@ def _describe(returns: pd.Series) -> dict:
         "count": n,
         "mean": float(r.mean()),
         "median": float(r.median()),
-        "std": float(r.std()),
+        "std": float(r.std()) if n > 1 else None,
         "skew": float(r.skew()) if n > 2 else None,
         "kurtosis": float(r.kurt()) if n > 3 else None,
         "min": float(r.min()),
@@ -216,22 +220,31 @@ def compute_conditional_distribution(symbol: str, conditions, horizons=DEFAULT_H
     horizons = [int(h) for h in horizons] or list(DEFAULT_HORIZONS)
     mask = build_mask(df, conditions)  # validates conditions, may raise
 
+    match_count = int(mask.sum())
+    bar_count = int(len(df))
     out = {
         "symbol": symbol,
         "horizons": horizons,
         "conditions": list(conditions or []),
-        "bar_count": int(len(df)),
-        "match_count": int(mask.sum()),
-        "match_rate": float(mask.mean()) if len(df) else 0.0,
+        "bar_count": bar_count,
+        "match_count": match_count,
+        "match_rate": float(mask.mean()) if bar_count else 0.0,
         "start": df.index.min().strftime("%Y-%m-%d"),
         "end": df.index.max().strftime("%Y-%m-%d"),
+        "return_unit": "fraction",
+        "message": f"Matched {match_count:,} of {bar_count:,} bars ({(match_count / bar_count * 100) if bar_count else 0:.1f}%)",
         "by_horizon": {},
     }
 
     for h in horizons:
         fr = forward_returns(df["close"], h)
+        cond = _describe(fr[mask])
+        # Matched bars within `h` days of each other share future days, so their
+        # forward returns overlap and are autocorrelated. Report an effective
+        # sample size (non-overlapping equivalent) so the count is not overread.
+        cond["effective_count"] = round(cond["count"] / h, 1) if cond["count"] else 0
         out["by_horizon"][str(h)] = {
-            "conditional": _describe(fr[mask]),
+            "conditional": cond,
             "baseline": _describe(fr),
             "hist": _histogram(fr[mask], fr, bins),
         }
