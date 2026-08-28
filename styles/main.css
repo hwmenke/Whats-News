@@ -575,6 +575,10 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
   color: var(--text-dim);
   font-size: 10px;
 }
+.tape-chip .tape-sma200 {
+  color: var(--text-dim);
+  font-size: 10px;
+}
 .tape-chip .tape-alert {
   font-size: 9px;
   font-weight: 700;
@@ -619,6 +623,13 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+.symbol-item .sym-sma200 {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .pm-copy-btn {

@@ -1311,5 +1311,119 @@ class CopyOhlcHotkeyTests(unittest.TestCase):
         )
 
 
+class TapeSma200ChipTests(unittest.TestCase):
+    """Compact SMA200 distance on tape/watchlist rows — same formula as legend_stats."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self._tmpdir.name, "p.db")
+        self._path_patch = patch.object(db, "DB_PATH", self.db_path)
+        self._path_patch.start()
+        db.init_db()
+        self.client = app_module.app.test_client()
+
+    def tearDown(self):
+        self._path_patch.stop()
+        self._tmpdir.cleanup()
+
+    def _seed(self, symbol="AAPL", n=80):
+        db.add_symbol(symbol)
+        idx = pd.date_range("2024-01-01", periods=n, freq="D")
+        close = 100 + np.linspace(0, 10, n) + np.sin(np.linspace(0, 6, n)) * 2
+        df = pd.DataFrame(
+            {
+                "open": close - 0.5,
+                "high": close + 1.0,
+                "low": close - 1.0,
+                "close": close,
+                "volume": np.full(n, 1_000_000.0),
+            },
+            index=idx,
+        )
+        db.upsert_ohlcv(symbol, "daily", df)
+        return close
+
+    def test_snapshot_sma200_field_when_enough_closes(self):
+        close = self._seed("AAPL", n=220)
+        snap = portfolio.snapshot_symbol("AAPL")
+        self.assertTrue(snap["ready"])
+        self.assertIn("sma200", snap)
+        self.assertIn("dist_sma200_pct", snap)
+        self.assertIsNotNone(snap["sma200"])
+        self.assertIsNotNone(snap["dist_sma200_pct"])
+        sma = float(np.mean(close[-200:]))
+        last = float(close[-1])
+        dist = (last / sma - 1.0) * 100
+        self.assertAlmostEqual(snap["sma200"], sma, places=2)
+        self.assertAlmostEqual(snap["dist_sma200_pct"], dist, places=2)
+        self.assertAlmostEqual(
+            snap["dist_sma200_pct"],
+            portfolio.legend_sma200_dist_pct(last, sma),
+            places=2,
+        )
+        txt = portfolio.format_legend_sma200_dist(snap["dist_sma200_pct"])
+        self.assertTrue(txt.startswith("200 "))
+        self.assertTrue(txt.endswith("%"))
+
+        res = self.client.get("/api/portfolio/snapshot")
+        self.assertEqual(res.status_code, 200)
+        tape_row = next(r for r in res.get_json()["tape"] if r["symbol"] == "AAPL")
+        self.assertIn("dist_sma200_pct", tape_row)
+        self.assertIsNotNone(tape_row["dist_sma200_pct"])
+        self.assertIn("sma200", tape_row)
+
+    def test_snapshot_omits_sma200_without_200_closes(self):
+        self._seed("THIN", n=199)
+        snap = portfolio.snapshot_symbol("THIN")
+        self.assertTrue(snap["ready"])
+        self.assertIn("sma200", snap)
+        self.assertIn("dist_sma200_pct", snap)
+        self.assertIsNone(snap["sma200"])
+        self.assertIsNone(snap["dist_sma200_pct"])
+        self.assertIsNone(portfolio.last_sma(pd.Series(np.arange(199.0)), 200))
+        self.assertAlmostEqual(portfolio.last_sma(pd.Series(np.arange(1.0, 201.0)), 200), 100.5)
+
+    def test_tape_markup_class_reuses_legend_format(self):
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("styles/main.css", encoding="utf-8") as fh:
+            css = fh.read()
+        with open("portfolio.py", encoding="utf-8") as fh:
+            port = fh.read()
+        with open("scripts/legend_stats.js", encoding="utf-8") as fh:
+            stats = fh.read()
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/spy_rs.js", encoding="utf-8") as fh:
+            spy_js = fh.read()
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+
+        self.assertIn("function tapeSma200Span", app_js)
+        self.assertIn("function sma200DistText", app_js)
+        self.assertIn('class="tape-sma200"', app_js)
+        self.assertIn("sym-sma200", app_js)
+        self.assertIn("formatSma200DistLegend", app_js)
+        self.assertIn("dist_sma200_pct", app_js)
+        self.assertIn("tapeSma200Span(row)", app_js)
+        self.assertIn(".tape-chip .tape-sma200", css)
+        self.assertIn(".symbol-item .sym-sma200", css)
+        self.assertIn("def last_sma", port)
+        self.assertIn("SMA200_BARS = 200", port)
+        self.assertIn("dist_sma200_pct", port)
+        self.assertIn("function formatSma200DistLegend", stats)
+        self.assertIn("function distToSma200Pct", stats)
+        self.assertEqual(portfolio.format_legend_sma200_dist(8.1), "200 +8.1%")
+        self.assertEqual(portfolio.format_legend_sma200_dist(-3.2), "200 \u22123.2%")
+        self.assertNotIn("share float", app_js.lower())
+        self.assertNotIn("share_float", app_js)
+        self.assertNotIn("share float", port.lower())
+        self.assertNotIn("share_float", port)
+        for blob in (app_js, css, port, stats, charts, html, spy_js, setup):
+            self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
+
+
 if __name__ == "__main__":
     unittest.main()
