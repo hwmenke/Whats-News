@@ -589,6 +589,113 @@ class FrontendContractTests(unittest.TestCase):
         for blob in (spy_js, charts, html, app_js, port):
             self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
 
+    def test_ohlc_legend_adr_sma200_contract(self):
+        with open("scripts/legend_stats.js", encoding="utf-8") as fh:
+            stats = fh.read()
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        with open("scripts/linked_ohlc.js", encoding="utf-8") as fh:
+            linked = fh.read()
+        with open("scripts/spy_rs.js", encoding="utf-8") as fh:
+            spy_js = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("styles/main.css", encoding="utf-8") as fh:
+            css = fh.read()
+        with open("portfolio.py", encoding="utf-8") as fh:
+            port = fh.read()
+        self.assertIn("function legendStatHtmlBits", stats)
+        self.assertIn("function computeAdrPct", stats)
+        self.assertIn("function distToSma200Pct", stats)
+        self.assertIn("function formatAdrLegend", stats)
+        self.assertIn("function formatSma200DistLegend", stats)
+        self.assertIn("const ADR_LOOKBACK = 20", stats)
+        self.assertIn("const ADR_MIN_BARS = 5", stats)
+        self.assertIn("lg-stat", stats)
+        self.assertIn("not the hovered window", stats)
+        self.assertIn("ADR stays daily", stats)
+        self.assertIn("legendStatHtmlBits(freq, idx)", charts)
+        self.assertIn("keep the last hovered bar", charts)
+        self.assertIn("legend-held", charts)
+        self.assertIn("paintLinkedTwinIfLive", charts)
+        self.assertIn("function setupBarClickJournal", charts)
+        self.assertIn("function paintLinkedTwin", linked)
+        self.assertIn("scripts/legend_stats.js", html)
+        self.assertLess(html.index("scripts/charts.js"), html.index("scripts/legend_stats.js"))
+        self.assertIn("scripts/spy_rs.js", html)
+        self.assertIn(".chart-ohlc-legend .lg-stat", css)
+        self.assertIn("def legend_adr_pct", port)
+        self.assertIn("def legend_sma200_dist_pct", port)
+        self.assertIn("def format_legend_adr", port)
+        self.assertIn("def format_legend_sma200_dist", port)
+        self.assertIn("def legend_stat_text_bits", port)
+        self.assertNotIn("activeSma", stats)
+        self.assertNotIn("smaShown", stats)
+        self.assertNotIn("share float", stats.lower())
+        self.assertNotIn("share_float", stats)
+        for blob in (stats, charts, html, app_js, port, spy_js, setup):
+            self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
+
+
+class LegendStatsMathTests(unittest.TestCase):
+    """ADR% and dist-to-SMA200 — same formula as scripts/legend_stats.js."""
+
+    def test_adr_mean_last_20_valid_daily_bars(self):
+        bar = {"high": 102.41, "low": 100.0, "close": 100.0}
+        rows = [bar] * 20
+        adr = portfolio.legend_adr_pct(rows)
+        self.assertAlmostEqual(adr, 2.41)
+        self.assertEqual(portfolio.format_legend_adr(adr), "ADR 2.41%")
+
+    def test_adr_skips_invalid_and_ignores_bars_beyond_20(self):
+        old = {"high": 200.0, "low": 100.0, "close": 100.0}  # 100% range
+        recent = {"high": 102.41, "low": 100.0, "close": 100.0}
+        bad = {"high": 0, "low": 0, "close": 100.0}
+        rows = [old] + [recent] * 19 + [bad] + [recent]
+        adr = portfolio.legend_adr_pct(rows)
+        self.assertAlmostEqual(adr, 2.41)
+
+    def test_adr_omits_when_fewer_than_five_valid_bars(self):
+        bar = {"high": 102.0, "low": 100.0, "close": 100.0}
+        self.assertIsNone(portfolio.legend_adr_pct([bar] * 4))
+        self.assertEqual(portfolio.format_legend_adr(None), "")
+        five = portfolio.legend_adr_pct([bar] * 5)
+        self.assertAlmostEqual(five, 2.0)
+
+    def test_sma200_distance_format(self):
+        up = portfolio.legend_sma200_dist_pct(108.1, 100.0)
+        down = portfolio.legend_sma200_dist_pct(96.8, 100.0)
+        self.assertAlmostEqual(up, 8.1)
+        self.assertAlmostEqual(down, -3.2)
+        self.assertEqual(portfolio.format_legend_sma200_dist(up), "200 +8.1%")
+        self.assertEqual(portfolio.format_legend_sma200_dist(down), "200 \u22123.2%")
+        self.assertIsNone(portfolio.legend_sma200_dist_pct(108.1, None))
+        self.assertIsNone(portfolio.legend_sma200_dist_pct(10, 0))
+        self.assertEqual(portfolio.format_legend_sma200_dist(None), "")
+
+    def test_legend_bits_adr_daily_only(self):
+        daily = [{"high": 102.41, "low": 100.0, "close": 100.0}] * 20
+        daily_bits = portfolio.legend_stat_text_bits(
+            "daily", close=108.1, sma200=100.0, daily_rows=daily
+        )
+        weekly_bits = portfolio.legend_stat_text_bits(
+            "weekly", close=96.8, sma200=100.0, daily_rows=daily
+        )
+        self.assertEqual(daily_bits, ["ADR 2.41%", "200 +8.1%"])
+        self.assertEqual(weekly_bits, ["200 \u22123.2%"])
+        self.assertEqual(
+            " ".join(daily_bits),
+            "ADR 2.41% 200 +8.1%",
+        )
+        omitted = portfolio.legend_stat_text_bits(
+            "weekly", close=100.0, sma200=None, daily_rows=daily
+        )
+        self.assertEqual(omitted, [])
+
 
 class SpyRsOverlayTests(unittest.TestCase):
     """close/SPY close comparison — not a published rating."""
