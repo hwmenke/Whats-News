@@ -802,7 +802,8 @@ class LegendStatsMathTests(unittest.TestCase):
 
     def test_legend_bits_rvol_and_52h_daily_only(self):
         daily_adr = [{"high": 102.41, "low": 100.0, "close": 100.0, "volume": 100}] * 20
-        hovered = daily_adr + [{"high": 100.0, "low": 90.0, "close": 95.8, "volume": 180}]
+        hovered = [{"high": 100.0, "low": 90.0, "close": 100.0, "volume": 100}] * 20
+        hovered = hovered + [{"high": 100.0, "low": 90.0, "close": 95.8, "volume": 180}]
         sma200 = 95.8 / 1.081  # (95.8 / sma − 1) * 100 = +8.1
         daily_bits = portfolio.legend_stat_text_bits(
             "daily",
