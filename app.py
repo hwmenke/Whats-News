@@ -280,7 +280,8 @@ def fetch_symbol(symbol):
     try:
         result = md.fetch_symbol(symbol.upper())
         if "error" in result:
-            return jsonify(result), 400
+            from data_fetcher import fetch_error_http_status
+            return jsonify(result), fetch_error_http_status(result)
         return jsonify(result)
     except Exception as exc:
         return _data_error(exc)

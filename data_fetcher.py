@@ -9,6 +9,45 @@ import yfinance as yf
 import pandas as pd
 import database as db
 
+# Yahoo / yfinance rate-limit fingerprints (message or exception class).
+_THROTTLE_MARKERS = (
+    "too many requests",
+    "429",
+    "rate limit",
+    "ratelimit",
+    "yfratelimit",
+    "temporarily blocked",
+)
+
+
+def classify_yahoo_error(exc) -> dict:
+    """Map a Yahoo/yfinance failure into a stable API error payload."""
+    if isinstance(exc, dict):
+        text = str(exc.get("error") or "")
+        name = str(exc.get("code") or "")
+    elif isinstance(exc, str):
+        text, name = exc, ""
+    else:
+        text = str(exc or "")
+        name = type(exc).__name__ if exc is not None else ""
+    blob = f"{name} {text}".lower()
+    if any(marker in blob for marker in _THROTTLE_MARKERS):
+        return {
+            "error": "Yahoo is rate-limiting. Try again in a minute.",
+            "code": "yahoo_throttle",
+            "retry_after_sec": 60,
+        }
+    return {"error": text or "Fetch failed", "code": "fetch_failed"}
+
+
+def fetch_error_http_status(result: dict) -> int:
+    """HTTP status for a fetch result dict (200 / 429 / 400)."""
+    if not result or "error" not in result:
+        return 200
+    if result.get("code") == "yahoo_throttle":
+        return 429
+    return 400
+
 
 def _clean_df(raw: pd.DataFrame) -> pd.DataFrame:
     """Normalize yfinance output to lowercase columns and drop NaN rows."""
@@ -48,23 +87,28 @@ def fetch_and_store(symbol: str, period: str = "2y", overlap_days: int = 3) -> d
     """
     sym = symbol.upper()
     print(f"++ Fetcher: Starting fetch for {sym}")
-    ticker = yf.Ticker(sym)
+    try:
+        ticker = yf.Ticker(sym)
 
-    # Check if we have existing data and can do an incremental fetch
-    last_date_str = db.get_latest_ohlcv_date(sym, "daily")
-    if last_date_str:
-        last_date  = datetime.date.fromisoformat(last_date_str)
-        start_date = last_date - datetime.timedelta(days=max(0, overlap_days))
-        start_str  = start_date.isoformat()
-        print(f"++ Fetcher: Incremental fetch for {sym} from {start_str} (overlap {overlap_days}d)")
-        raw = ticker.history(start=start_str, interval="1d", auto_adjust=True)
-    else:
-        print(f"++ Fetcher: Full {period} download for {sym}")
-        raw = ticker.history(period=period, interval="1d", auto_adjust=True)
+        # Check if we have existing data and can do an incremental fetch
+        last_date_str = db.get_latest_ohlcv_date(sym, "daily")
+        if last_date_str:
+            last_date  = datetime.date.fromisoformat(last_date_str)
+            start_date = last_date - datetime.timedelta(days=max(0, overlap_days))
+            start_str  = start_date.isoformat()
+            print(f"++ Fetcher: Incremental fetch for {sym} from {start_str} (overlap {overlap_days}d)")
+            raw = ticker.history(start=start_str, interval="1d", auto_adjust=True)
+        else:
+            print(f"++ Fetcher: Full {period} download for {sym}")
+            raw = ticker.history(period=period, interval="1d", auto_adjust=True)
+    except Exception as exc:
+        classified = classify_yahoo_error(exc)
+        print(f"!! Fetcher: {classified['code']} for {sym}: {exc}")
+        return {"symbol": sym, **classified}
 
     if raw.empty:
         print(f"!! Fetcher: No data returned for {sym}")
-        return {"symbol": sym, "error": f"No data returned for {sym}"}
+        return {"symbol": sym, "error": f"No data returned for {sym}", "code": "no_data"}
 
     daily_df = _clean_df(raw)
     print(f"++ Fetcher: Processed {len(daily_df)} daily bars")
@@ -165,9 +209,12 @@ def fetch_full_history(symbol: str, start: str = "2000-01-01",
 
         except Exception as exc:
             print(f"!! Fetcher: Attempt {attempt} failed for {sym}: {exc}")
+            classified = classify_yahoo_error(exc)
+            if classified.get("code") == "yahoo_throttle":
+                return {"symbol": sym, **classified}
             if attempt < max_retries:
                 print(f"   Retrying in {delay}s …")
                 time.sleep(delay)
                 delay *= 2
             else:
-                return {"symbol": sym, "error": str(exc)}
+                return {"symbol": sym, **classified}

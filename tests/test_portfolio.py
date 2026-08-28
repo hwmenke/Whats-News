@@ -194,6 +194,28 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("Shift+Enter", pal)
         self.assertIn("function visibleSymbolCodes", pal)
 
+    def test_news_surfaces_are_labeled(self):
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            js = fh.read()
+        self.assertIn("Watchlist news", html)
+        self.assertIn("News · this ticker", html)
+        self.assertIn("function syncNewsSurfaceLabels", js)
+        self.assertIn("News for this ticker", html)
+
+    def test_yahoo_throttle_banner_and_bulk_progress(self):
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            js = fh.read()
+        self.assertIn('id="yahoo-throttle-banner"', html)
+        self.assertIn("function showYahooThrottleBanner", js)
+        self.assertIn("yahoo_throttle", js)
+        self.assertIn('id="bulk-progress-log"', html)
+        self.assertIn("Downloading", js)
+        self.assertIn("Focus (f)", html)
+
     def test_ohlc_legend_and_watchlist_filter(self):
         with open("scripts/charts.js", encoding="utf-8") as fh:
             charts = fh.read()

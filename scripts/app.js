@@ -31,6 +31,17 @@ const PANES_KEY   = 'whats-news-panes';
 let statsCharts = {};
 let backtestEquityChart = null;
 let scannerPollTimer = null;
+let lastFetchError = null;
+
+class ApiError extends Error {
+    constructor(message, extras = {}) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = extras.status;
+        this.code = extras.code;
+        this.payload = extras.payload;
+    }
+}
 
 // ── Toast system ─────────────────────────────────────────────
 function toast(message, type = 'info', duration = 3500) {
@@ -45,15 +56,86 @@ function toast(message, type = 'info', duration = 3500) {
     }, duration);
 }
 
+function isYahooThrottle(err) {
+    if (!err) return false;
+    if (err.status === 429 || err.code === 'yahoo_throttle') return true;
+    const payloadCode = err.payload && err.payload.code;
+    if (payloadCode === 'yahoo_throttle') return true;
+    const msg = String(err.message || err).toLowerCase();
+    return /too many requests|rate.?limit|yahoo is rate-limiting|yfratelimit/.test(msg);
+}
+
+function showYahooThrottleBanner(symbol) {
+    const banner = document.getElementById('yahoo-throttle-banner');
+    if (!banner) return;
+    const empty = document.getElementById('empty-state');
+    const charts = document.getElementById('chart-area');
+    if (empty) empty.style.display = 'none';
+    if (charts) charts.style.display = 'flex';
+    banner.hidden = false;
+    banner.dataset.symbol = symbol || state.activeSymbol || '';
+    const msg = document.getElementById('yahoo-throttle-message');
+    if (msg) {
+        const name = banner.dataset.symbol || 'this ticker';
+        msg.textContent = `${name}: Yahoo is rate-limiting. Try again in a minute — the chart stays here instead of going blank.`;
+    }
+}
+
+function hideYahooThrottleBanner() {
+    const banner = document.getElementById('yahoo-throttle-banner');
+    if (banner) {
+        banner.hidden = true;
+        delete banner.dataset.symbol;
+    }
+}
+
+async function retryYahooFetch() {
+    const banner = document.getElementById('yahoo-throttle-banner');
+    const symbol = (banner && banner.dataset.symbol) || state.activeSymbol;
+    if (!symbol) {
+        toast('Pick a symbol first', 'warning');
+        return;
+    }
+    const ok = await fetchSymbolData(symbol);
+    if (ok) {
+        hideYahooThrottleBanner();
+        await loadChartData(symbol);
+    }
+}
+
+function syncNewsSurfaceLabels(symbol) {
+    const tab = document.getElementById('tab-news');
+    if (tab) {
+        tab.textContent = symbol ? `News · ${symbol}` : 'News · this ticker';
+        tab.title = symbol
+            ? `Headlines for ${symbol} only — Watchlist news is in the top bar`
+            : 'Headlines for the selected ticker only — Watchlist news is in the top bar';
+    }
+    const title = document.getElementById('news-title');
+    if (title) title.textContent = symbol ? `News for ${symbol}` : 'News for this ticker';
+    const scope = document.getElementById('news-scope-label');
+    if (scope) scope.textContent = symbol ? `${symbol} only` : 'Selected symbol only';
+}
+
 // ── API helpers ──────────────────────────────────────────────
 async function apiFetch(url, opts = {}) {
     console.log(`>> API Fetch: ${url}`, opts.method || 'GET');
     const res  = await fetch(url, opts);
     console.log(`<< API Response: ${res.status} ${res.statusText}`);
-    const data = await res.json();
+    let data = {};
+    try {
+        data = await res.json();
+    } catch {
+        data = {};
+    }
     if (!res.ok) {
-        console.error('!! API Error:', data.error || `HTTP ${res.status}`);
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const err = new ApiError(data.error || `HTTP ${res.status}`, {
+            status: res.status,
+            code: data.code,
+            payload: data,
+        });
+        console.error('!! API Error:', err.message);
+        throw err;
     }
     return data;
 }
@@ -907,15 +989,23 @@ async function removeSymbol(symbol) {
 // silent=true suppresses per-symbol toasts (used during bulk import)
 async function fetchSymbolData(symbol, silent = false) {
     console.log(`[App] Fetching data for ${symbol}...`);
+    lastFetchError = null;
     if (!silent) toast(`Downloading ${symbol} from Yahoo Finance…`, 'info', 5000);
     try {
         const res = await apiFetch(`${API}/fetch/${symbol}`, { method: 'POST' });
         console.log(`[App] Fetch complete for ${symbol}:`, res);
+        hideYahooThrottleBanner();
         if (!silent) toast(`${symbol}: ${res.daily_rows} daily / ${res.weekly_rows} weekly bars loaded`, 'success', 5000);
         return true;
     } catch (e) {
         console.error(`[App] Fetch failed for ${symbol}:`, e);
-        if (!silent) toast(`${symbol} fetch failed: ` + e.message, 'error');
+        lastFetchError = e;
+        if (isYahooThrottle(e)) {
+            showYahooThrottleBanner(symbol);
+            if (!silent) toast('Yahoo is rate-limiting. Try again in a minute.', 'warning', 6000);
+        } else if (!silent) {
+            toast(`${symbol} fetch failed: ` + e.message, 'error');
+        }
         return false;
     }
 }
@@ -928,6 +1018,11 @@ function openBulkModal() {
     document.getElementById('bulk-progress').style.display        = 'none';
     document.getElementById('bulk-progress-fill').style.width     = '0%';
     document.getElementById('bulk-progress-label').style.color    = '';
+    document.getElementById('bulk-progress-label').textContent    = 'Starting…';
+    const counts = document.getElementById('bulk-progress-counts');
+    if (counts) counts.textContent = '';
+    const log = document.getElementById('bulk-progress-log');
+    if (log) log.innerHTML = '';
     document.getElementById('btn-bulk-submit').disabled           = false;
     document.getElementById('bulk-symbols-input').disabled        = false;
     setTimeout(() => document.getElementById('bulk-symbols-input').focus(), 50);
@@ -939,6 +1034,27 @@ function closeBulkModal() {
     document.getElementById('bulk-modal').style.display = 'none';
     document.getElementById('bulk-symbols-input').value = '';
     document.getElementById('bulk-progress').style.display = 'none';
+}
+
+function appendBulkLog(symbol, status, detail) {
+    const log = document.getElementById('bulk-progress-log');
+    if (!log) return;
+    const li = document.createElement('li');
+    li.className = status;
+    li.textContent = `${symbol}  —  ${detail}`;
+    log.appendChild(li);
+    log.scrollTop = log.scrollHeight;
+}
+
+function setBulkCounts(done, total, added, skipped, failed, paused) {
+    const counts = document.getElementById('bulk-progress-counts');
+    if (!counts) return;
+    const bits = [`${done} / ${total}`];
+    if (added) bits.push(`${added} fetched`);
+    if (skipped) bits.push(`${skipped} skipped`);
+    if (failed) bits.push(`${failed} failed`);
+    if (paused) bits.push(`${paused} waiting`);
+    counts.textContent = bits.join('  ·  ');
 }
 
 async function bulkAddSymbols() {
@@ -962,80 +1078,112 @@ async function bulkAddSymbols() {
     const progressEl = document.getElementById('bulk-progress');
     const fillEl     = document.getElementById('bulk-progress-fill');
     const labelEl    = document.getElementById('bulk-progress-label');
+    const logEl      = document.getElementById('bulk-progress-log');
 
-    // Lock UI
     submitBtn.disabled  = true;
     textarea.disabled   = true;
     progressEl.style.display = 'block';
     labelEl.style.color = '';
+    if (logEl) logEl.innerHTML = '';
 
     const existing = new Set(state.symbols.map(s => s.symbol));
-    let added = 0, failed = 0, skipped = 0;
+    const toFetch = [];
+    let skipped = 0, added = 0, failed = 0, paused = 0;
     const failedSymbols = [];
 
-    for (let i = 0; i < symbols.length; i++) {
-        const sym = symbols[i];
-
-        // Update progress bar
-        fillEl.style.width  = `${Math.round((i / symbols.length) * 100)}%`;
-        labelEl.textContent = `${i + 1} / ${symbols.length}  ·  ${sym}`;
-
+    symbols.forEach(sym => {
         if (existing.has(sym)) {
             skipped++;
-            continue;
+            appendBulkLog(sym, 'skip', 'already on watchlist');
+        } else {
+            toFetch.push(sym);
         }
+    });
 
-        // Register symbol in DB (may already exist — ignore that error)
+    labelEl.textContent = toFetch.length
+        ? `Adding ${toFetch.length} ticker${toFetch.length === 1 ? '' : 's'} to the watchlist…`
+        : 'Nothing new to add';
+    setBulkCounts(0, symbols.length, 0, skipped, 0, 0);
+
+    if (toFetch.length) {
         try {
             await apiFetch(`${API}/symbols`, {
-                method:  'POST',
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ symbol: sym }),
+                body: JSON.stringify({ symbols: toFetch }),
             });
-        } catch (_) { /* already exists or other — still try data fetch */ }
+        } catch (_) {
+            // Fall through — per-symbol register still happens below if needed
+        }
+        await loadSymbols();
+        toFetch.forEach(s => existing.add(s));
+    }
 
-        // Download market data
+    let throttled = false;
+    for (let i = 0; i < toFetch.length; i++) {
+        const sym = toFetch[i];
+        const done = skipped + i;
+        fillEl.style.width = `${Math.round((done / symbols.length) * 100)}%`;
+        labelEl.textContent = `Downloading ${sym} from Yahoo…  ${i + 1} / ${toFetch.length}`;
+        setBulkCounts(done, symbols.length, added, skipped, failed, 0);
+        appendBulkLog(sym, 'work', 'downloading from Yahoo…');
+
+        try {
+            await apiFetch(`${API}/symbols`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol: sym }),
+            });
+        } catch (_) { /* already registered */ }
+
         const ok = await fetchSymbolData(sym, true);
         if (ok) {
             added++;
-            existing.add(sym);
+            appendBulkLog(sym, 'ok', 'history loaded');
+        } else if (isYahooThrottle(lastFetchError)) {
+            failed++;
+            failedSymbols.push(sym);
+            throttled = true;
+            appendBulkLog(sym, 'pause', 'Yahoo is rate-limiting — stopped here');
+            const leftover = toFetch.slice(i + 1);
+            leftover.forEach(s => appendBulkLog(s, 'pause', 'waiting — fetch later'));
+            paused = leftover.length;
+            break;
         } else {
             failed++;
             failedSymbols.push(sym);
+            appendBulkLog(sym, 'fail', lastFetchError?.message || 'fetch failed');
         }
     }
 
-    // Finalise progress bar
     fillEl.style.width = '100%';
     const parts = [
-        added   ? `${added} added`   : null,
+        added   ? `${added} fetched` : null,
         skipped ? `${skipped} skipped` : null,
-        failed  ? `${failed} failed`  : null,
+        failed  ? `${failed} failed` : null,
+        paused  ? `${paused} waiting` : null,
     ].filter(Boolean);
-    const summary = parts.join(', ');
-    labelEl.textContent = `Done — ${summary}`;
-    labelEl.style.color = failed ? 'var(--red)' : 'var(--green)';
+    const summary = parts.join(', ') || 'nothing to do';
+    labelEl.textContent = throttled
+        ? `Paused — Yahoo is rate-limiting. Try again in a minute.`
+        : `Done — ${summary}`;
+    labelEl.style.color = throttled ? 'var(--yellow)' : (failed ? 'var(--red)' : 'var(--green)');
+    setBulkCounts(symbols.length, symbols.length, added, skipped, failed, paused);
 
-    // Unlock UI
     submitBtn.disabled = false;
     textarea.disabled  = false;
 
-    // Refresh sidebar
     await loadSymbols();
+    if (added && !state.activeSymbol) selectSymbol(toFetch[0] || symbols[0]);
 
-    // If something was added, select the first new one
-    const firstNew = symbols.find(s => existing.has(s) && !state.symbols.find(x => x.symbol === s));
-    if (added && !state.activeSymbol) selectSymbol(symbols[0]);
-
-    // Toast summary
     toast(
-        `Bulk import: ${summary}` + (failedSymbols.length ? ` (${failedSymbols.join(', ')})` : ''),
-        failed ? 'warning' : 'success',
+        (throttled ? 'Yahoo rate-limit — ' : 'Bulk import: ') + summary
+            + (failedSymbols.length ? ` (${failedSymbols.join(', ')})` : ''),
+        throttled || failed ? 'warning' : 'success',
         6000
     );
 
-    // Auto-close after 2 s if everything succeeded
-    if (failed === 0) setTimeout(closeBulkModal, 2000);
+    if (failed === 0 && !throttled) setTimeout(closeBulkModal, 2500);
 }
 
 async function refreshAll() {
@@ -1094,7 +1242,10 @@ async function loadStatsData(symbol) {
             if (e.message.includes('404') || e.message.includes('No data')) {
                 toast(`No data for ${symbol}. Downloading…`, 'info');
                 const ok = await fetchSymbolData(symbol);
-                if (!ok) throw e;
+                if (!ok) {
+                    if (isYahooThrottle(lastFetchError)) throw lastFetchError;
+                    throw e;
+                }
                 await loadSymbols();
                 return Promise.all([
                     apiFetch(`${API}/ohlcv/${symbol}?freq=daily&limit=2`),
@@ -1290,7 +1441,12 @@ async function loadChartData(symbol) {
             // No data yet — auto-fetch then retry
             toast(`No data for ${symbol}. Downloading…`, 'info');
             const ok = await fetchSymbolData(symbol);
-            if (!ok) throw e;
+            if (!ok) {
+                if (isYahooThrottle(lastFetchError)) {
+                    throw lastFetchError;
+                }
+                throw e;
+            }
             await loadSymbols();
             return Promise.all([
                 apiFetch(`${API}/ohlcv/${symbol}?freq=daily`),
@@ -1321,9 +1477,14 @@ async function loadChartData(symbol) {
         const last = dailyOhlcv[dailyOhlcv.length - 1];
         const prev = dailyOhlcv[dailyOhlcv.length - 2];
         updateSymbolHeader(symbol, last, prev);
+        hideYahooThrottleBanner();
     } catch (e) {
-        toast('Chart load failed: ' + e.message, 'error');
-        showEmptyState();
+        if (isYahooThrottle(e) || isYahooThrottle(lastFetchError)) {
+            showYahooThrottleBanner(symbol);
+        } else {
+            toast('Chart load failed: ' + e.message, 'error');
+            showEmptyState();
+        }
     } finally {
         state.loading = false;
         showLoadingOverlay(false);
@@ -1354,7 +1515,10 @@ async function loadAdaptiveTrendData(symbol) {
             if (e.message.includes('404') || e.message.includes('No data')) {
                 toast(`No data for ${symbol}. Downloading…`, 'info');
                 const ok = await fetchSymbolData(symbol);
-                if (!ok) throw e;
+                if (!ok) {
+                    if (isYahooThrottle(lastFetchError)) throw lastFetchError;
+                    throw e;
+                }
                 await loadSymbols();
                 return Promise.all([
                     apiFetch(`${API}/ohlcv/${symbol}?freq=${freq}`),
@@ -1380,6 +1544,7 @@ async function loadAdaptiveTrendData(symbol) {
 
 // ── UI helpers ───────────────────────────────────────────────
 function showEmptyState() {
+    hideYahooThrottleBanner();
     document.getElementById('empty-state').style.display       = 'flex';
     document.getElementById('chart-area').style.display        = 'none';
     document.getElementById('news-area').style.display         = 'none';
@@ -1787,6 +1952,7 @@ function updateSymbolHeader(symbol, last, prev) {
     document.getElementById('sym-title').textContent = symbol;
     const symInfo = state.symbols.find(s => s.symbol === symbol);
     document.getElementById('sym-subtitle').textContent = symInfo?.name || '';
+    syncNewsSurfaceLabels(symbol);
 
     if (!last) {
         document.getElementById('sym-price').textContent   = '--';
@@ -2043,6 +2209,9 @@ function toggleFocusMode(force) {
     const on = force ?? !document.body.classList.contains('focus-mode');
     document.body.classList.toggle('focus-mode', on);
     document.getElementById('pill-focus')?.classList.toggle('active', on);
+    const chip = document.getElementById('focus-mode-chip');
+    if (chip) chip.hidden = !on;
+    toast(on ? 'Focus mode — press f to show the tape' : 'Tape restored', 'info', 2200);
     window.resizeAllCharts?.();
     return on;
 }
@@ -2390,6 +2559,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Focus mode pill — hides the portfolio tape for a chart-only view.
     document.getElementById('pill-focus')?.addEventListener('click', () => toggleFocusMode());
+    document.getElementById('btn-yahoo-retry')?.addEventListener('click', retryYahooFetch);
 
     // Buttons
     document.getElementById('btn-add-symbol').addEventListener('click', addSymbol);
