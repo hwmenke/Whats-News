@@ -98,20 +98,25 @@ function renderSetupScanTable(results) {
 
         tr.querySelector('.setup-open').addEventListener('click', e => {
             e.stopPropagation();
-            switchTab('charts');
-            selectSymbol(row.symbol);
+            openSetupOnChart(row);
         });
         tr.querySelector('.setup-promote').addEventListener('click', async e => {
             e.stopPropagation();
             await promoteSymbolToDesk(row.symbol);
         });
         tr.addEventListener('click', () => {
-            switchTab('charts');
-            selectSymbol(row.symbol);
+            openSetupOnChart(row);
         });
 
         tbody.appendChild(tr);
     });
+}
+
+function openSetupOnChart(row) {
+    // Apply Minervini SMA / Stockbee EMA packs from existing scanner tags.
+    window._pendingChartPack = { symbol: row.symbol, setups: row.setups || [] };
+    switchTab('charts');
+    selectSymbol(row.symbol);
 }
 
 async function loadSetupScan() {

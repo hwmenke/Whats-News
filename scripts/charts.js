@@ -27,6 +27,7 @@ const activeOverlays = { bb: true, ep: true, darvas: true };
 
 // Persisted indicator-pane visibility key — mirrors scripts/app.js.
 const PANES_STORAGE_KEY = 'whats-news-panes';
+const PACKS_STORAGE_KEY = 'whats-news-chart-packs';
 
 // Risk box (entry/stop/target) and Darvas box price lines — kept separate
 // from the KAMA/BB/EMA overlay series since they're structural levels, not
@@ -40,10 +41,36 @@ let lastDarvasBox = null;
 // chart.resize() on a disposed chart throws "Object is disposed").
 let resizeObservers = [];
 
-// EMA stack (Qullamaggie "optional, beside KAMA") — off by default.
-const EMA_PERIODS = [10, 21, 50];
-const EMA_COLORS = { 10: '#fbbf24', 21: '#38bdf8', 50: '#a3e635' };
-const activeEma = { 10: false, 21: false, 50: false };
+// EMA stack (Qullamaggie 10/21/50 beside KAMA) + Stockbee pack 9/20.
+const EMA_PERIODS = [9, 10, 20, 21, 50];
+const EMA_COLORS = { 9: '#f472b6', 10: '#fbbf24', 20: '#22d3ee', 21: '#38bdf8', 50: '#a3e635' };
+const activeEma = { 9: false, 10: false, 20: false, 21: false, 50: false };
+
+// SMA 50/150/200 — Minervini-style trend MAs (honest MA overlay, not a rating).
+const SMA_PERIODS = [50, 150, 200];
+const SMA_COLORS = { 50: '#e879f9', 150: '#c084fc', 200: '#818cf8' };
+const activeSma = { 50: false, 150: false, 200: false };
+
+// Method packs keyed from existing setup-scanner tags (EP / Darvas / near-high).
+const CHART_PACKS = {
+    minervini: {
+        sma: [50, 150, 200],
+        ema: [],
+        setups: ['DARVAS_BOX', 'DARVAS_BREAKOUT', 'NEAR_HIGH'],
+    },
+    stockbee: {
+        sma: [],
+        ema: [9, 20],
+        setups: ['EP', 'VOL_SURGE', 'BREAKOUT_QUEUE'],
+    },
+};
+const activePacks = { minervini: false, stockbee: false };
+
+// Last hovered OHLC index/time per pane — keep it when the crosshair leaves.
+const lastLegend = { daily: { idx: null, time: null }, weekly: { idx: null, time: null } };
+
+// Client-side MA values at each bar so the legend can show SMA/EMA at the held bar.
+const maCache = { daily: { ema: {}, sma: {} }, weekly: { ema: {}, sma: {} } };
 
 // ── Chart instances ─────────────────────────────────────────
 let charts = {
@@ -54,11 +81,11 @@ let charts = {
 // ── Series references ────────────────────────────────────────
 let series = {
     daily: {
-        candle: null, volume: null, bb: {}, ema: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
     weekly: {
-        candle: null, volume: null, bb: {}, ema: {}, rsi: {}, macdLine: null,
+        candle: null, volume: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
         macdSig: null, macdHist: null, trend: null,
     },
 };
@@ -78,14 +105,17 @@ const C = {
     trend_pos:     '#22c55e',
     trend_neg:     '#ef4444',
     trend_zero:    '#4a5568',
-    vol_up:        '#22c55e66',
-    vol_down:      '#ef444466',
-    vol_surge_up:   '#f97316',
-    vol_surge_down: '#f97316',
+    vol_up:         '#22c55e33',
+    vol_down:       '#ef444433',
+    vol_surge_up:   '#fb923c',
+    vol_surge_down: '#fb7185',
+    vol_climax_up:  '#fdba74',
+    vol_climax_down:'#fda4af',
 };
 
 // Volume-surge / EP thresholds — mirror portfolio.py so chart markers agree with the tape.
 const VOL_SURGE_RATIO = 1.5;
+const VOL_CLIMAX_RATIO = 2.0;
 const EP_GAP_PCT = 4.0;
 
 // ── Base chart options ────────────────────────────────────────
@@ -131,9 +161,11 @@ function destroyCharts() {
         Object.values(charts[freq]).forEach(c => { if (c) c.remove(); });
         charts[freq] = { main: null, volume: null, rsi: null, macd: null, trend: null };
         series[freq] = {
-            candle: null, volume: null, bb: {}, ema: {}, rsi: {}, macdLine: null,
+            candle: null, volume: null, bb: {}, ema: {}, sma: {}, rsi: {}, macdLine: null,
             macdSig: null, macdHist: null, trend: null,
         };
+        lastLegend[freq] = { idx: null, time: null };
+        maCache[freq] = { ema: {}, sma: {} };
         // Clear kama series refs
         Object.values(kamaPeriods).forEach(p => {
             p[`series_${freq}`] = null;
@@ -175,10 +207,18 @@ function buildPanel(freq) {
         });
     });
 
-    // EMA stack overlay series (10/21/50) — optional, off by default.
+    // EMA stack overlay series (10/21/50 pills + 9/20 Stockbee pack).
     EMA_PERIODS.forEach(p => {
         series[freq].ema[p] = charts[freq].main.addLineSeries({
-            color: EMA_COLORS[p], lineWidth: 1.5, lineStyle: 0,
+            color: EMA_COLORS[p], lineWidth: p === 9 || p === 20 ? 2 : 1.5, lineStyle: 0,
+            priceLineVisible: false, lastValueVisible: false, visible: false,
+        });
+    });
+
+    // SMA 50/150/200 — Minervini-style pack, off until toggled.
+    SMA_PERIODS.forEach(p => {
+        series[freq].sma[p] = charts[freq].main.addLineSeries({
+            color: SMA_COLORS[p], lineWidth: p === 200 ? 2 : 1.5, lineStyle: p === 200 ? 2 : 0,
             priceLineVisible: false, lastValueVisible: false, visible: false,
         });
     });
@@ -236,7 +276,14 @@ function buildPanel(freq) {
     syncTo(charts[freq].trend, charts[freq].main);
 }
 
+function chartsAreLive() {
+    return !!(charts.daily.main && charts.weekly.main);
+}
+
 function initCharts() {
+    // Reuse live instances on ticker switch — disposing 10 Lightweight Charts
+    // (+ observers + crosshair subscriptions) on every name is the slow path.
+    if (chartsAreLive()) return;
     destroyCharts();
     buildPanel('daily');
     buildPanel('weekly');
@@ -244,6 +291,7 @@ function initCharts() {
     setupResizeObserver();
     setupCrosshairLegend();
     applySavedPaneVisibility();
+    applySavedPacks();
 }
 
 function _legendTimeKey(time) {
@@ -256,6 +304,27 @@ function _legendTimeKey(time) {
     return String(time).slice(0, 10);
 }
 
+function _fmtPx(v) {
+    return (v == null || !Number.isFinite(Number(v))) ? '—' : Number(v).toFixed(2);
+}
+
+function _maLegendBits(freq, idx) {
+    const bits = [];
+    SMA_PERIODS.forEach(p => {
+        if (!activeSma[p]) return;
+        const v = maCache[freq]?.sma?.[p]?.[idx];
+        if (v == null) return;
+        bits.push(`<span class="lg-ma" style="color:${SMA_COLORS[p]}">S${p} ${_fmtPx(v)}</span>`);
+    });
+    EMA_PERIODS.forEach(p => {
+        if (!activeEma[p]) return;
+        const v = maCache[freq]?.ema?.[p]?.[idx];
+        if (v == null) return;
+        bits.push(`<span class="lg-ma" style="color:${EMA_COLORS[p]}">E${p} ${_fmtPx(v)}</span>`);
+    });
+    return bits.join(' ');
+}
+
 function paintOhlcLegend(freq, param) {
     const el = document.getElementById(`chart-legend-${freq}`);
     if (!el) return;
@@ -263,23 +332,38 @@ function paintOhlcLegend(freq, param) {
     if (!rows.length) { el.textContent = ''; return; }
     const key = _legendTimeKey(param && param.time);
     let idx;
-    if (!key) {
-        idx = rows.length - 1;
-    } else {
+    if (key) {
         idx = rows.findIndex(r => String(r.date).slice(0, 10) === key);
-        if (idx < 0) return;
+        if (idx < 0) return; // keep last painted OHLC
+        lastLegend[freq] = { idx, time: key };
+    } else if (lastLegend[freq].idx != null && lastLegend[freq].idx < rows.length) {
+        // Crosshair left the pane — keep the last hovered bar, don't snap to latest.
+        idx = lastLegend[freq].idx;
+    } else {
+        idx = rows.length - 1;
+        lastLegend[freq] = { idx, time: String(rows[idx].date).slice(0, 10) };
     }
     const row = rows[idx];
     const prev = rows[idx - 1];
     if (!row) { el.textContent = ''; return; }
-    const n = v => (v == null || !Number.isFinite(Number(v)) ? '—' : Number(v).toFixed(2));
     const chg = prev && prev.close ? ((row.close / prev.close - 1) * 100) : null;
     const up = chg == null ? true : chg >= 0;
+    const held = idx !== rows.length - 1;
     el.classList.toggle('legend-up', up);
     el.classList.toggle('legend-down', !up);
+    el.classList.toggle('legend-held', held);
+    const tone = up ? 'lg-up' : 'lg-down';
     const chgStr = chg == null ? '' : `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
     const vol = row.volume != null ? Number(row.volume).toLocaleString() : '—';
-    el.textContent = `${row.date}  O ${n(row.open)}  H ${n(row.high)}  L ${n(row.low)}  C ${n(row.close)}  ${chgStr}  V ${vol}`;
+    const maBits = _maLegendBits(freq, idx);
+    el.innerHTML = `<span class="lg-date">${row.date}</span>`
+        + ` <span class="${tone}">O ${_fmtPx(row.open)}</span>`
+        + ` <span class="lg-h">H ${_fmtPx(row.high)}</span>`
+        + ` <span class="lg-l">L ${_fmtPx(row.low)}</span>`
+        + ` <span class="${tone}">C ${_fmtPx(row.close)}</span>`
+        + (chgStr ? ` <span class="${tone}">${chgStr}</span>` : '')
+        + ` <span class="lg-v">V ${vol}</span>`
+        + (maBits ? ` ${maBits}` : '');
 }
 
 function setupCrosshairLegend() {
@@ -394,85 +478,156 @@ function computeEma(closes, period) {
     return out;
 }
 
+function computeSma(closes, period) {
+    const out = new Array(closes.length).fill(null);
+    if (closes.length < period) return out;
+    let sum = 0;
+    for (let i = 0; i < closes.length; i++) {
+        sum += closes[i];
+        if (i >= period) sum -= closes[i - period];
+        if (i >= period - 1) out[i] = sum / period;
+    }
+    return out;
+}
+
+function _avg20Vol(rows, i) {
+    const windowVols = rows.slice(Math.max(0, i - 20), i).map(r => r.volume || 0);
+    if (!windowVols.length) return null;
+    return windowVols.reduce((a, b) => a + b, 0) / windowVols.length;
+}
+
 function loadOHLCV(freq, rows) {
     if (!series[freq].candle || !rows?.length) return;
     rawRows[freq] = rows;
+    lastLegend[freq] = { idx: null, time: null };
+    maCache[freq] = { ema: {}, sma: {} };
 
     series[freq].candle.setData(rows.map(r => ({
         time: r.date, open: r.open, high: r.high, low: r.low, close: r.close,
     })));
 
-    // Volume — colored by direction, surge bars (>=1.5x 20-bar avg) flagged orange.
+    // Volume — muted by direction; 1.5× surge and 2× climax pop in solid orange.
+    const volRatios = new Array(rows.length).fill(null);
     if (series[freq].volume) {
-        const vols = rows.map(r => r.volume || 0);
-        let surgeCount = 0;
         const volData = rows.map((r, i) => {
-            const windowVols = vols.slice(Math.max(0, i - 20), i);
-            const avg20 = windowVols.length ? windowVols.reduce((a, b) => a + b, 0) / windowVols.length : null;
-            const isSurge = avg20 && vols[i] / avg20 >= VOL_SURGE_RATIO;
-            if (isSurge) surgeCount++;
+            const avg20 = _avg20Vol(rows, i);
+            const ratio = avg20 ? (r.volume || 0) / avg20 : null;
+            volRatios[i] = ratio;
             const up = r.close >= r.open;
-            const color = isSurge ? (up ? C.vol_surge_up : C.vol_surge_down) : (up ? C.vol_up : C.vol_down);
+            let color = up ? C.vol_up : C.vol_down;
+            if (ratio != null && ratio >= VOL_CLIMAX_RATIO) {
+                color = up ? C.vol_climax_up : C.vol_climax_down;
+            } else if (ratio != null && ratio >= VOL_SURGE_RATIO) {
+                color = up ? C.vol_surge_up : C.vol_surge_down;
+            }
             return { time: r.date, value: r.volume || 0, color };
         });
         series[freq].volume.setData(volData);
-
-        const badge = document.getElementById(`chart-${freq}-vol-badge`);
-        if (badge) {
-            const last3Surges = volData.slice(-3).filter((_, i) => {
-                const idx = volData.length - 3 + i;
-                return idx >= 0 && volData[idx] && (volData[idx].color === C.vol_surge_up || volData[idx].color === C.vol_surge_down);
-            }).length;
-            if (last3Surges > 0) {
-                badge.textContent = `${last3Surges}× surge (3 bars)`;
-                badge.style.display = 'inline';
-            } else {
-                badge.style.display = 'none';
-            }
-        }
+        updateVolBadge(freq, volRatios);
     }
 
-    // EMA stack — client-side, mirrors optional KAMA overlay.
     const closes = rows.map(r => r.close);
     EMA_PERIODS.forEach(p => {
         const s = series[freq].ema[p];
-        if (!s) return;
         const vals = computeEma(closes, p);
+        maCache[freq].ema[p] = vals;
+        if (!s) return;
+        s.setData(rows.map((r, i) => (vals[i] == null ? { time: r.date } : { time: r.date, value: vals[i] })));
+    });
+    SMA_PERIODS.forEach(p => {
+        const s = series[freq].sma[p];
+        const vals = computeSma(closes, p);
+        maCache[freq].sma[p] = vals;
+        if (!s) return;
         s.setData(rows.map((r, i) => (vals[i] == null ? { time: r.date } : { time: r.date, value: vals[i] })));
     });
 
-    applyEpMarkers(freq);
+    applyPriceMarkers(freq);
     applyOverlayVisibility(freq);
     paintOhlcLegend(freq, {});
 }
 
-// EP (episodic pivot) markers: gap-up ≥4% on ≥1.5x volume — the entry path
-// that actually matters for momentum, distinct from RSI OB/OS alerts.
-function applyEpMarkers(freq) {
+function updateVolBadge(freq, volRatios) {
+    const badge = document.getElementById(`chart-${freq}-vol-badge`);
+    if (!badge) return;
+    const n = volRatios.length;
+    const last = n ? volRatios[n - 1] : null;
+    let ago = null;
+    for (let i = n - 1; i >= 0; i--) {
+        if (volRatios[i] != null && volRatios[i] >= VOL_SURGE_RATIO) {
+            ago = n - 1 - i;
+            break;
+        }
+    }
+    badge.classList.toggle('vol-surge-now', last != null && last >= VOL_SURGE_RATIO);
+    if (last != null && last >= VOL_SURGE_RATIO) {
+        badge.textContent = `NOW ${last.toFixed(1)}×`;
+        badge.style.display = 'inline';
+    } else if (ago != null && ago <= 15) {
+        badge.textContent = `surge ${ago}b`;
+        badge.style.display = 'inline';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+function updateEpBadge(freq, epIndexes, nBars) {
+    const badge = document.getElementById(`chart-${freq}-ep-badge`);
+    if (!badge) return;
+    const last20 = epIndexes.filter(i => i >= nBars - 20).length;
+    const lastIdx = epIndexes.length ? epIndexes[epIndexes.length - 1] : null;
+    const ago = lastIdx != null ? nBars - 1 - lastIdx : null;
+    if (last20 > 0) {
+        badge.textContent = ago === 0 ? 'EP now' : `${last20} EP /20`;
+        badge.style.display = 'inline';
+    } else if (ago != null && ago <= 60) {
+        badge.textContent = `EP ${ago}b`;
+        badge.style.display = 'inline';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// EP (episodic pivot) markers: gap-up ≥4% on ≥1.5× volume.
+// 2× volume climax (non-EP) gets a below-bar square so surges stay glanceable on price.
+function applyPriceMarkers(freq) {
     const s = series[freq].candle;
     if (!s) return;
-    if (!activeOverlays.ep) {
-        s.setMarkers([]);
-        return;
-    }
     const rows = rawRows[freq] || [];
     const markers = [];
+    const epIndexes = [];
+    const lookback = 20;
     for (let i = 1; i < rows.length; i++) {
         const prevClose = rows[i - 1].close;
         const row = rows[i];
         if (!prevClose || !row.open) continue;
         const gapPct = (row.open / prevClose - 1) * 100;
-        const windowVols = rows.slice(Math.max(0, i - 20), i).map(r => r.volume || 0);
-        const avg20 = windowVols.length ? windowVols.reduce((a, b) => a + b, 0) / windowVols.length : null;
+        const avg20 = _avg20Vol(rows, i);
         const volRatio = avg20 ? (row.volume || 0) / avg20 : null;
-        if (gapPct >= EP_GAP_PCT && volRatio != null && volRatio >= VOL_SURGE_RATIO) {
+        const isEp = gapPct >= EP_GAP_PCT && volRatio != null && volRatio >= VOL_SURGE_RATIO;
+        const inLookback = i >= rows.length - lookback;
+        if (isEp) {
+            epIndexes.push(i);
+            if (activeOverlays.ep) {
+                markers.push({
+                    time: row.date, position: 'aboveBar', color: '#fde047',
+                    shape: 'arrowUp', text: `EP +${gapPct.toFixed(0)}%`,
+                    size: inLookback ? 2 : 1,
+                });
+            }
+        } else if (volRatio != null && volRatio >= VOL_CLIMAX_RATIO && inLookback) {
             markers.push({
-                time: row.date, position: 'aboveBar', color: '#f97316',
-                shape: 'arrowUp', text: `EP +${gapPct.toFixed(0)}%`,
+                time: row.date, position: 'belowBar', color: '#38bdf8',
+                shape: 'square', text: `${volRatio.toFixed(1)}×`, size: 1,
             });
         }
     }
     s.setMarkers(markers);
+    updateEpBadge(freq, epIndexes, rows.length);
+}
+
+function applyEpMarkers(freq) {
+    applyPriceMarkers(freq);
 }
 
 function loadIndicatorsToPanel(freq, data) {
@@ -546,9 +701,21 @@ function applyOverlayVisibility(freq) {
         showHide(s, meta.active, meta.color, 1.5);
     });
 
-    // EMA stack (10/21/50) — optional overlay, off by default
+    // EMA stack (10/21/50 pills + 9/20 pack)
     EMA_PERIODS.forEach(p => {
-        showHide(series[freq].ema[p], activeEma[p], EMA_COLORS[p], 1.5);
+        const packLine = p === 9 || p === 20;
+        showHide(series[freq].ema[p], activeEma[p], EMA_COLORS[p], packLine ? 2 : 1.5);
+        if (series[freq].ema[p]) {
+            series[freq].ema[p].applyOptions({ lastValueVisible: !!activeEma[p] && packLine });
+        }
+    });
+
+    // SMA 50/150/200 pack
+    SMA_PERIODS.forEach(p => {
+        showHide(series[freq].sma[p], activeSma[p], SMA_COLORS[p], p === 200 ? 2 : 1.5, p === 200 ? 2 : 0);
+        if (series[freq].sma[p]) {
+            series[freq].sma[p].applyOptions({ lastValueVisible: !!activeSma[p] });
+        }
     });
 }
 
@@ -556,7 +723,7 @@ function toggleOverlay(key) {
     activeOverlays[key] = !activeOverlays[key];
     ['daily', 'weekly'].forEach(f => {
         applyOverlayVisibility(f);
-        if (key === 'ep') applyEpMarkers(f);
+        if (key === 'ep') applyPriceMarkers(f);
     });
     if (key === 'darvas') applyDarvasBox(lastDarvasBox);
     return activeOverlays[key];
@@ -651,8 +818,68 @@ function applySavedPaneVisibility() {
 function toggleEma(period) {
     const p = Number(period);
     activeEma[p] = !activeEma[p];
-    ['daily', 'weekly'].forEach(f => applyOverlayVisibility(f));
+    ['daily', 'weekly'].forEach(f => {
+        applyOverlayVisibility(f);
+        paintOhlcLegend(f, { time: lastLegend[f].time });
+    });
     return activeEma[p];
+}
+
+function syncPackPills() {
+    document.querySelectorAll('[data-chart-pack]').forEach(el => {
+        const on = !!activePacks[el.dataset.chartPack];
+        el.classList.toggle('active-pack', on);
+    });
+}
+
+function persistPacks() {
+    try { localStorage.setItem(PACKS_STORAGE_KEY, JSON.stringify(activePacks)); } catch (_) {}
+}
+
+function setChartPack(id, on, opts = {}) {
+    const pack = CHART_PACKS[id];
+    if (!pack) return false;
+    activePacks[id] = !!on;
+    pack.sma.forEach(p => { activeSma[p] = !!on; });
+    pack.ema.forEach(p => { activeEma[p] = !!on; });
+    ['daily', 'weekly'].forEach(f => {
+        applyOverlayVisibility(f);
+        paintOhlcLegend(f, { time: lastLegend[f].time });
+    });
+    syncPackPills();
+    if (opts.persist !== false) persistPacks();
+    return activePacks[id];
+}
+
+function toggleChartPack(id) {
+    return setChartPack(id, !activePacks[id]);
+}
+
+function setChartPacksForSetups(setups) {
+    const tags = new Set(setups || []);
+    if (!tags.size) return;
+    Object.entries(CHART_PACKS).forEach(([id, pack]) => {
+        if ((pack.setups || []).some(t => tags.has(t))) setChartPack(id, true);
+    });
+}
+
+function applySavedPacks() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(PACKS_STORAGE_KEY) || '{}') || {}; } catch (_) { saved = {}; }
+    Object.keys(CHART_PACKS).forEach(id => {
+        if (saved[id]) setChartPack(id, true, { persist: false });
+    });
+    syncPackPills();
+}
+
+function toggleSma(period) {
+    const p = Number(period);
+    activeSma[p] = !activeSma[p];
+    ['daily', 'weekly'].forEach(f => {
+        applyOverlayVisibility(f);
+        paintOhlcLegend(f, { time: lastLegend[f].time });
+    });
+    return activeSma[p];
 }
 
 // ── KAMA period management ────────────────────────────────────
@@ -714,3 +941,7 @@ window.clearRiskBox      = clearRiskBox;
 window.applyDarvasBox    = applyDarvasBox;
 window.setIndicatorPane  = setIndicatorPane;
 window.resizeAllCharts   = resizeAllCharts;
+window.toggleChartPack   = toggleChartPack;
+window.setChartPack      = setChartPack;
+window.setChartPacksForSetups = setChartPacksForSetups;
+window.chartsAreLive     = chartsAreLive;
