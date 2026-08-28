@@ -17,11 +17,17 @@ let _dmSelected   = new Set();   // set of ticker strings currently checked
 let _dmExpanded   = new Set();   // category ids that are expanded
 let _dmReader     = null;        // ReadableStreamReader for abort
 let _dmRunning    = false;
+let _universeReader = null;
+let _universeRunning = false;
+let _universeIndices = new Set(["sp500", "sp400", "sp600", "ndx100", "russell2000"]);
 
 // ── Init ────────────────────────────────────────────────────────────────────
 
 async function initDataManager() {
-    if (_dmLibrary.length > 0) return;   // already loaded
+    _dmInitUniverseSection();
+    await _dmLoadDbStats();
+
+    if (_dmLibrary.length > 0) return;   // ticker library already loaded
 
     try {
         const res = await fetch("/api/data-manager/ticker-lists");
@@ -32,6 +38,194 @@ async function initDataManager() {
         document.getElementById("dm-categories").innerHTML =
             `<div class="dm-error">Failed to load ticker library: ${err.message}</div>`;
     }
+}
+
+// ── Universe archive (S&P / Nasdaq / Russell) ─────────────────────────────
+
+async function _dmLoadDbStats() {
+    const el = document.getElementById("universe-stats");
+    if (!el) return;
+    try {
+        const stats = await apiFetch(`${API}/db/stats`);
+        const withData = await apiFetch(`${API}/symbols/with-data?min_bars=30`);
+        el.innerHTML = `
+            <span>${stats.symbol_count ?? 0} registered</span>
+            <span>${withData.count ?? 0} with ≥30d bars</span>
+            <span>${((stats.size_bytes || 0) / 1e6).toFixed(1)} MB`;
+    } catch (err) {
+        el.textContent = "Stats unavailable";
+    }
+}
+
+function _dmInitUniverseSection() {
+    const wrap = document.getElementById("universe-indices");
+    if (!wrap || wrap.dataset.ready) return;
+    wrap.dataset.ready = "1";
+
+    apiFetch(`${API}/universe/registry`).then(data => {
+        wrap.innerHTML = "";
+        (data.indices || []).forEach(idx => {
+            const label = document.createElement("label");
+            label.className = "universe-index-chip";
+            const checked = _universeIndices.has(idx.id);
+            label.innerHTML = `
+                <input type="checkbox" data-index="${idx.id}" ${checked ? "checked" : ""}/>
+                ${idx.label}`;
+            label.querySelector("input").addEventListener("change", e => {
+                if (e.target.checked) _universeIndices.add(idx.id);
+                else _universeIndices.delete(idx.id);
+            });
+            wrap.appendChild(label);
+        });
+    }).catch(err => {
+        wrap.textContent = `Registry error: ${err.message}`;
+    });
+
+    document.getElementById("btn-universe-sync")?.addEventListener("click", dmUniverseSync);
+    document.getElementById("btn-universe-archive")?.addEventListener("click", () => dmUniverseJob("archive"));
+    document.getElementById("btn-universe-refresh")?.addEventListener("click", () => dmUniverseJob("refresh"));
+    document.getElementById("btn-universe-abort")?.addEventListener("click", dmUniverseAbort);
+}
+
+function _dmSelectedIndices() {
+    const ids = [..._universeIndices];
+    return ids.length ? ids : ["all"];
+}
+
+async function dmUniverseSync() {
+    const btn = document.getElementById("btn-universe-sync");
+    if (btn) { btn.disabled = true; btn.textContent = "Syncing…"; }
+    try {
+        const res = await apiFetch(`${API}/universe/sync`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ indices: _dmSelectedIndices() }),
+        });
+        const sync = res.sync || {};
+        _dmLogLine(
+            `Universe sync: ${res.total_unique} unique · added ${(sync.added || []).length} · skipped ${(sync.skipped || []).length}`,
+            "ok"
+        );
+        if (res.errors && Object.keys(res.errors).length) {
+            Object.entries(res.errors).forEach(([k, v]) =>
+                _dmLogLine(`${k}: ${v}`, "warn"));
+        }
+        await _dmLoadDbStats();
+        if (typeof loadSymbols === "function") loadSymbols().catch(() => {});
+    } catch (err) {
+        _dmLogLine(`Sync failed: ${err.message}`, "err");
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "Sync indices"; }
+    }
+}
+
+async function dmUniverseJob(mode) {
+    if (_universeRunning) return;
+    const endpoint = mode === "archive" ? "archive" : "refresh";
+    const startDate = document.getElementById("dm-start-date")?.value || "2000-01-01";
+    const delay = parseFloat(document.getElementById("dm-delay")?.value || "1.5");
+    const onlyMissing = document.getElementById("dm-only-missing")?.checked ?? false;
+    const overlap = parseInt(document.getElementById("dm-overlap-days")?.value || "5", 10);
+
+    const body = mode === "archive"
+        ? { start_date: startDate, delay, only_missing: onlyMissing }
+        : { delay: Math.min(delay, 1.5), overlap_days: overlap };
+
+    _universeSetRunning(true);
+    _dmShowProgress(true);
+    _dmClearLog();
+    _dmSetProgress(0, "Starting…");
+
+    let total = 0;
+    let okCount = 0;
+    let failCount = 0;
+
+    try {
+        const res = await fetch(`${API}/universe/${endpoint}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+            throw new Error(err.error || `HTTP ${res.status}`);
+        }
+
+        const reader = res.body.getReader();
+        _universeReader = reader;
+        const dec = new TextDecoder();
+        let buf = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const parts = buf.split("\n\n");
+            buf = parts.pop();
+
+            for (const part of parts) {
+                const line = part.trim();
+                if (!line.startsWith("data:")) continue;
+                const ev = JSON.parse(line.slice(5).trim());
+
+                if (ev.type === "start") {
+                    total = ev.total || 0;
+                    _dmLogLine(`${mode} started: ${total} symbols`, "info");
+                } else if (ev.type === "result") {
+                    const pct = total ? Math.round(((ev.index + 1) / total) * 100) : 0;
+                    _dmSetProgress(pct, `${ev.index + 1} / ${total}`);
+                    if (ev.ok) {
+                        okCount++;
+                        if (!String(ev.msg).includes("skipped")) {
+                            _dmLogLine(`✓ ${ev.symbol} — ${ev.msg}`, "ok");
+                        }
+                    } else {
+                        failCount++;
+                        _dmLogLine(`✗ ${ev.symbol} — ${ev.msg}`, "err");
+                    }
+                } else if (ev.type === "done") {
+                    _dmSetProgress(100, `${total} / ${total}`);
+                    _dmLogLine(`Done. ${ev.ok} ok, ${ev.failed} failed`, ev.failed ? "warn" : "ok");
+                    _dmShowSummary(ev.ok, ev.failed);
+                    await _dmLoadDbStats();
+                    if (typeof loadSymbols === "function") loadSymbols().catch(() => {});
+                }
+            }
+        }
+    } catch (err) {
+        if (err.name !== "AbortError") {
+            _dmLogLine(`${mode} error: ${err.message}`, "err");
+        }
+    } finally {
+        _universeReader = null;
+        _universeSetRunning(false);
+    }
+}
+
+function dmUniverseAbort() {
+    if (_universeReader) {
+        _universeReader.cancel("User aborted");
+        _universeReader = null;
+    }
+    if (_dmReader) {
+        _dmReader.cancel("User aborted");
+        _dmReader = null;
+    }
+    _universeSetRunning(false);
+    _dmSetRunning(false);
+    _dmLogLine("Aborted.", "warn");
+}
+
+function _universeSetRunning(running) {
+    _universeRunning = running;
+    const syncBtn = document.getElementById("btn-universe-sync");
+    const archBtn = document.getElementById("btn-universe-archive");
+    const refBtn = document.getElementById("btn-universe-refresh");
+    const abortBtn = document.getElementById("btn-universe-abort");
+    if (syncBtn) syncBtn.disabled = running;
+    if (archBtn) archBtn.disabled = running;
+    if (refBtn) refBtn.disabled = running;
+    if (abortBtn) abortBtn.style.display = running ? "" : "none";
 }
 
 // ── Render categories ───────────────────────────────────────────────────────

@@ -137,10 +137,12 @@ def fetch_symbol(symbol):
     try:
         result = fetcher.fetch_and_store(symbol.upper())
         if "error" in result:
-            return jsonify(result), 400
+            return jsonify(result), fetcher.fetch_error_http_status(result)
         return jsonify(result)
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        classified = fetcher.classify_yahoo_error(exc)
+        status = fetcher.fetch_error_http_status(classified)
+        return jsonify({"symbol": symbol.upper(), **classified}), status
 
 
 @app.route("/api/refresh", methods=["POST"])
