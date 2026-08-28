@@ -62,7 +62,7 @@ function bindSetupUniverseToggle() {
 
 async function initSetupScanner() {
     // Restore filter + universe before the catalog fetch so a parallel
-    // loadSetupScan({allowStaleRows:true}) uses the last key (cache, not a forced scan).
+    // Scan reopen with allowStaleRows uses the last key (cache, not a forced scan).
     restoreSetupFilters();
     bindSetupUniverseToggle();
     try {
