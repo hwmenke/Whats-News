@@ -3249,4 +3249,19 @@ body.workspace-scan .setup-scanner-panel {
   }
 }
 
+/* Review: journal and book scan sit side by side instead of stacking. */
+body.workspace-review #journal-drawer {
+  width: 280px;
+  z-index: 201;
+  transform: translateX(0);
+}
+body.workspace-review #book-drawer {
+  right: 280px;
+  width: min(340px, 42vw);
+  transform: translateX(0);
+}
+body.workspace-review #book-drawer-backdrop {
+  display: none !important;
+}
+
 

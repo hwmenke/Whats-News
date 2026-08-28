@@ -1710,6 +1710,39 @@ function showScanSplit() {
     });
 }
 
+function applyReviewDrawerLayout(on) {
+    const book = document.getElementById('book-drawer');
+    const journal = document.getElementById('journal-drawer');
+    const backdrop = document.getElementById('book-drawer-backdrop');
+    if (backdrop) backdrop.hidden = true;
+    if (book) {
+        if (on) {
+            book.classList.add('open');
+            book.setAttribute('aria-hidden', 'false');
+            book.style.transform = 'translateX(0)';
+            book.style.right = '280px';
+            book.style.zIndex = '220';
+            book.style.width = '340px';
+        } else {
+            book.style.transform = '';
+            book.style.right = '';
+            book.style.zIndex = '';
+            book.style.width = '';
+        }
+    }
+    if (journal) {
+        if (on) {
+            journal.style.transform = 'translateX(0)';
+            journal.style.width = '280px';
+            journal.style.zIndex = '221';
+        } else {
+            journal.style.transform = '';
+            journal.style.width = '';
+            journal.style.zIndex = '';
+        }
+    }
+}
+
 function setWorkspace(id, opts = {}) {
     const next = id === 'scan' || id === 'review' ? id : 'chart';
     state.workspace = next;
@@ -1719,6 +1752,7 @@ function setWorkspace(id, opts = {}) {
     syncWorkspacePills();
 
     if (next === 'scan') {
+        applyReviewDrawerLayout(false);
         showScanSplit();
         if (typeof initSetupScanner === 'function') initSetupScanner();
         const tbody = document.getElementById('setup-scan-tbody');
@@ -1732,9 +1766,11 @@ function setWorkspace(id, opts = {}) {
         switchTab('news', { keepWorkspace: true });
         openJournal();
         openBookDrawer();
+        applyReviewDrawerLayout(true);
         return next;
     }
 
+    applyReviewDrawerLayout(false);
     closeJournal();
     closeBookDrawer();
     if (!opts.fromTab) switchTab('charts', { keepWorkspace: true });
