@@ -478,5 +478,292 @@ console.log(JSON.stringify({
         self.assertEqual(out["origAll"], ["MSFT", "ZZZZ"])
 
 
+class SetupScanSortTests(unittest.TestCase):
+    """Sort already-fetched Scan hits by ADR% / RVOL or default ranking — no extra fetch."""
+
+    def test_sort_control_and_storage_key_contract(self):
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("styles/main.css", encoding="utf-8") as fh:
+            css = fh.read()
+        with open("scripts/app.js", encoding="utf-8") as fh:
+            app_js = fh.read()
+
+        self.assertIn("SETUP_SORT_STORAGE_KEY = 'whats-news-setup-sort'", setup)
+        self.assertIn("whats-news-setup-sort", setup)
+        self.assertIn("SETUP_FILTERS_STORAGE_KEY = 'whats-news-setup-filters'", setup)
+        self.assertNotEqual(
+            "whats-news-setup-sort",
+            "whats-news-setup-filters",
+        )
+        self.assertIn("function normalizeSetupSort", setup)
+        self.assertIn("function readSetupSort", setup)
+        self.assertIn("function writeSetupSort", setup)
+        self.assertIn("function persistSetupSort", setup)
+        self.assertIn("function restoreSetupSort", setup)
+        self.assertIn("function sortedSetupScanRows", setup)
+        self.assertIn("function setupScanSortValue", setup)
+        self.assertIn("function applySetupScanSort", setup)
+        self.assertIn("function setSetupSort", setup)
+        self.assertIn("function bindSetupSortControl", setup)
+        self.assertIn("function syncSetupSortPills", setup)
+        self.assertIn("localStorage.getItem(SETUP_SORT_STORAGE_KEY)", setup)
+        self.assertIn("localStorage.setItem(SETUP_SORT_STORAGE_KEY", setup)
+        self.assertIn("row.adr_pct", setup)
+        self.assertIn("row.vol_ratio_5_20", setup)
+        self.assertIn("sortedSetupScanRows(_setupScanRows, _setupSort)", setup)
+        self.assertNotIn("whats-news-setup-sort", app_js)
+        self.assertNotIn("setSetupSort", app_js)
+        self.assertNotIn("sortedSetupScanRows", app_js)
+
+        init = setup[
+            setup.index("async function initSetupScanner") : setup.index("function renderSetupFilterPills")
+        ]
+        self.assertIn("restoreSetupSort()", init)
+        self.assertIn("bindSetupSortControl()", init)
+        self.assertLess(init.index("restoreSetupSort()"), init.index("apiFetch"))
+        self.assertNotIn("loadSetupScan", init)
+
+        restore = setup[
+            setup.index("function restoreSetupSort") : setup.index("function setupScanSortValue")
+        ]
+        self.assertNotIn("loadSetupScan", restore)
+        self.assertNotIn("apiFetch", restore)
+        self.assertNotIn("sessionStorage", restore)
+        self.assertNotIn("SETUP_FILTERS_STORAGE_KEY", restore)
+
+        set_fn = setup[setup.index("function setSetupSort") : setup.index("function bindSetupSortControl")]
+        self.assertNotIn("loadSetupScan", set_fn)
+        self.assertNotIn("apiFetch", set_fn)
+        self.assertNotIn("yahoo", set_fn.lower())
+
+        apply_sort = setup[
+            setup.index("function applySetupScanSort") : setup.index("function syncSetupSortPills")
+        ]
+        self.assertNotIn("loadSetupScan", apply_sort)
+        self.assertNotIn("apiFetch", apply_sort)
+        self.assertNotIn("yahoo", apply_sort.lower())
+        self.assertIn("renderSetupScanTable(sortedSetupScanRows(_setupScanRows, _setupSort))", apply_sort)
+
+        payload = setup[
+            setup.index("function applySetupScanPayload") : setup.index("function readSetupScanCache")
+        ]
+        self.assertIn("_setupScanRows", payload)
+        self.assertIn("data.results.slice()", payload)
+        self.assertIn("sortedSetupScanRows(_setupScanRows, _setupSort)", payload)
+        self.assertNotIn("yahoo", payload.lower())
+
+        self.assertIn('id="setup-sort-pills"', html)
+        self.assertIn('data-setup-sort="scan"', html)
+        self.assertIn('data-setup-sort="adr"', html)
+        self.assertIn('data-setup-sort="rvol"', html)
+        self.assertIn("not a published rating", html)
+        self.assertIn('aria-label="Sort scan hits"', html)
+        self.assertIn("Highest ADR% first", html)
+        self.assertIn("Highest RVOL first", html)
+        self.assertIn("Default scanner ranking", html)
+        sort_html = html[html.index('id="setup-sort-pills"') : html.index('id="setup-filter-pills"')]
+        self.assertNotIn("yahoo", sort_html.lower())
+
+        self.assertIn(".setup-sort-control", css)
+        self.assertIn(".setup-sort-pills", css)
+        self.assertIn(".setup-sort-pill", css)
+        self.assertIn(".setup-sort-pill.setup-sort-on", css)
+        self.assertIn("font-size: 10px", css)
+
+        self.assertIn("not a published rating", setup)
+        self.assertIsNone(re.search(r"ibd", setup, re.IGNORECASE))
+        self.assertIsNone(re.search(r"ibd", html, re.IGNORECASE))
+        self.assertIsNone(re.search(r"ibd", css, re.IGNORECASE))
+        self.assertIsNone(re.search(r"ibd", app_js, re.IGNORECASE))
+
+    def test_sort_rows_persist_and_re_render_without_fetch(self):
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        sort_fns = setup[
+            setup.index("function normalizeSetupSort") : setup.index("const SETUP_SCAN_ACTIVE_CLASS")
+        ]
+        payload_fn = setup[
+            setup.index("function applySetupScanPayload") : setup.index("function readSetupScanCache")
+        ]
+        script = r"""
+const mem = {};
+function makeBtn(id, on) {
+    const attrs = {
+        'data-setup-sort': id,
+        'aria-pressed': on ? 'true' : 'false',
+    };
+    const classes = new Set(['setup-sort-pill']);
+    if (on) classes.add('setup-sort-on');
+    return {
+        getAttribute(k) { return Object.prototype.hasOwnProperty.call(attrs, k) ? attrs[k] : null; },
+        setAttribute(k, v) { attrs[k] = String(v); },
+        classList: {
+            toggle(name, flag) { if (flag) classes.add(name); else classes.delete(name); },
+            contains(name) { return classes.has(name); },
+        },
+        classes,
+        attrs,
+    };
+}
+const pills = [makeBtn('scan', true), makeBtn('adr', false), makeBtn('rvol', false)];
+const wrap = {
+    querySelectorAll(sel) { return String(sel).includes('data-setup-sort') ? pills : []; },
+    addEventListener(ev, fn) { wrap.handler = fn; },
+    contains(el) { return pills.includes(el); },
+};
+const meta = { textContent: '' };
+global.localStorage = {
+    getItem: k => (Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null),
+    setItem: (k, v) => { mem[k] = String(v); },
+};
+global.document = {
+    getElementById: id => {
+        if (id === 'setup-sort-pills') return wrap;
+        if (id === 'setup-scan-meta') return meta;
+        return null;
+    },
+};
+let loadSetupScanCalls = 0;
+let apiFetchCalls = 0;
+global.loadSetupScan = () => { loadSetupScanCalls += 1; };
+global.apiFetch = () => { apiFetchCalls += 1; };
+const renderCalls = [];
+function renderSetupScanTable(rows) {
+    renderCalls.push((rows || []).map(r => r.symbol));
+}
+const SETUP_SORT_STORAGE_KEY = 'whats-news-setup-sort';
+const SETUP_FILTERS_STORAGE_KEY = 'whats-news-setup-filters';
+let _setupSort = 'scan';
+let _setupScanRows = [];
+""" + sort_fns + payload_fn + r"""
+const rows = [
+    {symbol: 'AAA', adr_pct: 1.0, vol_ratio_5_20: 3.0},
+    {symbol: 'BBB', adr_pct: 5.0, vol_ratio_5_20: 1.0},
+    {symbol: 'CCC', adr_pct: null, vol_ratio_5_20: 2.0},
+    {symbol: 'DDD', adr_pct: 5.0, vol_ratio_5_20: null},
+];
+const scanOrder = sortedSetupScanRows(rows, 'scan').map(r => r.symbol);
+const adrOrder = sortedSetupScanRows(rows, 'adr').map(r => r.symbol);
+const rvolOrder = sortedSetupScanRows(rows, 'rvol').map(r => r.symbol);
+const origAfter = rows.map(r => r.symbol);
+const bad = normalizeSetupSort('rating');
+const empty = sortedSetupScanRows(null, 'adr');
+
+applySetupScanPayload({ results: rows, count: 4, scanned: 4 });
+const storedAfterPayload = _setupScanRows.map(r => r.symbol);
+const firstRender = renderCalls.slice();
+
+setSetupSort('adr');
+const afterAdr = {
+    sort: _setupSort,
+    stored: localStorage.getItem(SETUP_SORT_STORAGE_KEY),
+    filters: localStorage.getItem(SETUP_FILTERS_STORAGE_KEY),
+    render: renderCalls[renderCalls.length - 1],
+    pills: pills.map(p => ({
+        id: p.getAttribute('data-setup-sort'),
+        on: p.classList.contains('setup-sort-on'),
+        pressed: p.getAttribute('aria-pressed'),
+    })),
+};
+
+setSetupSort('rvol');
+const afterRvol = {
+    sort: _setupSort,
+    stored: localStorage.getItem(SETUP_SORT_STORAGE_KEY),
+    render: renderCalls[renderCalls.length - 1],
+};
+
+setSetupSort('scan');
+const afterScan = {
+    sort: _setupSort,
+    stored: localStorage.getItem(SETUP_SORT_STORAGE_KEY),
+    render: renderCalls[renderCalls.length - 1],
+};
+
+const saved = Object.assign({}, mem);
+_setupSort = 'scan';
+mem['whats-news-setup-sort'] = saved['whats-news-setup-sort'];
+localStorage.setItem(SETUP_SORT_STORAGE_KEY, 'rvol');
+const restored = restoreSetupSort();
+
+bindSetupSortControl();
+wrap.handler({ target: pills[1] });
+const afterClick = {
+    sort: _setupSort,
+    stored: localStorage.getItem(SETUP_SORT_STORAGE_KEY),
+    render: renderCalls[renderCalls.length - 1],
+    boundTwice: (bindSetupSortControl(), wrap._setupSortBound),
+};
+
+console.log(JSON.stringify({
+    scanOrder,
+    adrOrder,
+    rvolOrder,
+    origAfter,
+    bad,
+    empty,
+    storedAfterPayload,
+    firstRender,
+    afterAdr,
+    afterRvol,
+    afterScan,
+    restored,
+    afterClick,
+    loadSetupScanCalls,
+    apiFetchCalls,
+    key: SETUP_SORT_STORAGE_KEY,
+    meta: meta.textContent,
+}));
+"""
+        proc = subprocess.run(
+            ["node", "-e", script],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        import json
+        out = json.loads(proc.stdout)
+        self.assertEqual(out["key"], "whats-news-setup-sort")
+        self.assertEqual(out["scanOrder"], ["AAA", "BBB", "CCC", "DDD"])
+        self.assertEqual(out["adrOrder"], ["BBB", "DDD", "AAA", "CCC"])
+        self.assertEqual(out["rvolOrder"], ["AAA", "CCC", "BBB", "DDD"])
+        self.assertEqual(out["origAfter"], ["AAA", "BBB", "CCC", "DDD"])
+        self.assertEqual(out["bad"], "scan")
+        self.assertEqual(out["empty"], [])
+        self.assertEqual(out["storedAfterPayload"], ["AAA", "BBB", "CCC", "DDD"])
+        self.assertEqual(out["firstRender"], [["AAA", "BBB", "CCC", "DDD"]])
+        self.assertEqual(out["afterAdr"]["sort"], "adr")
+        self.assertEqual(out["afterAdr"]["stored"], "adr")
+        self.assertIsNone(out["afterAdr"]["filters"])
+        self.assertEqual(out["afterAdr"]["render"], ["BBB", "DDD", "AAA", "CCC"])
+        self.assertEqual(
+            out["afterAdr"]["pills"],
+            [
+                {"id": "scan", "on": False, "pressed": "false"},
+                {"id": "adr", "on": True, "pressed": "true"},
+                {"id": "rvol", "on": False, "pressed": "false"},
+            ],
+        )
+        self.assertEqual(out["afterRvol"]["sort"], "rvol")
+        self.assertEqual(out["afterRvol"]["stored"], "rvol")
+        self.assertEqual(out["afterRvol"]["render"], ["AAA", "CCC", "BBB", "DDD"])
+        self.assertEqual(out["afterScan"]["sort"], "scan")
+        self.assertEqual(out["afterScan"]["stored"], "scan")
+        self.assertEqual(out["afterScan"]["render"], ["AAA", "BBB", "CCC", "DDD"])
+        self.assertEqual(out["restored"], "rvol")
+        self.assertEqual(out["afterClick"]["sort"], "adr")
+        self.assertEqual(out["afterClick"]["stored"], "adr")
+        self.assertEqual(out["afterClick"]["render"], ["BBB", "DDD", "AAA", "CCC"])
+        self.assertTrue(out["afterClick"]["boundTwice"])
+        self.assertEqual(out["loadSetupScanCalls"], 0)
+        self.assertEqual(out["apiFetchCalls"], 0)
+        self.assertEqual(out["meta"], "4 hits · scanned 4 symbols")
+
+
 if __name__ == "__main__":
     unittest.main()
+

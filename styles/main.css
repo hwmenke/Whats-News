@@ -2967,6 +2967,7 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
 .setup-scanner-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 8px 14px;
   background: var(--bg-elevated);
@@ -2978,6 +2979,33 @@ body.focus-mode .focus-mode-chip { display: inline-flex; }
   display: flex;
   align-items: center;
   gap: 4px;
+}
+.setup-sort-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.setup-sort-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.setup-sort-pills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.setup-sort-pill {
+  font-size: 10px;
+  padding: 2px 7px;
+}
+.setup-sort-pill.setup-sort-on {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent-bright);
 }
 .setup-filter-pills {
   display: flex;
