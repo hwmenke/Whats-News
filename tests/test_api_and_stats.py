@@ -1,4 +1,6 @@
+import os
 import unittest
+os.environ.setdefault("DATA_SERVICE_MODE", "embedded")
 from unittest.mock import patch, MagicMock
 
 import numpy as np
@@ -17,6 +19,15 @@ class ApiValidationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json(), {"error": "limit must be an integer"})
+
+
+    def test_health_endpoint(self):
+        response = self.client.get("/api/health")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertTrue(data.get("ok"))
+        self.assertEqual(data.get("service"), "whats-news")
+        self.assertIn("symbol_count", data)
 
     def test_ohlcv_limit_must_be_positive(self):
         response = self.client.get("/api/ohlcv/AAPL?limit=0")

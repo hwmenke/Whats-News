@@ -269,12 +269,12 @@
 
     <nav class="topbar-nav">
       <a href="/">Dashboard</a>
-      <a href="/news" class="active">News</a>
+      <a href="/news" class="active">Watchlist news</a>
     </nav>
 
     <div class="topbar-spacer"></div>
 
-    <div class="status-dot" title="Connected"></div>
+    <div id="status-dot" class="status-dot" title="Checking…"></div>
   </header>
 
   <!-- Main Content -->
@@ -383,63 +383,85 @@
     `;
   }
 
-  function renderEmptyState(message, detail = null) {
+  function renderEmptyState(message, detail = null, { linkDashboard = false } = {}) {
     let html = `
       <div class="empty-state">
         <div class="empty-state-icon">📭</div>
         <h3>No News Available</h3>
         <p>${message}</p>
     `;
-    
+
+    if (linkDashboard) {
+      html += `<p style="margin-top:12px;"><a href="/" style="color:var(--accent-bright);">← Add symbols on the Dashboard</a></p>`;
+    }
+
     if (detail) {
       html += `<div class="error-detail">${detail}</div>`;
     }
-    
+
     html += `</div>`;
     return html;
   }
 
   async function loadNews() {
-    showStatus('Fetching news from Yahoo Finance...');
+    showStatus('Fetching news from Yahoo Finance…');
+    const dot = document.getElementById('status-dot');
 
     try {
       const response = await fetch(`${API_BASE}/api/news`);
       const data = await response.json();
 
       hideStatus();
+      if (dot) {
+        dot.classList.add('ok');
+        dot.title = 'Connected';
+      }
 
       if (data.error) {
-        document.getElementById('news-list').innerHTML = 
+        document.getElementById('news-list').innerHTML =
           renderEmptyState('Failed to fetch news', data.error);
         document.getElementById('news-count').textContent = 'Error';
         return;
       }
 
       if (!data.articles || data.articles.length === 0) {
-        let message = 'Add symbols to your watchlist to see news.';
-        if (data.symbol_count > 0) {
-          message = `No news found for ${data.symbol_count} symbol${data.symbol_count !== 1 ? 's' : ''} in your watchlist.`;
-        }
-        document.getElementById('news-list').innerHTML = renderEmptyState(message);
-        document.getElementById('news-count').textContent = 
+        const emptyWatchlist = !data.symbol_count;
+        let message = emptyWatchlist
+          ? 'Your watchlist is empty. Add tickers on the Dashboard first.'
+          : `No news found for ${data.symbol_count} symbol${data.symbol_count !== 1 ? 's' : ''} in your watchlist.`;
+        document.getElementById('news-list').innerHTML =
+          renderEmptyState(message, null, { linkDashboard: emptyWatchlist });
+        document.getElementById('news-count').textContent =
           `${data.symbol_count || 0} symbols, 0 articles`;
         return;
       }
 
-      const articlesHtml = data.articles.map(renderArticle).join('');
-      document.getElementById('news-list').innerHTML = articlesHtml;
-      
-      document.getElementById('news-count').textContent = 
-        `${data.symbol_count} symbol${data.symbol_count !== 1 ? 's' : ''}, ${data.article_count} article${data.article_count !== 1 ? 's' : ''}`;
+      document.getElementById('news-list').innerHTML =
+        data.articles.map(renderArticle).join('');
 
-      if (data.errors && data.errors.length > 0) {
-        console.warn('Some symbols failed to fetch:', data.errors);
+      let countLabel =
+        `${data.symbol_count} symbol${data.symbol_count !== 1 ? 's' : ''}, ${data.article_count} article${data.article_count !== 1 ? 's' : ''}`;
+      if (data.errors && data.errors.length) {
+        countLabel += ` · ${data.errors.length} fetch issue${data.errors.length !== 1 ? 's' : ''}`;
+        showStatus(
+          `Loaded with warnings: ${data.errors.map(e => e.symbol).join(', ')} failed.`,
+          'error'
+        );
       }
+      document.getElementById('news-count').textContent = countLabel;
 
     } catch (error) {
       hideStatus();
-      document.getElementById('news-list').innerHTML = 
-        renderEmptyState('Network error', error.message);
+      if (dot) {
+        dot.classList.add('bad');
+        dot.title = 'Offline';
+      }
+      document.getElementById('news-list').innerHTML =
+        renderEmptyState(
+          'Could not reach the Whats-News server. Is it running?',
+          error.message,
+          { linkDashboard: true }
+        );
       document.getElementById('news-count').textContent = 'Error';
       console.error('Failed to load news:', error);
     }

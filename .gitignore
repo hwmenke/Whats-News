@@ -7,12 +7,19 @@ venv/
 ENV/
 env/
 .env
+.pytest_cache/
 
-# Database
+# Database (never commit)
 finance.db
 finance.db-journal
+finance.db-wal
+finance.db-shm
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 
-# IDEs
+# IDEs / OS
 .vscode/
 .idea/
 .DS_Store

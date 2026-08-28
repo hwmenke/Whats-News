@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Service – Whats-News</title>
+  <link rel="stylesheet" href="/styles/main.css" />
+  <style>
+    .ds-app { min-height: 100vh; background: var(--bg-base); color: var(--text-primary); }
+    .ds-topbar {
+      display: flex; align-items: center; gap: 12px;
+      height: var(--topbar-h); padding: 0 16px;
+      background: var(--bg-elevated); border-bottom: 1px solid var(--border);
+    }
+    .ds-topbar a {
+      color: var(--text-muted); text-decoration: none; font-weight: 500;
+      padding: 4px 10px; border-radius: var(--radius-sm);
+    }
+    .ds-topbar a:hover { color: var(--text-primary); background: var(--bg-hover); }
+    .ds-topbar a.active { color: var(--accent-bright); background: var(--accent-glow); }
+    .ds-main { max-width: 960px; margin: 0 auto; padding: 28px 20px; }
+    .ds-main h1 { font-size: 26px; margin-bottom: 6px; }
+    .ds-meta { color: var(--text-muted); margin-bottom: 24px; font-size: 13px; }
+    .ds-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 720px) { .ds-grid { grid-template-columns: 1fr; } }
+    .ds-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-md); padding: 16px;
+    }
+    .ds-card h2 { font-size: 14px; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: .04em; }
+    .ds-stat { font-size: 28px; font-weight: 700; font-family: var(--font-mono); }
+    .ds-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+    .ds-actions .btn { padding: 8px 14px; }
+    .ds-log {
+      margin-top: 16px; font-family: var(--font-mono); font-size: 12px;
+      color: var(--text-muted); white-space: pre-wrap; max-height: 220px; overflow: auto;
+      background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 12px;
+      border: 1px solid var(--border);
+    }
+    .btn {
+      background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); cursor: pointer; font: inherit;
+    }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn:hover { filter: brightness(1.08); }
+  </style>
+</head>
+<body>
+<div class="ds-app">
+  <header class="ds-topbar">
+    <strong>Whats-News Data</strong>
+    <a href="/" class="active">Data Service</a>
+    <a href="http://localhost:8050/" target="_blank" rel="noopener">Analysis Dashboard →</a>
+    <div style="flex:1"></div>
+    <div class="status-dot" title="Service up"></div>
+  </header>
+
+  <main class="ds-main">
+    <h1>Data Management</h1>
+    <p class="ds-meta">Owns the watchlist and OHLCV SQLite store. The analysis app reads from this service on the fly.</p>
+
+    <div class="ds-grid">
+      <div class="ds-card">
+        <h2>Symbols</h2>
+        <div id="stat-symbols" class="ds-stat">—</div>
+      </div>
+      <div class="ds-card">
+        <h2>OHLCV rows</h2>
+        <div id="stat-ohlcv" class="ds-stat">—</div>
+      </div>
+      <div class="ds-card">
+        <h2>DB size</h2>
+        <div id="stat-size" class="ds-stat">—</div>
+      </div>
+      <div class="ds-card">
+        <h2>Journal</h2>
+        <div id="stat-journal" class="ds-stat" style="font-size:18px;">—</div>
+      </div>
+    </div>
+
+    <div class="ds-actions">
+      <button class="btn btn-primary" onclick="refreshAll()">⟳ Refresh all symbols</button>
+      <button class="btn" onclick="optimizeDb()">Optimize DB</button>
+      <button class="btn" onclick="loadStats()">Reload stats</button>
+    </div>
+    <div id="log" class="ds-log">Ready.</div>
+  </main>
+</div>
+<script>
+  function log(msg) {
+    const el = document.getElementById('log');
+    el.textContent = msg + '\n' + el.textContent;
+  }
+
+  async function loadStats() {
+    try {
+      const res = await fetch('/api/health');
+      const data = await res.json();
+      document.getElementById('stat-symbols').textContent = data.symbol_count ?? '—';
+      document.getElementById('stat-ohlcv').textContent = data.ohlcv_rows ?? data.daily_rows ?? '—';
+      document.getElementById('stat-size').textContent = data.size_mb != null ? data.size_mb + ' MB' : '—';
+      document.getElementById('stat-journal').textContent = data.journal_mode || 'ok';
+    } catch (e) {
+      log('Stats failed: ' + e.message);
+    }
+  }
+
+  async function refreshAll() {
+    log('Refreshing all symbols…');
+    try {
+      const res = await fetch('/api/refresh', { method: 'POST' });
+      const data = await res.json();
+      log('Refresh done: ' + (Array.isArray(data) ? data.length + ' results' : JSON.stringify(data)));
+      loadStats();
+    } catch (e) {
+      log('Refresh failed: ' + e.message);
+    }
+  }
+
+  async function optimizeDb() {
+    log('Optimizing…');
+    try {
+      const res = await fetch('/api/db/optimize', { method: 'POST' });
+      const data = await res.json();
+      log('Optimize: ' + JSON.stringify(data));
+      loadStats();
+    } catch (e) {
+      log('Optimize failed: ' + e.message);
+    }
+  }
+
+  loadStats();
+</script>
+</body>
+</html>
