@@ -177,6 +177,7 @@ html, body {
 
 .market-time {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--text-muted);
 }
@@ -231,6 +232,7 @@ html, body {
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   padding: 6px 10px;
   text-transform: uppercase;
@@ -309,6 +311,7 @@ html, body {
 
 .symbol-item .sym-ticker {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
@@ -317,6 +320,7 @@ html, body {
 
 .symbol-item .sym-change {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   font-weight: 500;
 }
@@ -351,15 +355,29 @@ html, body {
   background: var(--bg-base);
 }
 
-/* Symbol Header Bar */
+/* Symbol Header Bar — compact command bar; PM desk glance chips + process
+   tools popover trigger now live inline here (was a separate 70px band). */
 .symbol-header {
-  padding: 12px 20px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
   flex-wrap: wrap;
   background: var(--bg-elevated);
+}
+
+/* Screen-reader-only — visually hidden but still announced/queryable. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .symbol-header-name {
@@ -385,12 +403,14 @@ html, body {
 
 .sym-price {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 22px;
   font-weight: 700;
 }
 
 .sym-change-badge {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 600;
   padding: 2px 8px;
@@ -404,6 +424,18 @@ html, body {
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+/* Compact single-line OHLCV — replaces the stacked label/value columns
+   in the command bar (full breakdown stays available via .visually-hidden
+   spans for anything that queries the individual O/H/L/C/V values). */
+.ohlcv-strip-inline { gap: 0; }
+.ohlcv-inline {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .ohlcv-item {
@@ -422,6 +454,7 @@ html, body {
 
 .ohlcv-val {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--text-muted);
 }
@@ -432,13 +465,33 @@ html, body {
 .portfolio-tape {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 16px;
+  gap: 8px;
+  padding: 4px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   overflow-x: auto;
   flex-shrink: 0;
 }
+.focus-mode #portfolio-tape { display: none !important; }
+/* Extra chrome density (drawers / extra nav / glance chips) lives at
+   the end of this file so workspace-scan / workspace-review exceptions win. */
+
+.focus-mode-chip {
+  display: none;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid var(--accent);
+  background: rgba(59, 130, 246, 0.18);
+  color: var(--accent-bright);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+body.focus-mode .focus-mode-chip { display: inline-flex; }
 .tape-chips {
   display: flex;
   gap: 6px;
@@ -464,6 +517,72 @@ html, body {
 }
 .tape-filter input { accent-color: var(--accent); }
 #tape-book-news { flex-shrink: 0; font-size: 11px; padding: 3px 8px; }
+
+/* Tape mode segmented control — All / Breakout / Alerts share one row,
+   replacing the separate breakout-queue-bar + alerts-only checkbox. */
+.tape-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tape-mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.tape-mode-btn:hover { color: var(--text-primary); }
+.tape-mode-btn:focus-visible,
+.ind-pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tape-mode-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+.tape-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tape-sort-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.tape-sort-btn:hover { color: var(--text-primary); }
+.tape-sort-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tape-sort-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
 .tape-chip {
   display: inline-flex;
   align-items: center;
@@ -473,6 +592,7 @@ html, body {
   border: 1px solid var(--border);
   background: var(--bg-card);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   cursor: pointer;
   color: var(--text-primary);
@@ -486,11 +606,43 @@ html, body {
   color: var(--text-dim);
   font-size: 10px;
 }
+.tape-chip .tape-sma200 {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+.tape-chip .tape-atr {
+  color: var(--text-dim);
+  font-size: 10px;
+}
 .tape-chip .tape-alert {
   font-size: 9px;
   font-weight: 700;
   padding: 1px 4px;
   border-radius: 3px;
+  background: rgba(249, 115, 22, 0.2);
+  color: var(--orange);
+}
+
+/* bq-chip / bq-ep-flag are reused inside .tape-chips for tape mode =
+   "breakout" (see renderBreakoutChips in app.js) — the standalone
+   .breakout-queue-bar row itself no longer exists in index.html. */
+.bq-chip { border-color: rgba(249, 115, 22, 0.35); }
+.bq-chip:hover { border-color: var(--orange); }
+.bq-ep-flag {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(249, 115, 22, 0.25);
+  color: var(--orange);
+  letter-spacing: 0.03em;
+}
+
+.pm-panels-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 99px;
   background: rgba(249, 115, 22, 0.2);
   color: var(--orange);
 }
@@ -505,6 +657,21 @@ html, body {
   font-size: 10px;
   color: var(--text-dim);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.symbol-item .sym-sma200 {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.symbol-item .sym-atr {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .pm-copy-btn {
@@ -514,16 +681,15 @@ html, body {
   padding: 4px 10px;
 }
 
+/* Single-column stack — .pm-panels now lives inside the ~320px book drawer,
+   not a full-width row, so it no longer needs a 2-col grid + breakpoint. */
 .pm-panels {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  padding: 8px 16px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-base);
-}
-@media (max-width: 900px) {
-  .pm-panels { grid-template-columns: 1fr; }
+  padding: 10px 12px;
+  overflow-y: auto;
+  flex: 1;
 }
 .pm-panel {
   background: var(--bg-card);
@@ -539,6 +705,52 @@ html, body {
   letter-spacing: 0.06em;
   color: var(--text-dim);
   margin-bottom: 8px;
+}
+.heatmap-sort-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.heatmap-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.heatmap-sort-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.3;
+}
+.heatmap-sort-btn:hover { color: var(--text-primary); }
+.heatmap-sort-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.heatmap-sort-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+body.workspace-review .heatmap-sort-btn {
+  font-size: 9px;
+  padding: 0 5px;
 }
 .regime-heatmap {
   display: flex;
@@ -559,6 +771,7 @@ html, body {
 .heat-cell:hover { border-color: var(--accent); }
 .heat-cell .heat-sym {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   font-weight: 600;
 }
@@ -584,12 +797,46 @@ html, body {
   justify-content: space-between;
   gap: 8px;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 4px;
 }
 .alert-log-item:hover { background: var(--bg-hover); }
 .alert-log-item .al-flag { color: var(--orange); font-weight: 700; }
+
+/* ── Theme leaders (group rollup) — book drawer, third panel ──────── */
+.theme-leaders {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 11px;
+}
+.theme-leader-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.theme-leader-item:hover { background: var(--bg-hover); }
+.theme-leader-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.theme-leader-name {
+  flex: 1;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.theme-leader-n {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--text-dim);
+}
 
 .pm-size-row {
   display: flex;
@@ -604,6 +851,7 @@ html, body {
   border-radius: 4px;
   padding: 2px 4px;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
 }
 .preset-row {
@@ -613,15 +861,19 @@ html, body {
 }
 .preset-row .btn { flex: 1; font-size: 11px; padding: 4px 6px; }
 
-/* ── PM Desk strip ────────────────────────────────────────── */
+/* ── PM Desk glance chips ─────────────────────────────────────────────
+   Was a full-width 70px band with its own gradient + border below the
+   header; now sits inline inside .symbol-header as wrap-friendly chips. */
 .pm-desk {
   display: flex;
   align-items: stretch;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
-  padding: 8px 20px;
-  background: linear-gradient(180deg, rgba(59,130,246,0.06), transparent);
-  border-bottom: 1px solid var(--border);
+}
+.pm-desk-inline {
+  padding: 0;
+  background: none;
+  border-bottom: none;
 }
 .pm-desk-title {
   font-size: 10px;
@@ -637,8 +889,8 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 72px;
-  padding: 4px 10px;
+  min-width: 64px;
+  padding: 3px 8px;
   border-radius: var(--radius-sm);
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -653,6 +905,7 @@ html, body {
 }
 .pm-val {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
@@ -663,6 +916,236 @@ html, body {
 .pm-val.zone-overbought, .pm-val.zone-oversold { color: var(--orange); }
 .pm-val.zone-bullish { color: var(--green); }
 .pm-val.zone-bearish { color: var(--red); }
+.pm-hint {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text-dim);
+  line-height: 1.25;
+  max-width: 92px;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   BOOK DRAWER — right-side overlay for regime heatmap / alert log /
+   theme leaders. Fixed + overlay (not push) so it never reflows or
+   resizes the chart panes (see VISUAL_REVIEW.md §4). Shared base for
+   both #book-drawer and #journal-drawer (.journal-drawer modifier).
+   ══════════════════════════════════════════════════════════════════ */
+.book-drawer {
+  position: fixed;
+  top: var(--topbar-h);
+  right: 0;
+  width: 320px;
+  max-width: 88vw;
+  height: calc(100vh - var(--topbar-h));
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 32px rgba(0,0,0,0.35);
+  transform: translateX(100%);
+  transition: transform 180ms ease;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.book-drawer.open,
+.book-drawer[aria-hidden="false"] {
+  transform: translateX(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .book-drawer { transition: none; }
+}
+
+.book-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.book-drawer-head strong { flex: 1; font-size: 13px; }
+
+.book-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 199;
+}
+.book-drawer-backdrop[hidden] { display: none; }
+
+/* ── Process tools popover — risk box, stop source, checklist ──────
+   position:fixed (like .book-drawer) so it escapes .main's overflow:hidden
+   and always renders just under the compact command bar, regardless of
+   exact header height or scroll position. */
+.pm-tools-popover {
+  position: fixed;
+  top: calc(var(--topbar-h) + 44px);
+  right: 12px;
+  z-index: 150;
+  width: 360px;
+  max-width: 92vw;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pm-tools-popover[hidden] { display: none; }
+
+.pm-tools-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pm-tools-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.pm-tools-row input[type="number"] {
+  width: 72px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+.pm-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.pm-checklist label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.pm-checklist input { accent-color: var(--accent); }
+
+/* ── Trade journal (localStorage-backed) ──────────────────────────── */
+.journal-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.journal-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.journal-item-closed { opacity: 0.6; }
+.journal-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.journal-sym {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.journal-date {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+}
+.journal-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.journal-item-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+.journal-item-actions .btn { font-size: 10px; padding: 3px 8px; }
+.journal-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.journal-compose-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.journal-compose input[type="date"] {
+  flex: 1 1 140px;
+  min-width: 132px;
+  color-scheme: dark;
+}
+.journal-compose-row .btn { flex-shrink: 0; }
+.journal-compose input[type="date"],
+.journal-compose input[type="text"] {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.journal-compose input[type="text"] { width: 100%; }
+.journal-item-focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-glow);
+}
+.journal-note-text { color: var(--text-primary); }
+.journal-filter {
+  display: block;
+  box-sizing: border-box;
+  width: calc(100% - 24px);
+  margin: 6px 12px 0;
+  flex-shrink: 0;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 8px;
+}
+.journal-filter:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.journal-item[hidden] { display: none !important; }
+.journal-export-btn {
+  flex-shrink: 0;
+  font-size: 10px;
+  padding: 3px 8px;
+}
 
 /* ── Tab Bar ──────────────────────────────────────────────── */
 .tab-bar {
@@ -720,8 +1203,22 @@ html, body {
 .ind-pill:hover { border-color: var(--accent); color: var(--accent); }
 
 .ind-pill.active-bb { background: rgba(34,197,94,0.18); border-color: #22c55e; color: #22c55e; }
+.ind-pill.active-spy-rs { background: rgba(103,232,249,0.16); border-color: #67e8f9; color: #67e8f9; }
+.ind-pill.active-vwap { background: rgba(245,197,66,0.16); border-color: #f5c542; color: #f5c542; }
+.ind-pill.active-last { background: rgba(192,38,211,0.16); border-color: #c026d3; color: #f0abfc; }
+.ind-pill.active-gap { background: rgba(45,212,191,0.16); border-color: #2dd4bf; color: #5eead4; }
+.ind-pill.active-ep { background: rgba(249,115,22,0.18); border-color: #f97316; color: #f97316; }
+.ind-pill.active-news-markers { background: rgba(196,181,253,0.16); border-color: #c4b5fd; color: #c4b5fd; }
+.ind-pill.active-darvas { background: rgba(249,115,22,0.18); border-color: #f97316; color: #f97316; }
+.ind-pill.active-price-alerts { background: rgba(192,132,252,0.16); border-color: #c084fc; color: #e9d5ff; }
+.ind-pill.active-pack { background: rgba(232,121,249,0.16); border-color: #e879f9; color: #e879f9; }
+#pill-pack-stockbee.ind-pill.active-pack { background: rgba(244,114,182,0.16); border-color: #f472b6; color: #f472b6; }
+#pill-pack-weinstein.ind-pill.active-pack { background: rgba(245,158,11,0.16); border-color: #f59e0b; color: #f59e0b; }
+/* Generic active state — indicator-pane pills (RSI/MACD/Trend) + Focus pill,
+   toggled via .classList in app.js rather than a bespoke class per pill. */
+.ind-pill.active { background: rgba(59,130,246,0.18); border-color: var(--accent); color: var(--accent-bright); }
 
-/* KAMA period active state is applied via inline style (dynamic colors) */
+/* KAMA / EMA period active state is applied via inline style (dynamic colors) */
 
 /* ── Overlay toolbar helpers ───────────────────────────────── */
 .overlay-section-label {
@@ -747,6 +1244,7 @@ html, body {
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   padding: 3px 7px;
   outline: none;
@@ -803,6 +1301,13 @@ html, body {
 
 .chart-wrapper-main { flex: 1; min-height: 0; }
 
+/* Give the price pane extra room whenever every optional pane (RSI/MACD/
+   Trend) in this panel is hidden — chart-first default, more so once the
+   panes that would otherwise share the column are toggled off. */
+.chart-panel:not(:has(.pane-optional:not([hidden]))) .chart-wrapper-main {
+  flex: 1.6;
+}
+
 .chart-label {
   position: absolute;
   top: 8px;
@@ -822,9 +1327,58 @@ html, body {
   flex-shrink: 0;
 }
 
-.chart-wrapper-rsi   { height: 110px; flex-shrink: 0; }
-.chart-wrapper-macd  { height: 100px; flex-shrink: 0; }
-.chart-wrapper-trend { height: 80px;  flex-shrink: 0; }
+.chart-wrapper-volume { height: 84px;  flex-shrink: 0; }
+/* Muted SMA20 hint on volume panes — matches C.vol_sma in charts.js. */
+.chart-wrapper-volume .chart-label::after {
+  content: "SMA20";
+  color: #7d93b0;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  margin-left: 6px;
+}
+.chart-wrapper-rsi     { height: 110px; flex-shrink: 0; }
+.chart-wrapper-macd    { height: 100px; flex-shrink: 0; }
+.chart-wrapper-trend   { height: 80px;  flex-shrink: 0; }
+
+/* Optional panes + their dividers are toggled via the [hidden] attribute
+   (see setIndicatorPane in charts.js) rather than a class, so their
+   collapsed state is explicit here rather than relying only on the UA
+   default for [hidden]. */
+.pane-optional[hidden],
+.chart-divider-rsi[hidden],
+.chart-divider-macd[hidden],
+.chart-divider-trend[hidden] {
+  display: none;
+}
+
+.vol-surge-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(249, 115, 22, 0.25);
+  color: var(--orange);
+  letter-spacing: 0.02em;
+  margin-left: 4px;
+  pointer-events: auto;
+}
+.vol-surge-badge.vol-surge-now {
+  background: #f97316;
+  color: #111827;
+  box-shadow: 0 0 0 1px #fdba74, 0 0 10px rgba(249, 115, 22, 0.55);
+}
+.ep-glance-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #fde047;
+  color: #111827;
+  letter-spacing: 0.02em;
+  margin-left: 6px;
+  text-transform: none;
+  pointer-events: auto;
+}
 
 /* ── Empty State ──────────────────────────────────────────── */
 .empty-state {
@@ -872,6 +1426,35 @@ html, body {
 }
 .onboarding-steps li { margin: 4px 0; }
 .onboarding-steps strong { color: var(--text-primary); }
+
+.kbd-hint-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 480px;
+  margin: 8px 0 0;
+}
+.kbd-hint-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.empty-state kbd,
+.kbd-hint-row kbd,
+.kbd-help-list kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
 
 /* ── Toast / Notifications ───────────────────────────────── */
 .toast-container {
@@ -934,6 +1517,40 @@ html, body {
   color: var(--text-muted);
 }
 
+.yahoo-throttle-banner {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 17, 23, 0.82);
+  padding: 24px;
+}
+.yahoo-throttle-banner[hidden] { display: none !important; }
+.yahoo-throttle-card {
+  max-width: 420px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--yellow);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--shadow-card);
+}
+.yahoo-throttle-card strong {
+  color: var(--yellow);
+  font-size: 14px;
+}
+.yahoo-throttle-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.yahoo-throttle-card .btn { align-self: flex-start; }
+
 /* ── Responsive tweaks ────────────────────────────────────── */
 @media (max-width: 800px) {
   .app {
@@ -944,41 +1561,17 @@ html, body {
 }
 
 /* ═══════════════════ MAIN TABS ═══════════════════ */
+/* Lean, single .tab-btn rule lives further down (Tab Bar section) — do
+   not redefine it here.
+   This row merges the view switcher + indicator-pane toggles into one
+   chart-first chrome row (was two stacked rows: main-nav-tabs + tab-bar). */
 .main-nav-tabs {
   display: flex;
-  gap: 8px;
-  padding: 0 24px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
-}
-
-.tab-btn {
-  background: transparent;
-  border: none;
-  color: #8a8a98;
-  padding: 12px 20px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
   align-items: center;
-  gap: 8px;
-  transition: all 0.2s;
-  border-bottom: 2px solid transparent;
-}
-
-.tab-btn:hover {
-  color: #fff;
-  background: rgba(255,255,255,0.05);
-}
-
-.tab-btn.active {
-  color: #4facfe;
-  border-bottom-color: #4facfe;
-}
-
-.tab-icon {
-  font-size: 16px;
+  gap: 6px;
+  padding: 4px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
 }
 
 /* ═══════════════════ STATISTICS VIEW ═══════════════════ */
@@ -1012,10 +1605,23 @@ html, body {
 }
 
 .news-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   font-size: 11px;
   color: var(--text-dim);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
+
+.news-watchlist-link {
+  margin-left: auto;
+  color: var(--accent-bright);
+  text-decoration: none;
+  font-weight: 600;
+}
+.news-watchlist-link:hover { text-decoration: underline; }
 
 .news-list {
   flex: 1;
@@ -1063,6 +1669,7 @@ html, body {
   font-size: 11px;
   color: var(--text-muted);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .news-item-provider {
@@ -1153,6 +1760,163 @@ html, body {
   width: 100%;
 }
 
+/* ═══════════════════ CONDITIONAL DISTRIBUTIONS ═══════════════════ */
+
+.dist-builder { margin-bottom: 20px; }
+
+.dist-help {
+  margin: -8px 0 16px;
+  font-size: 13px;
+  color: var(--text-muted, #8a8a98);
+  line-height: 1.5;
+  max-width: 720px;
+}
+
+.dist-section-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #8a8a98;
+  margin-right: 6px;
+}
+
+.dist-presets,
+.dist-horizons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.preset-pill,
+.horizon-pill {
+  background: #26262e;
+  color: #c9d1d9;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.preset-pill:hover,
+.horizon-pill:hover { background: #303039; }
+
+.horizon-pill.active {
+  background: rgba(79,172,254,0.18);
+  border-color: #4facfe;
+  color: #4facfe;
+  font-weight: 600;
+}
+
+.dist-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.dist-row select,
+.dist-row input,
+#dist-horizon-custom {
+  background: #16161b;
+  color: #e6edf3;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.dist-row input { width: 110px; }
+#dist-horizon-custom { width: 80px; }
+
+.dist-remove {
+  background: transparent;
+  color: #ef4444;
+  border: 1px solid rgba(239,68,68,0.4);
+  border-radius: 8px;
+  width: 30px;
+  height: 32px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dist-remove:hover { background: rgba(239,68,68,0.12); }
+
+.btn-ghost.dist-add {
+  background: transparent;
+  color: #4facfe;
+  border: 1px dashed rgba(79,172,254,0.4);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  margin: 4px 0 8px;
+}
+.btn-ghost.dist-add:hover { background: rgba(79,172,254,0.08); }
+
+.btn-run-dist {
+  background: #4facfe;
+  color: #04121f;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+}
+.btn-run-dist:hover { background: #6fbcff; }
+.btn-run-dist:disabled { opacity: 0.6; cursor: default; }
+
+.dist-summary {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #c9d1d9;
+  font-variant-numeric: tabular-nums;
+}
+
+.dist-effn {
+  margin: -10px 0 12px;
+  font-size: 11px;
+  color: #8a8a98;
+  font-variant-numeric: tabular-nums;
+}
+
+.dist-empty {
+  color: #8a8a98;
+  font-size: 14px;
+  padding: 20px 0;
+  text-align: center;
+}
+
+.dist-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.dist-table th,
+.dist-table td {
+  text-align: right;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.dist-table th {
+  color: #8a8a98;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+.dist-table th:first-child,
+.dist-table td.dist-metric { text-align: left; color: #8a8a98; }
+.dist-table td.dist-base { color: #8a8a98; }
+
 /* ═══════════════════ SCANNER (signal-based) ═══════════════════ */
 
 .scanner-controls {
@@ -1209,6 +1973,7 @@ html, body {
   text-decoration: none;
   font-weight: 600;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .scanner-sym-link:hover {
@@ -1369,6 +2134,7 @@ html, body {
   font-size: 11px;
   font-weight: 600;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   padding: 3px 9px;
   transition: opacity 0.15s, border-color 0.15s, background 0.15s;
 }
@@ -1500,6 +2266,7 @@ html, body {
 
 .trend-composite-badge {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 22px;
   font-weight: 800;
   letter-spacing: 1px;
@@ -1556,6 +2323,7 @@ html, body {
 /* Horizon alignment arrows: Short ↑ · Medium ↓ · Long ↑ */
 .trend-align-detail {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   color: var(--text-muted);
   letter-spacing: 0.3px;
@@ -1590,6 +2358,7 @@ html, body {
 
 .trend-signal-value {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
@@ -1618,7 +2387,7 @@ html, body {
   background: var(--bg-elevated);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-lg);
-  width: 440px;
+  width: 480px;
   max-width: calc(100vw - 32px);
   display: flex;
   flex-direction: column;
@@ -1668,6 +2437,7 @@ html, body {
   border-radius: var(--radius-md);
   color: var(--text-primary);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   line-height: 1.6;
   padding: 10px 12px;
@@ -1695,7 +2465,7 @@ html, body {
 }
 
 .bulk-progress-bar {
-  height: 3px;
+  height: 6px;
   background: var(--bg-card);
   border-radius: 99px;
   overflow: hidden;
@@ -1711,9 +2481,39 @@ html, body {
 
 .bulk-progress-label {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.bulk-progress-counts {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   color: var(--text-muted);
 }
+
+.bulk-progress-log {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  max-height: 160px;
+  overflow-y: auto;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.bulk-progress-log li { color: var(--text-muted); }
+.bulk-progress-log li.ok { color: var(--green); }
+.bulk-progress-log li.skip { color: var(--text-dim); }
+.bulk-progress-log li.fail { color: var(--red); }
+.bulk-progress-log li.work { color: var(--accent-bright); }
+.bulk-progress-log li.pause { color: var(--yellow); }
 
 .bulk-modal-footer {
   display: flex;
@@ -1780,6 +2580,7 @@ html, body {
 
 .scanner-ts {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 10px;
   color: var(--text-dim);
 }
@@ -1813,6 +2614,7 @@ html, body {
   border-collapse: separate;
   border-spacing: 0;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   white-space: nowrap;
   min-width: 100%;
@@ -2062,6 +2864,7 @@ html, body {
   font-size: 10px;
   color: var(--text-dim);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Ticker chips */
@@ -2074,6 +2877,7 @@ html, body {
 .dm-chip {
   font-size: 10px;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-weight: 500;
   padding: 2px 6px;
   border-radius: 4px;
@@ -2106,6 +2910,7 @@ html, body {
   font-size: 11px;
   color: var(--text-muted);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Right panel ────────────────────────────────────────────────── */
@@ -2196,7 +3001,7 @@ html, body {
   margin-bottom: 5px;
 }
 .dm-progress-header span { font-size: 12px; color: var(--text-muted); }
-.dm-pct { font-family: var(--font-mono); font-weight: 600; color: var(--accent-bright) !important; }
+.dm-pct { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; color: var(--accent-bright) !important; }
 .dm-progress-bar {
   height: 6px;
   background: var(--bg-card);
@@ -2233,6 +3038,7 @@ html, body {
   padding: 4px 12px 12px;
   font-size: 11px;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .dm-log::-webkit-scrollbar { width: 4px; }
 .dm-log::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 2px; }
@@ -2276,6 +3082,7 @@ html, body {
     color: var(--text-primary);
     font-size: 11px;
     font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
 }
 .tconf-apply { padding: 4px 12px; font-size: 11px; }
 .tconf-preset { padding: 4px 10px; font-size: 11px; }
@@ -2380,3 +3187,606 @@ html, body {
   flex: 1;
   min-height: 0;
 }
+
+/* ── Sidebar desk filter ─────────────────────────────────────── */
+.sidebar-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sidebar-count {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.desk-filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.desk-filter-toggle input { accent-color: var(--accent); }
+.sym-promote {
+  font-size: 11px;
+  color: var(--accent-bright);
+  padding: 0 4px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.sym-promote:hover { opacity: 1; }
+
+/* ── Setup scanner ───────────────────────────────────────────── */
+.setup-scanner-panel {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  max-height: 42vh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.setup-scanner-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+.setup-universe-toggle {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.setup-sort-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.setup-sort-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.setup-sort-pills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.setup-sort-pill {
+  font-size: 10px;
+  padding: 2px 7px;
+}
+.setup-sort-pill.setup-sort-on {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+.setup-filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 14px;
+  flex-shrink: 0;
+}
+.setup-pill { font-size: 11px; padding: 3px 8px; }
+.setup-pill-on {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+.setup-table-wrap {
+  flex: 1;
+  min-height: 0;
+  max-height: 28vh;
+}
+.setup-scan-table { font-size: 11px; }
+.setup-scan-table th { position: sticky; top: 0; background: var(--bg-elevated); }
+.setup-scan-table th,
+.setup-scan-table td { padding: 5px 8px; }
+.setup-tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 5px;
+  margin: 1px 2px;
+  border-radius: 3px;
+  background: var(--accent-glow);
+  color: var(--accent-bright);
+}
+.setup-scan-row { cursor: pointer; }
+.setup-scan-row:hover { background: var(--bg-hover); }
+.setup-scan-row.setup-scan-selected {
+  background: var(--accent-glow);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.setup-scan-row.setup-scan-active {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.setup-scan-table td.setup-sym {
+  white-space: normal;
+  line-height: 1.25;
+  vertical-align: top;
+}
+.setup-metric-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 2px;
+}
+.setup-metric-chip {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
+  border-radius: 3px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  line-height: 1.45;
+  white-space: nowrap;
+}
+.setup-scan-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.setup-scan-hint kbd {
+  font-size: 10px;
+}
+.setup-scan-loading { min-height: 60px; }
+.scanner-section-divider {
+  height: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Universe archive (Data tab) ─────────────────────────────── */
+.dm-universe-section { padding-bottom: 12px; }
+.dm-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 0 16px 8px;
+  line-height: 1.45;
+}
+.universe-indices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px 10px;
+}
+.universe-index-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  cursor: pointer;
+}
+.universe-index-chip input { accent-color: var(--accent); }
+.universe-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+.universe-stats span { font-variant-numeric: tabular-nums; }
+.dm-universe-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 0 16px;
+}
+.dm-universe-actions { padding: 0 16px 8px; }
+.dm-section-rule {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0 12px;
+}
+
+.watchlist-filter {
+  width: 100%;
+  margin-top: 6px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 8px;
+}
+.watchlist-filter:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.chart-ohlc-legend {
+  position: absolute;
+  top: 6px;
+  left: 118px;
+  z-index: 11;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #e6edf3;
+  white-space: nowrap;
+  max-width: calc(100% - 72px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid #3d4965;
+  border-radius: 4px;
+  padding: 3px 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
+}
+.chart-ohlc-legend.legend-up { color: #4ade80; }
+.chart-ohlc-legend.legend-down { color: #f87171; }
+.chart-ohlc-legend.legend-held { border-color: #8b949e; }
+.chart-ohlc-legend .lg-date { color: #e6edf3; margin-right: 4px; }
+.chart-ohlc-legend .lg-up { color: #4ade80; }
+.chart-ohlc-legend .lg-down { color: #f87171; }
+.chart-ohlc-legend .lg-h { color: #fde68a; }
+.chart-ohlc-legend .lg-l { color: #7dd3fc; }
+.chart-ohlc-legend .lg-v { color: #cbd5e1; }
+.chart-ohlc-legend .lg-ma { font-weight: 600; }
+.chart-ohlc-legend .lg-stat { color: #8b949e; font-weight: 500; }
+.chart-ohlc-legend.chart-ohlc-twin {
+  top: 30px;
+  font-size: 10px;
+  font-weight: 500;
+  z-index: 10;
+  opacity: 0.95;
+}
+.chart-ohlc-legend.chart-ohlc-twin:empty { display: none; }
+
+.price-alert-chips {
+  position: absolute;
+  top: 54px;
+  left: 118px;
+  z-index: 12;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: calc(100% - 80px);
+  pointer-events: auto;
+}
+.price-alert-chips[hidden] { display: none !important; }
+.price-alert-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #e9d5ff;
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid #a78bfa;
+  border-radius: 4px;
+  padding: 1px 6px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.price-alert-chip:hover { background: rgba(167, 139, 250, 0.22); }
+
+.desk-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(1, 4, 9, 0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+.desk-palette-overlay[hidden] { display: none !important; }
+.desk-palette-card {
+  width: min(520px, 92vw);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.45);
+  padding: 12px 14px 10px;
+}
+.desk-palette-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.desk-palette-kbd {
+  font-size: 10px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.kbd-help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 950;
+  backdrop-filter: blur(3px);
+}
+.kbd-help-overlay[hidden] { display: none !important; }
+.kbd-help-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-lg);
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  padding: 14px 16px 12px;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.65);
+}
+.kbd-help-card:focus { outline: none; }
+.kbd-help-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.kbd-help-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kbd-help-list > div {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.kbd-help-list dt {
+  margin: 0;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.kbd-help-list dd {
+  margin: 0;
+  color: var(--text-muted);
+}
+.desk-palette-input {
+  width: 100%;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.desk-palette-results {
+  margin-top: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.desk-palette-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+.desk-palette-row.active, .desk-palette-row:hover { background: var(--bg-card); }
+.desk-palette-meta { color: var(--text-dim); font-size: 10px; }
+.desk-palette-hint { margin: 8px 0 0; font-size: 10px; color: var(--text-dim); }
+.desk-palette-empty { padding: 10px; color: var(--text-dim); font-size: 12px; }
+
+/* ── Desk workspaces (Chart / Scan / Review) ───────────────── */
+.workspace-switch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+}
+.workspace-btn {
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.workspace-btn:hover { color: var(--text-primary); }
+.workspace-btn.active,
+.workspace-btn[aria-pressed="true"] {
+  background: var(--accent-glow);
+  color: var(--accent-bright);
+}
+
+body.workspace-scan .main {
+  flex-flow: row wrap;
+  align-content: stretch;
+}
+body.workspace-scan #portfolio-tape,
+body.workspace-scan .symbol-header,
+body.workspace-scan .main-nav-tabs,
+body.workspace-scan .book-drawer,
+body.workspace-scan #journal-drawer,
+body.workspace-scan .book-drawer-backdrop {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
+}
+body.workspace-scan #chart-area {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+body.workspace-scan #scanner-area {
+  flex: 0 0 min(400px, 40vw);
+  width: min(400px, 40vw);
+  max-width: 42vw;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+}
+body.workspace-scan .setup-scanner-panel {
+  max-height: none;
+  flex: 1 1 auto;
+}
+
+@media (max-width: 900px) {
+  body.workspace-scan .main { flex-flow: column nowrap; }
+  body.workspace-scan #scanner-area {
+    flex: 0 0 36vh;
+    width: 100%;
+    max-width: none;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* Review: journal and book scan sit side by side instead of stacking. */
+body.workspace-review #journal-drawer {
+  width: 280px;
+  z-index: 201;
+  transform: translateX(0);
+}
+body.workspace-review #book-drawer {
+  right: 280px;
+  width: min(340px, 42vw);
+  transform: translateX(0);
+}
+body.workspace-review #book-drawer-backdrop {
+  display: none !important;
+}
+
+/* ── Focus mode chrome density (workspace exceptions) ──────────
+   body.focus-mode is toggled by toggleFocusMode() (#pill-focus / key f).
+   Off: removing the class restores tape, drawers, tabs, and glance chips.
+
+   Chart (default / .workspace-chart): hide tape, heatmap, alert log,
+   book/journal drawers, extra view tabs, glance chips, panel titles —
+   keep a compact #chart-overlays-bar so pane pills, vs-SPY, and method
+   packs stay reachable. #chart-area flex-grows into the reclaimed pixels.
+
+   Scan (.workspace-scan): same extra-chrome hide; NEVER hide the setup
+   hit list (#scanner-area / .setup-scanner-panel). Charts still grow.
+
+   Review (.workspace-review): tape only — keep news, journal, book. */
+
+/* Tape: every workspace, including Review (the Review no-op besides tape). */
+body.focus-mode #portfolio-tape { display: none !important; }
+
+/* Heatmap, alert log, unused drawers — Chart + Scan only. */
+body.focus-mode:not(.workspace-review) #book-drawer,
+body.focus-mode:not(.workspace-review) #journal-drawer,
+body.focus-mode:not(.workspace-review) #book-drawer-backdrop,
+body.focus-mode:not(.workspace-review) #regime-heatmap,
+body.focus-mode:not(.workspace-review) #alert-log,
+body.focus-mode:not(.workspace-review) #theme-leaders,
+body.focus-mode:not(.workspace-review) #pm-tools-popover,
+body.focus-mode.workspace-chart #book-drawer,
+body.focus-mode.workspace-chart #journal-drawer,
+body.focus-mode.workspace-chart #regime-heatmap,
+body.focus-mode.workspace-chart #alert-log,
+body.focus-mode.workspace-scan #book-drawer,
+body.focus-mode.workspace-scan #journal-drawer,
+body.focus-mode.workspace-scan #regime-heatmap,
+body.focus-mode.workspace-scan #alert-log {
+  display: none !important;
+}
+
+/* Extra view tabs + glance chips + Daily/Weekly titles steal height.
+   Compact overlay strip stays so pane pills / vs-SPY / packs remain. */
+body.focus-mode:not(.workspace-review) .main-nav-tabs > .tab-btn,
+body.focus-mode:not(.workspace-review) .main-nav-tabs > .tab-spacer,
+body.focus-mode:not(.workspace-review) .overlay-section-label,
+body.focus-mode:not(.workspace-review) .kama-add-form,
+body.focus-mode:not(.workspace-review) #pm-desk,
+body.focus-mode:not(.workspace-review) .ohlcv-strip-inline,
+body.focus-mode:not(.workspace-review) .panel-header,
+body.focus-mode.workspace-chart .main-nav-tabs > .tab-btn,
+body.focus-mode.workspace-scan .main-nav-tabs > .tab-btn {
+  display: none !important;
+}
+
+body.focus-mode:not(.workspace-review) .symbol-header {
+  padding: 2px 10px;
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+
+body.focus-mode:not(.workspace-review) .main-nav-tabs {
+  padding: 2px 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+body.focus-mode:not(.workspace-review) #chart-overlays-bar,
+body.focus-mode.workspace-chart #chart-overlays-bar,
+body.focus-mode.workspace-scan #chart-overlays-bar {
+  display: flex !important;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  flex: 1 1 auto;
+}
+
+body.focus-mode.workspace-chart #chart-area,
+body.focus-mode:not(.workspace-scan):not(.workspace-review) #chart-area {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Scan: keep the setup hit list; still grow charts. */
+body.focus-mode.workspace-scan #scanner-area,
+body.focus-mode.workspace-scan .setup-scanner-panel {
+  display: flex !important;
+}
+body.focus-mode.workspace-scan #chart-area {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+/* Review: keep news / journal / book — do not collapse drawers. */
+body.focus-mode.workspace-review #book-drawer,
+body.focus-mode.workspace-review #journal-drawer {
+  display: flex !important;
+}
+body.focus-mode.workspace-review #regime-heatmap,
+body.focus-mode.workspace-review #alert-log {
+  display: flex;
+}
+
+
