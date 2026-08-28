@@ -386,6 +386,29 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIsNone(re.search(r"ibd", html, re.IGNORECASE))
         self.assertIsNone(re.search(r"ibd", port, re.IGNORECASE))
 
+    def test_daily_six_month_fit_and_session_levels(self):
+        with open("scripts/charts.js", encoding="utf-8") as fh:
+            charts = fh.read()
+        self.assertIn("const DAILY_DEFAULT_BARS = 126", charts)
+        self.assertIn("WEEKLY_DEFAULT_BARS", charts)
+        self.assertIn("function fitAllContent", charts)
+        self.assertIn("function applySessionLevels", charts)
+        self.assertIn("function setupFitAllOnDoubleClick", charts)
+        self.assertIn("dblclick", charts)
+        self.assertIn("Double-click to fit all data", charts)
+        self.assertIn("'PDH'", charts)
+        self.assertIn("'PDL'", charts)
+        self.assertIn("'PDC'", charts)
+        self.assertIn("'52H'", charts)
+        self.assertIn("'52L'", charts)
+        self.assertIn("prior day high/low/close", charts)
+        self.assertIn("applySessionLevels()", charts)
+        self.assertIn("_fitPaneToBars(charts.daily.main, dailyN, DAILY_DEFAULT_BARS)", charts)
+        self.assertIn("LineStyle.Dashed", charts)
+        self.assertIn("FIFTY_TWO_WEEK_BARS", charts)
+        self.assertNotRegex(charts, r"\bIBD\b")
+        self.assertIsNone(re.search(r"ibd", charts, re.IGNORECASE))
+
 
 if __name__ == "__main__":
     unittest.main()
