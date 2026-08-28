@@ -82,6 +82,7 @@ assert(typeof desk.colorVolumeBarsByRvol === 'function', 'colorVolumeBarsByRvol 
 assert(typeof desk.volumeBarVsSma === 'function', 'volumeBarVsSma missing');
 assert(typeof desk.volumeSmaPoints === 'function', 'volumeSmaPoints missing');
 assert(typeof desk.isVolPopColor === 'function', 'isVolPopColor missing');
+assert(typeof desk.volumeRvolColors === 'function', 'volumeRvolColors missing');
 assert(desk.volumeBarVsSma(300, 110) === 'above', '300 vs 110 is above');
 assert(desk.volumeBarVsSma(50, 97.5) === 'below', '50 vs 97.5 is below');
 assert(desk.volumeBarVsSma(100, 100) === 'below', 'equal SMA is muted (not above)');
@@ -105,10 +106,11 @@ const smaPts = desk.volumeSmaPoints(rows);
 assert(smaPts[19].value === 100, 'SMA20 of flat 100');
 assert(smaPts[24].value === (100 * 18 + 50 + 300) / 20, 'last SMA includes 50 and 300');
 
-const volUp = desk.C.vol_up;
-const volDown = desk.C.vol_down;
-const surgeUp = desk.C.vol_surge_up;
-const climaxDown = desk.C.vol_climax_down;
+const palette = desk.volumeRvolColors();
+const volUp = '#22c55e33';
+const volDown = '#ef444433';
+const surgeUp = '#fb923c';
+const climaxDown = '#fda4af';
 
 const volData = rows.map((r, i) => ({
     time: r.date,
@@ -122,8 +124,8 @@ assert(painted === volData, 'mutates in place and returns same array');
 for (let i = 0; i < 19; i++) {
     assert(painted[i].color === volUp, 'no SMA yet keeps direction color at ' + i);
 }
-assert(painted[19].color === desk.VOL_RVOL_BELOW_UP, 'bar 19 volume==SMA is muted up');
-assert(painted[23].color === desk.VOL_RVOL_BELOW_DOWN, '50 vs SMA is muted down');
+assert(painted[19].color === palette.belowUp, 'bar 19 volume==SMA is muted up');
+assert(painted[23].color === palette.belowDown, '50 vs SMA is muted down');
 assert(painted[24].color === surgeUp, 'surge color is not washed out');
 assert(painted[24].value === 300, 'histogram values unchanged');
 
@@ -135,7 +137,7 @@ weekly[19].volume = 80;
 const wSma = desk.volumeSmaPoints(weekly);
 const wData = weekly.map(r => ({ time: r.date, value: r.volume, color: volUp }));
 desk.colorVolumeBarsByRvol(wData, wSma, weekly);
-assert(wData[19].color === desk.VOL_RVOL_ABOVE_UP, 'weekly above SMA is brighter up');
+assert(wData[19].color === palette.aboveUp, 'weekly above SMA is brighter up');
 assert(wSma[19].value === (20 * 19 + 80) / 20, 'weekly SMA includes current bar');
 
 const climaxRows = [
@@ -188,8 +190,8 @@ process.stdout.write(JSON.stringify({
     lastSma: smaPts[24].value,
     lastSurgeKept: painted[24].color === surgeUp,
     weeklyAbove: wData[19].color,
-    aboveUp: desk.VOL_RVOL_ABOVE_UP,
-    belowDown: desk.VOL_RVOL_BELOW_DOWN,
+    aboveUp: palette.aboveUp,
+    belowDown: palette.belowDown,
     overlayKeys: Object.keys(desk.collectOverlayState()).sort(),
 }));
 """
@@ -222,6 +224,7 @@ class VolumeRvolColorContractTests(unittest.TestCase):
         self.assertIn("function colorVolumeBarsByRvol", rvol)
         self.assertIn("function volumeBarVsSma", rvol)
         self.assertIn("function isVolPopColor", rvol)
+        self.assertIn("function volumeRvolColors", rvol)
         self.assertIn("VOL_RVOL_ABOVE_UP", rvol)
         self.assertIn("VOL_RVOL_BELOW_UP", rvol)
         self.assertIn("not a published rating", rvol)
