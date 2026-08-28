@@ -70,6 +70,15 @@ function volumeRvolColorForTone(tone, up) {
     return null;
 }
 
+function volumeRvolColors() {
+    return {
+        aboveUp: VOL_RVOL_ABOVE_UP,
+        aboveDown: VOL_RVOL_ABOVE_DOWN,
+        belowUp: VOL_RVOL_BELOW_UP,
+        belowDown: VOL_RVOL_BELOW_DOWN,
+    };
+}
+
 function colorVolumeBarsByRvol(volData, smaPoints, rows) {
     const data = Array.isArray(volData) ? volData : [];
     const list = Array.isArray(rows) ? rows : [];
