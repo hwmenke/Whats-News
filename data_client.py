@@ -197,14 +197,44 @@ def fetch_symbol(symbol: str) -> dict:
     return _request("POST", f"/api/fetch/{urllib.parse.quote(symbol.upper())}", timeout=180.0)
 
 
-def refresh_all() -> list:
+def refresh_all(overlap_days: int = 3) -> list:
     if use_embedded():
         import data_fetcher as fetcher
         results = []
         for s in list_symbol_codes():
             try:
-                results.append(fetcher.fetch_and_store(s))
+                results.append(fetcher.fetch_and_store(s, overlap_days=overlap_days))
             except Exception as exc:
                 results.append({"symbol": s, "error": str(exc)})
         return results
     return _request("POST", "/api/refresh", timeout=600.0) or []
+
+
+def list_desk_symbols() -> list[dict]:
+    if use_embedded():
+        import database as db
+        return db.list_desk_symbols()
+    data = _request("GET", "/api/symbols", query={"desk": "1"})
+    return data or []
+
+
+def list_symbols_with_ohlcv(freq: str = "daily", min_bars: int = 30) -> list[str]:
+    if use_embedded():
+        import database as db
+        return db.list_symbols_with_ohlcv(freq, min_bars)
+    data = _request(
+        "GET",
+        "/api/symbols/with-data",
+        query={"freq": freq, "min_bars": min_bars},
+    )
+    if isinstance(data, dict):
+        return data.get("symbols", [])
+    return data or []
+
+
+def promote_to_desk(symbol: str) -> dict:
+    if use_embedded():
+        import database as db
+        ok = db.promote_to_desk(symbol)
+        return {"symbol": symbol.upper(), "promoted": ok}
+    return _request("POST", f"/api/symbols/{urllib.parse.quote(symbol.upper())}/promote")
