@@ -113,7 +113,13 @@
       </div>
       <div id="pm-panels" class="pm-panels">
         <div class="pm-panel">
-          <div class="pm-panel-title">Regime map (D / W)</div>
+          <div class="pm-panel-title heatmap-sort-head">
+            <span>Regime map (D / W)</span>
+            <div class="heatmap-sort" role="group" aria-label="Heatmap sort">
+              <button type="button" class="heatmap-sort-btn active" data-sort="desk" aria-pressed="true" title="Desk order (API heatmap order)">Desk</button>
+              <button type="button" class="heatmap-sort-btn" data-sort="day" aria-pressed="false" title="Sort by signed day %, strongest first; missing last — not a published rating">Day%</button>
+            </div>
+          </div>
           <div id="regime-heatmap" class="regime-heatmap"></div>
         </div>
         <div class="pm-panel">
@@ -1171,6 +1177,7 @@
 <script src="scripts/app.js"></script>
 <script src="scripts/journal_filter.js"></script>
 <script src="scripts/desk_only_persist.js"></script>
+<script src="scripts/heatmap_sort.js"></script>
 
 </body>
 </html>
