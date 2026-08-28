@@ -153,10 +153,36 @@ def compute_stats(symbol: str) -> dict:
                 **summary,
             })
 
-    # 5. Seasonality
-    df['month'] = df.index.month
-    monthly_ret = df.groupby('month')['ret_1d'].mean() * 21 # Monthly approx
+    # 5. Seasonality — average realized monthly return by calendar month.
+    # Compound the daily returns inside each (year, month) into a realized
+    # monthly return, then average those across years by calendar month. The
+    # old code averaged daily returns and scaled by 21, which is an arithmetic
+    # proxy that neither compounds nor matches the "Avg Monthly Returns" label.
+    monthly_realized = (
+        df['ret_1d']
+        .groupby(df.index.to_period('M'))
+        .apply(lambda r: (1.0 + r.dropna()).prod() - 1.0 if r.notna().any() else np.nan)
+    )
+    monthly_ret = monthly_realized.groupby(monthly_realized.index.month).mean()
     seasonality = [{"month": int(m), "value": _finite_or_none(v)} for m, v in monthly_ret.items()]
+
+    # 6. Sample window + distribution shape, so the tab can show what the
+    # numbers were computed over and how fat/skewed the return tails are.
+    if returns.empty:
+        dist_stats = {"mean": None, "median": None, "std": None, "skew": None, "kurtosis": None}
+    else:
+        dist_stats = {
+            "mean": _finite_or_none(returns.mean()),
+            "median": _finite_or_none(returns.median()),
+            "std": _finite_or_none(returns.std()),
+            "skew": _finite_or_none(returns.skew()),
+            "kurtosis": _finite_or_none(returns.kurt()),  # excess (Fisher) kurtosis
+        }
+    sample = {
+        "n": int(len(returns)),
+        "start": df.index.min().strftime("%Y-%m-%d"),
+        "end": df.index.max().strftime("%Y-%m-%d"),
+    }
 
     return {
         "metrics": {
@@ -166,6 +192,8 @@ def compute_stats(symbol: str) -> dict:
             "avg_daily_ret": _finite_or_none(returns.mean() if not returns.empty else None),
             "win_rate": _finite_or_none((returns > 0).mean() if not returns.empty else None)
         },
+        "sample": sample,
+        "dist_stats": dist_stats,
         "rsi_analysis": {
             "fwd_1d": rsi_deciles_1d,
             "fwd_5d": rsi_deciles_5d
