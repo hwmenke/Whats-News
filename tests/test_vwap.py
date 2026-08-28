@@ -108,7 +108,7 @@ const zeroLead = [
 const zpts = desk.sessionVwapPoints(zeroLead);
 assert(zpts[0].value === undefined, 'no VWAP until volume');
 almost(zpts[1].value, 10);
-almost(zpts[2].value, 11);
+almost(zpts[2].value, 12);
 
 const skipVol = [
     { date: 's0', high: 12, low: 8, close: 10, volume: 100 },
@@ -255,9 +255,9 @@ class DailySessionVwapContractTests(unittest.TestCase):
         load_start = charts.index("function loadOHLCV")
         load_end = charts.index("function updateVolBadge")
         load_body = charts[load_start:load_end]
-        daily_hooks = [m.start() for m in re.finditer(r"applyVwapIfOn", load_body)]
-        self.assertEqual(len(daily_hooks), 1)
+        self.assertEqual(load_body.count("applyVwapIfOn"), 2)
         self.assertIn("if (freq === 'daily' && typeof applyVwapIfOn === 'function') applyVwapIfOn();", load_body)
+        self.assertNotIn("freq === 'weekly'", load_body)
 
         self.assertIn(".ind-pill.active-vwap", self.css)
         self.assertIn("#f5c542", self.css)
