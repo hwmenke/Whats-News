@@ -21,6 +21,7 @@ const chartsSrc = fs.readFileSync(path.join(root, 'scripts', 'charts.js'), 'utf8
 const spySrc = fs.readFileSync(path.join(root, 'scripts', 'spy_rs.js'), 'utf8');
 const newsSrc = fs.readFileSync(path.join(root, 'scripts', 'news_markers.js'), 'utf8');
 const vwapSrc = fs.readFileSync(path.join(root, 'scripts', 'vwap.js'), 'utf8');
+const lastSrc = fs.readFileSync(path.join(root, 'scripts', 'last_price.js'), 'utf8');
 
 function assert(cond, msg) {
     if (!cond) throw new Error(msg);
@@ -56,6 +57,7 @@ function loadDesk(store) {
     vm.runInContext(spySrc, ctx);
     vm.runInContext(newsSrc, ctx);
     vm.runInContext(vwapSrc, ctx);
+    vm.runInContext(lastSrc, ctx);
     return ctx;
 }
 
@@ -74,9 +76,11 @@ assert(fresh.darvas === true, 'Darvas default on');
 assert(fresh.spy_rs === false, 'vs-SPY default off');
 assert(fresh.news_markers === false, 'News default off');
 assert(fresh.vwap === false, 'VWAP default off');
+assert(fresh.last === false, 'Last default off');
 assert(desk.spyRsIsOn() === false, 'spyRsIsOn default');
 assert(desk.newsMarkersIsOn() === false, 'newsMarkersIsOn default');
 assert(desk.vwapIsOn() === false, 'vwapIsOn default');
+assert(desk.lastPriceIsOn() === false, 'lastPriceIsOn default');
 assert(store.getItem(OVERLAYS) === null, 'must not write overlays before a user toggle');
 assert(store.getItem(PACKS) === null, 'must not write packs before a user toggle');
 
@@ -86,6 +90,7 @@ desk.toggleOverlay('darvas');
 desk.setSpyRsOn(true, { persist: true, apply: false });
 desk.setNewsMarkersOn(false, { persist: true, apply: false });
 desk.setVwapOn(true, { persist: true, apply: false });
+desk.setLastPriceOn(true, { persist: true, apply: false });
 desk.toggleChartPack('minervini');
 desk.toggleChartPack('stockbee');
 desk.toggleChartPack('weinstein');
@@ -97,6 +102,7 @@ assert(afterToggle.darvas === false, 'Darvas saved off');
 assert(afterToggle.spy_rs === true, 'vs-SPY saved on after toggle');
 assert(afterToggle.news_markers === false, 'News stays off');
 assert(afterToggle.vwap === true, 'VWAP saved on after toggle');
+assert(afterToggle.last === true, 'Last saved on after toggle');
 assert(store.getItem('whats-news-price-alerts') == null, 'overlay persist must not write price-alert lines');
 
 const packsSaved = JSON.parse(store.getItem(PACKS));
@@ -114,9 +120,11 @@ assert(restored.darvas === false, 'Darvas restored off');
 assert(restored.spy_rs === true, 'vs-SPY restored on');
 assert(restored.news_markers === false, 'News restored off');
 assert(restored.vwap === true, 'VWAP restored on');
+assert(restored.last === true, 'Last restored on');
 assert(desk.spyRsIsOn() === true, 'spyRsIsOn restored');
 assert(desk.newsMarkersIsOn() === false, 'news still off');
 assert(desk.vwapIsOn() === true, 'vwap restored');
+assert(desk.lastPriceIsOn() === true, 'last restored');
 desk.persistPacks();
 const packsRestored = JSON.parse(store.getItem(PACKS));
 assert(packsRestored.minervini === true, 'minervini restored');
@@ -131,6 +139,7 @@ const untouched = desk.collectOverlayState();
 assert(untouched.spy_rs === false, 'empty storage must not turn vs-SPY on');
 assert(untouched.news_markers === false, 'empty storage must not turn News on');
 assert(untouched.vwap === false, 'empty storage must not turn VWAP on');
+assert(untouched.last === false, 'empty storage must not turn Last on');
 assert(untouched.bb === false, 'empty storage keeps BB off');
 assert(untouched.ep === true, 'empty storage keeps EP on');
 assert(untouched.darvas === true, 'empty storage keeps Darvas on');
@@ -171,3 +180,4 @@ class OverlayPackReloadTests(unittest.TestCase):
         self.assertTrue(payload["restored"]["spy_rs"])
         self.assertFalse(payload["restored"]["news_markers"])
         self.assertTrue(payload["restored"]["vwap"])
+        self.assertTrue(payload["restored"]["last"])

@@ -1556,6 +1556,8 @@ class OverlayPackPersistenceTests(unittest.TestCase):
             news_js = fh.read()
         with open("scripts/vwap.js", encoding="utf-8") as fh:
             vwap_js = fh.read()
+        with open("scripts/last_price.js", encoding="utf-8") as fh:
+            last_js = fh.read()
         with open("scripts/price_alerts.js", encoding="utf-8") as fh:
             alerts = fh.read()
         with open("index.html", encoding="utf-8") as fh:
@@ -1580,9 +1582,11 @@ class OverlayPackPersistenceTests(unittest.TestCase):
         self.assertIn("spy_rs: false", charts)
         self.assertIn("news_markers: false", charts)
         self.assertIn("vwap: false", charts)
+        self.assertIn("last: false", charts)
         self.assertIn("let spyRsOn = false", spy_js)
         self.assertIn("let newsMarkersOn = false", news_js)
         self.assertIn("let vwapOn = false", vwap_js)
+        self.assertIn("let lastPriceOn = false", last_js)
         self.assertIn("function setSpyRsOn", spy_js)
         self.assertIn("function getSpyRsOn", spy_js)
         self.assertIn("function spyRsIsOn", spy_js)
@@ -1592,10 +1596,14 @@ class OverlayPackPersistenceTests(unittest.TestCase):
         self.assertIn("function setVwapOn", vwap_js)
         self.assertIn("function getVwapOn", vwap_js)
         self.assertIn("function vwapIsOn", vwap_js)
+        self.assertIn("function setLastPriceOn", last_js)
+        self.assertIn("function getLastPriceOn", last_js)
+        self.assertIn("function lastPriceIsOn", last_js)
         self.assertIn("function getPriceAlertsOn", alerts)
         self.assertIn("persist: true", spy_js)
         self.assertIn("persist: true", news_js)
         self.assertIn("persist: true", vwap_js)
+        self.assertIn("persist: true", last_js)
         self.assertIn("persistOverlays()", charts)
 
         apply_start = charts.index("function applySavedOverlays")
@@ -1626,14 +1634,21 @@ class OverlayPackPersistenceTests(unittest.TestCase):
         self.assertNotIn("active-vwap", vwap_snip)
         self.assertIn("not a published rating", vwap_snip)
 
+        last_idx = html.index('id="pill-last"')
+        last_snip = html[last_idx : last_idx + 420]
+        self.assertIn('aria-pressed="false"', last_snip)
+        self.assertNotIn("active-last", last_snip)
+        self.assertIn("not a published rating", last_snip)
+
         self.assertIn("not a published rating", spy_js)
         self.assertIn("not a published rating", vwap_js)
+        self.assertIn("not a published rating", last_js)
         collect_start = charts.index("function collectOverlayState")
         collect_end = charts.index("function persistOverlays")
         collect_body = charts[collect_start:collect_end]
         self.assertNotIn("price_alerts", collect_body)
 
-        for blob in (charts, spy_js, news_js, vwap_js, alerts, html, app_js, port):
+        for blob in (charts, spy_js, news_js, vwap_js, last_js, alerts, html, app_js, port):
             self.assertIsNone(re.search(r"ibd", blob, re.IGNORECASE))
 
 
