@@ -1,7 +1,7 @@
 /**
  * journal_filter.js — compact Trade journal list filter (localStorage).
  * Wraps renderJournal / openJournal after app.js. Does not rewrite journal HTML.
- * Not a published rating.
+ * not a published rating.
  */
 const JOURNAL_FILTER_KEY = 'whats-news-journal-filter';
 
