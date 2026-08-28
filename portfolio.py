@@ -42,6 +42,78 @@ def _bar_date(row) -> str:
     return str(raw)[:10]
 
 
+SPY_RS_NOTE = "close/SPY close comparison line, not a published rating"
+
+
+def spy_rs_overlay(symbol_rows: list | None, spy_rows: list | None) -> dict:
+    """Daily close/SPY close comparison, rebased onto the last symbol close.
+
+    Overlay value at t = close_t * (SPY_last / SPY_t). The line ends at the
+    last print so it sits on the price pane as a comparison, not a rating.
+    """
+    spy_close: dict[str, float] = {}
+    for row in spy_rows or []:
+        if not isinstance(row, dict):
+            continue
+        day = _bar_date(row)
+        try:
+            px = float(row.get("close"))
+        except (TypeError, ValueError):
+            continue
+        if day and px > 0:
+            spy_close[day] = px
+
+    aligned: list[tuple[str, float, float]] = []
+    for row in symbol_rows or []:
+        if not isinstance(row, dict):
+            continue
+        day = _bar_date(row)
+        spy_px = spy_close.get(day)
+        if not day or not spy_px:
+            continue
+        try:
+            px = float(row.get("close"))
+        except (TypeError, ValueError):
+            continue
+        if px <= 0:
+            continue
+        aligned.append((day, px, px / spy_px))
+
+    if not aligned:
+        return {
+            "ready": False,
+            "benchmark": "SPY",
+            "basis": "close_ratio",
+            "rebase": "last_close",
+            "note": SPY_RS_NOTE,
+            "points": [],
+            "last_ratio": None,
+            "n": 0,
+        }
+
+    last_close = aligned[-1][1]
+    last_ratio = aligned[-1][2]
+    scale = last_close / last_ratio if last_ratio else 0.0
+    points = [
+        {
+            "date": day,
+            "ratio": round(ratio, 6),
+            "value": round(ratio * scale, 4),
+        }
+        for day, _px, ratio in aligned
+    ]
+    return {
+        "ready": True,
+        "benchmark": "SPY",
+        "basis": "close_ratio",
+        "rebase": "last_close",
+        "note": SPY_RS_NOTE,
+        "points": points,
+        "last_ratio": round(last_ratio, 6),
+        "n": len(points),
+    }
+
+
 def linked_ohlc_bar(
     source_freq: str,
     date_key: str,
