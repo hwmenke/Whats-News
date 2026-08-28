@@ -325,6 +325,25 @@ def format_legend_sma200_dist(pct) -> str:
     return f"200 {sign}{abs(n):.1f}%"
 
 
+SMA200_BARS = 200
+
+
+def last_sma(close: pd.Series, window: int = SMA200_BARS) -> float | None:
+    """Simple SMA of the last `window` closes. Omit if fewer than `window` bars."""
+    if close is None:
+        return None
+    try:
+        s = close if isinstance(close, pd.Series) else pd.Series(close, dtype=float)
+        if len(s) < window:
+            return None
+        val = float(s.iloc[-window:].astype(float).mean(skipna=False))
+    except (TypeError, ValueError):
+        return None
+    if val != val or not (val > 0):
+        return None
+    return val
+
+
 def _legend_bar_volume(row) -> float:
     """Match JS `r.volume || 0`: missing / non-numeric / NaN volume counts as 0."""
     if not isinstance(row, dict):
@@ -710,6 +729,8 @@ def snapshot_symbol(symbol: str) -> dict:
     rsi14 = _last_valid(_rsi(close, 14))
     kama20 = _last_valid(_kama(close, 20))
     atr14 = _last_valid(_atr(high, low, close, 14))
+    sma200 = last_sma(close, SMA200_BARS)
+    dist_sma200_pct = legend_sma200_dist_pct(last, sma200)
 
     vs_kama = None
     regime = "n/a"
@@ -758,6 +779,8 @@ def snapshot_symbol(symbol: str) -> dict:
         "ret_21d_pct": round(ret_21d, 2) if ret_21d is not None else None,
         "rsi14": round(rsi14, 1) if rsi14 is not None else None,
         "rsi_zone": _rsi_zone(rsi14),
+        "sma200": round(sma200, 2) if sma200 is not None else None,
+        "dist_sma200_pct": round(dist_sma200_pct, 2) if dist_sma200_pct is not None else None,
         "kama20": round(kama20, 2) if kama20 is not None else None,
         "vs_kama20_pct": round(vs_kama, 2) if vs_kama is not None else None,
         "regime": regime,
