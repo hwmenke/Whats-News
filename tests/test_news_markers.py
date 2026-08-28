@@ -13,15 +13,11 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _NODE_BUILDER_SCRIPT = r"""
 const fs = require('fs');
 const vm = require('vm');
-const src = fs.readFileSync(process.argv[1], 'utf8');
-const ctx = {
-    document: { getElementById: () => null, addEventListener: () => {} },
-    console,
-};
-vm.createContext(ctx);
-vm.runInContext(src, ctx);
-if (typeof ctx.buildNewsPriceMarkers !== 'function') {
-    throw new Error('buildNewsPriceMarkers not on vm context');
+const src = fs.readFileSync(process.argv[2], 'utf8');
+global.document = { getElementById: () => null, addEventListener: () => {} };
+vm.runInThisContext(src, { filename: 'news_markers.js' });
+if (typeof buildNewsPriceMarkers !== 'function') {
+    throw new Error('buildNewsPriceMarkers not defined');
 }
 
 function assert(cond, msg) {
@@ -35,16 +31,14 @@ const rows = [
     { date: '2026-08-21' },
 ];
 
-assert.deep = (a, b, msg) => assert(JSON.stringify(a) === JSON.stringify(b), msg);
-
-const off = ctx.buildNewsPriceMarkers(
+const off = buildNewsPriceMarkers(
     [{ title: 'Apple hits high', publish_time: '2026-08-21T14:00:00Z' }],
     rows,
     false
 );
 assert(Array.isArray(off) && off.length === 0, 'off must return []');
 
-const weekend = ctx.buildNewsPriceMarkers([
+const weekend = buildNewsPriceMarkers([
     { title: 'Weekend note', publish_time: '2026-08-22T15:00:00Z' },
     { title: 'Apple hits high', publish_time: '2026-08-21T14:00:00Z' },
 ], rows, true);
@@ -56,7 +50,7 @@ assert(weekend[0].text === 'N', 'headline letter');
 assert(weekend[0].color === '#c4b5fd', 'headline color');
 assert(weekend[0].color !== '#fde047', 'must not use EP yellow');
 
-const earn = ctx.buildNewsPriceMarkers([
+const earn = buildNewsPriceMarkers([
     { title: 'Company reports quarterly earnings', publish_time: '2026-08-20T12:00:00Z' },
     { title: 'Street reacts to results', publish_time: '2026-08-20T18:00:00Z' },
 ], rows, true);
@@ -74,12 +68,12 @@ const manyRows = [];
 for (let i = 1; i <= 28; i++) {
     manyRows.push({ date: '2026-08-' + String(i).padStart(2, '0') });
 }
-const capped = ctx.buildNewsPriceMarkers(many, manyRows, true);
+const capped = buildNewsPriceMarkers(many, manyRows, true);
 assert(capped.length === 12, 'cap 12, got ' + capped.length);
 assert(capped[0].time === '2026-08-09', 'oldest of cap, got ' + capped[0].time);
 assert(capped[capped.length - 1].time === '2026-08-20', 'newest of cap');
 
-const nodate = ctx.buildNewsPriceMarkers(
+const nodate = buildNewsPriceMarkers(
     [{ title: 'No clock', publish_time: '' }, { title: 'Bad date', publish_time: 'not-a-date' }],
     rows,
     true
