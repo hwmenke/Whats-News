@@ -621,9 +621,14 @@ function loadOHLCV(freq, rows) {
             }
             return { time: r.date, value: r.volume || 0, color };
         });
+        const volSmaPts = volumeSmaPoints(rows, VOL_SMA_PERIOD);
+        // Volume vs SMA coloring lives in volume_rvol.js — always-on, not a published rating.
+        if (typeof colorVolumeBarsByRvol === 'function') {
+            colorVolumeBarsByRvol(volData, volSmaPts, rows);
+        }
         series[freq].volume.setData(volData);
         if (series[freq].volumeSma) {
-            series[freq].volumeSma.setData(volumeSmaPoints(rows, VOL_SMA_PERIOD));
+            series[freq].volumeSma.setData(volSmaPts);
         }
         updateVolBadge(freq, volRatios);
     }
