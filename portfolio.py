@@ -245,7 +245,10 @@ def linked_ohlc_bar(
 
 ADR_LOOKBACK = 20
 ADR_MIN_BARS = 5
+LEGEND_RVOL_LOOKBACK = 20
+LEGEND_52W_BARS = 252
 LEGEND_MINUS = "\u2212"
+LEGEND_TIMES = "\u00d7"
 
 
 def _adr_bar_range_pct(row) -> float | None:
@@ -322,19 +325,162 @@ def format_legend_sma200_dist(pct) -> str:
     return f"200 {sign}{abs(n):.1f}%"
 
 
+def _legend_bar_volume(row) -> float:
+    """Match JS `r.volume || 0`: missing / non-numeric / NaN volume counts as 0."""
+    if not isinstance(row, dict):
+        return 0.0
+    raw = row.get("volume")
+    if raw is None or raw == "":
+        return 0.0
+    try:
+        vol = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    if vol != vol:  # NaN
+        return 0.0
+    return vol
+
+
+def legend_avg20_vol(rows: list | None, i) -> float | None:
+    """Mean volume of the prior 20 bars, not including bar i.
+
+    Same window as scripts/charts.js `_avg20Vol`: rows[max(0, i-20):i].
+    """
+    if not rows or i is None:
+        return None
+    try:
+        idx = int(i)
+    except (TypeError, ValueError):
+        return None
+    if idx < 0:
+        return None
+    window = rows[max(0, idx - LEGEND_RVOL_LOOKBACK) : idx]
+    if not window:
+        return None
+    return sum(_legend_bar_volume(r) for r in window) / len(window)
+
+
+def legend_rvol(rows: list | None, i) -> float | None:
+    """Hovered volume / prior-20 average. Omit if the average is missing or 0."""
+    avg = legend_avg20_vol(rows, i)
+    if avg is None or avg <= 0:
+        return None
+    try:
+        idx = int(i)
+    except (TypeError, ValueError):
+        return None
+    if idx < 0 or idx >= len(rows):
+        return None
+    try:
+        vol = float(rows[idx].get("volume"))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if vol != vol or vol < 0:
+        return None
+    return vol / avg
+
+
+def legend_high52(rows: list | None, i, lookback: int = LEGEND_52W_BARS) -> float | None:
+    """Max high over `lookback` sessions ending at i, including bar i.
+
+    Matches applySessionLevels (252 daily sessions) evaluated at the hovered index.
+    """
+    if not rows or i is None:
+        return None
+    try:
+        idx = int(i)
+    except (TypeError, ValueError):
+        return None
+    if idx < 0 or idx >= len(rows):
+        return None
+    start = max(0, idx + 1 - lookback)
+    hi = None
+    for row in rows[start : idx + 1]:
+        if not isinstance(row, dict):
+            continue
+        try:
+            h = float(row.get("high"))
+        except (TypeError, ValueError):
+            continue
+        if h != h:
+            continue
+        hi = h if hi is None else max(hi, h)
+    return hi
+
+
+def legend_gap_from_52h_pct(close, high52) -> float | None:
+    """(close / high52 - 1) * 100. Omit if either is missing or not > 0."""
+    try:
+        c = float(close)
+        h = float(high52)
+    except (TypeError, ValueError):
+        return None
+    if c > 0 and h > 0:
+        return (c / h - 1) * 100
+    return None
+
+
+def format_legend_rvol(rvol) -> str:
+    if rvol is None:
+        return ""
+    try:
+        n = float(rvol)
+    except (TypeError, ValueError):
+        return ""
+    if n != n:
+        return ""
+    return f"RVOL {n:.1f}{LEGEND_TIMES}"
+
+
+def format_legend_52h_gap(pct) -> str:
+    if pct is None:
+        return ""
+    try:
+        n = float(pct)
+    except (TypeError, ValueError):
+        return ""
+    if n != n:
+        return ""
+    mag = f"{abs(n):.1f}"
+    if mag == "0.0":
+        return "52H 0.0%"
+    sign = "+" if n > 0 else LEGEND_MINUS
+    return f"52H {sign}{mag}%"
+
+
 def legend_stat_text_bits(
     freq: str,
     *,
     close=None,
     sma200=None,
     daily_rows: list | None = None,
+    rows: list | None = None,
+    idx: int | None = None,
 ) -> list[str]:
-    """Plain legend bits. ADR is daily-only; SMA200 distance follows the hovered bar."""
+    """Plain legend bits. ADR / RVOL / 52H are daily-only; SMA200 follows the hovered bar."""
     bits: list[str] = []
-    if (freq or "").lower() == "daily":
+    is_daily = (freq or "").lower() == "daily"
+    if is_daily:
         adr_txt = format_legend_adr(legend_adr_pct(daily_rows))
         if adr_txt:
             bits.append(adr_txt)
+        rvol_txt = format_legend_rvol(legend_rvol(rows, idx))
+        if rvol_txt:
+            bits.append(rvol_txt)
+    bar_close = close
+    if rows is not None and idx is not None:
+        try:
+            bar = rows[idx]
+        except (IndexError, TypeError):
+            bar = None
+        if isinstance(bar, dict) and bar.get("close") is not None:
+            bar_close = bar.get("close")
+    if is_daily:
+        gap_txt = format_legend_52h_gap(
+            legend_gap_from_52h_pct(bar_close, legend_high52(rows, idx))
+        )
+        if gap_txt:
+            bits.append(gap_txt)
     dist_txt = format_legend_sma200_dist(legend_sma200_dist_pct(close, sma200))
     if dist_txt:
         bits.append(dist_txt)
