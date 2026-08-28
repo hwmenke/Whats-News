@@ -35,6 +35,14 @@ const PACKS_STORAGE_KEY = 'whats-news-chart-packs';
 let riskLines = { daily: [], weekly: [] };
 let darvasLines = { daily: [] };
 let lastDarvasBox = null;
+// Prior-day + 52-week price levels (daily pane only) — PDH/PDL/PDC, not ratings.
+let sessionLevels = { daily: [] };
+
+// Default visible window after load. Daily ~6 months of sessions; weekly keeps
+// a longer lookback. Double-click a price pane (fitAllContent) to see every bar.
+const DAILY_DEFAULT_BARS = 126;
+const WEEKLY_DEFAULT_BARS = 104;
+const FIFTY_TWO_WEEK_BARS = 252;
 
 // Live ResizeObservers — tracked so destroyCharts() can disconnect them
 // before the charts they reference get remove()'d (stale observers firing
@@ -174,6 +182,7 @@ function destroyCharts() {
     // Price lines die with their chart — drop the stale references.
     riskLines = { daily: [], weekly: [] };
     darvasLines = { daily: [] };
+    sessionLevels = { daily: [] };
 }
 
 // ── Build one panel (daily or weekly) ────────────────────────
@@ -290,6 +299,7 @@ function initCharts() {
     syncPanels();
     setupResizeObserver();
     setupCrosshairLegend();
+    setupFitAllOnDoubleClick();
     applySavedPaneVisibility();
     applySavedPacks();
 }
@@ -497,6 +507,7 @@ function _avg20Vol(rows, i) {
 }
 
 function loadOHLCV(freq, rows) {
+    if (freq === 'daily') clearSessionLevels();
     if (!series[freq].candle || !rows?.length) return;
     rawRows[freq] = rows;
     lastLegend[freq] = { idx: null, time: null };
@@ -544,6 +555,7 @@ function loadOHLCV(freq, rows) {
 
     applyPriceMarkers(freq);
     applyOverlayVisibility(freq);
+    if (freq === 'daily') applySessionLevels();
     paintOhlcLegend(freq, {});
 }
 
@@ -795,6 +807,70 @@ function applyDarvasBox(box) {
     darvasLines.daily = lines;
 }
 
+// ── Session levels: prior day high/low/close + 52-week high/low (daily) ──
+function _finitePx(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
+function _samePx(a, b) {
+    if (a == null || b == null) return false;
+    return Math.abs(a - b) <= Math.max(0.01, Math.abs(a) * 1e-4);
+}
+
+function _addSessionLine(s, price, color, title, lineStyle) {
+    const px = _finitePx(price);
+    if (px == null) return null;
+    return s.createPriceLine({
+        price: px,
+        color,
+        lineWidth: 1,
+        lineStyle: lineStyle || LWC.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title,
+    });
+}
+
+function clearSessionLevels() {
+    const s = series.daily.candle;
+    if (s) sessionLevels.daily.forEach(line => { try { s.removePriceLine(line); } catch (_) {} });
+    sessionLevels.daily = [];
+}
+
+function applySessionLevels() {
+    clearSessionLevels();
+    const s = series.daily.candle;
+    const rows = rawRows.daily || [];
+    if (!s || rows.length < 2) return;
+    const prior = rows[rows.length - 2];
+    const pdh = _finitePx(prior.high);
+    const pdl = _finitePx(prior.low);
+    const pdc = _finitePx(prior.close);
+    const lines = [];
+    const add = line => { if (line) lines.push(line); };
+    add(_addSessionLine(s, pdh, '#f87171', 'PDH'));
+    add(_addSessionLine(s, pdl, '#4ade80', 'PDL'));
+    add(_addSessionLine(s, pdc, '#8b949e', 'PDC'));
+
+    const windowRows = rows.slice(Math.max(0, rows.length - FIFTY_TWO_WEEK_BARS));
+    let hi = null;
+    let lo = null;
+    windowRows.forEach(r => {
+        const h = _finitePx(r.high);
+        const l = _finitePx(r.low);
+        if (h != null) hi = hi == null ? h : Math.max(hi, h);
+        if (l != null) lo = lo == null ? l : Math.min(lo, l);
+    });
+    // Skip 52H/52L when they sit on PDH/PDL so axis labels don't stack.
+    if (hi != null && !_samePx(hi, pdh)) {
+        add(_addSessionLine(s, hi, '#eab308', '52H', LWC.LineStyle.LargeDashed));
+    }
+    if (lo != null && !_samePx(lo, pdl)) {
+        add(_addSessionLine(s, lo, '#06b6d4', '52L', LWC.LineStyle.LargeDashed));
+    }
+    sessionLevels.daily = lines;
+}
+
 // ── Indicator pane visibility (RSI / MACD / Trend) — hides both the chart
 //    wrapper and its divider, on both daily + weekly, then resizes. ──────
 function setIndicatorPane(pane, visible) {
@@ -929,10 +1005,49 @@ function toggleKamaPeriod(period) {
     return kamaPeriods[p].active;
 }
 
+function _fitPaneToBars(chart, n, bars) {
+    if (!chart || !n) return;
+    const from = Math.max(0, n - bars);
+    try {
+        chart.timeScale().setVisibleLogicalRange({ from, to: n });
+    } catch (_) { /* chart disposed */ }
+}
+
+function _unlockCrossSync() {
+    requestAnimationFrame(() => { _crossSyncing = false; });
+}
+
 function fitContent() {
-    // Only fit the daily panel — the cross-panel sync propagates the date range to weekly.
-    // Fitting both independently would leave them showing different periods.
-    if (charts.daily.main) charts.daily.main.timeScale().fitContent();
+    // Default daily view: last ~6 months of bars. Full-history zoom-out is slow to read.
+    // Weekly keeps a longer lookback. Double-click a price pane for every bar.
+    const dailyN = (rawRows.daily || []).length;
+    const weeklyN = (rawRows.weekly || []).length;
+    _crossSyncing = true;
+    try {
+        _fitPaneToBars(charts.daily.main, dailyN, DAILY_DEFAULT_BARS);
+        _fitPaneToBars(charts.weekly.main, weeklyN, WEEKLY_DEFAULT_BARS);
+    } finally {
+        _unlockCrossSync();
+    }
+}
+
+function fitAllContent() {
+    _crossSyncing = true;
+    try {
+        if (charts.daily.main) charts.daily.main.timeScale().fitContent();
+        if (charts.weekly.main) charts.weekly.main.timeScale().fitContent();
+    } catch (_) { /* chart disposed */ }
+    _unlockCrossSync();
+}
+
+function setupFitAllOnDoubleClick() {
+    ['chart-daily-main', 'chart-weekly-main'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el || el.dataset.wnFitAll) return;
+        el.dataset.wnFitAll = '1';
+        el.title = 'Double-click to fit all data';
+        el.addEventListener('dblclick', () => fitAllContent());
+    });
 }
 
 // ── Public API for app.js (process-tools popover, pane pills, focus mode) ──
@@ -945,3 +1060,4 @@ window.toggleChartPack   = toggleChartPack;
 window.setChartPack      = setChartPack;
 window.setChartPacksForSetups = setChartPacksForSetups;
 window.chartsAreLive     = chartsAreLive;
+window.fitAllContent     = fitAllContent;
