@@ -29,6 +29,7 @@ if str(_ROOT) not in sys.path:
 import database as db
 import data_fetcher as fetcher
 import ticker_lists as tl
+import yahoo_news
 
 app = Flask(__name__, static_folder=str(_ROOT), static_url_path="")
 CORS(app)
@@ -58,6 +59,9 @@ def health():
 
 @app.route("/api/symbols", methods=["GET"])
 def get_symbols():
+    desk = request.args.get("desk", "").lower() in ("1", "true", "yes")
+    if desk and hasattr(db, "list_desk_symbols"):
+        return jsonify(db.list_desk_symbols())
     return jsonify(db.list_symbols())
 
 
@@ -280,7 +284,25 @@ def fetch_batch():
     )
 
 
+# -- News (same Yahoo contract as the analysis app / iPhone client) -------------
+
+@app.route("/api/news", methods=["GET"])
+def get_all_news():
+    if hasattr(db, "list_symbol_codes"):
+        symbols = db.list_symbol_codes()
+    else:
+        symbols = [s["symbol"] for s in db.list_symbols()]
+    return jsonify(yahoo_news.watchlist_news(symbols))
+
+
+@app.route("/api/news/<string:symbol>", methods=["GET"])
+def get_symbol_news(symbol):
+    payload, status = yahoo_news.symbol_news(symbol)
+    return jsonify(payload), status
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("DATA_PORT", os.environ.get("PORT", 8051)))
-    print(f"\n  Data Management service at http://localhost:{port}\n")
-    app.run(debug=True, port=port, threaded=True)
+    host = os.environ.get("HOST", "127.0.0.1")
+    print(f"\n  Data Management service at http://{host}:{port}\n")
+    app.run(debug=True, host=host, port=port, threaded=True)

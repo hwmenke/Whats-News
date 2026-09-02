@@ -21,7 +21,7 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(data["articles"], [])
         self.assertEqual(data["message"], "No symbols in watchlist")
 
-    @patch("app.yf.Ticker")
+    @patch("yahoo_news.yf.Ticker")
     @patch("app.md.list_symbol_codes")
     def test_get_all_news_with_articles(self, mock_list_symbol_codes, mock_ticker_class):
         mock_list_symbol_codes.return_value = ["AAPL"]
@@ -55,7 +55,7 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(article["url"], "https://example.com/apple1")
         self.assertEqual(article["provider"], "Test News")
 
-    @patch("app.yf.Ticker")
+    @patch("yahoo_news.yf.Ticker")
     @patch("app.md.list_symbol_codes")
     def test_get_all_news_deduplicates_by_url(self, mock_list_symbol_codes, mock_ticker_class):
         mock_list_symbol_codes.return_value = ["AAPL", "MSFT"]
@@ -83,7 +83,7 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(data["article_count"], 1)
 
-    @patch("app.yf.Ticker")
+    @patch("yahoo_news.yf.Ticker")
     @patch("app.md.list_symbol_codes")
     def test_get_all_news_no_news_available(self, mock_list_symbol_codes, mock_ticker_class):
         mock_list_symbol_codes.return_value = ["AAPL"]
@@ -99,7 +99,7 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(data["article_count"], 0)
         self.assertEqual(len(data["articles"]), 0)
 
-    @patch("app.yf.Ticker")
+    @patch("yahoo_news.yf.Ticker")
     @patch("app.md.list_symbol_codes")
     def test_get_all_news_handles_errors(self, mock_list_symbol_codes, mock_ticker_class):
         mock_list_symbol_codes.return_value = ["AAPL", "INVALID"]
@@ -133,7 +133,7 @@ class NewsApiTests(unittest.TestCase):
         self.assertIn("errors", data)
         self.assertEqual(len(data["errors"]), 1)
 
-    @patch("app.yf.Ticker")
+    @patch("yahoo_news.yf.Ticker")
     def test_get_symbol_news_with_articles(self, mock_ticker_class):
         mock_ticker = MagicMock()
         mock_ticker.news = [
@@ -158,7 +158,7 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(data["article_count"], 1)
         self.assertEqual(len(data["articles"]), 1)
 
-    @patch("app.yf.Ticker")
+    @patch("yahoo_news.yf.Ticker")
     def test_get_symbol_news_no_news(self, mock_ticker_class):
         mock_ticker = MagicMock()
         mock_ticker.news = []
@@ -172,7 +172,7 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(data["message"], "No news available for AAPL")
         self.assertEqual(len(data["articles"]), 0)
 
-    @patch("app.yf.Ticker")
+    @patch("yahoo_news.yf.Ticker")
     def test_get_symbol_news_error(self, mock_ticker_class):
         mock_ticker_class.side_effect = Exception("Network error")
 
@@ -184,7 +184,7 @@ class NewsApiTests(unittest.TestCase):
         self.assertIn("error", data)
         self.assertEqual(data["error"], "Network error")
 
-    @patch("app.yf.Ticker")
+    @patch("yahoo_news.yf.Ticker")
     def test_get_symbol_news_normalizes_symbol(self, mock_ticker_class):
         mock_ticker = MagicMock()
         mock_ticker.news = []
@@ -196,7 +196,7 @@ class NewsApiTests(unittest.TestCase):
         mock_ticker_class.assert_called_once_with("AAPL")
         self.assertEqual(data["symbol"], "AAPL")
 
-    @patch("app.yf.Ticker")
+    @patch("yahoo_news.yf.Ticker")
     def test_news_article_uses_clickthrough_url_fallback(self, mock_ticker_class):
         mock_ticker = MagicMock()
         mock_ticker.news = [
@@ -217,7 +217,7 @@ class NewsApiTests(unittest.TestCase):
 
         self.assertEqual(data["articles"][0]["url"], "https://example.com/fallback")
 
-    @patch("app.yf.Ticker")
+    @patch("yahoo_news.yf.Ticker")
     def test_news_article_defaults_provider(self, mock_ticker_class):
         mock_ticker = MagicMock()
         mock_ticker.news = [

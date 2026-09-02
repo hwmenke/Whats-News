@@ -17,6 +17,10 @@ When it says the server is running, open your browser:
 - **Dashboard:** http://localhost:8050  
 - **News:** http://localhost:8050/news  
 
+**iPhone (Mac + Simulator):** keep this server running, then see
+[`mobile/README.md`](mobile/README.md). Same watchlist, Yahoo charts, and
+Yahoo headlines — no extra API keys.
+
 Stop with `Ctrl+C`.
 
 `start.sh` uses **embedded** data mode (one process). For the optional two-process layout, see below.
@@ -100,9 +104,10 @@ python3 scripts/bulk_archive.py --refresh --overlap-days 5 --delay 0.8
 | Path | Purpose |
 |------|---------|
 | `app.py` | Analysis dashboard (charts, scanner, news, PM Desk) |
-| `data_service/` | Optional data plane (SQLite + Yahoo fetches) |
+| `data_service/` | Optional data plane (SQLite + Yahoo fetches + news) |
 | `data_client.py` / `market_data.py` | Embedded or HTTP access to watchlist/OHLCV |
-| `database.py` / `data_fetcher.py` | SQLite + Yahoo downloads |
+| `database.py` / `data_fetcher.py` / `yahoo_news.py` | SQLite + Yahoo downloads + headlines |
+| `mobile/` | iPhone-first Flutter client (shared `lib/data` HTTP layer) |
 | `index_universe.py` / `scripts/bulk_archive.py` | US index lists + bulk archive CLI |
 | `setup_scanner.py` | Setup tags (EP, Darvas, breakout queue) |
 | `index.html` / `news.html` | UI |
@@ -115,6 +120,7 @@ python3 scripts/bulk_archive.py --refresh --overlap-days 5 --delay 0.8
 ```bash
 DATA_SERVICE_MODE=embedded make test
 # or: DATA_SERVICE_MODE=embedded python3 -m unittest discover tests
+# iPhone client (no Simulator required): cd mobile && flutter test
 ```
 
 ---

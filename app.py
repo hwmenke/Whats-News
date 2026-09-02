@@ -29,7 +29,7 @@ import backtester
 import scanner
 import adaptive_trend as adaptive
 import conditional_dist
-import yfinance as yf
+import yahoo_news
 import portfolio
 import setup_scanner
 import index_universe
@@ -823,106 +823,14 @@ def universe_refresh():
 def get_all_news():
     """Fetch news for all watchlist symbols using yfinance."""
     symbols = md.list_symbol_codes()
-    if not symbols:
-        return jsonify({"articles": [], "message": "No symbols in watchlist"})
-    
-    all_articles = []
-    seen_urls = set()
-    errors = []
-    
-    for symbol in symbols:
-        try:
-            ticker = yf.Ticker(symbol)
-            news_items = ticker.news
-            
-            if not news_items:
-                continue
-                
-            for item in news_items:
-                content = item.get("content", {})
-                url = (content.get("canonicalUrl", {}).get("url") or 
-                       content.get("clickThroughUrl", {}).get("url") or "")
-                
-                if url and url in seen_urls:
-                    continue
-                    
-                if url:
-                    seen_urls.add(url)
-                
-                provider = content.get("provider", {})
-                article = {
-                    "symbol": symbol,
-                    "title": content.get("title", "No title"),
-                    "summary": content.get("summary") or content.get("description", ""),
-                    "url": url,
-                    "publish_time": content.get("pubDate", ""),
-                    "provider": provider.get("displayName", "Yahoo Finance"),
-                    "provider_url": provider.get("url", "https://finance.yahoo.com/")
-                }
-                all_articles.append(article)
-                
-        except Exception as e:
-            errors.append({"symbol": symbol, "error": str(e)})
-    
-    all_articles.sort(key=lambda x: x.get("publish_time", ""), reverse=True)
-    
-    result = {
-        "articles": all_articles,
-        "source": "Yahoo Finance",
-        "symbol_count": len(symbols),
-        "article_count": len(all_articles)
-    }
-    
-    if errors:
-        result["errors"] = errors
-    
-    return jsonify(result)
+    return jsonify(yahoo_news.watchlist_news(symbols))
 
 
 @app.route("/api/news/<string:symbol>", methods=["GET"])
 def get_symbol_news(symbol):
     """Fetch news for a specific symbol using yfinance."""
-    try:
-        ticker = yf.Ticker(symbol.upper())
-        news_items = ticker.news
-        
-        if not news_items:
-            return jsonify({
-                "symbol": symbol.upper(),
-                "articles": [],
-                "message": f"No news available for {symbol.upper()}",
-                "source": "Yahoo Finance"
-            })
-        
-        articles = []
-        for item in news_items:
-            content = item.get("content", {})
-            provider = content.get("provider", {})
-            
-            article = {
-                "title": content.get("title", "No title"),
-                "summary": content.get("summary") or content.get("description", ""),
-                "url": (content.get("canonicalUrl", {}).get("url") or 
-                       content.get("clickThroughUrl", {}).get("url") or ""),
-                "publish_time": content.get("pubDate", ""),
-                "provider": provider.get("displayName", "Yahoo Finance"),
-                "provider_url": provider.get("url", "https://finance.yahoo.com/")
-            }
-            articles.append(article)
-        
-        return jsonify({
-            "symbol": symbol.upper(),
-            "articles": articles,
-            "article_count": len(articles),
-            "source": "Yahoo Finance"
-        })
-        
-    except Exception as e:
-        return jsonify({
-            "symbol": symbol.upper(),
-            "error": str(e),
-            "source": "Yahoo Finance"
-        }), 500
+    payload, status = yahoo_news.symbol_news(symbol)
+    return jsonify(payload), status
 
 
 # -- Data Manager (proxied to data service) -------------------------------------
@@ -1023,9 +931,11 @@ def fetch_batch():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
+    host = os.environ.get("HOST", "127.0.0.1")
     mode = data_client.DATA_SERVICE_MODE
     url = data_client.DATA_SERVICE_URL
-    print(f"\n  Whats-News analysis at http://localhost:{port}")
-    print(f"  News feed:              http://localhost:{port}/news")
+    print(f"\n  Whats-News analysis at http://{host}:{port}")
+    print(f"  News feed:              http://{host}:{port}/news")
+    print(f"  iPhone API:             http://{host}:{port}/api/health")
     print(f"  Data service mode={mode} url={url}\n")
-    app.run(debug=True, port=port)
+    app.run(debug=True, host=host, port=port)

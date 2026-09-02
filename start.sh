@@ -25,6 +25,7 @@ echo ""
 echo "  Whats-News"
 echo "  Dashboard → http://localhost:${PORT}"
 echo "  News      → http://localhost:${PORT}/news"
+echo "  iPhone    → keep this running, then: cd mobile && flutter run"
 echo "  Press Ctrl+C to stop."
 echo ""
 
