@@ -1,37 +1,36 @@
 import 'package:flutter/cupertino.dart';
 
-/// Desk palette — same colors as the Dash desk (functional, not final UX).
-/// HOLD: neon Command/Setup/Macro Visual UX pack is rejected. Do not
-/// match those comps. Web face tokens live in `styles/theme.css` only
-/// so a later swap is one file. Flutter stays SF until a font-bundle pass.
+/// VISUAL v2 — Ex Ante × FiveThirtyEight. Discard dark neon HUD.
+/// Paper / ink / coral↔blue-gray. Comp AAA rows are not live data.
+/// Web faces live in `styles/theme.css` (Source Serif 4 + Inter + mono).
 class DeskColors {
-  static const bg = Color(0xFF0D1117);
-  static const elevated = Color(0xFF161B22);
-  static const card = Color(0xFF1C2230);
-  static const hover = Color(0xFF242B3D);
-  static const border = Color(0xFF30363D);
-  static const accent = Color(0xFF3B82F6);
-  static const accentBright = Color(0xFF60A5FA);
-  static const green = Color(0xFF22C55E);
-  static const red = Color(0xFFEF4444);
-  static const yellow = Color(0xFFEAB308);
-  static const cyan = Color(0xFF06B6D4);
-  static const orange = Color(0xFFF97316);
-  static const purple = Color(0xFFA855F7);
-  static const text = Color(0xFFE6EDF3);
-  static const muted = Color(0xFF8B949E);
-  static const dim = Color(0xFF4A5568);
-  static const kama10 = Color(0xFF60A5FA);
-  static const kama20 = Color(0xFFF59E0B);
-  static const kama50 = Color(0xFFA78BFA);
-  static const ema10 = Color(0xFF34D399);
-  static const ema20 = Color(0xFFF472B6);
+  static const bg = Color(0xFFF4F2EC);
+  static const elevated = Color(0xFFFFFFFF);
+  static const card = Color(0xFFFFFFFF);
+  static const hover = Color(0xFFEFECE4);
+  static const border = Color(0xFFE7E5E0);
+  static const accent = Color(0xFF1C1917);
+  static const accentBright = Color(0xFF1C1917);
+  static const green = Color(0xFF3F6F6A);
+  static const red = Color(0xFFB4532A);
+  static const yellow = Color(0xFF7C5A1E);
+  static const cyan = Color(0xFF7A9AA8);
+  static const orange = Color(0xFFD97757);
+  static const purple = Color(0xFF6B5B8C);
+  static const text = Color(0xFF1C1917);
+  static const muted = Color(0xFF57534E);
+  static const dim = Color(0xFFA8A29E);
+  static const kama10 = Color(0xFF7A9AA8);
+  static const kama20 = Color(0xFFD97757);
+  static const kama50 = Color(0xFF6B5B8C);
+  static const ema10 = Color(0xFF3F6F6A);
+  static const ema20 = Color(0xFFB4532A);
 }
 
 CupertinoThemeData deskCupertinoTheme() {
   return const CupertinoThemeData(
-    brightness: Brightness.dark,
-    primaryColor: DeskColors.accentBright,
+    brightness: Brightness.light,
+    primaryColor: DeskColors.accent,
     scaffoldBackgroundColor: DeskColors.bg,
     barBackgroundColor: DeskColors.elevated,
     textTheme: CupertinoTextThemeData(
