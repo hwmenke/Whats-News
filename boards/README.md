@@ -25,12 +25,11 @@ does not compute PX, z, D, or TMAC*.
 Dash: Customize on Market Moves + ENGINE Setup / Sigma / Maps.
 Prefs: `localStorage['whats-news-desk-prefs'].boardColumns`.
 
-## Visual HOLD
+## Visual v3
 
-Neon pack rejected. Cream-paper Ex Ante×538 **v2** (`#F4F2EC` / serif
-comps) also rejected — do not restyle to it. Wait for Visual UX v3 via
-CoS; do not implement v3 in this slice. Boards stay functional.
-ENGINE math and this registry stay.
+Obsidian `#1e211e` · Paper `#fff` · Mint `#90fc95` surface only.
+Fraunces / Inter / IBM Plex Mono stand in for Alliance No.2 + Geist.
+Cream `#F4F2EC` v2 and neon discarded. Comp AAA rows are not live data.
 
 ## Flutter path
 
