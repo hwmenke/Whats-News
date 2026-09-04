@@ -2552,6 +2552,8 @@ class MapPoint {
     this.tag = '',
     this.marker = 'solid',
     this.arrow = '',
+    this.fractalRead = '',
+    this.tdFlag = '',
   });
 
   final String symbol;
@@ -2561,6 +2563,8 @@ class MapPoint {
   final String tag;
   final String marker;
   final String arrow;
+  final String fractalRead;
+  final String tdFlag;
 
   factory MapPoint.fromJson(Map<String, dynamic> json) {
     double? n(Object? v) {
@@ -2573,9 +2577,11 @@ class MapPoint {
       x: n(json['x']),
       y: n(json['y']),
       assetClass: '${json['asset_class'] ?? 'Stock'}',
-      tag: '${json['gray_tag'] ?? json['td_flag'] ?? ''}',
+      tag: '${json['gray_tag'] ?? json['coil_state'] ?? json['zone'] ?? ''}',
       marker: '${json['marker'] ?? 'solid'}',
       arrow: '${json['arrow'] ?? ''}',
+      fractalRead: '${json['fractal_read'] ?? ''}',
+      tdFlag: '${json['td_flag'] ?? ''}',
     );
   }
 }
@@ -2597,6 +2603,7 @@ class EngineMaps {
     this.message = '',
     this.tmacNote = '',
     this.tdNote = '',
+    this.fractalNoD = 0,
   });
 
   final bool ready;
@@ -2614,6 +2621,7 @@ class EngineMaps {
   final String message;
   final String tmacNote;
   final String tdNote;
+  final int fractalNoD;
 
   static const empty = EngineMaps();
 
@@ -2662,6 +2670,7 @@ class EngineMaps {
       message: '${json['message'] ?? ''}',
       tmacNote: '${json['tmac_note'] ?? ''}',
       tdNote: '${json['td_note'] ?? ''}',
+      fractalNoD: ft is Map && ft['no_d'] is num ? (ft['no_d'] as num).toInt() : 0,
     );
   }
 }

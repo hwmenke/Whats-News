@@ -1059,7 +1059,47 @@ class ScansPage extends StatelessWidget {
                 ),
               pts('TMS-W solid', m.tmsWeekly),
               pts('TMS-D hollow', m.tmsDaily),
-              pts('Fractal × TD (D only)', m.fractalTd),
+              if (m.fractalTd.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: DeskSpace.section),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Fractal × TD (${m.fractalTd.length})',
+                        style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
+                      ),
+                      for (final p in m.fractalTd)
+                        _nameChip(
+                          p.symbol,
+                          [
+                            if (p.fractalRead.isNotEmpty) p.fractalRead,
+                            if (p.tdFlag.isNotEmpty) p.tdFlag,
+                          ].join(' · '),
+                          metric: () {
+                            final bits = [
+                              if (p.x != null) 'D ${p.x!.toStringAsFixed(2)}',
+                              if (p.y != null) 'TD ${p.y!.toStringAsFixed(0)}',
+                            ];
+                            return bits.isEmpty ? null : bits.join(' · ');
+                          }(),
+                        ),
+                      if (m.fractalNoD > 0)
+                        Text(
+                          'No D65 on ${m.fractalNoD} names — SPEC 25/27 window failed. Never invent D.',
+                          style: const TextStyle(color: DeskColors.muted, fontSize: 11, height: 1.35),
+                        ),
+                    ],
+                  ),
+                )
+              else if (m.fractalNoD > 0 || m.ready)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: DeskSpace.section),
+                  child: Text(
+                    'No D65 — SPEC 25/27 window failed. No invented markers.',
+                    style: const TextStyle(color: DeskColors.muted, fontSize: 11, height: 1.35),
+                  ),
+                ),
               pts('Top 12M', [
                 for (final r in m.top12m) MapPoint(symbol: r.symbol, tag: r.note),
               ]),

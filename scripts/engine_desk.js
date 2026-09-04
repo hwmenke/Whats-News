@@ -113,7 +113,6 @@ function applyEnginePanel(id) {
     });
     if (next === 'command') {
         loadEngineCommand();
-        loadEngineBoard();
     }
     if (next === 'setup') loadEngineSetupGlance();
     if (next === 'pattern') loadEnginePatterns();
@@ -150,6 +149,25 @@ function _engTakeawayStrip(rows) {
     </section>`;
 }
 
+function _engFractalTdTable(points) {
+    const list = (points || []).filter(p => p && p.symbol && p.x != null);
+    if (!list.length) return '';
+    const hasRead = list.some(p => p.fractal_read);
+    const hasFlag = list.some(p => p.td_flag);
+    const body = list.map(p => `<tr class="wn-row" data-sym="${_engEsc(p.symbol)}">
+        <td class="wn-sym">${_engEsc(p.symbol)}</td>
+        <td>${_engNum(p.x, 2)}</td>
+        <td>${p.y == null ? '' : _engNum(p.y, 0)}</td>
+        ${hasRead ? `<td>${_engEsc(p.fractal_read || '')}</td>` : ''}
+        ${hasFlag ? `<td>${_engEsc(p.td_flag || '')}</td>` : ''}
+    </tr>`).join('');
+    return `<section class="wn-card">
+        <h3>Fractal × TD <span class="wn-n">${list.length}</span></h3>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>D65</th><th>TD</th>${hasRead ? '<th>Read</th>' : ''}${hasFlag ? '<th>Flag</th>' : ''}</tr></thead>
+        <tbody>${body}</tbody></table>
+    </section>`;
+}
+
 function _engTesDirTable(rows) {
     const list = (rows || []).filter(r => r && r.symbol);
     if (!list.length) return '';
@@ -168,7 +186,12 @@ function _engTesDirTable(rows) {
 function _engSymCol(title, symbols) {
     const list = (symbols || []).map(s => (typeof s === 'string' ? s : (s && s.symbol) || '')).filter(Boolean);
     if (!list.length) return '';
-    return _engListCol(title, list.map(symbol => ({ symbol, takeaway: '' })));
+    const body = list.map(s => `<tr class="wn-row" data-sym="${_engEsc(s)}"><td class="wn-sym">${_engEsc(s)}</td></tr>`).join('');
+    return `<section class="wn-card">
+        <h3>${_engEsc(title)} <span class="wn-n">${list.length}</span></h3>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th></tr></thead>
+        <tbody>${body}</tbody></table>
+    </section>`;
 }
 
 async function loadEngineCommand() {
@@ -204,60 +227,6 @@ async function loadEngineCommand() {
     } catch (err) {
         _engEmpty(el, err.message || 'ENGINE command unavailable');
         if (meta) meta.textContent = 'error';
-    }
-}
-
-function _engChip(text, kind) {
-    if (!text) return '<span class="v2-chip is-gray">—</span>';
-    return `<span class="v2-chip ${kind || 'is-gray'}">${_engEsc(text)}</span>`;
-}
-
-function _engPaintTakeaway(symbol, data) {
-    const card = document.getElementById('engine-takeaway-card');
-    if (!card) return;
-    const rows = (window._engineBoardRows || []);
-    const sym = symbol || (rows[0] && rows[0].symbol);
-    const row = rows.find(r => r.symbol === sym);
-    if (!row) {
-        card.innerHTML = `<p class="v2-card-kicker">TAKEAWAY</p>
-            <p class="engine-dim">No live ENGINE row yet. Fetch Yahoo. Comp AAA cards are not data.</p>`;
-        return;
-    }
-    const prim = row.engine_primary || '';
-    const cls = prim === 'OPPORTUNITY' ? 'is-opp' : prim === 'WATCH' ? 'is-watch' : 'is-no';
-    card.innerHTML = `
-        <p class="v2-card-kicker">TAKEAWAY</p>
-        <h3 class="engine-story" style="font-size:20px;margin:0 0 8px">${_engEsc(row.symbol)} — research, not a trade</h3>
-        <div class="engine-chip-row">
-            ${_engChip(prim || 'NO TRADE', cls)}
-            ${row.dw ? _engChip(row.dw, 'is-dw') : ''}
-            ${_engChip(row.gray_tag || 'RSI-C · VCP', 'is-gray')}
-        </div>
-        <p>${_engEsc(row.takeaway || '—')}</p>
-        <p class="v2-howto">iPhone: this card becomes a sheet on tap. Bias ${row.bias == null ? '—' : _engNum(row.bias)} is a point sum, not a win rate.</p>`;
-}
-
-async function _engPaintCommandScatter() {
-    const el = document.getElementById('engine-command-scatter');
-    if (!el) return;
-    try {
-        if (window.BoardRegistry && window.BoardRegistry.load) await window.BoardRegistry.load();
-        const data = window._engineMaps || await apiFetch(`${API}/engine/maps?desk=1`);
-        window._engineMaps = data;
-        const pts = ((data.scanner || {}).scatter || []);
-        el.innerHTML = `
-            <p class="v2-card-kicker">RSI vs. volatility</p>
-            <h3>RSI vs. volatility — where names sit</h3>
-            <p class="engine-story-sub">Horizontal: RSI posture · Vertical: σ. Soft blue / coral diverging tint.</p>
-            ${_engScatter(pts, { xLabel: 'RSI posture', yLabel: 'σ', empty: 'Empty plot — no stored scored points. Never invent dots.' })}
-            <p class="v2-howto">How to read: upper-left leans constructive; lower-right is stretched. Points only from stored bars.</p>`;
-        el.querySelectorAll('.engine-dot').forEach(node => {
-            node.addEventListener('click', () => {
-                _engOpenChart(node.dataset.sym);
-            });
-        });
-    } catch (err) {
-        el.innerHTML = `<p class="v2-card-kicker">RSI vs. volatility</p><p class="scanner-empty">${_engEsc(err.message || 'Maps unavailable')}</p>`;
     }
 }
 
@@ -367,10 +336,6 @@ async function loadEngineBoard() {
         if (empty) empty.style.display = rows.length ? 'none' : 'block';
         if (meta) meta.textContent = data.ready ? `${rows.length} rows` : (data.message || 'empty');
         _engRowClick(tbody);
-        tbody.querySelectorAll('tr[data-symbol]').forEach(tr => {
-            tr.addEventListener('click', () => _engPaintTakeaway(tr.dataset.symbol));
-        });
-        if (rows[0]) _engPaintTakeaway(rows[0].symbol);
     } catch (err) {
         tbody.innerHTML = '';
         if (empty) {
@@ -385,16 +350,23 @@ async function loadEngineBoard() {
 function _engListCol(title, items, tone) {
     const list = items || [];
     if (!list.length) return '';
-    const rows = list.map(it => {
-        const tag = it.gray_tag || it.state || it.note || '';
-        const note = it.takeaway || '';
-        return `<tr class="wn-row"><td class="wn-sym" data-sym="${_engEsc(it.symbol)}">${_engEsc(it.symbol)}</td>
-            <td>${_engEsc(tag || '—')}</td><td class="wn-note">${_engEsc(note || '—')}</td></tr>`;
-    }).join('');
+    const rows = list.map(it => ({
+        symbol: (typeof it === 'string' ? it : (it && it.symbol) || ''),
+        tag: (it && (it.gray_tag || it.state || it.note)) || '',
+        note: (it && it.takeaway) || '',
+    })).filter(r => r.symbol);
+    if (!rows.length) return '';
+    const hasTag = rows.some(r => r.tag);
+    const hasNote = rows.some(r => r.note);
+    const body = rows.map(r => `<tr class="wn-row" data-sym="${_engEsc(r.symbol)}">
+        <td class="wn-sym">${_engEsc(r.symbol)}</td>
+        ${hasTag ? `<td>${_engEsc(r.tag)}</td>` : ''}
+        ${hasNote ? `<td class="wn-note">${_engEsc(r.note)}</td>` : ''}
+    </tr>`).join('');
     return `<section class="wn-card ${tone || ''}">
-        <h3>${_engEsc(title)} <span class="wn-n">${list.length}</span></h3>
-        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>Tag</th><th>Note</th></tr></thead>
-        <tbody>${rows}</tbody></table>
+        <h3>${_engEsc(title)} <span class="wn-n">${rows.length}</span></h3>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th>${hasTag ? '<th>Tag</th>' : ''}${hasNote ? '<th>Note</th>' : ''}</tr></thead>
+        <tbody>${body}</tbody></table>
     </section>`;
 }
 
@@ -740,11 +712,17 @@ function renderEngineMaps(data, view) {
             </details>`;
     } else if (tab === 'fractal') {
         const ft = data.fractal_td || {};
+        const noD = Number(ft.no_d || 0);
+        const scored = (ft.points || []).filter(p => p && p.x != null && p.y != null);
+        const blank = noD
+            ? `<p class="scan-breadth-note">No D65 on ${noD} name${noD === 1 ? '' : 's'} — SPEC 25/27 window failed. Never invent D.</p>`
+            : '';
         el.innerHTML = `
             <div class="warnings-grid">
-                ${_engScatter(ft.points || [], { xLabel: ft.x_label, yLabel: ft.y_label, xmin: 1.1, xmax: 2.1, ymin: -15, ymax: 15, guides: [{ v: 1.3 }, { v: 1.5 }, { h: 13, color: '#EF4444' }, { h: -13, color: '#22C55E' }, { h: 0 }], empty: 'No D65 — SPEC 25/27 window failed. No invented markers.' })}
-                ${_engPtsTable('Fractal × TD', ft.points, 'D65', 'TD', p => p.td_flag || p.gray_tag)}
+                ${_engScatter(scored, { xLabel: ft.x_label, yLabel: ft.y_label, xmin: 1.1, xmax: 2.1, ymin: -15, ymax: 15, guides: [{ v: 1.3 }, { v: 1.5 }, { h: 13, color: '#EF4444' }, { h: -13, color: '#22C55E' }, { h: 0 }], empty: 'No D65 — SPEC 25/27 window failed. No invented markers.' })}
+                ${_engFractalTdTable(ft.points)}
             </div>
+            ${blank}
             <details class="scan-help"><summary>HOW TO READ — FRACTAL × TD</summary>
                 <p class="scan-breadth-note">${_engEsc(ft.howto || '')}</p>
                 <p class="scan-breadth-note">${_engEsc(data.td_note || '')}</p>

@@ -148,6 +148,9 @@ class MapsBoardTests(unittest.TestCase):
         # Fractal markers only when D exists
         for p in out["fractal_td"]["points"]:
             self.assertIsNotNone(p["x"])
+            self.assertIn("fractal_read", p)
+            self.assertIn("td_flag", p)
+        self.assertIn("no_d", out["fractal_td"])
 
     def test_formulas_include_tmac_tes_coil(self):
         cat = ee.catalog()
@@ -208,9 +211,11 @@ class FlaskMapsTests(unittest.TestCase):
         self.assertIn("HOW TO READ — TMS REGIME", blob)
         self.assertIn("_engPtsTable", blob)
         self.assertIn("_engTesDirTable", blob)
+        self.assertIn("_engFractalTdTable", blob)
         self.assertIn("_engOpenChart", blob)
         self.assertIn("HOW TO READ — TES / DIR", blob)
         self.assertIn("_engPtsTable('Rotation'", blob)
+        self.assertIn("Never invent D", blob)
         self.assertIn("if (!list.length) return '';", blob)
         self.assertIn("wn-table", blob)
         self.assertNotIn('<li class="engine-dim">none</li>', blob)

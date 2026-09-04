@@ -161,6 +161,7 @@ def maps_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = Non
     scanner_rows = []
     rotation, coil, frac_td = [], [], []
     tms_w_pts, tms_d_pts = [], []
+    no_d = 0
     for r in ready:
         cls = asset_class(r["symbol"])
         scanner_rows.append({
@@ -192,9 +193,19 @@ def maps_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = Non
             coil.append(cpt)
         # Fractal markers only when D is present — never invent D.
         if r.get("d65") is not None:
-            fpt = _pt(r, "d65", "td_count", extra={"td_flag": r.get("td_flag"), "td_note": r.get("td_note")})
-            if fpt:
-                frac_td.append(fpt)
+            frac_td.append({
+                "symbol": r["symbol"],
+                "x": r.get("d65"),
+                "y": r.get("td_count"),
+                "asset_class": cls,
+                "color": CLASS_COLORS.get(cls, "#F97316"),
+                "d_label": r.get("d_label"),
+                "fractal_read": r.get("fractal_read"),
+                "td_flag": r.get("td_flag"),
+                "td_side": r.get("td_side"),
+            })
+        else:
+            no_d += 1
         w_arrow = _arrow(r.get("tms_w_score"), r.get("tms_w_impulse_y"))
         d_arrow = _arrow(r.get("tms_score"), r.get("tms_impulse_y"))
         wpt = _pt(r, "tms_w_score", "tms_w_impulse_y", extra={"marker": "solid", "arrow": w_arrow, "zone": r.get("tms_w_zone")})
@@ -253,12 +264,14 @@ def maps_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = Non
         },
         "fractal_td": {
             "points": frac_td,
+            "no_d": no_d,
             "x_label": "D65 (← smooth/trending · 1.5 = random walk)",
             "y_label": "TD count — setup ±9 countdown ±13 (honest approx)",
             "guides": {"d_smooth": 1.3, "d_rw": 1.5, "td": [-13, 13]},
             "howto": (
                 "FRACTAL × TD — D65 from SPEC 25/27 only (no marker without D). "
-                "TD is an honest setup/countdown approx. Lines at ±13. Never invented TD13 stars."
+                "TD is an honest setup/countdown approx. Blank TD is missing count, not a fake 0. "
+                "Lines at ±13. Never invented TD13 stars."
             ),
         },
         "tms_regime": {
