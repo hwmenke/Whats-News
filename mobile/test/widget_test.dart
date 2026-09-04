@@ -106,7 +106,7 @@ void main() {
       if (path == '/api/finviz/screener' || path.startsWith('/api/finviz/quote/')) {
         return _json({'ready': false, 'rows': [], 'news': [], 'reason': 'fixture'});
       }
-      if (path == '/api/hmm/status' || path == '/api/hmm/regime' || path == '/api/hmm/scan') {
+      if (path == '/api/hmm/status' || path == '/api/hmm/regime' || path == '/api/hmm/scan' || path == '/api/hmm/combo') {
         return _json({
           'available': false,
           'research_label': true,

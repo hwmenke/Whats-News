@@ -25,18 +25,20 @@ async function loadHmmScan() {
     const spyEl = document.getElementById('hmm-spy-label');
     const statesSel = document.getElementById('hmm-states-n');
     const filterSel = document.getElementById('hmm-state-filter');
+    const viewSel = document.getElementById('hmm-view');
     if (!tbody) return;
     const n = (statesSel && statesSel.value) || '2';
     const filt = (filterSel && filterSel.value) || '';
+    const view = (viewSel && viewSel.value) || 'all';
     if (meta) meta.textContent = 'GET /api/hmm/scan…';
     try {
-        const q = new URLSearchParams({ desk: '1', states: n });
+        const q = new URLSearchParams({ desk: '1', states: n, view });
         if (filt) q.set('state', filt);
         const data = await apiFetch(`${API}/hmm/scan?${q}`);
         const spy = data.spy || {};
         if (spyEl) {
             spyEl.textContent = data.available
-                ? `SPY ${spy.current_label || '—'} · as-of ${spy.as_of || '—'} · ${data.note || 'research label, not edge'}`
+                ? `SPY ${spy.current_read || spy.current_label || '—'} · as-of ${spy.as_of || '—'} · flip ${spy.flipped ? 'yes' : 'no'} · ${data.note || 'research label, not edge'}`
                 : (data.reason || 'SPY HMM unavailable');
         }
         if (statesEl) {
@@ -71,7 +73,7 @@ async function loadHmmScan() {
             tr.innerHTML = `
                 <td class="macro-sym">${row.symbol || ''}</td>
                 <td>${row.inherited ? 'inherit SPY' : 'SPY fit'}</td>
-                <td>${row.spy_state || '—'}</td>
+                <td>${row.spy_read || row.spy_state || '—'}${row.flipped ? ' · flip' : ''}${row.high_vol ? ' · high-vol' : ''}</td>
                 <td>${row.spy_prob == null ? '—' : (Number(row.spy_prob) * 100).toFixed(0) + '%'}</td>
                 <td>${row.tag || ''}</td>
                 <td>${row.note || 'research label, not edge'}</td>`;
@@ -90,11 +92,54 @@ async function loadHmmScan() {
     }
 }
 
+async function loadComboScan() {
+    const meta = document.getElementById('combo-scan-meta');
+    const note = document.getElementById('combo-scan-note');
+    const tbody = document.getElementById('combo-scan-tbody');
+    const empty = document.getElementById('combo-scan-empty');
+    if (!tbody) return;
+    if (meta) meta.textContent = 'GET /api/hmm/combo…';
+    try {
+        const data = await apiFetch(`${API}/hmm/combo?desk=1`);
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        tbody.innerHTML = '';
+        rows.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.dataset.symbol = row.symbol || '';
+            tr.innerHTML = `
+                <td class="macro-sym">${row.symbol || ''}</td>
+                <td>${row.spy_read || row.spy_state || '—'}</td>
+                <td>${row.fragile ? 'FRAGILE' : '—'}</td>
+                <td>${(row.setups || []).join(', ') || '—'}</td>
+                <td>${(row.flags || []).join(' · ')}</td>
+                <td>${row.note || 'AND of real flags'}</td>`;
+            tr.addEventListener('click', () => {
+                if (row.symbol && typeof selectSymbol === 'function') selectSymbol(row.symbol);
+            });
+            tbody.appendChild(tr);
+        });
+        if (empty) {
+            empty.style.display = rows.length ? 'none' : 'block';
+            const p = empty.querySelector('p');
+            if (p && !rows.length) p.textContent = data.reason || 'No combo hits. Empty is honest.';
+        }
+        if (meta) meta.textContent = `${data.count || 0} AND hits`;
+        if (note) note.textContent = data.message || data.note || data.reason || '';
+    } catch (err) {
+        if (meta) meta.textContent = 'error';
+        if (note) note.textContent = err.message || 'Combo unavailable';
+        if (empty) empty.style.display = 'block';
+    }
+}
+
 function bindHmmScan() {
     document.getElementById('btn-hmm-scan')?.addEventListener('click', () => loadHmmScan());
     document.getElementById('hmm-states-n')?.addEventListener('change', () => loadHmmScan());
     document.getElementById('hmm-state-filter')?.addEventListener('change', () => loadHmmScan());
+    document.getElementById('hmm-view')?.addEventListener('change', () => loadHmmScan());
+    document.getElementById('btn-combo-scan')?.addEventListener('click', () => loadComboScan());
 }
 
 window.loadHmmScan = loadHmmScan;
+window.loadComboScan = loadComboScan;
 window.bindHmmScan = bindHmmScan;

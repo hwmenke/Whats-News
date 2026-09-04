@@ -60,8 +60,10 @@ class WhatsNewsState extends ChangeNotifier {
   int finvizTtlSec = 3600;
   String finvizPreset = 'qulla_momentum';
   HmmRegime hmmRegime = HmmRegime.empty;
+  ComboScan comboScan = ComboScan.empty;
   int hmmStates = 2;
   String hmmStateFilter = '';
+  String hmmView = 'all';
   BookPnl bookPnl = BookPnl.empty;
   bool loadingBook = false;
   String bookPane = 'pnl';
@@ -765,6 +767,9 @@ class WhatsNewsState extends ChangeNotifier {
       if (scanMode == 'hmm') {
         await loadHmm();
       }
+      if (scanMode == 'combo') {
+        await loadCombo();
+      }
     } on ApiException catch (e) {
       scanError = _friendly(e);
     } catch (_) {
@@ -824,11 +829,26 @@ class WhatsNewsState extends ChangeNotifier {
 
   Future<void> loadHmm() async {
     try {
-      hmmRegime = await api.getHmmScan(states: hmmStates, state: hmmStateFilter);
+      hmmRegime = await api.getHmmScan(states: hmmStates, state: hmmStateFilter, view: hmmView);
     } on ApiException {
       hmmRegime = HmmRegime.empty;
     }
     notifyListeners();
+  }
+
+  Future<void> loadCombo() async {
+    try {
+      comboScan = await api.getHmmCombo(states: hmmStates, state: hmmStateFilter);
+    } on ApiException {
+      comboScan = ComboScan.empty;
+    }
+    notifyListeners();
+  }
+
+  void setHmmView(String view) {
+    hmmView = view;
+    notifyListeners();
+    loadHmm();
   }
 
   void setHmmStates(int n) {
@@ -851,7 +871,8 @@ class WhatsNewsState extends ChangeNotifier {
         mode != 'setups' &&
         mode != 'fractal' &&
         mode != 'finviz' &&
-        mode != 'hmm') {
+        mode != 'hmm' &&
+        mode != 'combo') {
       return;
     }
     scanMode = mode;
@@ -859,6 +880,7 @@ class WhatsNewsState extends ChangeNotifier {
     _persist();
     if (mode == 'finviz') loadFinviz();
     if (mode == 'hmm') loadHmm();
+    if (mode == 'combo') loadCombo();
   }
 
   String _friendly(ApiException e) {

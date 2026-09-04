@@ -59,7 +59,8 @@ function applyScanLens(lens) {
     const fractal = document.getElementById('fractal-scan-panel');
     const finviz = document.getElementById('finviz-scan-panel');
     const hmm = document.getElementById('hmm-scan-panel');
-    const setup = document.querySelector('#scanner-area .setup-scanner-panel:not(.fractal-scan-panel):not(.desk-trend-scan):not(.finviz-scan-panel):not(.hmm-scan-panel)');
+    const combo = document.getElementById('combo-scan-panel');
+    const setup = document.querySelector('#scanner-area .setup-scanner-panel:not(.fractal-scan-panel):not(.desk-trend-scan):not(.finviz-scan-panel):not(.hmm-scan-panel):not(.combo-scan-panel)');
     const metrics = document.getElementById('scanner-table');
     const metricsWrap = metrics && metrics.closest('.scanner-table-wrap');
     const metricsControls = document.querySelector('#scanner-area .scanner-controls');
@@ -69,10 +70,12 @@ function applyScanLens(lens) {
     const showFractal = id === 'fractal';
     const showFinviz = id === 'finviz';
     const showHmm = id === 'hmm';
+    const showCombo = id === 'combo';
     if (trend) trend.style.display = showTrend ? '' : 'none';
     if (fractal) fractal.style.display = showFractal ? '' : 'none';
     if (finviz) finviz.style.display = showFinviz ? '' : 'none';
     if (hmm) hmm.style.display = showHmm ? '' : 'none';
+    if (combo) combo.style.display = showCombo ? '' : 'none';
     if (setup) setup.style.display = showQullaOrSetups ? '' : 'none';
     if (metricsWrap) metricsWrap.style.display = showMetrics ? '' : 'none';
     if (metricsControls) metricsControls.style.display = showMetrics ? '' : 'none';
@@ -85,6 +88,7 @@ function applyScanLens(lens) {
         loadFinvizScreener({ preset: readDeskPrefs().finvizPreset });
     }
     if (id === 'hmm' && typeof loadHmmScan === 'function') loadHmmScan();
+    if (id === 'combo' && typeof loadComboScan === 'function') loadComboScan();
     if (id === 'qulla' && typeof window.setQullaLens === 'function') {
         window.setQullaLens(readDeskPrefs().qullaLens || 'qulla');
     }

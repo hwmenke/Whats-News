@@ -94,6 +94,8 @@ class DeskLoopTests(unittest.TestCase):
         self.assertIn("research label, not edge", html)
         self.assertIn("data-lens=\"finviz\"", html)
         self.assertIn("data-lens=\"hmm\"", html)
+        self.assertIn("data-lens=\"combo\"", html)
+        self.assertIn("/api/hmm/combo", html)
 
 
 if __name__ == "__main__":

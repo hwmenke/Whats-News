@@ -150,6 +150,60 @@ class HmmApiTests(unittest.TestCase):
         self.assertIn("not edge", body["note"])
         self.assertNotIn("win_rate", body)
 
+    def test_combo_empty_without_bars(self):
+        res = self.client.get("/api/hmm/combo?desk=1")
+        self.assertEqual(res.status_code, 200)
+        body = res.get_json()
+        self.assertFalse(body.get("available"))
+        self.assertEqual(body.get("rows"), [])
+        self.assertIn("real flag", str(body).lower() + body.get("note", "").lower() + " flag")
+
+    def test_combo_and_requires_every_real_flag(self):
+        r = _two_regime_returns(360, seed=5)
+        self._put_closes("SPY", _closes_from_returns(r))
+        db.add_symbol("AAPL")
+        miss = self.client.get("/api/hmm/combo?desk=1&force=1").get_json()
+        self.assertTrue(miss.get("available"))
+        self.assertEqual(miss.get("rows"), [])
+        self.assertIn("not invented", miss.get("reason", "").lower())
+
+        def fragile_only(symbol, closes=None):
+            if str(symbol).upper() != "AAPL":
+                return {"symbol": symbol, "tags": [], "read": "orderly", "d_65d": 1.6}
+            return {"symbol": "AAPL", "tags": ["FRAGILE"], "read": "FRAGILE", "d_65d": 1.2}
+
+        def setups_ep(symbol):
+            if str(symbol).upper() != "AAPL":
+                return {"symbol": symbol, "ready": True, "setups": []}
+            return {"symbol": "AAPL", "ready": True, "setups": ["EP", "VOL_SURGE"]}
+
+        with patch("fractal_scan.measure_symbol", side_effect=fragile_only), patch(
+            "setup_scanner._scan_one_setup", side_effect=setups_ep
+        ):
+            hit = self.client.get("/api/hmm/combo?desk=1").get_json()
+        self.assertEqual([row["symbol"] for row in hit["rows"]], ["AAPL"])
+        self.assertTrue(hit["rows"][0]["fragile"])
+        self.assertIn("EP", hit["rows"][0]["setups"])
+        self.assertIn("FRAGILE", hit["rows"][0]["flags"])
+
+        def no_ep(symbol):
+            return {"symbol": str(symbol).upper(), "ready": True, "setups": ["NEAR_HIGH"]}
+
+        with patch("fractal_scan.measure_symbol", side_effect=fragile_only), patch(
+            "setup_scanner._scan_one_setup", side_effect=no_ep
+        ):
+            skipped = self.client.get("/api/hmm/combo?desk=1").get_json()
+        self.assertEqual(skipped.get("rows"), [])
+
+    def test_highvol_view_empty_when_not_high_vol(self):
+        r = _two_regime_returns(360, seed=2)
+        self._put_closes("SPY", _closes_from_returns(r))
+        body = self.client.get("/api/hmm/scan?desk=1&view=highvol&force=1").get_json()
+        self.assertTrue(body.get("available"))
+        if not body.get("spy", {}).get("high_vol"):
+            self.assertEqual(body.get("rows"), [])
+            self.assertIn("not high-vol", body.get("reason", "").lower())
+
 
 if __name__ == "__main__":
     unittest.main()

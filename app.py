@@ -395,12 +395,44 @@ def hmm_scan_api():
     except (TypeError, ValueError):
         n_states = 2
     state = request.args.get("state") or None
+    view = request.args.get("view") or None
     force = request.args.get("force", "").lower() in ("1", "true", "yes")
     try:
-        return jsonify(hmm_regime.scan(desk=desk, n_states=n_states, state=state, force=force))
+        return jsonify(hmm_regime.scan(desk=desk, n_states=n_states, state=state, view=view, force=force))
     except Exception as exc:
         if "no such table" in str(exc).lower():
             return jsonify(hmm_regime.empty_scan())
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/hmm/combo", methods=["GET"])
+def hmm_combo_api():
+    """AND of real Fractal FRAGILE + inherited SPY HMM + setup tags. No invented hits."""
+    import hmm_regime
+    ensure_local_schema()
+    desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+    try:
+        n_states = int(request.args.get("states") or request.args.get("n_states") or 2)
+    except (TypeError, ValueError):
+        n_states = 2
+    state = request.args.get("state") or None
+    frag_raw = request.args.get("fragile", "1").lower()
+    fragile = frag_raw in ("1", "true", "yes")
+    setups_raw = request.args.get("setup") or request.args.get("setups") or "EP,VOL_SURGE"
+    setups = [p.strip() for p in setups_raw.split(",") if p.strip()]
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    try:
+        return jsonify(hmm_regime.combo_scan(
+            desk=desk, n_states=n_states, state=state,
+            fragile=fragile, setups=setups, force=force,
+        ))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify({
+                "available": False, "ready": False, "rows": [], "count": 0,
+                "note": hmm_regime.COMBO_NOTE, "reason": str(exc),
+                "research_label": True,
+            })
         return jsonify({"error": str(exc)}), 500
 
 

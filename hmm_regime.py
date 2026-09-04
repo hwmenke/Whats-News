@@ -39,6 +39,12 @@ TOL = 1e-5
 N_RESTARTS = 4
 PATH_DAYS = 60
 CORE_INDEX = ("SPY", "QQQ", "IWM")
+HIGH_VOL_LABELS = frozenset({"high-vol", "stress"})
+COMBO_NOTE = (
+    "Combo is AND of real flags only (Fractal FRAGILE, inherited SPY HMM, "
+    "setup EP/VOL_SURGE). Missing a flag is a miss — not invented. "
+    "research label, not edge. Do not buy a regime flip."
+)
 
 
 def _now() -> str:
@@ -232,9 +238,12 @@ def interpret_fit(x, dates, params: dict) -> dict:
         mask = hard == i
         realized = float(x[mask].std(ddof=1)) if mask.sum() >= 2 else None
         occupancy = float(mask.mean()) if len(hard) else 0.0
+        drift = _drift_word(float(mu[i]), float(math.sqrt(max(float(var[i]), VAR_FLOOR))))
         states.append({
             "id": i,
             "label": labels[i],
+            "read": f"{labels[i]} {drift}",
+            "drift": drift,
             "mean": round(float(mu[i]), 6),
             "vol": round(float(math.sqrt(max(float(var[i]), VAR_FLOOR))), 6),
             "realized_vol": None if realized is None else round(realized, 6),
@@ -253,16 +262,32 @@ def interpret_fit(x, dates, params: dict) -> dict:
         }
         path.append(item)
     last = int(hard[-1])
+    prev_label = path[-2]["label"] if len(path) >= 2 else ""
+    flipped = bool(prev_label and prev_label != labels[last])
+    high_vol = labels[last] in HIGH_VOL_LABELS
     return {
         "n_states": k,
         "states": states,
         "current_state_id": last,
         "current_label": labels[last],
+        "current_read": states[last]["read"] if states else labels[last],
         "current_probs": [round(float(p), 4) for p in filt[-1]],
         "path": path,
+        "prev_label": prev_label,
+        "flipped": flipped,
+        "high_vol": high_vol,
         "loglik": None if not math.isfinite(params.get("loglik", float("nan"))) else round(float(params["loglik"]), 3),
         "n_obs": int(len(x)),
     }
+
+
+def _drift_word(mu: float, sig: float) -> str:
+    """Research qualifier from fitted mean vs vol — not a trade signal."""
+    if not math.isfinite(mu) or not math.isfinite(sig) or sig <= 0:
+        return "chop"
+    if abs(mu) < 0.25 * sig:
+        return "chop"
+    return "up" if mu > 0 else "down"
 
 
 def empty_regime(reason: str, *, n_states: int = 2) -> dict:
@@ -385,6 +410,10 @@ def fit_spy(*, n_states: int = 2, force: bool = False, closes=None, dates=None) 
         "source": SOURCE,
         "research_label": True,
         "tag": f"SPY state = {interpreted['current_label']}",
+        "current_read": interpreted.get("current_read") or interpreted["current_label"],
+        "prev_label": interpreted.get("prev_label") or "",
+        "flipped": bool(interpreted.get("flipped")),
+        "high_vol": bool(interpreted.get("high_vol")),
         "params": {
             "pi": [round(float(v), 6) for v in params["pi"]],
             "A": [[round(float(v), 6) for v in row] for row in params["A"]],
@@ -417,10 +446,20 @@ def regime(symbol: str | None = None, *, n_states: int = 2, force: bool = False)
     return inherited
 
 
-def scan(*, desk: bool = True, n_states: int = 2, state: str | None = None, force: bool = False) -> dict:
-    """Desk rows tagged with the SPY research label. Informational — not a trigger."""
+def scan(*, desk: bool = True, n_states: int = 2, state: str | None = None,
+         view: str | None = None, force: bool = False) -> dict:
+    """Desk rows tagged with the SPY research label. Informational — not a trigger.
+
+    view=flip → only when SPY filtered state changed vs prior day
+    view=highvol → only when current SPY label is high-vol / stress
+    """
     spy = fit_spy(n_states=n_states, force=force)
     label_filter = (state or "").strip().lower()
+    view_id = (view or "all").strip().lower()
+    if view_id in ("flips", "flipped"):
+        view_id = "flip"
+    if view_id in ("high-vol", "high_vol", "stress"):
+        view_id = "highvol"
     if not spy.get("available"):
         return {
             "available": False,
@@ -438,10 +477,34 @@ def scan(*, desk: bool = True, n_states: int = 2, state: str | None = None, forc
             "rows": [],
             "count": 0,
             "filter": label_filter or None,
+            "view": view_id,
             "reason": spy.get("reason") or NOTE,
             "note": NOTE,
             "source": SOURCE,
             "research_label": True,
+            "message": NOTE,
+        }
+    if view_id == "flip" and not spy.get("flipped"):
+        return {
+            **_scan_envelope(spy, label_filter, view_id),
+            "rows": [],
+            "count": 0,
+            "reason": (
+                f"SPY did not flip vs prior day "
+                f"({spy.get('prev_label') or '—'} → {spy.get('current_label') or '—'}). "
+                + NOTE
+            ),
+            "message": NOTE,
+        }
+    if view_id == "highvol" and not spy.get("high_vol"):
+        return {
+            **_scan_envelope(spy, label_filter, view_id),
+            "rows": [],
+            "count": 0,
+            "reason": (
+                f"SPY research label is {spy.get('current_label') or '—'} — not high-vol/stress. "
+                + NOTE
+            ),
             "message": NOTE,
         }
     symbols = _scan_symbols(desk=desk)
@@ -451,17 +514,27 @@ def scan(*, desk: bool = True, n_states: int = 2, state: str | None = None, forc
             "symbol": sym,
             "inherited": sym != ANCHOR,
             "spy_state": spy.get("current_label") or "",
+            "spy_read": spy.get("current_read") or spy.get("current_label") or "",
             "spy_state_id": spy.get("current_state_id"),
             "spy_prob": (spy.get("current_probs") or [None])[spy["current_state_id"]]
             if spy.get("available") and spy.get("current_state_id") is not None
             else None,
             "tag": spy.get("tag") or "",
+            "flipped": bool(spy.get("flipped")),
+            "high_vol": bool(spy.get("high_vol")),
+            "prev_label": spy.get("prev_label") or "",
             "as_of": spy.get("as_of"),
             "note": "research label, not edge",
         }
         if label_filter and (row["spy_state"] or "").lower() != label_filter:
             continue
         rows.append(row)
+    env = _scan_envelope(spy, label_filter, view_id)
+    env.update({"rows": rows, "count": len(rows), "reason": spy.get("reason") or NOTE, "message": NOTE})
+    return env
+
+
+def _scan_envelope(spy: dict, label_filter: str, view_id: str) -> dict:
     return {
         "available": bool(spy.get("available")),
         "ready": bool(spy.get("available")),
@@ -469,20 +542,109 @@ def scan(*, desk: bool = True, n_states: int = 2, state: str | None = None, forc
         "n_states": spy.get("n_states"),
         "spy": {
             "current_label": spy.get("current_label") or "",
+            "current_read": spy.get("current_read") or "",
             "current_state_id": spy.get("current_state_id"),
             "current_probs": spy.get("current_probs") or [],
             "states": spy.get("states") or [],
             "as_of": spy.get("as_of"),
             "path": spy.get("path") or [],
+            "prev_label": spy.get("prev_label") or "",
+            "flipped": bool(spy.get("flipped")),
+            "high_vol": bool(spy.get("high_vol")),
         },
-        "rows": rows,
-        "count": len(rows),
         "filter": label_filter or None,
-        "reason": spy.get("reason") or NOTE,
+        "view": view_id,
         "note": NOTE,
         "source": SOURCE,
         "research_label": True,
-        "message": NOTE,
+    }
+
+
+def combo_scan(
+    *,
+    desk: bool = True,
+    n_states: int = 2,
+    state: str | None = None,
+    fragile: bool = True,
+    setups: list[str] | None = None,
+    force: bool = False,
+) -> dict:
+    """AND of real Fractal / inherited SPY HMM / setup flags. Never invent a hit."""
+    import fractal_scan
+    import setup_scanner
+
+    want_setups = [s.strip().upper() for s in (setups or ["EP", "VOL_SURGE"]) if s and str(s).strip()]
+    spy_scan = scan(desk=desk, n_states=n_states, state=state, force=force)
+    if not spy_scan.get("available"):
+        return {
+            "available": False,
+            "ready": False,
+            "rows": [],
+            "count": 0,
+            "require": {
+                "fragile": bool(fragile),
+                "setups": want_setups,
+                "hmm_state": (state or "").strip() or None,
+            },
+            "spy": spy_scan.get("spy") or {},
+            "reason": spy_scan.get("reason") or COMBO_NOTE,
+            "note": COMBO_NOTE,
+            "source": SOURCE,
+            "research_label": True,
+            "message": COMBO_NOTE,
+        }
+
+    rows = []
+    for base in spy_scan.get("rows") or []:
+        sym = base.get("symbol") or ""
+        if not sym:
+            continue
+        flags: list[str] = [base.get("tag") or f"SPY state = {base.get('spy_state') or ''}"]
+        frac = fractal_scan.measure_symbol(sym) or {}
+        frac_tags = list(frac.get("tags") or [])
+        is_fragile = "FRAGILE" in frac_tags or frac.get("read") == "FRAGILE"
+        if fragile and not is_fragile:
+            continue
+        if is_fragile:
+            flags.append("FRAGILE")
+        setup = setup_scanner._scan_one_setup(sym) or {}
+        have = [t for t in (setup.get("setups") or []) if t]
+        matched = [t for t in want_setups if t in have]
+        if want_setups and not matched:
+            continue
+        flags.extend(matched)
+        rows.append({
+            "symbol": sym,
+            "inherited": base.get("inherited"),
+            "spy_state": base.get("spy_state") or "",
+            "spy_read": base.get("spy_read") or "",
+            "flipped": bool(base.get("flipped")),
+            "high_vol": bool(base.get("high_vol")),
+            "fragile": is_fragile,
+            "d_65d": frac.get("d_65d"),
+            "setups": matched,
+            "flags": flags,
+            "as_of": base.get("as_of"),
+            "note": "AND of real flags — research label, not edge",
+        })
+    return {
+        "available": True,
+        "ready": True,
+        "rows": rows,
+        "count": len(rows),
+        "require": {
+            "fragile": bool(fragile),
+            "setups": want_setups,
+            "hmm_state": (state or "").strip() or None,
+        },
+        "spy": spy_scan.get("spy") or {},
+        "reason": COMBO_NOTE if rows else (
+            "No desk name had every requested real flag. Empty combo — not invented hits. " + COMBO_NOTE
+        ),
+        "note": COMBO_NOTE,
+        "source": SOURCE,
+        "research_label": True,
+        "message": COMBO_NOTE,
     }
 
 

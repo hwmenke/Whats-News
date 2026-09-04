@@ -402,11 +402,12 @@ class WhatsNewsApi {
     return HmmRegime.empty;
   }
 
-  Future<HmmRegime> getHmmScan({int states = 2, String? state}) async {
+  Future<HmmRegime> getHmmScan({int states = 2, String? state, String view = 'all'}) async {
     try {
       final raw = await _get('/api/hmm/scan', {
         'desk': '1',
         'states': '$states',
+        'view': view,
         if (state != null && state.isNotEmpty) 'state': state,
       });
       if (raw is Map<String, dynamic>) return HmmRegime.fromJson(raw);
@@ -415,6 +416,21 @@ class WhatsNewsApi {
       return HmmRegime.empty;
     }
     return HmmRegime.empty;
+  }
+
+  Future<ComboScan> getHmmCombo({int states = 2, String? state}) async {
+    try {
+      final raw = await _get('/api/hmm/combo', {
+        'desk': '1',
+        'states': '$states',
+        if (state != null && state.isNotEmpty) 'state': state,
+      });
+      if (raw is Map<String, dynamic>) return ComboScan.fromJson(raw);
+      if (raw is Map) return ComboScan.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException {
+      return ComboScan.empty;
+    }
+    return ComboScan.empty;
   }
 
   Future<BookPnl> getBookPnl() async {

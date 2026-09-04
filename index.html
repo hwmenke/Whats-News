@@ -878,6 +878,7 @@
         <button type="button" class="ind-pill scan-lens-btn" data-lens="fractal">Fractal</button>
         <button type="button" class="ind-pill scan-lens-btn" data-lens="finviz">Finviz</button>
         <button type="button" class="ind-pill scan-lens-btn" data-lens="hmm">HMM</button>
+        <button type="button" class="ind-pill scan-lens-btn" data-lens="combo">Combo</button>
       </div>
       <div id="desk-trend-scan" class="setup-scanner-panel desk-trend-scan">
         <div class="setup-scanner-header">
@@ -972,6 +973,11 @@
           <select id="hmm-state-filter" class="dm-select" aria-label="SPY state filter">
             <option value="">All desk (inherit SPY)</option>
           </select>
+          <select id="hmm-view" class="dm-select" aria-label="HMM view">
+            <option value="all" selected>All (inherit SPY)</option>
+            <option value="flip">SPY flipped vs prior day</option>
+            <option value="highvol">SPY high-vol / stress</option>
+          </select>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-hmm-scan">Load /api/hmm/scan</button>
           <span id="hmm-scan-meta" class="scanner-ts"></span>
         </div>
@@ -995,6 +1001,32 @@
         </div>
         <div id="hmm-scan-empty" class="scanner-empty">
           <p>No HMM rows. Fetch Yahoo for SPY (~2y daily). research label, not edge — empty is missing bars, not a fake regime.</p>
+        </div>
+      </div>
+      <div id="combo-scan-panel" class="setup-scanner-panel hmm-scan-panel combo-scan-panel">
+        <div class="setup-scanner-header">
+          <strong>Combo</strong>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-combo-scan">Load /api/hmm/combo</button>
+          <span id="combo-scan-meta" class="scanner-ts"></span>
+        </div>
+        <p id="combo-scan-note" class="macro-blurb">AND of real flags only: Fractal FRAGILE + inherited SPY HMM + EP/VOL_SURGE. Missing a flag is a miss — not invented. research label, not edge.</p>
+        <div class="scanner-table-wrap">
+          <table id="combo-scan-table" class="scanner-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>SPY state</th>
+                <th>FRAGILE</th>
+                <th>Setups</th>
+                <th>Flags</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody id="combo-scan-tbody"></tbody>
+          </table>
+        </div>
+        <div id="combo-scan-empty" class="scanner-empty">
+          <p>No combo hits. Need stored bars so Fractal, SPY HMM, and setup tags are real. Empty is honest — not a fake AND.</p>
         </div>
       </div>
 
@@ -1261,6 +1293,7 @@
               <option value="fractal">Fractal</option>
               <option value="finviz">Finviz</option>
               <option value="hmm">HMM</option>
+              <option value="combo">Combo</option>
             </select>
           </div>
           <div class="dm-field">

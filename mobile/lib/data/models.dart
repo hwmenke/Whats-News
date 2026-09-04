@@ -1446,6 +1446,72 @@ class HmmRegime {
   }
 }
 
+class ComboRow {
+  const ComboRow({
+    required this.symbol,
+    this.spyState = '',
+    this.fragile = false,
+    this.setups = const [],
+    this.flags = const [],
+    this.note = 'AND of real flags — research label, not edge',
+  });
+
+  final String symbol;
+  final String spyState;
+  final bool fragile;
+  final List<String> setups;
+  final List<String> flags;
+  final String note;
+
+  factory ComboRow.fromJson(Map<String, dynamic> json) {
+    return ComboRow(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      spyState: '${json['spy_read'] ?? json['spy_state'] ?? ''}',
+      fragile: json['fragile'] == true,
+      setups: [
+        if (json['setups'] is List)
+          for (final t in json['setups'])
+            if (t != null && '$t'.isNotEmpty) '$t',
+      ],
+      flags: [
+        if (json['flags'] is List)
+          for (final t in json['flags'])
+            if (t != null && '$t'.isNotEmpty) '$t',
+      ],
+      note: '${json['note'] ?? 'AND of real flags — research label, not edge'}',
+    );
+  }
+}
+
+class ComboScan {
+  const ComboScan({
+    this.available = false,
+    this.rows = const [],
+    this.reason = '',
+    this.note = 'AND of real flags only. research label, not edge.',
+  });
+
+  final bool available;
+  final List<ComboRow> rows;
+  final String reason;
+  final String note;
+
+  static const empty = ComboScan();
+
+  factory ComboScan.fromJson(Map<String, dynamic> json) {
+    return ComboScan(
+      available: json['available'] == true || json['ready'] == true,
+      reason: '${json['reason'] ?? ''}',
+      note: '${json['note'] ?? json['message'] ?? 'AND of real flags only. research label, not edge.'}',
+      rows: [
+        if (json['rows'] is List)
+          for (final r in json['rows'])
+            if (r is Map) ComboRow.fromJson(Map<String, dynamic>.from(r)),
+      ],
+    );
+  }
+}
+
 class HmmScanRow {
   const HmmScanRow({
     required this.symbol,

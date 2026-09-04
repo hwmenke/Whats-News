@@ -64,6 +64,7 @@ class ScansPage extends StatelessWidget {
                       ('fractal', 'Fractal'),
                       ('finviz', 'Finviz'),
                       ('hmm', 'HMM'),
+                      ('combo', 'Combo'),
                       ('setups', 'Setups'),
                       ('trend', 'Trend'),
                       ('metrics', 'Metrics'),
@@ -128,6 +129,8 @@ class ScansPage extends StatelessWidget {
           ..._finvizSlivers(state)
         else if (state.scanMode == 'hmm')
           ..._hmmSlivers(state)
+        else if (state.scanMode == 'combo')
+          ..._comboSlivers(state)
         else if (state.scanMode == 'edges')
           ..._edgesSlivers(state)
         else if (state.loadingScans && _rowsEmpty(state))
@@ -333,6 +336,8 @@ class ScansPage extends StatelessWidget {
                 children: [
                   _ModeChip(label: '2-state', on: s.hmmStates == 2, onTap: () => s.setHmmStates(2)),
                   _ModeChip(label: '3-state', on: s.hmmStates == 3, onTap: () => s.setHmmStates(3)),
+                  _ModeChip(label: 'Flip', on: s.hmmView == 'flip', onTap: () => s.setHmmView(s.hmmView == 'flip' ? 'all' : 'flip')),
+                  _ModeChip(label: 'High-vol', on: s.hmmView == 'highvol', onTap: () => s.setHmmView(s.hmmView == 'highvol' ? 'all' : 'highvol')),
                   for (final st in h.states)
                     _ModeChip(
                       label: 'SPY=${st.label}',
@@ -376,6 +381,54 @@ class ScansPage extends StatelessWidget {
                           row.inherited ? 'inherit SPY' : 'SPY fit',
                           row.spyState.isEmpty ? '—' : row.spyState,
                           if (row.spyProb != null) '${(row.spyProb! * 100).toStringAsFixed(0)}%',
+                          row.note,
+                        ].join(' · '),
+                        style: const TextStyle(color: DeskColors.text, fontSize: 13),
+                      ),
+                    ),
+                  ),
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _comboSlivers(WhatsNewsState s) {
+    final c = s.comboScan;
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                c.note.isEmpty
+                    ? 'AND of real flags only: FRAGILE + inherited SPY HMM + EP/VOL_SURGE. research label, not edge.'
+                    : c.note,
+                style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
+              ),
+              const SizedBox(height: 10),
+              if (c.rows.isEmpty)
+                Text(
+                  c.reason.isEmpty
+                      ? 'No combo hits. Empty is a missed real flag — not invented.'
+                      : c.reason,
+                  style: const TextStyle(color: DeskColors.muted, fontSize: 13, height: 1.4),
+                )
+              else
+                for (final row in c.rows)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: GestureDetector(
+                      onTap: () => onOpenChart(row.symbol),
+                      child: Text(
+                        [
+                          row.symbol,
+                          if (row.spyState.isNotEmpty) row.spyState,
+                          if (row.fragile) 'FRAGILE',
+                          if (row.setups.isNotEmpty) row.setups.join(','),
                           row.note,
                         ].join(' · '),
                         style: const TextStyle(color: DeskColors.text, fontSize: 13),
