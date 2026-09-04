@@ -165,11 +165,7 @@ async function loadEngineCommand() {
         }
         const counts = data.engine_counts || {};
         el.innerHTML = `
-            <div class="engine-count-row">
-                <div class="engine-count"><span>OPPORTUNITY</span><strong>${counts.OPPORTUNITY || 0}</strong></div>
-                <div class="engine-count"><span>WATCH</span><strong>${counts.WATCH || 0}</strong></div>
-                <div class="engine-count"><span>NO TRADE</span><strong>${counts['NO TRADE'] || 0}</strong></div>
-            </div>
+            <p class="wn-count-line">OPPORTUNITY ${counts.OPPORTUNITY || 0} · WATCH ${counts.WATCH || 0} · NO TRADE ${counts['NO TRADE'] || 0}</p>
             <div class="warnings-grid">
                 ${_engTakeawayStrip(window._engineBoardRows)}
                 ${_engSymCol('Opportunity', data.opportunity)}
