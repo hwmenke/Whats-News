@@ -684,6 +684,32 @@ body.workspace-scan .desk-ia-bar {
 .engine-panel[data-panel="stretch"] .setup-scanner-header {
   display: none !important;
 }
+/* Command takeaways + Setup glance — Excel wn-table; leftover v2 theater hidden */
+.engine-panel[data-panel="command"] .v2-split,
+.engine-panel[data-panel="command"] .v41-title,
+.engine-panel[data-panel="command"] .engine-story-sub,
+.engine-panel[data-panel="command"] .setup-scanner-header,
+.engine-panel[data-panel="setup"] .v41-title,
+.engine-panel[data-panel="setup"] .engine-story-sub,
+.engine-panel[data-panel="setup"] .v2-card-kicker,
+.engine-panel[data-panel="setup"] .v2-card > h3,
+.engine-panel[data-panel="setup"] .v2-howto,
+.engine-panel[data-panel="setup"] .setup-scanner-header {
+  display: none !important;
+}
+#engine-command-body .warnings-grid,
+#engine-setup-str,
+#engine-setup-stretch,
+#engine-setup-pattern {
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: var(--space-section) !important;
+}
+.wn-note, .wn-sym {
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
 .engine-scatter { max-height: 168px; }
 .macro-container .v41-title,
 .macro-container .macro-story-sub,

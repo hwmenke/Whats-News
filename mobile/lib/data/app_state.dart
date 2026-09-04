@@ -894,6 +894,11 @@ class WhatsNewsState extends ChangeNotifier {
     try {
       if (scanMode == 'command') {
         engineCommand = await api.getEngineCommand();
+        try {
+          engineBoard = await api.getEngineBoard();
+        } on ApiException {
+          engineBoard = EngineBoard.empty;
+        }
       } else if (scanMode == 'setup') {
         engineBoard = await api.getEngineBoard();
       } else if (scanMode == 'pattern') {
@@ -980,7 +985,8 @@ class WhatsNewsState extends ChangeNotifier {
         mode != 'combo' &&
         !_isPackMode(mode) &&
         !_isEngineMode(mode) &&
-        mode != 'moves') {
+        mode != 'moves' &&
+        mode != 'macro') {
       return;
     }
     scanMode = mode;
@@ -992,6 +998,7 @@ class WhatsNewsState extends ChangeNotifier {
     if (_isPackMode(mode)) loadScanPack();
     if (_isEngineMode(mode)) loadEngine();
     if (mode == 'moves') loadMarketMoves();
+    if (mode == 'macro') loadMacro();
   }
 
   Future<void> loadMarketMoves() async {

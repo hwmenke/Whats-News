@@ -248,11 +248,57 @@ void main() {
     expect(find.text('Test News'), findsOneWidget);
   });
 
-  testWidgets('warnings takeaways ellipsize on a 320pt phone', (tester) async {
+  testWidgets('ScanNameRow clips a 200-char tag at 320pt dpr 3', (tester) async {
     tester.view.physicalSize = const Size(960, 2070);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+
+    final overflows = <FlutterErrorDetails>[];
+    final prev = FlutterError.onError;
+    FlutterError.onError = (details) {
+      overflows.add(details);
+      prev?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = prev);
+
+    await tester.pumpWidget(CupertinoApp(
+      home: Center(
+        child: SizedBox(
+          width: 320,
+          height: 30,
+          child: ScanNameRow(
+            symbol: 'NVDA',
+            tag: 'breaking up · Breakout · BREAK ↑ · TREND ↑ STRONG · Str 9 · ${'x' * 160}',
+            onTap: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(
+      overflows.where((d) => d.toString().contains('OVERFLOWED')),
+      isEmpty,
+    );
+    expect(find.text('NVDA'), findsOneWidget);
+    expect(find.byType(ClipRect), findsWidgets);
+    expect(find.byType(FittedBox), findsWidgets);
+  });
+
+  testWidgets('warnings takeaways never overflow on a 320pt phone', (tester) async {
+    tester.view.physicalSize = const Size(960, 2070);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final overflows = <FlutterErrorDetails>[];
+    final prev = FlutterError.onError;
+    FlutterError.onError = (details) {
+      overflows.add(details);
+      prev?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = prev);
 
     final state = WhatsNewsState(
       api: WhatsNewsApi(baseUrl: 'http://127.0.0.1:8050', httpClient: MockClient((_) async {
@@ -283,8 +329,14 @@ void main() {
     ));
     await tester.pump();
     expect(tester.takeException(), isNull);
+    expect(
+      overflows.where((d) => d.toString().contains('OVERFLOWED')),
+      isEmpty,
+    );
     expect(find.text('NVDA'), findsWidgets);
     expect(find.text('Takeaways (1)'), findsOneWidget);
+    expect(find.text('breaking up'), findsOneWidget);
+    expect(find.textContaining('BREAK ↑ · TREND'), findsNothing);
   });
 
   testWidgets('risk ranked rows sit tight under the pane chips', (tester) async {

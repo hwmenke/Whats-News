@@ -42,6 +42,7 @@ class ScansPage extends StatelessWidget {
                             ('stretch', 'Stretch'),
                             ('sigma', 'Sigma'),
                             ('maps', 'Maps'),
+                            ('macro', 'Macro'),
                             ('moves', 'Moves'),
                             ('ma', 'MA'),
                             ('rsi', 'RSI'),
@@ -173,6 +174,8 @@ class ScansPage extends StatelessWidget {
           ..._sigmaSlivers(state)
         else if (state.scanMode == 'maps')
           ..._mapsSlivers(state)
+        else if (state.scanMode == 'macro')
+          ..._macroSlivers(state)
         else if (state.scanMode == 'warnings')
           ..._warningsSlivers(state)
         else if (state.scanMode == 'moves')
@@ -594,37 +597,11 @@ class ScansPage extends StatelessWidget {
       ];
 
   Widget _nameChip(String symbol, String tag, {String? metric}) {
-    return GestureDetector(
+    return ScanNameRow(
+      symbol: symbol,
+      tag: tag,
+      metric: metric,
       onTap: () => onOpenChart(symbol),
-      child: SizedBox(
-        height: DeskSpace.row,
-        width: double.infinity,
-        child: Padding(
-          padding: DeskSpace.cellPad,
-          child: Row(
-            children: [
-              Text(symbol, style: const TextStyle(color: DeskColors.accentBright, fontWeight: FontWeight.w700)),
-              if (metric != null && metric.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                Text(metric, style: const TextStyle(color: DeskColors.text, fontSize: 12)),
-              ],
-              if (tag.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    tag,
-                    textAlign: TextAlign.right,
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: DeskColors.dim, fontSize: 11),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -633,45 +610,50 @@ class ScansPage extends StatelessWidget {
     if (!b.ready) {
       return _emptyNote(b.message.isEmpty ? 'Empty command — seed a sleeve and Fetch Yahoo.' : b.message);
     }
+    Widget symCol(String title, List<String> names) {
+      if (names.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: DeskSpace.section),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$title (${names.length})',
+              style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
+            ),
+            for (final n in names) _nameChip(n, ''),
+          ],
+        ),
+      );
+    }
+    final takes = s.engineBoard.rows.where((r) => r.takeaway.isNotEmpty).toList();
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'OPPORTUNITY ${b.counts['OPPORTUNITY'] ?? 0} · WATCH ${b.counts['WATCH'] ?? 0} · NO TRADE ${b.counts['NO TRADE'] ?? 0}',
-                style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700),
+                style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
               ),
-              const SizedBox(height: 8),
-              const Text('Opportunity', style: TextStyle(color: DeskColors.muted, fontSize: 12)),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final n in b.opportunity)
-                    GestureDetector(
-                      onTap: () => onOpenChart(n),
-                      child: Text(n, style: const TextStyle(color: DeskColors.accentBright, fontWeight: FontWeight.w700)),
-                    ),
-                  if (b.opportunity.isEmpty)
-                    const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 12)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text('Pullback-in-uptrend', style: TextStyle(color: DeskColors.muted, fontSize: 12)),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final n in b.pullbacks)
-                    GestureDetector(
-                      onTap: () => onOpenChart(n),
-                      child: Text(n, style: const TextStyle(color: DeskColors.accentBright, fontWeight: FontWeight.w700)),
-                    ),
-                  if (b.pullbacks.isEmpty)
-                    const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 12)),
-                ],
-              ),
+              if (takes.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: DeskSpace.section),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Takeaways (${takes.length})',
+                        style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
+                      ),
+                      for (final r in takes) _nameChip(r.symbol, r.engine),
+                    ],
+                  ),
+                ),
+              symCol('Opportunity', b.opportunity),
+              symCol('Pullback-in-uptrend', b.pullbacks),
             ],
           ),
         ),
@@ -857,6 +839,57 @@ class ScansPage extends StatelessWidget {
     ];
   }
 
+  List<Widget> _macroSlivers(WhatsNewsState s) {
+    final b = s.macroBoard;
+    final sleeves = [
+      for (final sl in b.sleeves)
+        if (sl.rows.any((r) => r.ready)) sl,
+    ];
+    if (sleeves.isEmpty) {
+      return _emptyNote(
+        b.note.isEmpty ? 'Empty Macro — seed a sleeve and Fetch Yahoo.' : b.note,
+      );
+    }
+    String z(double? v) => v == null ? '—' : v.toStringAsFixed(2);
+    String px(double? v) => v == null ? '—' : v.toStringAsFixed(2);
+    String day(double? v) {
+      if (v == null) return '—';
+      return '${v >= 0 ? '+' : ''}${v.toStringAsFixed(1)}%';
+    }
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final sleeve in sleeves)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: DeskSpace.section),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${sleeve.label} (${[for (final r in sleeve.rows) if (r.ready) r].length})',
+                        style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
+                      ),
+                      for (final r in sleeve.rows)
+                        if (r.ready)
+                          _nameChip(
+                            r.symbol,
+                            'z ${z(r.z30)} / ${z(r.z14)}',
+                            metric: '${px(r.px)}  ${day(r.dayPct)}',
+                          ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+
   List<Widget> _warningsSlivers(WhatsNewsState s) {
     final b = s.warningsBoard;
     if (!b.ready) {
@@ -882,13 +915,7 @@ class ScansPage extends StatelessWidget {
             for (final r in rows)
               _nameChip(
                 r.symbol,
-                [
-                  if (r.label.isNotEmpty) r.label,
-                  if (r.patternD.isNotEmpty) r.patternD,
-                  if (r.vcp.isNotEmpty) r.vcp,
-                  if (r.rsiC.isNotEmpty) r.rsiC,
-                  if (r.str != null) 'Str ${r.str}',
-                ].where((e) => e.isNotEmpty).join(' · '),
+                r.label.isNotEmpty ? r.label : r.patternD,
               ),
           ],
         ),
@@ -1634,6 +1661,92 @@ class _PackTile extends StatelessWidget {
               style: const TextStyle(color: DeskColors.muted, fontSize: 12),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Excel-density name row. Stack + ClipRect + FittedBox — never a Flex
+/// RIGHT OVERFLOWED stripe (ellipsis still overflows ~0.6px at dpr 3).
+class ScanNameRow extends StatelessWidget {
+  const ScanNameRow({
+    super.key,
+    required this.symbol,
+    this.tag = '',
+    this.metric,
+    required this.onTap,
+  });
+
+  final String symbol;
+  final String tag;
+  final String? metric;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        height: DeskSpace.row,
+        width: double.infinity,
+        child: Padding(
+          padding: DeskSpace.cellPad,
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final maxW = c.maxWidth.isFinite ? c.maxWidth : 0.0;
+              final lead = [
+                symbol,
+                if (metric != null && metric!.isNotEmpty) metric,
+              ].join('  ');
+              return ClipRect(
+                child: SizedBox(
+                  width: maxW,
+                  height: DeskSpace.row,
+                  child: Stack(
+                    clipBehavior: Clip.hardEdge,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          lead,
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.clip,
+                          style: const TextStyle(
+                            color: DeskColors.accentBright,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (tag.isNotEmpty)
+                        Positioned(
+                          left: metric != null && metric!.isNotEmpty ? 132 : 52,
+                          right: 0,
+                          top: 0,
+                          bottom: 0,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              tag,
+                              maxLines: 1,
+                              softWrap: false,
+                              overflow: TextOverflow.clip,
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                color: DeskColors.dim,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ),
     );

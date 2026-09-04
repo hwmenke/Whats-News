@@ -128,51 +128,61 @@ function _engEmpty(el, msg) {
     el.innerHTML = `<p class="scanner-empty">${_engEsc(msg || 'Empty — no stored daily bars.')}</p>`;
 }
 
+function _engTakeawayStrip(rows) {
+    const list = (rows || []).filter(r => r && r.takeaway);
+    if (!list.length) return '';
+    const body = list.map(r => `<tr class="wn-row"><td class="wn-sym" data-sym="${_engEsc(r.symbol)}">${_engEsc(r.symbol)}</td>
+        <td>${_engEsc(r.engine || '—')}</td>
+        <td class="wn-note">${_engEsc(r.takeaway)}</td></tr>`).join('');
+    return `<section class="wn-card">
+        <h3>Takeaways <span class="wn-n">${list.length}</span></h3>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>ENGINE</th><th>Takeaway</th></tr></thead>
+        <tbody>${body}</tbody></table>
+    </section>`;
+}
+
+function _engSymCol(title, symbols) {
+    const list = (symbols || []).map(s => (typeof s === 'string' ? s : (s && s.symbol) || '')).filter(Boolean);
+    if (!list.length) return '';
+    return _engListCol(title, list.map(symbol => ({ symbol, takeaway: '' })));
+}
+
 async function loadEngineCommand() {
     const el = document.getElementById('engine-command-body');
     const meta = document.getElementById('engine-command-meta');
     if (!el) return;
     if (meta) meta.textContent = 'GET /api/engine/command…';
     try {
-        const data = await apiFetch(`${API}/engine/command?desk=1`);
+        const [data, board] = await Promise.all([
+            apiFetch(`${API}/engine/command?desk=1`),
+            apiFetch(`${API}/engine/board?desk=1`).catch(() => ({ rows: [] })),
+        ]);
+        window._engineBoardRows = Array.isArray(board.rows) ? board.rows : [];
         if (meta) meta.textContent = data.ready ? `${data.n || 0} names` : (data.message || 'empty');
         if (!data.ready) {
             _engEmpty(el, data.message);
             return;
         }
         const counts = data.engine_counts || {};
-        const pats = data.pattern_counts || {};
-        const daily = pats.daily || {};
-        const weekly = pats.weekly || {};
-        const list = (arr) => (arr || []).length
-            ? (arr || []).map(s => `<button type="button" class="macro-chip" data-sym="${_engEsc(s)}">${_engEsc(s)}</button>`).join('')
-            : '<span class="engine-dim">none</span>';
         el.innerHTML = `
             <div class="engine-count-row">
                 <div class="engine-count"><span>OPPORTUNITY</span><strong>${counts.OPPORTUNITY || 0}</strong></div>
                 <div class="engine-count"><span>WATCH</span><strong>${counts.WATCH || 0}</strong></div>
                 <div class="engine-count"><span>NO TRADE</span><strong>${counts['NO TRADE'] || 0}</strong></div>
             </div>
-            <p class="macro-blurb">${_engEsc(data.note || '')}</p>
-            <h3>Opportunity</h3>
-            <div class="engine-chip-row">${list(data.opportunity)}</div>
-            <h3>Pullback-in-uptrend (Daily OS + Weekly TREND↑)</h3>
-            <div class="engine-chip-row">${list(data.pullbacks)}</div>
-            <h3>Pattern counts</h3>
-            <p class="engine-dim">Daily 3M/1M — Breakout ${daily.Breakout || 0} · Breakdown ${daily.Breakdown || 0} · From Bottom ${daily['From Bottom'] || 0} · From Top ${daily['From Top'] || 0}</p>
-            <p class="engine-dim">Weekly 1Y/6M — Breakout ${weekly.Breakout || 0} · Breakdown ${weekly.Breakdown || 0} · From Bottom ${weekly['From Bottom'] || 0} · From Top ${weekly['From Top'] || 0}</p>
-            <details class="engine-howto"><summary>HOW TO READ — ENGINE state machine</summary>
-                <p>${_engEsc((data.formulas && data.formulas.engine) || '')}</p>
-                <p>${_engEsc((data.formulas && data.formulas.vcp) || '')}</p>
-                <p>${_engEsc((data.formulas && data.formulas.rsi_c) || '')}</p>
+            <div class="warnings-grid">
+                ${_engTakeawayStrip(window._engineBoardRows)}
+                ${_engSymCol('Opportunity', data.opportunity)}
+                ${_engSymCol('Pullback-in-uptrend', data.pullbacks)}
+            </div>
+            <details class="scan-help"><summary>HOW TO READ — ENGINE state machine</summary>
+                <p class="scan-breadth-note">${_engEsc((data.formulas && data.formulas.engine) || data.note || '')}</p>
             </details>`;
         el.querySelectorAll('[data-sym]').forEach(btn => {
             btn.addEventListener('click', () => {
                 if (btn.dataset.sym && typeof selectSymbol === 'function') selectSymbol(btn.dataset.sym);
             });
         });
-        _engPaintTakeaway((data.opportunity || [])[0], data);
-        _engPaintCommandScatter();
     } catch (err) {
         _engEmpty(el, err.message || 'ENGINE command unavailable');
         if (meta) meta.textContent = 'error';
@@ -248,40 +258,31 @@ async function loadEngineSetupGlance() {
             apiFetch(`${API}/engine/stretch?desk=1`),
             apiFetch(`${API}/engine/patterns?desk=1`),
         ]);
-        const strRows = [...(stretch.strongest || []), ...(stretch.breakdowns || [])].slice(0, 8);
-        strEl.innerHTML = strRows.length ? strRows.map(it => {
-            const n = Number(it.str);
-            const w = Math.min(50, Math.abs(n) * 10);
-            const side = n >= 0 ? 'is-up' : 'is-dn';
-            return `<div class="v2-str-row">
-                <button type="button" class="engine-name" data-sym="${_engEsc(it.symbol)}">${_engEsc(it.symbol)}</button>
-                <span class="v2-big" style="font-size:20px">${it.str == null ? '—' : (n > 0 ? '+' : '') + it.str}</span>
-                <span class="v2-bar"><i class="${side}" style="width:${w}%"></i></span>
-            </div>`;
-        }).join('') : '<p class="engine-dim">Empty — need ≥56 daily bars for Str.</p>';
-        const stretchRows = [...(stretch.compressed || []), ...(stretch.stretched || [])].slice(0, 8);
-        stEl.innerHTML = stretchRows.length ? stretchRows.map((it, i) => {
-            const pct = it.stretch_pctile != null ? it.stretch_pctile : it.stretch_pct;
-            const label = pct == null ? 'MID' : (Number(pct) <= 25 ? 'COMPRESS' : Number(pct) >= 75 ? 'STRETCH' : 'MID');
-            const kind = label === 'COMPRESS' ? 'is-coil' : label === 'STRETCH' ? 'is-break' : 'is-gray';
-            return `<div class="v2-stretch-row${i === 0 ? ' is-mint' : ''}">
-                <button type="button" class="engine-name" data-sym="${_engEsc(it.symbol)}">${_engEsc(it.symbol)}</button>
-                <span class="v2-big" style="font-size:20px">${pct == null ? '—' : _engNum(pct, 0) + '%'}</span>
-                ${_engChip(label, kind)}
-            </div>`;
-        }).join('') : '<p class="engine-dim">Empty stretch — ADMA percentile needs n≥3.</p>';
+        strEl.innerHTML = [
+            _engStretchCol('Strongest breakouts', stretch.strongest, 'str'),
+            _engStretchCol('Breakdowns', stretch.breakdowns, 'str'),
+        ].filter(Boolean).join('') || '';
+        stEl.innerHTML = [
+            _engStretchCol('Most compressed (ADMA)', stretch.compressed, 'pct'),
+            _engStretchCol('Most stretched (ADMA)', stretch.stretched, 'pct'),
+        ].filter(Boolean).join('') || '';
         const dc = (patterns.daily || {}).counts || {};
         const wc = (patterns.weekly || {}).counts || {};
-        const cell = (v, lab) => `<div class="v2-pat-cell"><strong>${v == null ? '—' : v}</strong><span>${lab}</span></div>`;
-        patEl.innerHTML = `
-            <p class="engine-dim">Breakouts</p>
-            <div class="v2-pat-grid">${cell(dc.Breakout || 0, '3M')}${cell(null, '1M')}${cell(wc.Breakout || 0, '1Y')}${cell(null, '6M')}</div>
-            <p class="engine-dim">Breakdowns</p>
-            <div class="v2-pat-grid">${cell(dc.Breakdown || 0, '3M')}${cell(null, '1M')}${cell(wc.Breakdown || 0, '1Y')}${cell(null, '6M')}</div>
-            <p class="engine-dim">From Bottom</p>
-            <div class="v2-pat-grid">${cell(null, '3M')}${cell(dc['From Bottom'] || 0, '1M')}${cell(null, '1Y')}${cell(wc['From Bottom'] || 0, '6M')}</div>
-            <p class="engine-dim">From Top</p>
-            <div class="v2-pat-grid">${cell(null, '3M')}${cell(dc['From Top'] || 0, '1M')}${cell(null, '1Y')}${cell(wc['From Top'] || 0, '6M')}</div>`;
+        const countRows = [
+            ['Breakouts D', dc.Breakout || 0],
+            ['Breakdowns D', dc.Breakdown || 0],
+            ['From Bottom D', dc['From Bottom'] || 0],
+            ['From Top D', dc['From Top'] || 0],
+            ['Breakouts W', wc.Breakout || 0],
+            ['Breakdowns W', wc.Breakdown || 0],
+            ['From Bottom W', wc['From Bottom'] || 0],
+            ['From Top W', wc['From Top'] || 0],
+        ].filter(([, n]) => n > 0);
+        patEl.innerHTML = countRows.length
+            ? `<section class="wn-card"><h3>Pattern counts <span class="wn-n">${countRows.length}</span></h3>
+                <table class="wn-table mm-table"><thead><tr><th>Bucket</th><th>n</th></tr></thead>
+                <tbody>${countRows.map(([lab, n]) => `<tr class="wn-row"><td>${_engEsc(lab)}</td><td>${n}</td></tr>`).join('')}</tbody></table></section>`
+            : '';
         if (meta) meta.textContent = stretch.ready || patterns.ready ? 'setup glance' : (stretch.message || patterns.message || 'empty');
         document.querySelectorAll('#engine-setup-str [data-sym], #engine-setup-stretch [data-sym]').forEach(btn => {
             btn.addEventListener('click', () => {
