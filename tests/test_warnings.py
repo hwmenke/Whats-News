@@ -129,12 +129,15 @@ class WarningsSurfaceTests(unittest.TestCase):
         self.assertIn("getEngineWarnings", blob)
         self.assertIn("_warningsSlivers", blob)
         self.assertIn("Yahoo/SQLite scans · ENGINE + Market Moves", blob)
+        self.assertIn("overflow-x: auto", Path("styles/theme.css").read_text(encoding="utf-8"))
         self.assertNotIn(
             "Column order/visibility: GET /api/boards/registry",
             blob,
         )
         self.assertIn("whats-news-risk-SPEC-2026-09-04.md", blob)
         self.assertIn("risk-clusters", blob)
+        self.assertIn("Empty buckets omitted", blob)
+        self.assertIn("Takeaways", blob)
         self.assertNotIn("bloomberg", blob.lower())
         self.assertNotIn("gamma strip", blob.lower())
 

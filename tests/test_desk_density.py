@@ -61,6 +61,14 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("scan-help", self.blob)
         self.assertIn("whats-news-risk-SPEC-2026-09-04.md", self.blob)
         self.assertIn("risk-clusters", self.blob)
+        self.assertIn("overflow-x: auto", self.blob)
+        self.assertIn("risk-more", self.blob)
+        self.assertLess(
+            self.blob.find("Ranked %VaR"),
+            self.blob.find('id="risk-portfolio"'),
+            "ranked %VaR must sit above portfolio chrome",
+        )
+        self.assertNotIn("btn-alpaca-sync", self.blob[self.blob.find('id="risk-area"'):self.blob.find('id="data-manager-area"')])
 
     def test_hard_ui_lock_font_c_v41_not_v2_v3(self):
         theme = ""

@@ -54,23 +54,7 @@ class BookPage extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Alpaca paper — not live P&L',
-                  style: TextStyle(color: DeskColors.muted, fontSize: 12),
-                ),
-                if (state.alpacaMessage != null && state.alpacaMessage!.isNotEmpty)
-                  Text(
-                    state.alpacaMessage!,
-                    style: const TextStyle(color: DeskColors.dim, fontSize: 11),
-                    textAlign: TextAlign.center,
-                  ),
-                CupertinoButton(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  onPressed: state.loadingBook ? null : state.syncAlpacaPaper,
-                  child: const Text('Sync Alpaca paper', style: TextStyle(fontSize: 13)),
-                ),
-                if (state.bookError != null) ...[
+                if (state.bookError != null && state.bookPane != 'risk') ...[
                   const SizedBox(height: 8),
                   Text(state.bookError!, style: const TextStyle(color: DeskColors.red, fontSize: 13)),
                 ],
@@ -201,67 +185,33 @@ class BookPage extends StatelessWidget {
       return '${v < 0 ? '−' : ''}\$$abs';
     }
 
-    String pct(double? v) => v == null ? '—' : '${v.toStringAsFixed(2)}%';
+    String pct(double? v) => v == null ? '—' : '${v.toStringAsFixed(1)}%';
     final risk = pnl.risk;
     final rows = risk.names;
+    final flags = <String>{
+      ...pnl.alerts,
+      for (final r in rows) ...r.flags,
+    };
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Portfolio risk',
-                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4),
+              Text(
+                [
+                  if (risk.ready) '${risk.nNames} names · ${risk.overlapDays}d',
+                  if (risk.vol60 != null) 'σ60 ${risk.vol60!.toStringAsFixed(1)}%',
+                  if (pnl.topWeightPct != null) 'top ${pnl.topWeightPct!.toStringAsFixed(0)}%',
+                  ...flags,
+                ].join(' · '),
+                style: const TextStyle(color: DeskColors.muted, fontSize: 11),
               ),
-              const SizedBox(height: 4),
-              const Text(
-                'SPEC /workspace/whats-news-risk-SPEC-2026-09-04.md · 1d VaR hist + param μ=0 60d Σ. Thin book is blank.',
-                style: TextStyle(color: DeskColors.muted, fontSize: 11),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  if (risk.ready)
-                    _RiskChip('${risk.nNames} names · ${risk.overlapDays}d'),
-                  if (risk.vol60 != null) _RiskChip('σ60 ${risk.vol60!.toStringAsFixed(1)}%'),
-                  if (pnl.topWeightPct != null)
-                    _RiskChip('Top ${pnl.topSymbol.isEmpty ? '' : '${pnl.topSymbol} '}${pnl.topWeightPct!.toStringAsFixed(0)}%'),
-                  if (pnl.hhi != null) _RiskChip('HHI ${pnl.hhi!.toStringAsFixed(0)}'),
-                  for (final a in pnl.alerts) _RiskChip(a, alert: true),
-                  for (final r in rows)
-                    for (final f in r.flags) _RiskChip(f, alert: true),
-                ],
-              ),
-              const SizedBox(height: 10),
-              _ExpRow('Net', usd(pnl.net)),
-              _ExpRow('σ20 / σ60', '${pct(risk.vol20)} / ${pct(risk.vol60)}'),
-              _ExpRow('Hist 95 / 99', '${pct(risk.hist95Pct)} / ${pct(risk.hist99Pct)}'),
-              _ExpRow('Param 95 / 99', '${pct(risk.param95Pct)} / ${pct(risk.param99Pct)}'),
-              _ExpRow('Day / week', '${pct(risk.dayPct)} / ${pct(risk.weekPct)}'),
-              _ExpRow('MTD / YTD', '${pct(risk.mtdPct)} / ${pct(risk.ytdPct)}'),
-              _ExpRow('Max DD', pct(risk.maxDdPct)),
-              _ExpRow('Sharpe / Sortino', '${risk.sharpe?.toStringAsFixed(2) ?? '—'} / ${risk.sortino?.toStringAsFixed(2) ?? '—'}'),
-              _ExpRow('NAV', risk.curveKind.isEmpty ? '—' : 'synthetic Yahoo marks'),
-              if (!risk.ready) ...[
-                const SizedBox(height: 8),
-                Text(
-                  risk.message.isEmpty ? 'Thin book — Risk stack blank.' : risk.message,
-                  style: const TextStyle(color: DeskColors.muted, fontSize: 11, height: 1.35),
-                ),
-              ],
-              const SizedBox(height: 16),
+              const SizedBox(height: 6),
               const Text(
                 'Ranked %VaR',
-                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'w · σ20/σ60 · β SPY 60d · MVaR / CVaR / %VaR. FLAG = CONC/VOL_SPIKE/THIN/SHORT.',
-                style: TextStyle(color: DeskColors.muted, fontSize: 11),
+                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4, fontSize: 13),
               ),
             ],
           ),
@@ -270,10 +220,10 @@ class BookPage extends StatelessWidget {
       if (rows.isEmpty)
         const SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.all(24),
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Text(
               'Thin or unmarked. Need ≥3 names, ≥60 overlapping daily closes, non-singular 60d Σ.',
-              style: TextStyle(color: DeskColors.muted, height: 1.4),
+              style: TextStyle(color: DeskColors.muted, height: 1.4, fontSize: 12),
             ),
           ),
         )
@@ -284,55 +234,77 @@ class BookPage extends StatelessWidget {
             final r = rows[i];
             return GestureDetector(
               onTap: () => onOpenChart(r.symbol),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
-                child: Text(
-                  [
-                    r.symbol,
-                    r.weightPct == null ? 'w —' : 'w ${r.weightPct!.toStringAsFixed(1)}%',
-                    r.vol20 == null ? 'σ20 —' : 'σ20 ${r.vol20!.toStringAsFixed(1)}',
-                    r.vol60 == null ? 'σ60 —' : 'σ60 ${r.vol60!.toStringAsFixed(1)}',
-                    r.betaSpy60 == null ? 'β —' : 'β ${r.betaSpy60!.toStringAsFixed(2)}',
-                    r.mvar95 == null ? 'MVaR —' : 'MVaR ${usd(r.mvar95)}',
-                    r.cvar95 == null ? 'CVaR —' : 'CVaR ${usd(r.cvar95)}',
-                    r.pctVar == null ? '%VaR —' : '%VaR ${r.pctVar!.toStringAsFixed(1)}',
-                    if (r.flags.isNotEmpty) r.flags.join(' '),
-                  ].join(' · '),
-                  style: const TextStyle(color: DeskColors.text, fontSize: 13),
+              child: SizedBox(
+                height: 24,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      [
+                        r.symbol,
+                        r.weightPct == null ? 'w —' : 'w ${r.weightPct!.toStringAsFixed(1)}%',
+                        r.vol20 == null ? 'σ20 —' : 'σ20 ${r.vol20!.toStringAsFixed(0)}',
+                        r.vol60 == null ? 'σ60 —' : 'σ60 ${r.vol60!.toStringAsFixed(0)}',
+                        r.betaSpy60 == null ? 'β —' : 'β ${r.betaSpy60!.toStringAsFixed(2)}',
+                        r.mvar95 == null ? 'MVaR —' : 'MVaR ${usd(r.mvar95)}',
+                        r.cvar95 == null ? 'CVaR —' : 'CVaR ${usd(r.cvar95)}',
+                        r.pctVar == null ? '%VaR —' : '%VaR ${r.pctVar!.toStringAsFixed(1)}',
+                        if (r.flags.isNotEmpty) r.flags.join(' '),
+                      ].join(' · '),
+                      style: const TextStyle(color: DeskColors.text, fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ),
               ),
             );
           },
         ),
-      if (risk.clusters.isNotEmpty)
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Clusters',
-                  style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4),
-                ),
-                const SizedBox(height: 6),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Clusters',
+                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4, fontSize: 13),
+              ),
+              if (risk.clusters.isEmpty)
+                const Text('—', style: TextStyle(color: DeskColors.dim, fontSize: 12))
+              else
                 for (final c in risk.clusters)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      [
-                        'C${c.id}',
-                        c.members.join(' '),
-                        c.regime.isEmpty ? '—' : c.regime,
-                        c.pctVar == null ? '%VaR —' : '%VaR ${c.pctVar!.toStringAsFixed(1)}',
-                      ].join(' · '),
-                      style: const TextStyle(color: DeskColors.text, fontSize: 12),
+                  SizedBox(
+                    height: 24,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        [
+                          'C${c.id}',
+                          c.members.join(' '),
+                          c.regime.isEmpty ? '—' : c.regime,
+                          c.pctVar == null ? '%VaR —' : '%VaR ${c.pctVar!.toStringAsFixed(1)}',
+                        ].join(' · '),
+                        style: const TextStyle(color: DeskColors.text, fontSize: 12),
+                      ),
                     ),
                   ),
-              ],
-            ),
+              const SizedBox(height: 6),
+              Text(
+                'Hist ${pct(risk.hist95Pct)}/${pct(risk.hist99Pct)} · Param ${pct(risk.param95Pct)}/${pct(risk.param99Pct)} · Sharpe ${risk.sharpe?.toStringAsFixed(2) ?? '—'}',
+                style: const TextStyle(color: DeskColors.muted, fontSize: 11),
+              ),
+              if (!risk.ready)
+                Text(
+                  risk.message.isEmpty ? 'Thin book — Risk stack blank.' : risk.message,
+                  style: const TextStyle(color: DeskColors.muted, fontSize: 11, height: 1.35),
+                ),
+            ],
           ),
         ),
+      ),
     ];
   }
 
@@ -342,9 +314,32 @@ class BookPage extends StatelessWidget {
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Text(
-            'Fidelity: Positions → download CSV (Symbol + Quantity; Cost Basis Average optional). No login, no orders.',
-            style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Fidelity: Positions → download CSV (Symbol + Quantity; Cost Basis Average optional). No login, no orders.',
+                style: TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Alpaca paper — not live P&L',
+                style: TextStyle(color: DeskColors.muted, fontSize: 12),
+              ),
+              if (s.alpacaMessage != null && s.alpacaMessage!.isNotEmpty)
+                Text(
+                  s.alpacaMessage!,
+                  style: const TextStyle(color: DeskColors.dim, fontSize: 11),
+                ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: CupertinoButton(
+                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+                  onPressed: s.loadingBook ? null : s.syncAlpacaPaper,
+                  child: const Text('Sync Alpaca paper', style: TextStyle(fontSize: 13)),
+                ),
+              ),
+            ],
           ),
         ),
       ),

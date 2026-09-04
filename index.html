@@ -911,14 +911,16 @@
         <button type="button" class="ind-pill scan-lens-btn" data-lens="hmm">HMM</button>
         <button type="button" class="ind-pill scan-lens-btn" data-lens="combo">Combo</button>
       </div>
-      <div id="scan-breadth" class="scan-breadth is-empty" aria-label="Desk breadth from our Yahoo/SQLite universe">
-        <div class="scan-breadth-cell"><span class="scan-breadth-k">% &gt;SMA50</span><span class="scan-breadth-v">—</span></div>
-        <div class="scan-breadth-cell"><span class="scan-breadth-k">% &gt;SMA200</span><span class="scan-breadth-v">—</span></div>
-        <div class="scan-breadth-cell"><span class="scan-breadth-k">A/D 1d</span><span class="scan-breadth-v">—</span></div>
-        <div class="scan-breadth-cell"><span class="scan-breadth-k">A/D 5d</span><span class="scan-breadth-v">—</span></div>
+      <div id="scan-breadth" class="scan-breadth" aria-label="Desk breadth from our Yahoo/SQLite universe">
+        <div class="scan-breadth-cells">
+          <div class="scan-breadth-cell"><span class="scan-breadth-k">% &gt;SMA50</span><span class="scan-breadth-v">—</span></div>
+          <div class="scan-breadth-cell"><span class="scan-breadth-k">% &gt;SMA200</span><span class="scan-breadth-v">—</span></div>
+          <div class="scan-breadth-cell"><span class="scan-breadth-k">A/D 1d</span><span class="scan-breadth-v">—</span></div>
+          <div class="scan-breadth-cell"><span class="scan-breadth-k">A/D 5d</span><span class="scan-breadth-v">—</span></div>
+        </div>
         <details class="scan-help">
           <summary>How scans work</summary>
-          <p class="scan-breadth-note">Stockbee-style breadth idea from our stored bars — empty until the desk has Yahoo closes.</p>
+          <p class="scan-breadth-note">Stockbee-style breadth from stored Yahoo closes. Empty cells are dashes — not “no bars” if ENGINE already has hits.</p>
         </details>
       </div>
       <div id="scan-pack-panel" class="setup-scanner-panel scan-pack-panel" style="display:none;">
@@ -1430,11 +1432,11 @@
       <p class="fractal-stub">HMM: research label, not edge. SPY 2/3-state Gaussian on stored daily log returns — not a Q-trade / quote-FV model. Occupancy is not a win rate.</p>
     </div>
 
-    <!-- ── Warnings — alert surface from ENGINE Pattern / VCP / RSI-C ── -->
+    <!-- ── Warnings — dense Excel-style takeaways from ENGINE ── -->
     <div id="warnings-area" class="moves-container warnings-container" style="display:none;">
       <div class="mm-head">
         <h2 class="v41-title">WARNINGS</h2>
-        <p class="engine-story-sub">Alert surface only · Pattern / VCP / RSI-C / Str already on the desk. Empty is honest.</p>
+        <p class="engine-story-sub">Takeaways · breaking up/down · coiled · stretch. Same ENGINE. Empty buckets omitted.</p>
       </div>
       <div id="warnings-grid" class="warnings-grid"></div>
       <p id="warnings-note" class="pnl-blurb"></p>
@@ -1513,20 +1515,13 @@
       </div>
     </div>
 
-    <!-- ── Risk — SPEC 2026-09-04 (VaR / MVaR / clusters). Paper marks only. ── -->
+    <!-- ── Risk — SPEC hero: ranked %VaR / MVaR / CVaR / clusters ── -->
     <div id="risk-area" class="risk-container" style="display:none;">
-      <div class="book-head">
-        <div>
-          <strong class="risk-title">Risk</strong>
-          <p class="pnl-blurb">SPEC /workspace/whats-news-risk-SPEC-2026-09-04.md · 1d VaR 95/99 hist + param (μ=0, 60d Σ). Thin book (&lt;3 names / &lt;60 overlap / singular Σ) is blank. Synthetic NAV labeled. Never invented.</p>
-        </div>
+      <div class="book-head risk-hero-head">
+        <strong class="risk-title">Risk</strong>
         <button type="button" class="btn btn-ghost btn-sm" id="btn-risk-refresh">Reload</button>
       </div>
       <div id="risk-alert-chips" class="pnl-alert-chips" aria-label="Risk chips"></div>
-      <div id="risk-portfolio" class="pnl-exposure" role="table" aria-label="Portfolio risk"></div>
-      <div id="risk-var" class="pnl-var"></div>
-      <div id="risk-perf" class="pnl-exposure" aria-label="Performance"></div>
-      <div id="risk-dist" class="pnl-dist"></div>
       <h3 class="risk-spec-title">Ranked %VaR</h3>
       <div class="scanner-table-wrap">
         <table class="scanner-table risk-table" id="risk-table">
@@ -1541,10 +1536,17 @@
       </div>
       <h3 class="risk-spec-title">Clusters</h3>
       <div id="risk-clusters" class="pnl-exposure" aria-label="Clusters"></div>
+      <div id="risk-var" class="pnl-var"></div>
+      <details class="scan-help risk-more">
+        <summary>Portfolio / perf</summary>
+        <div id="risk-portfolio" class="pnl-exposure" role="table" aria-label="Portfolio risk"></div>
+        <div id="risk-perf" class="pnl-exposure" aria-label="Performance"></div>
+        <div id="risk-dist" class="pnl-dist"></div>
+      </details>
       <div id="risk-empty" class="scanner-empty" style="display:none;">
         <p>Thin or unmarked. Need ≥3 names, ≥60 overlapping daily closes, non-singular 60d Σ.</p>
       </div>
-      <p id="risk-note" class="pnl-blurb"></p>
+      <p id="risk-note" class="pnl-blurb">SPEC /workspace/whats-news-risk-SPEC-2026-09-04.md</p>
     </div>
 
     <!-- ── Data Manager Area ── -->

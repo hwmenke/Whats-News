@@ -46,7 +46,10 @@ class ScansPage extends StatelessWidget {
                   style: TextStyle(color: DeskColors.muted, fontSize: 11),
                 ),
                 const SizedBox(height: 6),
-                _BreadthStrip(breadth: state.scanBreadth),
+                _BreadthStrip(
+                  breadth: state.scanBreadth,
+                  engineReady: state.warningsBoard.ready,
+                ),
                 if (running)
                   const Padding(
                     padding: EdgeInsets.only(top: 6),
@@ -55,56 +58,46 @@ class ScansPage extends StatelessWidget {
                       style: TextStyle(color: Color(0xFFEAB308), fontSize: 12),
                     ),
                   ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: [
-                    for (final e in const [
-                      ('command', 'Command'),
-                      ('setup', 'Setup'),
-                      ('pattern', 'Pattern'),
-                      ('rsic', 'RSI-C'),
-                      ('stretch', 'Stretch'),
-                      ('sigma', 'Sigma'),
-                      ('maps', 'Maps'),
-                      ('warnings', 'Warnings'),
-                      ('moves', 'Market Moves'),
-                    ])
-                      _ModeChip(
-                        label: e.$2,
-                        on: state.scanMode == e.$1,
-                        onTap: () => state.setScanMode(e.$1),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: [
-                    for (final e in const [
-                      ('ma', 'MA'),
-                      ('rsi', 'RSI'),
-                      ('breakout', 'Breakout'),
-                      ('qulla', 'Qulla'),
-                      ('oneil', "O'Neil"),
-                      ('vcp', 'VCP'),
-                      ('edges', 'Edges'),
-                      ('fractal', 'Fractal'),
-                      ('finviz', 'Finviz'),
-                      ('hmm', 'HMM'),
-                      ('combo', 'Combo'),
-                      ('setups', 'Setups'),
-                      ('trend', 'Trend'),
-                      ('metrics', 'Metrics'),
-                    ])
-                      _ModeChip(
-                        label: e.$2,
-                        on: state.scanMode == e.$1,
-                        onTap: () => state.setScanMode(e.$1),
-                      ),
-                  ],
+                const SizedBox(height: 6),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final e in const [
+                        ('warnings', 'Warnings'),
+                        ('command', 'Command'),
+                        ('setup', 'Setup'),
+                        ('pattern', 'Pattern'),
+                        ('rsic', 'RSI-C'),
+                        ('stretch', 'Stretch'),
+                        ('sigma', 'Sigma'),
+                        ('maps', 'Maps'),
+                        ('moves', 'Moves'),
+                        ('ma', 'MA'),
+                        ('rsi', 'RSI'),
+                        ('breakout', 'Breakout'),
+                        ('qulla', 'Qulla'),
+                        ('oneil', "O'Neil"),
+                        ('vcp', 'VCP'),
+                        ('edges', 'Edges'),
+                        ('fractal', 'Fractal'),
+                        ('finviz', 'Finviz'),
+                        ('hmm', 'HMM'),
+                        ('combo', 'Combo'),
+                        ('setups', 'Setups'),
+                        ('trend', 'Trend'),
+                        ('metrics', 'Metrics'),
+                      ])
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: _ModeChip(
+                            label: e.$2,
+                            on: state.scanMode == e.$1,
+                            onTap: () => state.setScanMode(e.$1),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
                 if (state.scanMode == 'qulla') ...[
                   const SizedBox(height: 8),
@@ -609,7 +602,7 @@ class ScansPage extends StatelessWidget {
     return GestureDetector(
       onTap: () => onOpenChart(symbol),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(vertical: 2),
         child: Row(
           children: [
             Text(symbol, style: const TextStyle(color: DeskColors.accentBright, fontWeight: FontWeight.w700)),
@@ -867,32 +860,32 @@ class ScansPage extends StatelessWidget {
         ..._howto(b.howto),
       ];
     }
-    Widget col(String title, List<WarningHit> rows) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$title (${rows.length})',
-                style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 12),
+    Widget col(String title, List<WarningHit> rows) {
+      if (rows.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$title (${rows.length})',
+              style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11),
+            ),
+            for (final r in rows)
+              _nameChip(
+                r.symbol,
+                [
+                  if (r.label.isNotEmpty) r.label,
+                  if (r.patternD.isNotEmpty) r.patternD,
+                  if (r.vcp.isNotEmpty) r.vcp,
+                  if (r.rsiC.isNotEmpty) r.rsiC,
+                  if (r.str != null) 'Str ${r.str}',
+                ].where((e) => e.isNotEmpty).join(' · '),
               ),
-              if (rows.isEmpty)
-                const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 11))
-              else
-                for (final r in rows)
-                  _nameChip(
-                    r.symbol,
-                    [
-                      if (r.label.isNotEmpty) r.label,
-                      if (r.patternD.isNotEmpty) r.patternD,
-                      if (r.vcp.isNotEmpty) r.vcp,
-                      if (r.rsiC.isNotEmpty) r.rsiC,
-                      if (r.str != null) 'Str ${r.str}',
-                    ].where((e) => e.isNotEmpty).join(' · '),
-                  ),
-            ],
-          ),
-        );
+          ],
+        ),
+      );
+    }
     return [
       SliverToBoxAdapter(
         child: Padding(
@@ -901,34 +894,26 @@ class ScansPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Alert surface only · same ENGINE Pattern / VCP / RSI-C. Empty is honest.',
+                'Takeaways · breaking up/down · coiled · stretch. Empty buckets omitted.',
                 style: TextStyle(color: DeskColors.muted, fontSize: 11),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               col('Takeaways', b.takeaways),
-              col('Breakouts D 3M', b.dailyBreakout),
-              col('Breakdowns D 3M', b.dailyBreakdown),
-              col('From Bottom D 1M', b.dailyFromBottom),
-              col('From Top D 1M', b.dailyFromTop),
-              col('Breakouts W 1Y', b.weeklyBreakout),
-              col('Breakdowns W 1Y', b.weeklyBreakdown),
-              col('From Bottom W 6M', b.weeklyFromBottom),
-              col('From Top W 6M', b.weeklyFromTop),
-              col('VCP Tightening', b.tightening),
+              col('Breaking up D', b.dailyBreakout),
+              col('Breaking down D', b.dailyBreakdown),
               col('VCP Coiled', b.coiled),
+              col('VCP Tightening', b.tightening),
+              col('Strongest', b.strongest),
+              col('Stretched', b.stretched),
+              col('Compressed', b.compressed),
+              col('From Bottom D', b.dailyFromBottom),
+              col('From Top D', b.dailyFromTop),
+              col('Breakouts W', b.weeklyBreakout),
+              col('Breakdowns W', b.weeklyBreakdown),
               col('RSI-C D OS', b.dailyOs),
               col('RSI-C D OB', b.dailyOb),
-              col('RSI-C D Trend↑', b.dailyUp),
-              col('RSI-C D Trend↓', b.dailyDn),
-              col('RSI-C W OS', b.weeklyOs),
-              col('RSI-C W OB', b.weeklyOb),
-              col('RSI-C W Trend↑', b.weeklyUp),
-              col('RSI-C W Trend↓', b.weeklyDn),
               col('D+W ↑', b.dwUp),
               col('D+W ↓', b.dwDn),
-              col('Strongest breakouts', b.strongest),
-              col('Most stretched', b.stretched),
-              col('Most compressed', b.compressed),
             ],
           ),
         ),
@@ -1564,8 +1549,9 @@ class _SetupTile extends StatelessWidget {
 }
 
 class _BreadthStrip extends StatelessWidget {
-  const _BreadthStrip({required this.breadth});
+  const _BreadthStrip({required this.breadth, this.engineReady = false});
   final ScanBreadth breadth;
+  final bool engineReady;
 
   @override
   Widget build(BuildContext context) {
@@ -1603,7 +1589,11 @@ class _BreadthStrip extends StatelessWidget {
           Text(
             breadth.ready
                 ? (breadth.note.isEmpty ? 'Our Yahoo/SQLite universe — not a scraped Market Monitor.' : breadth.note)
-                : (breadth.message.isEmpty ? 'Empty universe — no stored bars to score.' : breadth.message),
+                : (engineReady
+                    ? 'ENGINE has hits from stored bars. Breadth dashes until the desk list is scored.'
+                    : (breadth.message.contains('no stored bars') && engineReady
+                        ? 'ENGINE has hits from stored bars.'
+                        : (breadth.message.isEmpty ? 'Breadth not scored yet.' : breadth.message))),
             style: const TextStyle(color: DeskColors.muted, fontSize: 10, height: 1.3),
           ),
         ],

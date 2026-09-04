@@ -23,22 +23,27 @@ function renderScanBreadth(strip) {
             <span class="scan-breadth-k">${_packEsc(k)}</span>
             <span class="scan-breadth-v">${_packEsc(v)}</span>
         </div>`;
-    if (empty) {
-        el.innerHTML = `
-            ${cell('% >SMA50', '—', 'Need stored bars')}
-            ${cell('% >SMA200', '—', 'Need stored bars')}
-            ${cell('A/D 1d', '—', 'Need stored bars')}
-            ${cell('A/D 5d', '—', 'Need stored bars')}
-            <p class="scan-breadth-note">${_packEsc(data.message || 'Empty universe — no stored bars to score.')}</p>`;
-        return;
-    }
+    const stored = Number(data.stored_n || 0);
+    const emptyMsg = stored > 0
+        ? (data.message || `Desk list empty — ${stored} names have stored bars.`)
+        : (data.message || 'Empty universe — no stored bars to score.');
+    const help = empty
+        ? (stored > 0
+            ? emptyMsg
+            : 'Stockbee-style breadth from stored Yahoo closes. Dashes until the desk list has bars.')
+        : (data.note || 'Stockbee-style breadth idea from our Yahoo/SQLite universe.');
     const ad = (adv, dec) => (adv == null && dec == null) ? '—' : `${adv ?? 0} / ${dec ?? 0}`;
     el.innerHTML = `
-        ${cell('% >SMA50', data.pct_above_sma50 == null ? '—' : `${_packNum(data.pct_above_sma50)}%`, 'Our universe, not a scraped Market Monitor')}
-        ${cell('% >SMA200', data.pct_above_sma200 == null ? '—' : `${_packNum(data.pct_above_sma200)}%`, 'SMA200 from stored closes')}
-        ${cell('A/D 1d', ad(data.adv_1d, data.dec_1d), 'Advances / declines vs prior close')}
-        ${cell('A/D 5d', ad(data.adv_5d, data.dec_5d), 'Advances / declines vs close 5 sessions ago')}
-        <p class="scan-breadth-note">${_packEsc(data.note || 'Stockbee-style breadth idea from our Yahoo/SQLite universe.')}</p>`;
+        <div class="scan-breadth-cells">
+            ${cell('% >SMA50', empty || data.pct_above_sma50 == null ? '—' : `${_packNum(data.pct_above_sma50)}%`, 'Our universe, not a scraped Market Monitor')}
+            ${cell('% >SMA200', empty || data.pct_above_sma200 == null ? '—' : `${_packNum(data.pct_above_sma200)}%`, 'SMA200 from stored closes')}
+            ${cell('A/D 1d', empty ? '—' : ad(data.adv_1d, data.dec_1d), 'Advances / declines vs prior close')}
+            ${cell('A/D 5d', empty ? '—' : ad(data.adv_5d, data.dec_5d), 'Advances / declines vs close 5 sessions ago')}
+        </div>
+        <details class="scan-help">
+            <summary>How scans work</summary>
+            <p class="scan-breadth-note">${_packEsc(help)}</p>
+        </details>`;
 }
 
 async function loadScanBreadth() {

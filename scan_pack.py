@@ -452,10 +452,32 @@ def measure(symbol: str, df: Optional[pd.DataFrame] = None, spy_df: Optional[pd.
     }
 
 
-def empty_breadth(reason: str = "Empty universe — no stored bars to score.") -> dict:
+def _stored_bar_count() -> int:
+    try:
+        return len(md.list_symbols_with_ohlcv("daily", min_bars=20))
+    except Exception:
+        return 0
+
+
+def empty_breadth(reason: str | None = None) -> dict:
+    stored = _stored_bar_count()
+    if reason is None:
+        if stored:
+            reason = (
+                f"Desk list empty — {stored} names have stored bars. "
+                "Add names to the desk to score breadth."
+            )
+        else:
+            reason = "Empty universe — no stored bars to score."
+    elif stored and "no stored bars" in reason.lower():
+        reason = (
+            f"Desk list empty — {stored} names have stored bars. "
+            "Add names to the desk to score breadth."
+        )
     return {
         "ready": False,
         "n": 0,
+        "stored_n": stored,
         "n_sma50": 0,
         "n_sma200": 0,
         "n_ad_1d": 0,
@@ -538,6 +560,7 @@ def _breadth_from_rows(rows: list[dict], frames: dict[str, pd.DataFrame] | None 
     return {
         "ready": True,
         "n": n_ready,
+        "stored_n": n_ready,
         "n_sma50": n50,
         "n_sma200": n200,
         "n_ad_1d": scored_1d,

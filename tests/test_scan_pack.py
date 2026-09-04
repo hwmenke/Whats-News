@@ -149,7 +149,10 @@ class ScanPackBreadthTests(unittest.TestCase):
         self.assertIsNone(strip["adv_1d"])
         self.assertIsNone(strip["ad_1d"])
         self.assertEqual(strip["n"], 0)
-        self.assertIn("Empty", strip["message"])
+        msg = (strip["message"] or "").lower()
+        self.assertTrue("empty" in msg or "desk list" in msg)
+        if strip.get("stored_n"):
+            self.assertNotIn("no stored bars", msg)
         self.assertNotIn("stockbee.blogspot", strip["note"].lower())
 
     def test_breadth_from_our_frames(self):

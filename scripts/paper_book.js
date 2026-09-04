@@ -246,11 +246,17 @@ async function loadPaperRisk() {
             if (conc.ready) {
                 bits.push(`<span class="pnl-chip">${_pnlEsc(`Top ${conc.top_symbol || ''} ${conc.top_weight_pct ?? '—'}% · HHI ${conc.hhi ?? '—'}`)}</span>`);
             }
+            const seen = new Set();
             alerts.forEach(a => {
-                bits.push(`<span class="pnl-chip is-alert">${_pnlEsc(a.label || a.id)}</span>`);
+                const lab = a.label || a.id;
+                if (!lab || seen.has(lab)) return;
+                seen.add(lab);
+                bits.push(`<span class="pnl-chip is-alert">${_pnlEsc(lab)}</span>`);
             });
             (risk.names || []).forEach(r => {
                 (r.flags || []).forEach(f => {
+                    if (!f || seen.has(f)) return;
+                    seen.add(f);
                     bits.push(`<span class="pnl-chip is-alert">${_pnlEsc(f)}</span>`);
                 });
             });
