@@ -169,15 +169,6 @@ async function loadEngineCommand() {
         });
         _engPaintTakeaway((data.opportunity || [])[0], data);
         _engPaintCommandScatter();
-        const hero = document.getElementById('engine-hero-metric');
-        if (hero) {
-            const rows = window._engineBoardRows || [];
-            const coiled = rows.filter(r => String(r.vcp || '').toUpperCase().includes('COIL')).length;
-            const dw = rows.filter(r => r.dw).length;
-            hero.textContent = rows.length
-                ? `${coiled} names coiled · ${dw} with D+W agree`
-                : `${(data.opportunity || []).length} OPPORTUNITY · ${(data.pullbacks || []).length} pullback notes`;
-        }
     } catch (err) {
         _engEmpty(el, err.message || 'ENGINE command unavailable');
         if (meta) meta.textContent = 'error';

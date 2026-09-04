@@ -9,7 +9,9 @@
    No borders — zebra / fills only. Scatter = crosshair only.
    Market Moves keeps utilitarian red/green z heat (do not restyle).
    Comp example rows are NOT live data.
-   Discard neon / cream v2 / v3 mint theater.
+   HARD UI LOCK: Font C + v4.1 only. Do not apply the rejected cream
+   paper pack or v3 Obsidian/Paper/Mint theater. Mint token is ≤1
+   OPPORTUNITY fill only. Discard neon / cream / v3 packs.
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Public+Sans:wght@500;600;700&display=swap');

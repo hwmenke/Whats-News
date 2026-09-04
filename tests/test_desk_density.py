@@ -54,6 +54,35 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("board-focus", self.blob)
         self.assertIn("boardTabs", self.blob)
 
+    def test_hard_ui_lock_font_c_v41_not_v2_v3(self):
+        theme = ""
+        with open("styles/theme.css", encoding="utf-8") as fh:
+            theme = fh.read()
+        self.assertIn("visual-v41", self.blob)
+        self.assertIn("Public Sans", theme)
+        self.assertIn("JetBrains Mono", theme)
+        self.assertIn("--board-border:   none", theme)
+        self.assertIn("--heat-green-rgb: 34, 197, 94", theme)
+        self.assertNotIn("#f4f2ec", theme.lower())
+        self.assertNotIn("Fraunces", theme)
+        self.assertNotIn("id=\"engine-hero\"", self.blob)
+        self.assertIn(".v3-hero { display: none; }", theme)
+
+    def test_density_screenshots_on_disk(self):
+        from pathlib import Path
+        root = Path("docs/screenshots/density")
+        for name in (
+            "watchlist_before.png",
+            "watchlist_after.png",
+            "watchlist_after_open.png",
+            "book_upload.png",
+            "book_pnl.png",
+            "book_risk.png",
+        ):
+            path = root / name
+            self.assertTrue(path.is_file(), name)
+            self.assertGreater(path.stat().st_size, 10_000, name)
+
     def test_no_invented_numbers(self):
         low = self.blob.lower()
         self.assertNotIn("bloomberg", low)
