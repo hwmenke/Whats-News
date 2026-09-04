@@ -221,12 +221,10 @@ async function loadPaperPnl() {
         if (metrics) {
             const netPct = exp.net_pct == null ? '—' : `${Number(exp.net_pct).toFixed(0)}%`;
             const rows = [
-                ['NAV', data.nav == null ? '—' : _pnlMoney(data.nav)],
-                ['Day P&L', data.ready ? _pnlMoney(data.today_pnl) : '—'],
+                ['Equities', data.ready ? _pnlMoney(exp.gross) : '—'],
                 ['Longs', data.ready ? _pnlMoney(exp.long) : '—'],
                 ['Shorts', data.ready ? _pnlMoney(exp.short) : '—'],
                 ['Net', data.ready ? netPct : '—'],
-                ['Gross', data.ready ? _pnlMoney(exp.gross) : '—'],
             ];
             metrics.innerHTML = rows.map(([k, v]) => `
                 <div class="pnl-exp-row">

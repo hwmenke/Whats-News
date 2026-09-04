@@ -10,46 +10,50 @@ class BookPage extends StatelessWidget {
   final WhatsNewsState state;
   final ValueChanged<String> onOpenChart;
 
+  Widget _paneChips() {
+    return SizedBox(
+      height: DeskSpace.chrome,
+      child: Row(
+        children: [
+          _Chip(
+            label: 'Upload',
+            on: state.bookPane == 'upload' || state.bookPane == 'positions',
+            onTap: () => state.setBookPane('upload'),
+          ),
+          const SizedBox(width: 4),
+          _Chip(
+            label: 'P&L',
+            on: state.bookPane == 'pnl',
+            onTap: () => state.setBookPane('pnl'),
+          ),
+          const SizedBox(width: 4),
+          _Chip(
+            label: 'Risk',
+            on: state.bookPane == 'risk',
+            onTap: () => state.setBookPane('risk'),
+          ),
+          const Spacer(),
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            minSize: DeskSpace.chrome,
+            onPressed: state.loadingBook ? null : state.loadBook,
+            child: const Icon(CupertinoIcons.refresh, size: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pnl = state.bookPnl;
+    if (state.bookPane == 'pnl') {
+      return _pnlFill(context, pnl);
+    }
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
-          child: SizedBox(
-            height: DeskSpace.chrome,
-            child: Padding(
-              padding: DeskSpace.pageX,
-              child: Row(
-                children: [
-                  _Chip(
-                    label: 'Upload',
-                    on: state.bookPane == 'upload' || state.bookPane == 'positions',
-                    onTap: () => state.setBookPane('upload'),
-                  ),
-                  const SizedBox(width: 4),
-                  _Chip(
-                    label: 'P&L',
-                    on: state.bookPane == 'pnl',
-                    onTap: () => state.setBookPane('pnl'),
-                  ),
-                  const SizedBox(width: 4),
-                  _Chip(
-                    label: 'Risk',
-                    on: state.bookPane == 'risk',
-                    onTap: () => state.setBookPane('risk'),
-                  ),
-                  const Spacer(),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    minSize: DeskSpace.chrome,
-                    onPressed: state.loadingBook ? null : state.loadBook,
-                    child: const Icon(CupertinoIcons.refresh, size: 16),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          child: Padding(padding: DeskSpace.pageX, child: _paneChips()),
         ),
         if (state.bookError != null && state.bookPane != 'risk')
           SliverToBoxAdapter(
@@ -60,16 +64,16 @@ class BookPage extends StatelessWidget {
           ),
         if (state.bookPane == 'upload' || state.bookPane == 'positions')
           ..._positionSlivers(state)
-        else if (state.bookPane == 'risk')
-          ..._riskSlivers(state, pnl)
         else
-          ..._pnlSlivers(context, state, pnl),
+          ..._riskSlivers(state, pnl),
         SliverToBoxAdapter(child: SizedBox(height: DeskSpace.bottomInset(context))),
       ],
     );
   }
 
-  List<Widget> _pnlSlivers(BuildContext context, WhatsNewsState s, BookPnl pnl) {
+  /// Packed P&L: chart Expanded fills leftover above the tab bar.
+  /// Tab bar already owns safeArea.bottom — body inset is DeskSpace.bottom (8).
+  Widget _pnlFill(BuildContext context, BookPnl pnl) {
     Color tone(double? v) {
       if (v == null) return DeskColors.muted;
       if (v > 0) return DeskColors.green;
@@ -89,126 +93,116 @@ class BookPage extends StatelessWidget {
         ? 'daily mark series from stored closes — no intraday bars'
         : pnl.curveLabel;
     final exp = <(String, String)>[
-      ('NAV', pnl.nav == null ? '—' : usd(pnl.nav)),
       ('Equities', pnl.ready ? usd(pnl.gross) : '—'),
       ('Longs', pnl.ready ? usd(pnl.longMv) : '—'),
       ('Shorts', pnl.ready ? usd(pnl.shortMv) : '—'),
       ('Net', pnl.ready ? netPct : '—'),
     ];
-    final reserved = DeskSpace.chrome
-        + DeskSpace.headerContent
-        + DeskSpace.row
-        + DeskSpace.section * 3
-        + 12
-        + DeskSpace.row * (exp.length + (pnl.tape.isEmpty ? 1 : pnl.tape.length))
-        + DeskSpace.bottomInset(context)
-        + 56;
-    final chartH = (MediaQuery.sizeOf(context).height - reserved).clamp(208.0, 420.0);
+    final top = MediaQuery.paddingOf(context).top;
 
-    return [
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.headerContent, DeskSpace.inset, 0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
+    return ColoredBox(
+      color: DeskColors.bg,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          DeskSpace.inset,
+          top + DeskSpace.headerContent,
+          DeskSpace.inset,
+          DeskSpace.bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _paneChips(),
+            if (state.bookError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: DeskSpace.section),
+                child: Text(state.bookError!, style: const TextStyle(color: DeskColors.red, fontSize: 12)),
+              ),
+            SizedBox(
+              height: DeskSpace.row,
+              child: Row(
+                children: [
+                  const Text(
+                    'TODAY\'S P&L',
+                    style: TextStyle(
+                      color: DeskColors.muted,
+                      fontSize: 11,
+                      letterSpacing: 0.4,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    pct(pnl.todayPnlPct),
+                    style: TextStyle(
+                      color: tone(pnl.todayPnlPct),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Courier',
+                    ),
+                  ),
+                  const SizedBox(width: DeskSpace.cellX),
+                  Text(
+                    usd(pnl.todayPnl),
+                    style: TextStyle(
+                      color: tone(pnl.todayPnl),
+                      fontSize: 13,
+                      fontFamily: 'Courier',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: DeskSpace.section),
+            Text(curveLabel, style: const TextStyle(color: DeskColors.dim, fontSize: 10)),
+            const SizedBox(height: DeskSpace.section),
+            Expanded(
+              child: CustomPaint(
+                painter: _PnlCurvePainter(pnl.curve),
+                child: const SizedBox.expand(),
+              ),
+            ),
+            const SizedBox(height: DeskSpace.section),
+            for (var i = 0; i < exp.length; i++)
+              _PnlMarkRow(exp[i].$1, exp[i].$2, zebra: i.isOdd),
+            if (pnl.tape.isEmpty)
+              const SizedBox(
                 height: DeskSpace.row,
-                child: Row(
-                  children: [
-                    const Text(
-                      'TODAY\'S P&L',
-                      style: TextStyle(
-                        color: DeskColors.muted,
-                        fontSize: 11,
-                        letterSpacing: 0.4,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      pct(pnl.todayPnlPct),
-                      style: TextStyle(
-                        color: tone(pnl.todayPnlPct),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        fontFamily: 'Courier',
-                      ),
-                    ),
-                    const SizedBox(width: DeskSpace.cellX),
-                    Text(
-                      usd(pnl.todayPnl),
-                      style: TextStyle(
-                        color: tone(pnl.todayPnl),
-                        fontSize: 13,
-                        fontFamily: 'Courier',
-                      ),
-                    ),
-                  ],
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('No tape — empty book.', style: TextStyle(color: DeskColors.muted, fontSize: 12)),
                 ),
-              ),
-              const SizedBox(height: DeskSpace.section),
-              Text(
-                curveLabel,
-                style: const TextStyle(color: DeskColors.dim, fontSize: 10),
-              ),
-              const SizedBox(height: DeskSpace.section),
-              SizedBox(
-                height: chartH,
-                width: double.infinity,
-                child: CustomPaint(
-                  painter: _PnlCurvePainter(pnl.curve),
-                  child: const SizedBox.expand(),
+              )
+            else if (pnl.tape.length > 8)
+              Flexible(
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  itemCount: pnl.tape.length,
+                  itemBuilder: (context, i) {
+                    final t = pnl.tape[i];
+                    return _PnlMarkRow(
+                      t.symbol,
+                      t.ready ? pct(t.dayPct) : '—',
+                      zebra: i.isOdd,
+                      valueColor: t.ready ? tone(t.dayPct) : DeskColors.muted,
+                      onTap: () => onOpenChart(t.symbol),
+                    );
+                  },
                 ),
-              ),
-              const SizedBox(height: DeskSpace.section),
-              for (var i = 0; i < exp.length; i++)
-                _PnlMarkRow(exp[i].$1, exp[i].$2, zebra: i.isOdd),
-            ],
-          ),
+              )
+            else
+              for (var i = 0; i < pnl.tape.length; i++)
+                _PnlMarkRow(
+                  pnl.tape[i].symbol,
+                  pnl.tape[i].ready ? pct(pnl.tape[i].dayPct) : '—',
+                  zebra: i.isOdd,
+                  valueColor: pnl.tape[i].ready ? tone(pnl.tape[i].dayPct) : DeskColors.muted,
+                  onTap: () => onOpenChart(pnl.tape[i].symbol),
+                ),
+          ],
         ),
       ),
-      if (pnl.tape.isEmpty)
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
-            child: SizedBox(
-              height: DeskSpace.row,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('No tape — empty book.', style: TextStyle(color: DeskColors.muted, fontSize: 12)),
-              ),
-            ),
-          ),
-        )
-      else
-        SliverPadding(
-          padding: DeskSpace.pageX,
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, i) {
-                final t = pnl.tape[i];
-                return _PnlMarkRow(
-                  t.symbol,
-                  t.ready ? pct(t.dayPct) : '—',
-                  zebra: i.isOdd,
-                  valueColor: t.ready ? tone(t.dayPct) : DeskColors.muted,
-                  onTap: () => onOpenChart(t.symbol),
-                );
-              },
-              childCount: pnl.tape.length,
-            ),
-          ),
-        ),
-      if (pnl.message.isNotEmpty)
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
-            child: Text(pnl.message, style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35)),
-          ),
-        ),
-    ];
+    );
   }
 
   List<Widget> _riskSlivers(WhatsNewsState s, BookPnl pnl) {
@@ -757,10 +751,15 @@ class _PnlCurvePainter extends CustomPainter {
       _label(canvas, _navTick(vals[i]), Offset(left - 4, p.dy - 5), align: TextAlign.right);
     }
 
-    for (final i in _tickIdx(marks.length)) {
+    final xTicks = _tickIdx(marks.length);
+    for (var t = 0; t < xTicks.length; t++) {
+      final i = xTicks[t];
       final p = pt(i);
       canvas.drawLine(Offset(p.dx, top), Offset(p.dx, top + plotH), grid);
-      _label(canvas, _dateTick(marks[i].$1), Offset(p.dx, top + plotH + 3), align: TextAlign.center);
+      final align = t == 0
+          ? TextAlign.left
+          : (t == xTicks.length - 1 ? TextAlign.right : TextAlign.center);
+      _label(canvas, _dateTick(marks[i].$1), Offset(p.dx, top + plotH + 3), align: align);
     }
 
     final open = vals.first;
