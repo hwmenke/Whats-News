@@ -21,6 +21,17 @@ class NewsApiTests(unittest.TestCase):
         self.assertEqual(data["articles"], [])
         self.assertEqual(data["message"], "No symbols in watchlist")
 
+    @patch("app.md.list_symbol_codes")
+    def test_get_all_news_missing_schema_is_empty_200(self, mock_list_symbol_codes):
+        mock_list_symbol_codes.side_effect = Exception("no such table: symbols")
+
+        response = self.client.get("/api/news")
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["articles"], [])
+        self.assertEqual(data["message"], "No symbols in watchlist")
+
     @patch("yahoo_news.yf.Ticker")
     @patch("app.md.list_symbol_codes")
     def test_get_all_news_with_articles(self, mock_list_symbol_codes, mock_ticker_class):

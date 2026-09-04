@@ -217,6 +217,9 @@ class WhatsNewsState extends ChangeNotifier {
         e.message.contains('ClientException')) {
       return 'Cannot reach $baseUrl. On a Mac, run ./start.sh then use 127.0.0.1:8050 in Simulator.';
     }
+    if (e.message.contains('no such table')) {
+      return 'Database is not initialized. Restart ./start.sh on this Mac (same folder as finance.db).';
+    }
     return e.message;
   }
 }

@@ -38,6 +38,18 @@ app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 
 
+def ensure_local_schema():
+    """Always create symbols/ohlcv if missing. Safe if already initialized."""
+    import database as db
+
+    db.init_db()
+
+
+# start.sh / iPhone client hit this process on :8050. Do not wait for the
+# first request — an empty leftover finance.db used to 500 watchlist + news.
+ensure_local_schema()
+
+
 def _data_error(exc):
     if isinstance(exc, data_client.DataServiceError):
         status = exc.status or 502
@@ -62,18 +74,22 @@ def news_page():
 
 @app.route("/api/health")
 def health():
+    ensure_local_schema()
     try:
         data_health = md.health()
     except Exception as exc:
         data_health = {"ok": False, "error": str(exc)}
+    schema_ok = False
     try:
         symbol_count = len(md.list_symbols())
+        schema_ok = True
     except Exception:
         symbol_count = None
     return jsonify({
         "ok": True,
         "service": "whats-news",
         "layer": "analysis",
+        "schema_ok": schema_ok,
         "symbol_count": symbol_count,
         "data_service": data_health,
         "data_mode": data_client.DATA_SERVICE_MODE,
@@ -821,9 +837,22 @@ def universe_refresh():
 
 @app.route("/api/news", methods=["GET"])
 def get_all_news():
-    """Fetch news for all watchlist symbols using yfinance."""
-    symbols = md.list_symbol_codes()
-    return jsonify(yahoo_news.watchlist_news(symbols))
+    """Fetch news for all watchlist symbols using yfinance.
+
+    Empty watchlist / missing schema → 200 with an empty feed, never 500.
+    """
+    try:
+        symbols = md.list_symbol_codes()
+    except Exception:
+        symbols = []
+    try:
+        return jsonify(yahoo_news.watchlist_news(symbols))
+    except Exception as exc:
+        return jsonify({
+            "articles": [],
+            "message": str(exc),
+            "source": yahoo_news.DEFAULT_PROVIDER,
+        })
 
 
 @app.route("/api/news/<string:symbol>", methods=["GET"])

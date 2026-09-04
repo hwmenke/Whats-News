@@ -92,6 +92,20 @@ void main() {
     expect(find.text('Apple hits new high'), findsOneWidget);
     expect(find.text('Test News'), findsOneWidget);
   });
+
+  test('watchlist maps no-such-table to a restart hint', () async {
+    final client = MockClient((request) async {
+      return _json({'error': 'no such table: symbols'}, 500);
+    });
+    final state = WhatsNewsState(
+      api: WhatsNewsApi(
+        baseUrl: 'http://127.0.0.1:8050',
+        httpClient: client,
+      ),
+    );
+    await state.loadWatchlist();
+    expect(state.error, contains('Database is not initialized'));
+  });
 }
 
 http.Response _json(Object body, [int status = 200]) {

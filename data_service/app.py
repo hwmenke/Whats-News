@@ -34,7 +34,7 @@ import yahoo_news
 app = Flask(__name__, static_folder=str(_ROOT), static_url_path="")
 CORS(app)
 
-db.init_db()
+db.init_db()  # idempotent; also re-run on health so leftover empty files recover
 
 
 @app.route("/")
@@ -44,6 +44,7 @@ def index():
 
 @app.route("/api/health")
 def health():
+    db.init_db()
     stats = {}
     try:
         if hasattr(db, "get_db_stats"):
@@ -51,8 +52,8 @@ def health():
         else:
             stats = {"symbol_count": len(db.list_symbols())}
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
-    return jsonify({"ok": True, "service": "data", **stats})
+        return jsonify({"ok": False, "schema_ok": False, "error": str(exc)}), 500
+    return jsonify({"ok": True, "schema_ok": True, "service": "data", **stats})
 
 
 # -- Symbols --------------------------------------------------------------------
@@ -288,11 +289,21 @@ def fetch_batch():
 
 @app.route("/api/news", methods=["GET"])
 def get_all_news():
-    if hasattr(db, "list_symbol_codes"):
-        symbols = db.list_symbol_codes()
-    else:
-        symbols = [s["symbol"] for s in db.list_symbols()]
-    return jsonify(yahoo_news.watchlist_news(symbols))
+    try:
+        if hasattr(db, "list_symbol_codes"):
+            symbols = db.list_symbol_codes()
+        else:
+            symbols = [s["symbol"] for s in db.list_symbols()]
+    except Exception:
+        symbols = []
+    try:
+        return jsonify(yahoo_news.watchlist_news(symbols))
+    except Exception as exc:
+        return jsonify({
+            "articles": [],
+            "message": str(exc),
+            "source": yahoo_news.DEFAULT_PROVIDER,
+        })
 
 
 @app.route("/api/news/<string:symbol>", methods=["GET"])

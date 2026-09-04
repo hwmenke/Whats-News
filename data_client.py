@@ -128,7 +128,19 @@ def get_db_stats() -> dict:
 
 def health() -> dict:
     if use_embedded():
-        return {"ok": True, "mode": "embedded"}
+        import database as db
+        db.init_db()
+        try:
+            stats = db.get_db_stats() if hasattr(db, "get_db_stats") else {}
+            return {
+                "ok": True,
+                "mode": "embedded",
+                "schema_ok": True,
+                "symbol_count": stats.get("symbol_count", len(db.list_symbols())),
+                "path": stats.get("path", getattr(db, "DB_PATH", None)),
+            }
+        except Exception as exc:
+            return {"ok": False, "mode": "embedded", "schema_ok": False, "error": str(exc)}
     return _request("GET", "/api/health") or {"ok": False}
 
 

@@ -30,8 +30,13 @@ Xcode on that VM). Caspar runs it on a Mac as below.
    ./start.sh
    ```
 
-   Leave it running. Dashboard is http://localhost:8050 — the phone uses the
-   same `/api/symbols`, `/api/ohlcv/<sym>`, `/api/news`, `/api/fetch/<sym>`.
+   `start.sh` (and the Flask app) always run `init_db` so `symbols` / `ohlcv`
+   exist even if leftover `finance.db` is an empty file. Leave it running.
+   Dashboard is http://localhost:8050 — the phone uses the same `/api/symbols`,
+   `/api/ohlcv/<sym>`, `/api/news`, `/api/fetch/<sym>`.
+
+   Confirm before Simulator: `curl -s http://127.0.0.1:8050/api/health` should
+   show `"schema_ok": true`. An empty desk is fine; `"no such table"` is not.
 
 3. In another terminal:
 

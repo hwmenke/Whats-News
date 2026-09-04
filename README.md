@@ -23,7 +23,10 @@ Yahoo headlines — no extra API keys.
 
 Stop with `Ctrl+C`.
 
-`start.sh` uses **embedded** data mode (one process). For the optional two-process layout, see below.
+`start.sh` uses **embedded** data mode (one process) and always initializes
+the SQLite schema (`symbols`, `ohlcv`) before serving. A leftover empty
+`finance.db` is repaired on startup — no manual SQL. For the optional
+two-process layout, see below.
 
 ### First visit
 
