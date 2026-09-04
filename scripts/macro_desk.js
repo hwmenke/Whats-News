@@ -8,6 +8,7 @@
 let _macroBoard = null;
 let _edgesBoard = null;
 let _macroBusy = false;
+let _edgeTag = '';
 
 function _esc(s) {
     return String(s ?? '')
@@ -73,12 +74,11 @@ async function loadFractalNote() {
     if (!el) return;
     try {
         const data = await apiFetch(`${API}/fractal/status`);
-        const text = data.available
-            ? `Fractal source: ${data.source || 'found'}`
-            : (data.reason || 'Fractal: needs local odds-edge');
-        el.textContent = text;
+        el.textContent = data.source
+            ? `${data.source}. ${data.note || data.reason || ''}`
+            : (data.reason || 'Fractal status unavailable');
     } catch {
-        el.textContent = 'Fractal: needs local odds-edge';
+        el.textContent = 'Fractal: /api/fractal/status unavailable';
     }
 }
 
@@ -93,26 +93,33 @@ async function loadFractalScan() {
     }
     if (meta) meta.textContent = 'GET /api/fractal/scan…';
     try {
-        const data = await apiFetch(`${API}/fractal/scan`);
+        const data = await apiFetch(`${API}/fractal/scan?desk=1`);
         const rows = Array.isArray(data.rows) ? data.rows : [];
         if (meta) {
-            meta.textContent = data.available
-                ? (data.source || 'wired')
-                : 'placeholder';
+            meta.textContent = data.source || (data.available ? 'SPEC 25/27' : 'unavailable');
         }
         if (note) {
-            note.textContent = data.message || data.reason || data.expected || '';
+            note.textContent = data.message || data.reason || data.note || '';
         }
         tbody.innerHTML = '';
         rows.forEach(row => {
             const tr = document.createElement('tr');
+            const fragile = row.read === 'FRAGILE' || (row.tags || []).includes('FRAGILE');
+            if (fragile) tr.classList.add('is-fragile');
+            if (row.symbol) tr.dataset.symbol = row.symbol;
+            const d65 = row.d_65d == null ? '—' : Number(row.d_65d).toFixed(2);
+            const d130 = row.d_130d == null ? '—' : Number(row.d_130d).toFixed(2);
             tr.innerHTML = `
-                <td>${_esc(row.symbol || '')}</td>
-                <td>${_esc(row.d_65d ?? '—')}</td>
-                <td>${_esc(row.d_130d ?? '—')}</td>
-                <td>${_esc(row.move_65d ?? '—')}</td>
-                <td>${_esc(row.move_130d ?? '—')}</td>
-                <td>${_esc(row.read || '')}</td>`;
+                <td class="macro-sym">${_esc(row.symbol || '')}</td>
+                <td>${_esc(d65)}</td>
+                <td>${_esc(d130)}</td>
+                <td class="${_chgClass(row.move_65d)}">${row.move_65d == null ? '—' : _pct(row.move_65d)}</td>
+                <td class="${_chgClass(row.move_130d)}">${row.move_130d == null ? '—' : _pct(row.move_130d)}</td>
+                <td>${_esc(row.read || '—')}</td>
+                <td>${_esc((row.tags || []).join(', ') || '—')}</td>`;
+            tr.addEventListener('click', () => {
+                if (row.symbol && typeof selectSymbol === 'function') selectSymbol(row.symbol);
+            });
             tbody.appendChild(tr);
         });
         if (empty) empty.style.display = rows.length ? 'none' : 'block';
@@ -195,7 +202,10 @@ function renderMacroSeedBar() {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'btn btn-ghost btn-sm';
-        btn.textContent = `${sleeve.label} · ${sleeve.ready_count || 0}/${(sleeve.tickers || []).length}`;
+        const miss = sleeve.missing_count != null
+            ? sleeve.missing_count
+            : Math.max(0, (sleeve.tickers || []).length - (sleeve.ready_count || 0));
+        btn.textContent = `${sleeve.label} · ${sleeve.ready_count || 0} lit / ${miss} missing`;
         btn.title = sleeve.blurb || sleeve.label;
         btn.addEventListener('click', () => seedAndFetchSleeve(sleeve.id));
         bar.appendChild(btn);
@@ -251,13 +261,67 @@ function renderSleeveGrid(sleeves) {
     });
 }
 
+function _edgeTagSet(board) {
+    const tags = new Set();
+    (board.sections || []).forEach(sec => {
+        (sec.rows || []).forEach(row => {
+            (row.tags || []).forEach(t => { if (t) tags.add(t); });
+        });
+    });
+    Object.keys(board.setup_buckets || {}).forEach(t => tags.add(t));
+    return [...tags];
+}
+
+function renderEdgeTagFilters(board) {
+    const bar = document.getElementById('edges-tag-filters');
+    if (!bar) return;
+    const tags = _edgeTagSet(board);
+    bar.innerHTML = '';
+    const all = document.createElement('button');
+    all.type = 'button';
+    all.className = 'ind-pill setup-pill' + (!_edgeTag ? ' setup-pill-on' : '');
+    all.textContent = 'All tags';
+    all.addEventListener('click', () => {
+        _edgeTag = '';
+        if (typeof writeDeskPrefs === 'function') writeDeskPrefs({ edgeTag: '' });
+        renderEdgesBoard(_edgesBoard);
+    });
+    bar.appendChild(all);
+    tags.forEach(tag => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ind-pill setup-pill' + (_edgeTag === tag ? ' setup-pill-on' : '');
+        btn.textContent = tag;
+        btn.addEventListener('click', () => {
+            _edgeTag = _edgeTag === tag ? '' : tag;
+            if (typeof writeDeskPrefs === 'function') writeDeskPrefs({ edgeTag: _edgeTag });
+            renderEdgesBoard(_edgesBoard);
+        });
+        bar.appendChild(btn);
+    });
+}
+
 function renderEdgesBoard(board) {
     const wrap = document.getElementById('edges-board');
     if (!wrap) return;
+    if (!_edgeTag && typeof readDeskPrefs === 'function') {
+        _edgeTag = readDeskPrefs().edgeTag || '';
+    }
+    renderEdgeTagFilters(board);
     const online = (board.online || []).map(t => `<span class="setup-tag">${_esc(t)}</span>`).join('')
         || '<span class="dim">No live tags — fetch sleeve bars first.</span>';
     const sections = (board.sections || []).map(sec => {
-        const body = (sec.rows || []).map(row => {
+        const filtered = (sec.rows || []).filter(row => {
+            if (!_edgeTag) return true;
+            return (row.tags || []).includes(_edgeTag);
+        });
+        const sorted = filtered.slice().sort((a, b) => {
+            const at = (a.tags || []).length;
+            const bt = (b.tags || []).length;
+            if (bt !== at) return bt - at;
+            return String(a.symbol).localeCompare(String(b.symbol));
+        });
+        const body = sorted.map(row => {
             if (!row.ready) {
                 return `<tr class="is-dark"><td>${_esc(row.symbol)}</td><td colspan="7" class="dim">no bars</td></tr>`;
             }
@@ -286,7 +350,7 @@ function renderEdgesBoard(board) {
     }).join('');
 
     const buckets = board.setup_buckets || {};
-    const bucketHtml = Object.entries(buckets).map(([id, names]) => {
+    const bucketHtml = Object.entries(buckets).filter(([id]) => !_edgeTag || id === _edgeTag).map(([id, names]) => {
         const chips = (names || []).map(s =>
             `<button type="button" class="macro-chip" data-open="${_esc(s)}">${_esc(s)}</button>`
         ).join('') || '<span class="dim">none</span>';

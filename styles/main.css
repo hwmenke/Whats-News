@@ -3824,5 +3824,13 @@ body.focus-mode.workspace-review #alert-log {
   margin-left: 4px;
 }
 .setup-qulla-pills { margin-bottom: 4px; }
+.scan-lens-bar { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.scan-lens-btn.on, .news-scope-btn.on, .chart-right-freq-btn.on { background: var(--accent); color: #fff; }
+.chart-right-freq { float: right; display: inline-flex; gap: 4px; }
+.news-scope { display: inline-flex; gap: 4px; margin-right: 8px; }
+.edges-tag-filters { margin: 8px 0; }
+.desk-trend-scan { margin-bottom: 12px; }
+#fractal-scan-table tr.is-fragile td { background: #ef444428; color: #fecaca; }
+#fractal-scan-table tr { cursor: pointer; }
 
 

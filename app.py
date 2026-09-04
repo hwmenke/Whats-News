@@ -183,16 +183,22 @@ def edges_board_api():
 
 @app.route("/api/fractal/status", methods=["GET"])
 def fractal_status_api():
-    """Probe for odds-edge/fractal.py (SPEC 25/27). Never invent D."""
+    """SPEC 25/27 in-repo estimator. available=true; D is still null without bars."""
     import fractal_scan
     return jsonify(fractal_scan.status())
 
 
 @app.route("/api/fractal/scan", methods=["GET"])
 def fractal_scan_api():
-    """Placeholder table until Caspar's fractal.py is on disk."""
+    """Desk (+ core indices) Fractal D from stored daily closes. Null D if NaN."""
     import fractal_scan
-    return jsonify(fractal_scan.scan())
+    desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+    try:
+        return jsonify(fractal_scan.scan(desk=desk))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(fractal_scan.empty_scan())
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/api/universe/core50", methods=["POST"])
@@ -332,13 +338,18 @@ def darvas_box_api(symbol):
 
 # -- Symbols (proxied to data service) -----------------------------------------
 
+def _annotate_symbols(rows):
+    import ticker_lists as tl
+    return [tl.annotate_symbol(r) for r in (rows or [])]
+
+
 @app.route("/api/symbols", methods=["GET"])
 def get_symbols():
     try:
         desk = request.args.get("desk", "").lower() in ("1", "true", "yes")
         if desk:
-            return jsonify(md.list_desk_symbols())
-        return jsonify(md.list_symbols())
+            return jsonify(_annotate_symbols(md.list_desk_symbols()))
+        return jsonify(_annotate_symbols(md.list_symbols()))
     except Exception as exc:
         return _data_error(exc)
 
@@ -968,12 +979,17 @@ def universe_refresh():
 
 @app.route("/api/news", methods=["GET"])
 def get_all_news():
-    """Fetch news for all watchlist symbols using yfinance.
+    """Fetch news for watchlist / desk symbols using yfinance.
 
     Empty watchlist / missing schema → 200 with an empty feed, never 500.
+    ?desk=1 limits to desk symbols (same list as /api/symbols?desk=1).
     """
+    desk = request.args.get("desk", "").lower() in ("1", "true", "yes")
     try:
-        symbols = md.list_symbol_codes()
+        if desk:
+            symbols = [s["symbol"] for s in md.list_desk_symbols()]
+        else:
+            symbols = md.list_symbol_codes()
     except Exception:
         symbols = []
     try:

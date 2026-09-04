@@ -89,6 +89,23 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: const Text('Save & reconnect'),
                 ),
                 const SizedBox(height: 22),
+                const _SectionTitle('Refresh'),
+                _Seg(
+                  value: '${state.refreshSec}',
+                  children: const {
+                    '0': Text('Off'),
+                    '30': Text('30s'),
+                    '60': Text('60s'),
+                    '120': Text('2m'),
+                  },
+                  onChanged: (v) => state.setRefreshSec(int.tryParse(v) ?? 0),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Reloads stored Yahoo/SQLite — no invented PX, z, D, or headlines.',
+                  style: TextStyle(color: DeskColors.muted, fontSize: 12),
+                ),
+                const SizedBox(height: 22),
                 const _SectionTitle('Chart defaults'),
                 _Seg(
                   value: state.freq,
@@ -117,17 +134,17 @@ class _SettingsPageState extends State<SettingsPage> {
                 _Seg(
                   value: state.scanMode,
                   children: const {
+                    'trend': Text('Trend'),
                     'qulla': Text('Qulla'),
                     'edges': Text('Edges'),
                     'setups': Text('Setups'),
-                    'trend': Text('Trend'),
                     'fractal': Text('Frac'),
                   },
                   onChanged: state.setScanMode,
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Fractal is a Scans-tab placeholder that loads /api/fractal/scan. It stays empty until odds-edge/fractal.py (SPEC 25/27) is on disk. No invented D.',
+                  'Fractal loads /api/fractal/scan (SPEC 25/27 rebuild). Null D when the window is short. FRAGILE needs |move| > 5%. Not a BCA proprietary estimator.',
                   style: TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
                 ),
                 const SizedBox(height: 22),
@@ -178,7 +195,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   'Paper / local only — no live trading. No API keys. '
                   'Qulla tags are momentum / EP-style desk heuristics from our scanner, '
                   'not Kristjan Qullamaggie formulas or claimed returns.\n\n'
-                  '${state.fractalStatus.available ? 'Fractal D is available.' : (state.fractalStatus.reason.isEmpty ? 'Fractal: needs local odds-edge' : state.fractalStatus.reason)}',
+                  '${state.fractalStatus.source.isEmpty ? 'Fractal: SPEC 25/27 in-repo estimator.' : state.fractalStatus.source}',
                   style: const TextStyle(color: DeskColors.muted, fontSize: 13, height: 1.4),
                 ),
               ],

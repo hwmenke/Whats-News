@@ -3,7 +3,6 @@
 import os
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -117,44 +116,23 @@ class MacroBoardTests(unittest.TestCase):
         self.assertIn(spy["slope200"], ("up", "down", "flat"))
         self.assertIsInstance(spy["tags"], list)
 
-    def test_fractal_is_honest_stub(self):
+    def test_fractal_status_is_in_repo_estimator(self):
         res = self.client.get("/api/fractal/status")
         self.assertEqual(res.status_code, 200)
         body = res.get_json()
-        self.assertFalse(body["available"])
-        self.assertIsNone(body.get("source"))
-        self.assertIn("invent", body["reason"].lower())
-        self.assertIn("odds-edge", (body.get("expected") or "").lower())
-
-        scan = self.client.get("/api/fractal/scan")
+        self.assertTrue(body["available"])
+        self.assertIn("SPEC 25/27", body["source"])
+        scan = self.client.get("/api/fractal/scan?desk=1")
         self.assertEqual(scan.status_code, 200)
         payload = scan.get_json()
-        self.assertFalse(payload["available"])
-        self.assertEqual(payload["rows"], [])
         self.assertIn("d_65d", payload["columns"])
-        self.assertIn("invent", (payload.get("reason") or "").lower())
-        keys = {str(k).lower() for k in payload}
-        self.assertNotIn("hurst", keys)
-        self.assertNotIn("d_hat", keys)
-
-    def test_fractal_detects_dropped_file_without_inventing_rows(self):
-        dest = Path("odds-edge") / "fractal.py"
-        dest.parent.mkdir(exist_ok=True)
-        try:
-            dest.write_text("# test sentinel — not Caspar's estimator\n")
-            body = self.client.get("/api/fractal/status").get_json()
-            self.assertTrue(body["available"])
-            self.assertEqual(body["source"], "odds-edge/fractal.py")
-            scan = self.client.get("/api/fractal/scan").get_json()
-            self.assertEqual(scan["rows"], [])
-            self.assertIn("invent", (scan.get("reason") or "").lower())
-            self.assertNotIn("hurst", str(scan).lower())
-        finally:
-            dest.unlink(missing_ok=True)
-            try:
-                dest.parent.rmdir()
-            except OSError:
-                pass
+        for row in payload.get("rows") or []:
+            if row.get("d_65d") is not None:
+                self.assertIsInstance(row["d_65d"], (int, float))
+            else:
+                self.assertIsNone(row.get("d_65d"))
+        self.assertNotIn("70%", str(payload))
+        self.assertNotIn("d_hat", {str(k).lower() for k in payload})
 
     def test_core50_seed_tags_library_groups(self):
         res = self.client.post("/api/universe/core50")
@@ -175,7 +153,7 @@ class MacroBoardTests(unittest.TestCase):
         self.assertIn("scripts/macro_desk.js", html)
         self.assertIn('id="fractal-scan-panel"', html)
         self.assertIn("/api/fractal/scan", html)
-        self.assertIn("odds-edge/fractal.py", html)
+        self.assertIn("SPEC 25/27", html)
         with open("scripts/macro_desk.js", encoding="utf-8") as fh:
             js = fh.read()
         self.assertIn("/api/macro/board", js)
@@ -184,10 +162,9 @@ class MacroBoardTests(unittest.TestCase):
         self.assertIn("loadFractalScan", js)
         self.assertNotIn("70%", js)
         with open("fractal_scan.py", encoding="utf-8") as fh:
-            probe = fh.read().lower()
-        self.assertNotIn("hurst =", probe)
-        self.assertNotIn("def hurst", probe)
-        self.assertNotIn("rs_analysis", probe)
+            probe = fh.read()
+        self.assertIn("def hurst_D", probe)
+        self.assertNotIn("rs_analysis", probe.lower())
 
     def test_move_stats_needs_two_closes(self):
         empty = mb.move_stats(pd.Series(dtype=float))

@@ -83,10 +83,11 @@ void main() {
       }
       if (path == '/api/fractal/status' || path == '/api/fractal/scan') {
         return _json({
-          'available': false,
-          'reason': 'Will not invent D estimates.',
-          'expected': 'odds-edge/fractal.py (SPEC 25/27)',
-          'columns': ['symbol', 'd_65d', 'd_130d', 'move_65d', 'move_130d', 'read'],
+          'available': true,
+          'source': 'whats-news fractal_scan (SPEC 25/27)',
+          'reason': 'Independent SPEC 25/27 rebuild.',
+          'expected': 'whats-news fractal_scan (SPEC 25/27)',
+          'columns': ['symbol', 'd_65d', 'd_130d', 'move_65d', 'move_130d', 'read', 'tags'],
           'rows': [],
         });
       }

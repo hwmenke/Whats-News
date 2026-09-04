@@ -10,16 +10,21 @@ class WatchSymbol {
     this.name = '',
     this.sector = '',
     this.groupTag = '',
+    this.filterKind = '',
+    this.groupLabel = '',
   });
 
   final String symbol;
   final String name;
   final String sector;
   final String groupTag;
+  final String filterKind;
+  final String groupLabel;
 
   bool get isUniverseArchive => groupTag.startsWith('univ:');
 
   String get filterFamily {
+    if (filterKind.isNotEmpty) return filterKind;
     final tag = groupTag.toLowerCase();
     if (tag.contains('countries') || tag.contains('intl')) return 'country';
     if (tag.contains('sector')) return 'sector';
@@ -32,7 +37,9 @@ class WatchSymbol {
         tag.contains('metal') ||
         tag.contains('fx') ||
         tag.contains('yield') ||
-        tag.contains('big_tech')) {
+        tag.contains('big_tech') ||
+        tag.contains('commodit') ||
+        tag.contains('rates')) {
       return 'theme';
     }
     if (tag.contains('index') || tag == 'sleeve:core' || tag.contains('broad_etf')) {
@@ -41,12 +48,20 @@ class WatchSymbol {
     return '';
   }
 
+  String get displayGroup {
+    if (groupLabel.isNotEmpty) return groupLabel;
+    if (groupTag.isEmpty) return 'Ungrouped';
+    return groupTag;
+  }
+
   factory WatchSymbol.fromJson(Map<String, dynamic> json) {
     return WatchSymbol(
       symbol: (json['symbol'] as String? ?? '').toUpperCase(),
       name: json['name'] as String? ?? '',
       sector: json['sector'] as String? ?? '',
       groupTag: json['group_tag'] as String? ?? '',
+      filterKind: '${json['filter_kind'] ?? ''}',
+      groupLabel: '${json['group_label'] ?? ''}',
     );
   }
 }
@@ -388,6 +403,7 @@ class SetupScanRow {
   bool get isEp => setups.contains('EP');
   bool get isBreakoutQueue => setups.contains('BREAKOUT_QUEUE');
   bool get isVolSurge => setups.contains('VOL_SURGE');
+  bool get isNearHigh => setups.contains('NEAR_HIGH');
 
   bool get isQullaCandidate =>
       isEp || isBreakoutQueue || isVolSurge || setups.contains('NEAR_HIGH') || isHighAdr;
@@ -750,6 +766,7 @@ class FractalRow {
     this.move65d,
     this.move130d,
     this.read = '',
+    this.tags = const [],
   });
 
   final String symbol;
@@ -758,6 +775,9 @@ class FractalRow {
   final double? move65d;
   final double? move130d;
   final String read;
+  final List<String> tags;
+
+  bool get isFragile => read == 'FRAGILE' || tags.contains('FRAGILE');
 
   factory FractalRow.fromJson(Map<String, dynamic> json) {
     double? n(Object? v) {
@@ -772,6 +792,11 @@ class FractalRow {
       move65d: n(json['move_65d']),
       move130d: n(json['move_130d']),
       read: '${json['read'] ?? ''}',
+      tags: [
+        if (json['tags'] is List)
+          for (final t in json['tags'])
+            if (t != null && '$t'.isNotEmpty) '$t',
+      ],
     );
   }
 }
@@ -794,14 +819,14 @@ class FractalStatus {
   final List<String> columns;
 
   static const empty = FractalStatus(
-    reason: 'Fractal: needs local odds-edge',
-    expected: 'odds-edge/fractal.py (SPEC 25/27)',
+    reason: 'Fractal: SPEC 25/27 — no rows yet',
+    expected: 'whats-news fractal_scan (SPEC 25/27)',
   );
 
   factory FractalStatus.fromJson(Map<String, dynamic> json) {
     return FractalStatus(
       available: json['available'] == true,
-      reason: '${json['reason'] ?? json['message'] ?? 'Fractal: needs local odds-edge'}',
+      reason: '${json['reason'] ?? json['message'] ?? 'Fractal: SPEC 25/27'}',
       source: '${json['source'] ?? ''}',
       expected: '${json['expected'] ?? ''}',
       columns: [

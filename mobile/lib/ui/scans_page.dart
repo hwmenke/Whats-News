@@ -42,19 +42,9 @@ class ScansPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Same Python scans as the web desk. No invented win rates. Fractal loads /api/fractal/scan only.',
+                  'Same Python scans as the web desk. Fractal is the SPEC 25/27 rebuild from stored closes — not a BCA proprietary estimator.',
                   style: TextStyle(color: DeskColors.muted, fontSize: 12),
                 ),
-                if (!state.fractalStatus.available)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      state.fractalStatus.reason.isEmpty
-                          ? 'Fractal: needs local odds-edge'
-                          : state.fractalStatus.reason,
-                      style: const TextStyle(color: DeskColors.dim, fontSize: 11),
-                    ),
-                  ),
                 if (running)
                   const Padding(
                     padding: EdgeInsets.only(top: 6),
@@ -100,6 +90,21 @@ class ScansPage extends StatelessWidget {
                           label: e.$2,
                           on: state.qullaFilter == e.$1,
                           onTap: () => state.setQullaFilter(e.$1),
+                        ),
+                    ],
+                  ),
+                ],
+                if (state.scanMode == 'edges' && state.edgeTags.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final tag in state.edgeTags)
+                        _ModeChip(
+                          label: tag,
+                          on: state.edgeTag == tag,
+                          onTap: () => state.setEdgeTag(tag),
                         ),
                     ],
                   ),
@@ -163,16 +168,14 @@ class ScansPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                f.available
-                    ? 'Source: ${f.source}'
-                    : (f.reason.isEmpty ? 'Fractal: needs local odds-edge' : f.reason),
+                f.source.isEmpty ? 'whats-news fractal_scan (SPEC 25/27)' : f.source,
                 style: const TextStyle(color: DeskColors.text, fontSize: 13, height: 1.4),
               ),
-              if (f.expected.isNotEmpty) ...[
+              if (f.reason.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Text(
-                  'Expected: ${f.expected}',
-                  style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+                  f.reason,
+                  style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
                 ),
               ],
               const SizedBox(height: 12),
@@ -183,7 +186,7 @@ class ScansPage extends StatelessWidget {
               const SizedBox(height: 8),
               if (f.rows.isEmpty)
                 const Text(
-                  'No rows. This table stays empty until odds-edge/fractal.py (SPEC 25/27) is on disk. No invented D.',
+                  'No Fractal rows. Seed a sleeve / Core 50 and Fetch Yahoo. Null D is a failed window — not invented.',
                   style: TextStyle(color: DeskColors.muted, fontSize: 13, height: 1.4),
                 )
               else
@@ -199,9 +202,14 @@ class ScansPage extends StatelessWidget {
                           row.d130d?.toStringAsFixed(2) ?? '—',
                           row.move65d?.toStringAsFixed(1) ?? '—',
                           row.move130d?.toStringAsFixed(1) ?? '—',
-                          row.read,
+                          row.read.isEmpty ? '—' : row.read,
+                          if (row.tags.isNotEmpty) row.tags.join(','),
                         ].join(' · '),
-                        style: const TextStyle(color: DeskColors.text, fontSize: 13),
+                        style: TextStyle(
+                          color: row.isFragile ? const Color(0xFFFECACA) : DeskColors.text,
+                          fontSize: 13,
+                          fontWeight: row.isFragile ? FontWeight.w700 : FontWeight.w400,
+                        ),
                       ),
                     ),
                   ),
@@ -236,13 +244,26 @@ class ScansPage extends StatelessWidget {
       Text(board.note, style: const TextStyle(color: DeskColors.dim, fontSize: 11)),
       const SizedBox(height: 10),
     ];
-    for (final sec in board.sections) {
+    final filtered = s.filteredEdgeRows;
+    if (s.edgeTag.isEmpty) {
+      for (final sec in board.sections) {
+        children.add(Text(
+          sec.label,
+          style: const TextStyle(color: DeskColors.muted, fontSize: 12, fontWeight: FontWeight.w700),
+        ));
+        children.add(const SizedBox(height: 4));
+        for (final row in sec.rows) {
+          children.add(_EdgeTile(row: row, onOpen: onOpenChart));
+        }
+        children.add(const SizedBox(height: 10));
+      }
+    } else {
       children.add(Text(
-        sec.label,
+        'Tag: ${s.edgeTag}',
         style: const TextStyle(color: DeskColors.muted, fontSize: 12, fontWeight: FontWeight.w700),
       ));
       children.add(const SizedBox(height: 4));
-      for (final row in sec.rows) {
+      for (final row in filtered) {
         children.add(_EdgeTile(row: row, onOpen: onOpenChart));
       }
       children.add(const SizedBox(height: 10));

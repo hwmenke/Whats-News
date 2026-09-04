@@ -100,6 +100,7 @@ function applyQullaLens(rows) {
         if (_qullaLens === 'ep') return s.includes('EP');
         if (_qullaLens === 'breakout') return s.includes('BREAKOUT_QUEUE');
         if (_qullaLens === 'vol') return s.includes('VOL_SURGE');
+        if (_qullaLens === 'high') return s.includes('NEAR_HIGH');
         if (_qullaLens === 'adr') return Number(row.adr_pct) >= 4;
         return true;
     });
@@ -108,6 +109,27 @@ function applyQullaLens(rows) {
 function paintSetupTable() {
     renderSetupScanTable(sortedSetupScanRows(_setupScanRows, _setupSort));
 }
+
+function setQullaLens(id) {
+    _qullaLens = id || 'all';
+    if (typeof writeDeskPrefs === 'function') writeDeskPrefs({ qullaLens: _qullaLens });
+    const wrap = document.getElementById('setup-qulla-pills');
+    if (wrap) {
+        wrap.querySelectorAll('.setup-pill').forEach(p => {
+            p.classList.toggle('setup-pill-on', p.textContent && (
+                (_qullaLens === 'all' && p.textContent.startsWith('All')) ||
+                (_qullaLens === 'qulla' && p.textContent.startsWith('Qulla')) ||
+                (_qullaLens === 'ep' && p.textContent === 'EP') ||
+                (_qullaLens === 'breakout' && p.textContent === 'Breakout') ||
+                (_qullaLens === 'vol' && p.textContent === 'VOL_SURGE') ||
+                (_qullaLens === 'high' && p.textContent === 'NEAR_HIGH') ||
+                (_qullaLens === 'adr' && p.textContent.startsWith('ADR'))
+            ));
+        });
+    }
+    applySetupScanSort();
+}
+window.setQullaLens = setQullaLens;
 
 function renderQullaPills() {
     const wrap = document.getElementById('setup-qulla-pills');
@@ -118,7 +140,8 @@ function renderQullaPills() {
         ['qulla', 'Qulla lens'],
         ['ep', 'EP'],
         ['breakout', 'Breakout'],
-        ['vol', 'Vol'],
+        ['vol', 'VOL_SURGE'],
+        ['high', 'NEAR_HIGH'],
         ['adr', 'ADR≥4'],
     ];
     specs.forEach(([id, label]) => {
@@ -131,6 +154,7 @@ function renderQullaPills() {
             : label;
         btn.addEventListener('click', () => {
             _qullaLens = id;
+            if (typeof writeDeskPrefs === 'function') writeDeskPrefs({ qullaLens: id });
             wrap.querySelectorAll('.setup-pill').forEach(p => p.classList.remove('setup-pill-on'));
             btn.classList.add('setup-pill-on');
             applySetupScanSort();

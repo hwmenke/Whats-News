@@ -24,7 +24,9 @@ let state = {
     stopMode: 'atr',   // 'atr' | 'box' | 'user'
     riskBox: null,     // last-applied { entry, stop, target } for the active symbol
     workspace: 'chart', // 'chart' | 'scan' | 'review'
-    familyFilter: '',  // '' | country | sector | theme
+    familyFilter: '',  // '' | country | sector | theme | index
+    newsScope: 'symbol', // 'symbol' | 'desk'
+    rightFreq: 'weekly', // 'weekly' | 'monthly'
 };
 
 const JOURNAL_KEY = 'whats-news-journal';
@@ -1119,14 +1121,15 @@ function filterKindForTag(tag) {
     const t = String(tag || '').toLowerCase();
     if (t.includes('countries') || t.includes('intl')) return 'country';
     if (t.includes('sector')) return 'sector';
-    if (/theme|tech|resource|crypto|bond|ags|metal|fx|yield|big_tech/.test(t)) return 'theme';
+    if (/theme|tech|resource|crypto|bond|ags|metal|fx|yield|big_tech|commodit|rates/.test(t)) return 'theme';
     if (t.includes('index') || t === 'sleeve:core' || t.includes('broad_etf')) return 'index';
     return '';
 }
 
-function matchesDeskFamily(groupTag) {
+function matchesDeskFamily(sym) {
     if (!state.familyFilter) return true;
-    return filterKindForTag(groupTag) === state.familyFilter;
+    const kind = (sym && sym.filter_kind) || filterKindForTag(sym && (sym.group_tag || sym));
+    return kind === state.familyFilter;
 }
 
 function filterByWatchlistQuery(rows) {
@@ -1141,35 +1144,30 @@ function renderSymbolList() {
     const q = watchlistFilterQuery();
 
     if (!state.symbols.length) {
-        list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No symbols yet.</div>';
+        list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No symbols yet. Seed a sleeve or Core 50.</div>';
         return;
     }
 
-    // Group symbols by group_tag
+    // Group symbols by group_tag / group_label. Empty groups are omitted.
     let lastGroup = undefined;
+    let visibleCount = 0;
     state.symbols.forEach(sym => {
         const tag = sym.group_tag || '';
+        const hidden = !matchesWatchlistFilter(sym.symbol, tag, q) || !matchesDeskFamily(sym);
+        if (hidden) return;
+        visibleCount += 1;
 
-        // Render group header when group changes
         if (tag !== lastGroup) {
             lastGroup = tag;
-            if (tag) {
-                const hdr = document.createElement('div');
-                hdr.className = 'sym-group-header';
-                hdr.textContent = tag;
-                list.appendChild(hdr);
-            }
+            const hdr = document.createElement('div');
+            hdr.className = 'sym-group-header';
+            hdr.textContent = sym.group_label || tag || 'Ungrouped';
+            list.appendChild(hdr);
         }
 
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
         item.dataset.symbol = sym.symbol;
-        if (!matchesWatchlistFilter(sym.symbol, tag, q)) {
-            item.hidden = true;
-        }
-        if (!matchesDeskFamily(tag)) {
-            item.hidden = true;
-        }
 
         const ticker = document.createElement('span');
         ticker.className = 'sym-ticker';
@@ -1239,6 +1237,11 @@ function renderSymbolList() {
             b.className = 'sym-qulla';
             b.textContent = 'HI';
             item.appendChild(b);
+        } else if (snap?.is_breakout_queue) {
+            const b = document.createElement('span');
+            b.className = 'sym-qulla';
+            b.textContent = 'BQ';
+            item.appendChild(b);
         }
 
         // Group tag badge (click to edit inline)
@@ -1277,6 +1280,14 @@ function renderSymbolList() {
         item.addEventListener('click', () => selectSymbol(sym.symbol));
         list.appendChild(item);
     });
+    if (!visibleCount) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'padding:14px;color:var(--text-dim);font-size:12px;';
+        empty.textContent = state.familyFilter
+            ? 'No names in this Country / Sector / Theme / Broad filter.'
+            : 'No symbols match the filter.';
+        list.appendChild(empty);
+    }
 }
 
 function startTagEdit(symbol, currentTag, badgeEl) {
@@ -1708,6 +1719,28 @@ function neighborVisibleSymbols(symbol) {
     return neighbors;
 }
 
+async function applyRightPaneFreq(freq) {
+    const next = freq === 'monthly' ? 'monthly' : 'weekly';
+    state.rightFreq = next;
+    const symbol = state.activeSymbol;
+    if (!symbol || typeof loadOHLCV !== 'function') return;
+    const kama = kamaApiParam();
+    try {
+        const [ohlcv, inds] = await Promise.all([
+            apiFetch(`${API}/ohlcv/${encodeURIComponent(symbol)}?freq=${next}`),
+            apiFetch(`${API}/indicators/${encodeURIComponent(symbol)}?freq=${next}&kama=${kama}`),
+        ]);
+        loadOHLCV('weekly', ohlcv);
+        loadIndicatorsToPanel('weekly', inds);
+        if (typeof fitContent === 'function') fitContent();
+    } catch (err) {
+        if (typeof toast === 'function') {
+            toast(err.message || 'Monthly bars unavailable — stored OHLCV only.', 'warning');
+        }
+    }
+}
+window.applyRightPaneFreq = applyRightPaneFreq;
+
 function abortChartPrefetch(keepSymbol) {
     _prefetchGen += 1;
     const keep = keepSymbol ? String(keepSymbol).toUpperCase() : '';
@@ -1854,7 +1887,8 @@ async function loadStatsData(symbol) {
 
 // ── News Data Loading ─────────────────────────────────────
 async function loadNewsData(symbol) {
-    if (!symbol) return;
+    const scope = (typeof readDeskPrefs === 'function' ? readDeskPrefs().newsScope : state.newsScope) || 'symbol';
+    if (scope === 'symbol' && !symbol) return;
     showNewsArea();
     
     const loadingEl = document.getElementById('news-loading');
@@ -1868,11 +1902,17 @@ async function loadNewsData(symbol) {
     if (emptyEl) emptyEl.style.display = 'none';
     if (errorEl) errorEl.style.display = 'none';
     
-    updateSymbolHeader(symbol, null);
+    if (symbol) updateSymbolHeader(symbol, null);
+    const title = document.getElementById('news-title');
+    const scopeLabel = document.getElementById('news-scope-label');
+    if (title) title.textContent = scope === 'desk' ? 'Desk news' : `News for ${symbol || 'this ticker'}`;
+    if (scopeLabel) scopeLabel.textContent = scope === 'desk' ? 'Desk watchlist' : 'Selected symbol only';
 
     try {
-        // Fetch news from API - returns { symbol, articles: [...], article_count, source } or { symbol, message, source } or { symbol, error, source }
-        const data = await apiFetch(`${API}/news/${symbol}`);
+        const url = scope === 'desk'
+            ? `${API}/news?desk=1`
+            : `${API}/news/${encodeURIComponent(symbol)}`;
+        const data = await apiFetch(url);
         
         // Hide loading
         if (loadingEl) loadingEl.style.display = 'none';
@@ -2114,6 +2154,9 @@ async function loadChartData(symbol) {
         loadOHLCV('weekly', weeklyOhlcv);
         loadIndicatorsToPanel('daily',  dailyInd);
         loadIndicatorsToPanel('weekly', weeklyInd);
+        if ((state.rightFreq || 'weekly') === 'monthly') {
+            await applyRightPaneFreq('monthly');
+        }
         state.chartedSymbol = symbol;
         fitContent();
         const pending = window._pendingChartPack;
@@ -2333,7 +2376,11 @@ function setWorkspace(id, opts = {}) {
         showScanSplit();
         if (typeof initSetupScanner === 'function') initSetupScanner();
         loadSetupScan({ allowStaleRows: true });
-        if (typeof loadFractalScan === 'function') loadFractalScan();
+        if (typeof applyScanLens === 'function') {
+            applyScanLens((typeof readDeskPrefs === 'function' ? readDeskPrefs().scanLens : null) || 'trend');
+        } else if (typeof loadFractalScan === 'function') {
+            loadFractalScan();
+        }
         if (!opts.skipChart && state.activeSymbol) loadChartData(state.activeSymbol);
         requestAnimationFrame(() => window.resizeAllCharts?.());
         return next;
@@ -3690,6 +3737,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('#desk-family-filters .family-chip').forEach(btn => {
         btn.addEventListener('click', () => {
             state.familyFilter = btn.dataset.family || '';
+            if (typeof writeDeskPrefs === 'function') writeDeskPrefs({ familyFilter: state.familyFilter });
             document.querySelectorAll('#desk-family-filters .family-chip').forEach(b => {
                 b.classList.toggle('on', b === btn);
             });
@@ -3786,6 +3834,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.addEventListener('click', () => setWorkspace(btn.dataset.workspace));
     });
     syncWorkspacePills();
+
+    if (typeof bindDeskPrefs === 'function') bindDeskPrefs();
 
     await loadSymbols();
     restoreWatchlistFilter();

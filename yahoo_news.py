@@ -167,8 +167,9 @@ def symbol_news(
         return (
             {
                 "symbol": sym,
-                "error": str(exc),
+                "articles": [],
+                "message": str(exc),
                 "source": DEFAULT_PROVIDER,
             },
-            500,
+            200,
         )

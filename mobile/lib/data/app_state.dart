@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,6 +16,11 @@ const kPrefBb = 'whats-news-ov-bb';
 const kPrefEma10 = 'whats-news-ov-ema10';
 const kPrefEma20 = 'whats-news-ov-ema20';
 const kPrefMacroOpen = 'whats-news-macro-open';
+const kPrefFamily = 'whats-news-family';
+const kPrefRefresh = 'whats-news-refresh-sec';
+const kPrefNewsScope = 'whats-news-news-scope';
+const kPrefEdgeTag = 'whats-news-edge-tag';
+const kPrefQulla = 'whats-news-qulla-filter';
 
 /// App-wide state. UIKit-free; Android / Mac screens can bind to this later.
 class WhatsNewsState extends ChangeNotifier {
@@ -31,9 +38,13 @@ class WhatsNewsState extends ChangeNotifier {
   List<TrendScanRow> trendScan = const [];
   List<ScannerRow> metricScan = const [];
   List<SetupScanRow> setupScan = const [];
-  String scanMode = 'qulla';
+  String scanMode = 'trend';
   String qullaFilter = 'all';
   String groupFilter = '';
+  String newsScope = 'desk';
+  String edgeTag = '';
+  int refreshSec = 0;
+  Timer? _refreshTimer;
   Map<String, dynamic> scannerStatus = const {};
 
   PortfolioSnapshot snapshot = PortfolioSnapshot.empty;
@@ -106,6 +117,45 @@ class WhatsNewsState extends ChangeNotifier {
     return out;
   }
 
+  List<(String, List<WatchSymbol>)> get groupedVisible {
+    final map = <String, List<WatchSymbol>>{};
+    final order = <String>[];
+    for (final s in visibleSymbols) {
+      final key = s.displayGroup;
+      if (!map.containsKey(key)) {
+        map[key] = [];
+        order.add(key);
+      }
+      map[key]!.add(s);
+    }
+    return [for (final k in order) (k, map[k]!)];
+  }
+
+  List<EdgeInstrument> get filteredEdgeRows {
+    final rows = [
+      for (final sec in edgesBoard.sections)
+        ...sec.rows,
+    ];
+    if (edgeTag.isEmpty) return rows;
+    return [for (final r in rows) if (r.tags.contains(edgeTag)) r];
+  }
+
+  List<String> get edgeTags {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final sec in edgesBoard.sections) {
+      for (final row in sec.rows) {
+        for (final t in row.tags) {
+          if (t.isEmpty || seen.contains(t)) continue;
+          seen.add(t);
+          out.add(t);
+        }
+      }
+    }
+    out.sort();
+    return out;
+  }
+
   List<SetupScanRow> get qullaRows {
     var rows = [
       for (final r in setupScan)
@@ -118,6 +168,8 @@ class WhatsNewsState extends ChangeNotifier {
         rows = [for (final r in rows) if (r.isBreakoutQueue) r];
       case 'vol':
         rows = [for (final r in rows) if (r.isVolSurge) r];
+      case 'high':
+        rows = [for (final r in rows) if (r.isNearHigh) r];
       case 'adr':
         rows = [for (final r in rows) if (r.isHighAdr) r];
     }
@@ -171,6 +223,12 @@ class WhatsNewsState extends ChangeNotifier {
     showEma10 = prefs.getBool(kPrefEma10) ?? showEma10;
     showEma20 = prefs.getBool(kPrefEma20) ?? showEma20;
     macroOpen = prefs.getBool(kPrefMacroOpen) ?? macroOpen;
+    familyFilter = prefs.getString(kPrefFamily) ?? familyFilter;
+    newsScope = prefs.getString(kPrefNewsScope) ?? newsScope;
+    edgeTag = prefs.getString(kPrefEdgeTag) ?? edgeTag;
+    qullaFilter = prefs.getString(kPrefQulla) ?? qullaFilter;
+    refreshSec = prefs.getInt(kPrefRefresh) ?? refreshSec;
+    _armRefresh();
     notifyListeners();
   }
 
@@ -194,6 +252,40 @@ class WhatsNewsState extends ChangeNotifier {
     await prefs.setBool(kPrefEma10, showEma10);
     await prefs.setBool(kPrefEma20, showEma20);
     await prefs.setBool(kPrefMacroOpen, macroOpen);
+    await prefs.setString(kPrefFamily, familyFilter);
+    await prefs.setString(kPrefNewsScope, newsScope);
+    await prefs.setString(kPrefEdgeTag, edgeTag);
+    await prefs.setString(kPrefQulla, qullaFilter);
+    await prefs.setInt(kPrefRefresh, refreshSec);
+  }
+
+  void _armRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+    if (refreshSec < 15) return;
+    _refreshTimer = Timer.periodic(Duration(seconds: refreshSec), (_) {
+      refreshAll();
+    });
+  }
+
+  void setRefreshSec(int sec) {
+    refreshSec = sec < 0 ? 0 : sec;
+    _armRefresh();
+    notifyListeners();
+    _persist();
+  }
+
+  void setNewsScope(String scope) {
+    newsScope = scope == 'symbol' ? 'symbol' : 'desk';
+    notifyListeners();
+    _persist();
+    loadNews(symbol: newsScope == 'symbol' ? selectedSymbol : null);
+  }
+
+  void setEdgeTag(String tag) {
+    edgeTag = edgeTag == tag ? '' : tag;
+    notifyListeners();
+    _persist();
   }
 
   Future<void> refreshAll() async {
@@ -375,11 +467,13 @@ class WhatsNewsState extends ChangeNotifier {
   void setFamilyFilter(String family) {
     familyFilter = familyFilter == family ? '' : family;
     notifyListeners();
+    _persist();
   }
 
   void setQullaFilter(String id) {
     qullaFilter = id;
     notifyListeners();
+    _persist();
   }
 
   void toggleMacro() {
@@ -568,7 +662,9 @@ class WhatsNewsState extends ChangeNotifier {
     loadingNews = true;
     notifyListeners();
     try {
-      news = await api.getNews(symbol: symbol);
+      news = newsScope == 'symbol' && (symbol ?? selectedSymbol) != null
+          ? await api.getNews(symbol: symbol ?? selectedSymbol)
+          : await api.getNews(desk: true);
     } on ApiException catch (e) {
       news = NewsFeed(articles: const [], message: _friendly(e));
     } catch (_) {

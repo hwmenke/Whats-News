@@ -73,6 +73,7 @@
         <button type="button" class="family-chip" data-family="country">Country</button>
         <button type="button" class="family-chip" data-family="sector">Sector</button>
         <button type="button" class="family-chip" data-family="theme">Theme</button>
+        <button type="button" class="family-chip" data-family="index">Broad</button>
       </div>
     </div>
 
@@ -370,8 +371,13 @@
       <div class="panel-divider"></div>
 
       <!-- ── Weekly Panel ── -->
-      <div class="chart-panel">
-        <div class="panel-header">Weekly</div>
+      <div class="chart-panel" id="chart-panel-right">
+        <div class="panel-header" id="chart-right-title">Weekly
+          <span id="chart-right-freq" class="chart-right-freq" role="group" aria-label="Right pane frequency">
+            <button type="button" class="ind-pill chart-right-freq-btn on" data-freq="weekly">W</button>
+            <button type="button" class="ind-pill chart-right-freq-btn" data-freq="monthly">M</button>
+          </span>
+        </div>
         <div class="chart-wrapper chart-wrapper-main">
           <div class="chart-label">PRICE <span id="chart-weekly-ep-badge" class="ep-glance-badge" style="display:none;"></span></div>
           <div id="chart-legend-weekly" class="chart-ohlc-legend" aria-live="polite"></div>
@@ -412,8 +418,12 @@
 
       <!-- News header — this ticker only; watchlist-wide headlines live at /news -->
       <div class="news-header">
-        <h3 id="news-title" class="news-title">News for this ticker</h3>
+        <h3 id="news-title" class="news-title">News</h3>
         <div class="news-meta">
+          <div id="news-scope" class="news-scope" role="group" aria-label="News scope">
+            <button type="button" class="ind-pill news-scope-btn on" data-scope="symbol">This ticker</button>
+            <button type="button" class="ind-pill news-scope-btn" data-scope="desk">Desk</button>
+          </div>
           <span id="news-scope-label">Selected symbol only</span>
           <span>•</span>
           <span id="news-provider-label">Source: Yahoo Finance</span>
@@ -429,7 +439,7 @@
       <!-- Empty state -->
       <div id="news-empty" class="news-empty" style="display:none;">
         <div class="empty-icon">📰</div>
-        <p>No news available for this ticker.</p>
+        <p>No headlines. Empty feed — not invented stories.</p>
       </div>
 
       <!-- Error state -->
@@ -858,13 +868,39 @@
     <!-- ── Scanner Area ── -->
     <div id="scanner-area" class="scanner-container" style="display:none;">
 
+      <div id="scan-lens-bar" class="scan-lens-bar" role="group" aria-label="Scan lens">
+        <button type="button" class="ind-pill scan-lens-btn on" data-lens="trend">Trend</button>
+        <button type="button" class="ind-pill scan-lens-btn" data-lens="qulla">Qulla</button>
+        <button type="button" class="ind-pill scan-lens-btn" data-lens="setups">Setups</button>
+        <button type="button" class="ind-pill scan-lens-btn" data-lens="metrics">Metrics</button>
+        <button type="button" class="ind-pill scan-lens-btn" data-lens="fractal">Fractal</button>
+      </div>
+      <div id="desk-trend-scan" class="setup-scanner-panel desk-trend-scan">
+        <div class="setup-scanner-header">
+          <strong>Trend scan</strong>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-desk-trend-scan">Load /api/trend-scan</button>
+          <span id="desk-trend-meta" class="scanner-ts"></span>
+        </div>
+        <p class="macro-blurb">Watchlist trend rows from stored bars. Tap a symbol to open the chart. Empty = no bars.</p>
+        <div class="scanner-table-wrap">
+          <table class="scanner-table">
+            <thead>
+              <tr><th>Symbol</th><th>Signal</th><th>RSI</th><th>K10</th><th>K20</th><th>K50</th></tr>
+            </thead>
+            <tbody id="desk-trend-tbody"></tbody>
+          </table>
+        </div>
+        <div id="desk-trend-empty" class="scanner-empty">
+          <p>No trend rows yet. Seed a sleeve or Core 50, Fetch from Yahoo, then load. Empty is missing bars — not a fake print.</p>
+        </div>
+      </div>
       <div id="fractal-scan-panel" class="setup-scanner-panel fractal-scan-panel">
         <div class="setup-scanner-header">
           <strong>Fractal</strong>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-fractal-scan">Load /api/fractal/scan</button>
           <span id="fractal-scan-meta" class="scanner-ts"></span>
         </div>
-        <p id="fractal-scan-note" class="macro-blurb">Waiting on /api/fractal/scan — no invented D.</p>
+        <p id="fractal-scan-note" class="macro-blurb">Independent SPEC 25/27 rebuild from stored Yahoo closes. Not a BCA proprietary estimator. Null D when the window is short.</p>
         <div class="scanner-table-wrap">
           <table id="fractal-scan-table" class="scanner-table">
             <thead>
@@ -875,13 +911,14 @@
                 <th>move 65d</th>
                 <th>move 130d</th>
                 <th>read</th>
+                <th>tags</th>
               </tr>
             </thead>
             <tbody id="fractal-scan-tbody"></tbody>
           </table>
         </div>
         <div id="fractal-scan-empty" class="scanner-empty">
-          <p>Fractal table loads from <code>/api/fractal/scan</code> once <code>odds-edge/fractal.py</code> (SPEC 25/27) is on disk. This app will not invent Hurst or D.</p>
+          <p>No Fractal rows. Seed a sleeve / Core 50 and Fetch Yahoo so finance.db has daily closes. Null D is a failed window — not an invented number. SPEC 25/27 rebuild.</p>
         </div>
       </div>
 
@@ -991,8 +1028,9 @@
       </div>
       <div id="macro-sleeve-grid" class="macro-sleeve-grid"></div>
       <p id="macro-board-note" class="macro-board-note"></p>
+      <div id="edges-tag-filters" class="setup-filter-pills edges-tag-filters" role="group" aria-label="Edges tag filter"></div>
       <div id="edges-board" class="edges-board"></div>
-      <p id="fractal-stub" class="fractal-stub">Fractal: waiting on /api/fractal/status — needs local odds-edge/fractal.py (SPEC 25/27). No invented D.</p>
+      <p id="fractal-stub" class="fractal-stub">Fractal: SPEC 25/27 in-repo estimator. Load /api/fractal/scan — FRAGILE is D≤1.40 and |move|&gt;5%.</p>
     </div>
 
     <!-- ── Data Manager Area ── -->
@@ -1055,6 +1093,31 @@
           <p class="dm-hint">Core 50 = desk names with library group tags. Sync indices registers S&amp;P-ish <code>univ:*</code> archive (hidden from desk). Archive fetch is optional and slow.</p>
         </div>
 
+        <div class="dm-section-rule" aria-hidden="true"></div>
+
+        <div class="dm-panel-header">Desk settings (this browser)</div>
+        <p class="dm-hint">Stored in localStorage only. Reloads stored Yahoo/SQLite — no invented PX, z, D, or headlines. No secrets.</p>
+        <div class="dm-settings">
+          <div class="dm-field">
+            <label class="dm-label" for="desk-refresh-sec">Refresh interval</label>
+            <select id="desk-refresh-sec" class="dm-select">
+              <option value="0" selected>Off</option>
+              <option value="30">30 s — reload stored bars</option>
+              <option value="60">60 s</option>
+              <option value="120">2 min</option>
+            </select>
+          </div>
+          <div class="dm-field">
+            <label class="dm-label" for="desk-scan-default">Scan workspace default</label>
+            <select id="desk-scan-default" class="dm-select">
+              <option value="trend" selected>Trend</option>
+              <option value="qulla">Qulla</option>
+              <option value="setups">Setups</option>
+              <option value="metrics">Metrics</option>
+              <option value="fractal">Fractal</option>
+            </select>
+          </div>
+        </div>
         <div class="dm-section-rule" aria-hidden="true"></div>
 
         <div class="dm-panel-header">Batch Fetch Settings</div>
@@ -1223,6 +1286,7 @@
 <script src="scripts/setup_scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/macro_desk.js"></script>
+<script src="scripts/desk_prefs.js"></script>
 <script src="scripts/desk_palette.js"></script>
 <script src="scripts/app.js"></script>
 

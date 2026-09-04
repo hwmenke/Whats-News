@@ -27,11 +27,32 @@ class NewsPage extends StatelessWidget {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Text(
-              feed.source.isEmpty
-                  ? 'Yahoo Finance headlines for your watchlist'
-                  : '${feed.source} · watchlist headlines (real stories, no placeholders)',
-              style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  feed.source.isEmpty
+                      ? 'Yahoo Finance headlines — real stories, no placeholders'
+                      : '${feed.source} · real stories, no placeholders',
+                  style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    _ScopeChip(
+                      label: 'Desk',
+                      on: state.newsScope != 'symbol',
+                      onTap: () => state.setNewsScope('desk'),
+                    ),
+                    _ScopeChip(
+                      label: 'This ticker',
+                      on: state.newsScope == 'symbol',
+                      onTap: () => state.setNewsScope('symbol'),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -67,6 +88,36 @@ class NewsPage extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _ScopeChip extends StatelessWidget {
+  const _ScopeChip({required this.label, required this.on, required this.onTap});
+  final String label;
+  final bool on;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: on ? DeskColors.accent.withValues(alpha: 0.2) : DeskColors.card,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: on ? DeskColors.accent : DeskColors.border),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: on ? DeskColors.accentBright : DeskColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 }

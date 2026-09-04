@@ -349,3 +349,45 @@ def filter_kind_for_tag(group_tag: str) -> str:
     if "index" in tag or tag in ("sleeve:core", "lib:broad_etfs", "lib:indices"):
         return "index"
     return ""
+
+
+_GROUP_LABELS = {
+    "sleeve:core": "Core indices",
+    "lib:broad_etfs": "Broad Market ETFs",
+    "lib:sector_etfs": "Sector ETFs",
+    "lib:intl_etfs": "International ETFs",
+    "lib:mega_tech": "Mega-Cap Tech",
+    "lib:themes": "Themes",
+    "lib:rates": "Rates & Credit",
+    "lib:commodities": "Commodities",
+    "lib:listed_crypto": "Listed Crypto",
+}
+
+
+def group_label(group_tag: str) -> str:
+    """Human header for a library / sleeve tag. Empty tag → Ungrouped."""
+    tag = (group_tag or "").strip()
+    if not tag:
+        return "Ungrouped"
+    if tag in _GROUP_LABELS:
+        return _GROUP_LABELS[tag]
+    if tag.startswith("univ:"):
+        return f"Archive · {tag[5:]}"
+    if tag.startswith("lib:"):
+        cat = get_category(tag[4:])
+        if cat:
+            return cat.get("label") or tag
+    if tag.startswith("sleeve:"):
+        sleeve = get_sleeve(tag.split(":", 1)[-1])
+        if sleeve:
+            return sleeve.get("label") or tag
+    return tag
+
+
+def annotate_symbol(row: dict) -> dict:
+    """Add filter_kind / group_label from existing group_tag. No new universe."""
+    out = dict(row or {})
+    tag = out.get("group_tag") or ""
+    out["filter_kind"] = filter_kind_for_tag(tag)
+    out["group_label"] = group_label(tag)
+    return out

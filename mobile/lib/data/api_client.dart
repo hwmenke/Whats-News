@@ -313,7 +313,7 @@ class WhatsNewsApi {
 
   Future<FractalStatus> getFractalScan() async {
     try {
-      final raw = await _get('/api/fractal/scan');
+      final raw = await _get('/api/fractal/scan', const {'desk': '1'});
       if (raw is Map<String, dynamic>) return FractalStatus.fromJson(raw);
       if (raw is Map) return FractalStatus.fromJson(Map<String, dynamic>.from(raw));
     } on ApiException {
@@ -340,11 +340,14 @@ class WhatsNewsApi {
     return const {};
   }
 
-  Future<NewsFeed> getNews({String? symbol}) async {
-    final path = (symbol == null || symbol.trim().isEmpty)
-        ? '/api/news'
-        : '/api/news/${symbol.trim().toUpperCase()}';
-    final raw = await _get(path);
+  Future<NewsFeed> getNews({String? symbol, bool desk = false}) async {
+    if (symbol != null && symbol.trim().isNotEmpty) {
+      final raw = await _get('/api/news/${symbol.trim().toUpperCase()}');
+      if (raw is Map<String, dynamic>) return NewsFeed.fromJson(raw);
+      if (raw is Map) return NewsFeed.fromJson(Map<String, dynamic>.from(raw));
+      return const NewsFeed(articles: []);
+    }
+    final raw = await _get('/api/news', desk ? const {'desk': '1'} : null);
     if (raw is Map<String, dynamic>) return NewsFeed.fromJson(raw);
     if (raw is Map) return NewsFeed.fromJson(Map<String, dynamic>.from(raw));
     return const NewsFeed(articles: []);

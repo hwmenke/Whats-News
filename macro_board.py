@@ -1,7 +1,7 @@
 """Macro / Edges boards from stored Yahoo OHLCV.
 
 No invented prices, z-scores, VIX, or win rates. Missing bars stay dark.
-Fractal D is not computed here — this repo has no Hurst / D65 estimator.
+Fractal D lives in fractal_scan.py (SPEC 25/27), not here.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ import ticker_lists as tl
 
 VIX_CANDIDATES = ("^VIX", "VIX")
 FRACTAL_NOTE = (
-    "No fractal / Hurst / D65 estimator in this repo. "
-    "Will not invent D estimates."
+    "Independent SPEC 25/27 rebuild in fractal_scan.py. "
+    "Not a BCA proprietary estimator."
 )
 
 
@@ -165,6 +165,7 @@ def build_macro_board() -> dict:
             "skipped": spec.get("skipped") or "",
             "tickers": list(spec.get("tickers") or []),
             "ready_count": lit,
+            "missing_count": max(0, len(rows) - lit),
             "rows": rows,
         })
     return {

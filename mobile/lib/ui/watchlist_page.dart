@@ -119,38 +119,47 @@ class _WatchlistPageState extends State<WatchlistPage> {
               child: Text(
                 state.symbols.isEmpty
                     ? 'Empty desk.\n\nSeed a Macro sleeve or Core 50, or type AAPL and tap +. Cards light up after Fetch from Yahoo — no invented prices.'
-                    : 'No names in this Country / Sector / Theme filter.',
+                    : 'No names in this Country / Sector / Theme / Broad filter.',
                 style: const TextStyle(color: DeskColors.muted, height: 1.4),
               ),
             ),
           )
         else
-          SliverList.builder(
-            itemCount: state.visibleSymbols.length,
-            itemBuilder: (context, i) {
-              final s = state.visibleSymbols[i];
-              final selected = s.symbol == state.selectedSymbol;
-              final tape = state.snapshot.named(s.symbol);
-              final setup = state.setupFor(s.symbol);
-              return Dismissible(
-                key: ValueKey(s.symbol),
-                direction: DismissDirection.endToStart,
-                background: Container(
-                  color: DeskColors.red,
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 20),
-                  child: const Icon(CupertinoIcons.delete, color: DeskColors.text),
+          SliverList(
+            delegate: SliverChildListDelegate([
+              for (final group in state.groupedVisible) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                  child: Text(
+                    group.$1,
+                    style: const TextStyle(
+                      color: DeskColors.dim,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-                onDismissed: (_) => state.removeSymbol(s.symbol),
-                child: _SymbolTile(
-                  symbol: s,
-                  selected: selected,
-                  tape: tape,
-                  setup: setup,
-                  onTap: () => widget.onOpenChart(s.symbol),
-                ),
-              );
-            },
+                for (final s in group.$2)
+                  Dismissible(
+                    key: ValueKey(s.symbol),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                      color: DeskColors.red,
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 20),
+                      child: const Icon(CupertinoIcons.delete, color: DeskColors.text),
+                    ),
+                    onDismissed: (_) => state.removeSymbol(s.symbol),
+                    child: _SymbolTile(
+                      symbol: s,
+                      selected: s.symbol == state.selectedSymbol,
+                      tape: state.snapshot.named(s.symbol),
+                      setup: state.setupFor(s.symbol),
+                      onTap: () => widget.onOpenChart(s.symbol),
+                    ),
+                  ),
+              ],
+            ]),
           ),
       ],
     );
@@ -200,6 +209,7 @@ class _FamilyChips extends StatelessWidget {
         chip('country', 'Country'),
         chip('sector', 'Sector'),
         chip('theme', 'Theme'),
+        chip('index', 'Broad'),
       ],
     );
   }

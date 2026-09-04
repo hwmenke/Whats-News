@@ -190,10 +190,10 @@ class NewsApiTests(unittest.TestCase):
         response = self.client.get("/api/news/AAPL")
         data = response.get_json()
 
-        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(data["symbol"], "AAPL")
-        self.assertIn("error", data)
-        self.assertEqual(data["error"], "Network error")
+        self.assertEqual(data.get("articles"), [])
+        self.assertIn("Network error", data.get("message") or "")
 
     @patch("yahoo_news.yf.Ticker")
     def test_get_symbol_news_normalizes_symbol(self, mock_ticker_class):
