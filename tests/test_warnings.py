@@ -134,7 +134,7 @@ class WarningsSurfaceTests(unittest.TestCase):
             blob,
         )
         self.assertIn("whats-news-risk-SPEC-2026-09-04.md", blob)
-        self.assertIn("risk-spec-pending", blob)
+        self.assertIn("risk-clusters", blob)
         self.assertNotIn("bloomberg", blob.lower())
         self.assertNotIn("gamma strip", blob.lower())
 

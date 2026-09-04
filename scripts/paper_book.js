@@ -54,36 +54,10 @@ function showBookArea() {
     loadPaperBook();
 }
 
-function renderRiskSpecScaffold() {
-    const spec = document.getElementById('risk-spec-grid');
-    if (!spec) return;
-    const extra = [
-        ['Groups / clusters', '—'],
-        ['Cluster vol regime (20–60d)', '—'],
-        ['Cluster corr (20–60d)', '—'],
-        ['Marginal VaR 95', '—'],
-        ['Component VaR 95', '—'],
-        ['% of port VaR', '—'],
-        ['Est. vol (SPEC)', '—'],
-        ['Perf week', '—'],
-        ['Perf MTD', '—'],
-        ['Perf YTD', '—'],
-        ['Sharpe', '—'],
-        ['Sortino', '—'],
-        ['Per-name β SPY', '—'],
-    ];
-    spec.innerHTML = extra.map(([k, v]) => `
-        <div class="pnl-exp-row">
-            <span>${_pnlEsc(k)}</span>
-            <span>${_pnlEsc(v)}</span>
-        </div>`).join('');
-}
-
 function showRiskArea() {
     hideBookAreas();
     const el = document.getElementById('risk-area');
     if (el) el.style.display = 'flex';
-    renderRiskSpecScaffold();
     loadPaperRisk();
 }
 
@@ -240,11 +214,22 @@ async function loadPaperBook() {
     }
 }
 
+function _riskDash(v, digits) {
+    if (v == null || Number.isNaN(Number(v))) return '—';
+    return Number(v).toFixed(digits == null ? 2 : digits);
+}
+
+function _riskPack(pack) {
+    if (!pack || pack.pct == null) return { pct: '—', usd: '—' };
+    return { pct: `${Number(pack.pct).toFixed(2)}%`, usd: _pnlMoney(pack.usd) };
+}
+
 async function loadPaperRisk() {
     const note = document.getElementById('risk-note');
     const empty = document.getElementById('risk-empty');
     try {
         const data = await apiFetch(`${API}/book/pnl`);
+        const risk = data.risk || {};
         const conc = data.concentration || {};
         const dd = data.drawdown || {};
         const exp = data.exposure || {};
@@ -252,17 +237,22 @@ async function loadPaperRisk() {
         const chips = document.getElementById('risk-alert-chips');
         if (chips) {
             const bits = [];
+            if (risk.ready) {
+                bits.push(`<span class="pnl-chip">${_pnlEsc(`${risk.n_names || 0} names · ${risk.overlap_days || 0}d overlap · 1d`)}</span>`);
+                if (risk.vol && risk.vol.vol_60 != null) {
+                    bits.push(`<span class="pnl-chip">${_pnlEsc(`σ60 ${Number(risk.vol.vol_60).toFixed(1)}%`)}</span>`);
+                }
+            }
             if (conc.ready) {
                 bits.push(`<span class="pnl-chip">${_pnlEsc(`Top ${conc.top_symbol || ''} ${conc.top_weight_pct ?? '—'}% · HHI ${conc.hhi ?? '—'}`)}</span>`);
             }
-            if (dd.ready && dd.max_dd_pct != null) {
-                bits.push(`<span class="pnl-chip">${_pnlEsc(`Max DD ${Number(dd.max_dd_pct).toFixed(1)}%`)}</span>`);
-            }
-            if (data.beta_spy != null) {
-                bits.push(`<span class="pnl-chip">${_pnlEsc(`β ${Number(data.beta_spy).toFixed(2)}`)}</span>`);
-            }
             alerts.forEach(a => {
                 bits.push(`<span class="pnl-chip is-alert">${_pnlEsc(a.label || a.id)}</span>`);
+            });
+            (risk.names || []).forEach(r => {
+                (r.flags || []).forEach(f => {
+                    bits.push(`<span class="pnl-chip is-alert">${_pnlEsc(f)}</span>`);
+                });
             });
             chips.innerHTML = bits.join('');
         }
@@ -271,11 +261,11 @@ async function loadPaperRisk() {
             const rows = [
                 ['Gross', data.ready ? _pnlMoney(exp.gross) : '—'],
                 ['Net', exp.net == null ? '—' : _pnlMoney(exp.net)],
-                ['Beta vs SPY', data.beta_spy == null ? '—' : Number(data.beta_spy).toFixed(2)],
+                ['σ20 ann', risk.vol && risk.vol.vol_20 != null ? `${Number(risk.vol.vol_20).toFixed(1)}%` : '—'],
+                ['σ60 ann (cov)', risk.vol && risk.vol.vol_60 != null ? `${Number(risk.vol.vol_60).toFixed(1)}%` : '—'],
+                ['Overlap days', risk.overlap_days == null ? '—' : String(risk.overlap_days)],
                 ['Top weight', conc.top_weight_pct == null ? '—' : `${Number(conc.top_weight_pct).toFixed(1)}%`],
-                ['Top-5', conc.top5_share == null ? '—' : `${Number(conc.top5_share).toFixed(1)}%`],
                 ['HHI', conc.hhi == null ? '—' : String(conc.hhi)],
-                ['Max DD', dd.max_dd_pct == null ? '—' : `${Number(dd.max_dd_pct).toFixed(1)}%`],
             ];
             port.innerHTML = rows.map(([k, v]) => `
                 <div class="pnl-exp-row">
@@ -285,27 +275,46 @@ async function loadPaperRisk() {
         }
         const varEl = document.getElementById('risk-var');
         if (varEl) {
-            const v = data.var || {};
-            if (!v.hist_95) {
-                varEl.innerHTML = '<p class="macro-blurb">VaR omitted — need ≥20 daily book returns from stored closes.</p>';
+            const v = risk.var || {};
+            if (!risk.ready || !v.param_95) {
+                varEl.innerHTML = `<p class="macro-blurb">${_pnlEsc(risk.message || 'VaR blank — thin book (SPEC).')}</p>`;
             } else {
                 const row = (label, pack) => `
                     <div class="pnl-metric">
                         <span class="pnl-metric-k">${_pnlEsc(label)}</span>
-                        <span class="pnl-metric-v">${pack?.pct == null ? '—' : _pnlEsc(Number(pack.pct).toFixed(2) + '%')}</span>
-                        <span class="pnl-metric-p">${_pnlEsc(_pnlMoney(pack?.usd))}</span>
+                        <span class="pnl-metric-v">${_pnlEsc(_riskPack(pack).pct)}</span>
+                        <span class="pnl-metric-p">${_pnlEsc(_riskPack(pack).usd)}</span>
                     </div>`;
                 varEl.innerHTML = `
-                    <div class="pnl-var-title">1-day VaR / ES (book NAV returns)</div>
+                    <div class="pnl-var-title">1-day VaR 95 / 99 — hist + param μ=0 60d Σ</div>
                     <div class="pnl-metrics">
                         ${row('Hist 95%', v.hist_95)}
                         ${row('Hist 99%', v.hist_99)}
                         ${row('Param 95%', v.param_95)}
                         ${row('Param 99%', v.param_99)}
-                        ${row('ES 95%', v.es_95)}
                     </div>
-                    <p class="macro-blurb">${_pnlEsc(v.note || '')}</p>`;
+                    <p class="macro-blurb">${_pnlEsc((v.hist_95 && v.hist_95.method) || '')} · ${_pnlEsc((v.param_95 && v.param_95.method) || '')}</p>`;
             }
+        }
+        const perfEl = document.getElementById('risk-perf');
+        if (perfEl) {
+            const p = risk.perf || {};
+            const dash = (v, suf) => (v == null ? '—' : `${Number(v).toFixed(2)}${suf || ''}`);
+            const rows = [
+                ['Day', dash(p.day, '%')],
+                ['Week', dash(p.week, '%')],
+                ['MTD', dash(p.mtd, '%')],
+                ['YTD', dash(p.ytd, '%')],
+                ['Max DD', dash(p.max_dd_pct, '%')],
+                ['Sharpe rf=0', p.sharpe == null ? '—' : Number(p.sharpe).toFixed(2)],
+                ['Sortino rf=0', p.sortino == null ? '—' : Number(p.sortino).toFixed(2)],
+                ['NAV curve', p.curve_kind ? 'synthetic (Yahoo marks)' : '—'],
+            ];
+            perfEl.innerHTML = rows.map(([k, v]) => `
+                <div class="pnl-exp-row">
+                    <span>${_pnlEsc(k)}</span>
+                    <span>${_pnlEsc(v)}</span>
+                </div>`).join('');
         }
         const distEl = document.getElementById('risk-dist');
         if (distEl) {
@@ -313,40 +322,56 @@ async function loadPaperRisk() {
             const maxN = Math.max(1, ...(d.bins || []).map(b => b.n));
             distEl.innerHTML = `
                 <div class="pnl-var-title">Daily return distribution</div>
-                <p class="macro-blurb">n=${d.n || 0} · mean ${d.mean == null ? '—' : d.mean.toFixed(3) + '%'} · σ ${d.stdev == null ? '—' : d.stdev.toFixed(3) + '%'} · skew ${d.skew == null ? '—' : d.skew.toFixed(2)}</p>
+                <p class="macro-blurb">n=${d.n || 0} · mean ${d.mean == null ? '—' : d.mean.toFixed(3) + '%'} · σ ${d.stdev == null ? '—' : d.stdev.toFixed(3) + '%'}</p>
                 <div class="pnl-hist">${(d.bins || []).map(b => `
                     <div class="pnl-hist-bar" style="height:${Math.max(4, (b.n / maxN) * 64)}px" title="${b.lo}–${b.hi}% · ${b.n}"></div>
                 `).join('')}</div>`;
         }
         const tbody = document.getElementById('risk-tbody');
-        const rows = (data.positions || []).filter(r => !r.omitted_from_pnl);
+        const ranked = risk.ranked && risk.ranked.length ? risk.ranked : (risk.names || []);
         if (tbody) {
             tbody.innerHTML = '';
-            rows.forEach(row => {
+            ranked.forEach(row => {
                 const tr = document.createElement('tr');
-                const flag = row.concentrated ? 'CONCENTRATED' : '';
+                const flags = (row.flags || []).join(' ') || '—';
                 tr.innerHTML = `
                     <td class="macro-sym">${_pnlEsc(row.symbol)}</td>
-                    <td>${_pnlEsc(row.side || '')}</td>
                     <td>${row.weight_pct == null ? '—' : `${Number(row.weight_pct).toFixed(1)}%`}</td>
-                    <td class="${_pnlTone(row.day_pnl)}">${_pnlEsc(_pnlMoney(row.day_pnl))}</td>
-                    <td class="${_pnlTone(row.pnl_contrib_pct)}">${row.pnl_contrib_pct == null ? '—' : `${Number(row.pnl_contrib_pct).toFixed(1)}%`}</td>
-                    <td>${row.vol_30 == null ? '—' : `${Number(row.vol_30).toFixed(1)}%`}</td>
-                    <td>${row.risk_contrib_pct == null ? '—' : `${Number(row.risk_contrib_pct).toFixed(1)}%`}</td>
-                    <td>${flag ? `<span class="pnl-chip is-alert">${_pnlEsc(flag)}</span>` : '—'}</td>`;
+                    <td>${_riskDash(row.vol_20, 1)}</td>
+                    <td>${_riskDash(row.vol_60, 1)}</td>
+                    <td>${row.beta_spy_60 == null ? '—' : Number(row.beta_spy_60).toFixed(2)}</td>
+                    <td>${row.mvar_95 == null ? '—' : _pnlMoney(row.mvar_95)}</td>
+                    <td>${row.cvar_95 == null ? '—' : _pnlMoney(row.cvar_95)}</td>
+                    <td>${row.pct_var == null ? '—' : `${Number(row.pct_var).toFixed(1)}%`}</td>
+                    <td>${flags === '—' ? '—' : `<span class="pnl-chip is-alert">${_pnlEsc(flags)}</span>`}</td>`;
                 tr.querySelector('.macro-sym')?.addEventListener('click', () => {
                     if (row.symbol && typeof selectSymbol === 'function') selectSymbol(row.symbol);
                 });
                 tbody.appendChild(tr);
             });
         }
-        if (empty) empty.style.display = rows.length ? 'none' : 'block';
-        if (note) note.textContent = data.message || conc.note || data.note || '';
-        renderRiskSpecScaffold();
+        const cl = document.getElementById('risk-clusters');
+        if (cl) {
+            const groups = risk.clusters || [];
+            if (!groups.length) {
+                cl.innerHTML = '<p class="wn-empty">none</p>';
+            } else {
+                cl.innerHTML = groups.map(g => `
+                    <div class="pnl-exp-row">
+                        <span>${_pnlEsc(`C${g.id} ${(g.members || []).join(' ')}`)}</span>
+                        <span>${_pnlEsc(`${g.regime || '—'} · %VaR ${g.pct_var == null ? '—' : Number(g.pct_var).toFixed(1)} · σ20 ${g.vol_20 == null ? '—' : Number(g.vol_20).toFixed(1)} / σ60 ${g.vol_60 == null ? '—' : Number(g.vol_60).toFixed(1)}`)}</span>
+                    </div>`).join('');
+            }
+        }
+        if (empty) empty.style.display = (risk.ready && ranked.length) ? 'none' : 'block';
+        if (note) {
+            note.textContent = risk.ready
+                ? (risk.note || data.note || '')
+                : (risk.message || data.message || risk.note || '');
+        }
     } catch (err) {
         if (note) note.textContent = err.message || 'Risk unavailable';
         if (empty) empty.style.display = 'block';
-        renderRiskSpecScaffold();
     }
 }
 
@@ -428,4 +453,3 @@ window.hideBookAreas = hideBookAreas;
 window.loadPaperPnl = loadPaperPnl;
 window.loadPaperBook = loadPaperBook;
 window.loadPaperRisk = loadPaperRisk;
-window.renderRiskSpecScaffold = renderRiskSpecScaffold;

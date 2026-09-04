@@ -1513,38 +1513,37 @@
       </div>
     </div>
 
-    <!-- ── Risk — portfolio + per-name (VaR/ES, HHI, DD, beta, contribution) ── -->
+    <!-- ── Risk — SPEC 2026-09-04 (VaR / MVaR / clusters). Paper marks only. ── -->
     <div id="risk-area" class="risk-container" style="display:none;">
       <div class="book-head">
         <div>
           <strong class="risk-title">Risk</strong>
-          <p class="pnl-blurb">Portfolio and per-name risk from stored Yahoo marks. VaR/ES omitted under 20 daily NAV returns. Blank = no bars — never invented.</p>
+          <p class="pnl-blurb">SPEC /workspace/whats-news-risk-SPEC-2026-09-04.md · 1d VaR 95/99 hist + param (μ=0, 60d Σ). Thin book (&lt;3 names / &lt;60 overlap / singular Σ) is blank. Synthetic NAV labeled. Never invented.</p>
         </div>
         <button type="button" class="btn btn-ghost btn-sm" id="btn-risk-refresh">Reload</button>
       </div>
       <div id="risk-alert-chips" class="pnl-alert-chips" aria-label="Risk chips"></div>
       <div id="risk-portfolio" class="pnl-exposure" role="table" aria-label="Portfolio risk"></div>
       <div id="risk-var" class="pnl-var"></div>
+      <div id="risk-perf" class="pnl-exposure" aria-label="Performance"></div>
       <div id="risk-dist" class="pnl-dist"></div>
+      <h3 class="risk-spec-title">Ranked %VaR</h3>
       <div class="scanner-table-wrap">
         <table class="scanner-table risk-table" id="risk-table">
           <thead>
             <tr>
-              <th>Symbol</th><th>Side</th><th>Weight</th><th>Day $</th><th>P&amp;L %</th>
-              <th>Vol30</th><th>Risk %</th><th>Flag</th>
+              <th>Symbol</th><th>w</th><th>σ20</th><th>σ60</th><th>β SPY</th>
+              <th>MVaR</th><th>CVaR</th><th>%VaR</th><th>FLAG</th>
             </tr>
           </thead>
           <tbody id="risk-tbody"></tbody>
         </table>
       </div>
+      <h3 class="risk-spec-title">Clusters</h3>
+      <div id="risk-clusters" class="pnl-exposure" aria-label="Clusters"></div>
       <div id="risk-empty" class="scanner-empty" style="display:none;">
-        <p>No marked names. Import a book and Fetch Yahoo so weight / vol / VaR can compute.</p>
+        <p>Thin or unmarked. Need ≥3 names, ≥60 overlapping daily closes, non-singular 60d Σ.</p>
       </div>
-      <section id="risk-spec-pending" class="risk-spec">
-        <h3 class="risk-spec-title">SPEC pending</h3>
-        <p class="pnl-blurb">TODO: fold Quant formulas from /workspace/whats-news-risk-SPEC-2026-09-04.md when that file is readable. Until then every extra cell is — — no invented numbers. Existing hist/param VaR/ES above stays.</p>
-        <div id="risk-spec-grid" class="pnl-exposure" aria-label="Risk SPEC scaffold"></div>
-      </section>
       <p id="risk-note" class="pnl-blurb"></p>
     </div>
 

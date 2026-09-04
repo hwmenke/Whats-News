@@ -1333,6 +1333,190 @@ class BookPosition {
   }
 }
 
+class RiskName {
+  const RiskName({
+    required this.symbol,
+    this.weightPct,
+    this.vol20,
+    this.vol60,
+    this.betaSpy60,
+    this.mvar95,
+    this.cvar95,
+    this.pctVar,
+    this.ivar95,
+    this.flags = const [],
+    this.regime = '',
+  });
+
+  final String symbol;
+  final double? weightPct;
+  final double? vol20;
+  final double? vol60;
+  final double? betaSpy60;
+  final double? mvar95;
+  final double? cvar95;
+  final double? pctVar;
+  final double? ivar95;
+  final List<String> flags;
+  final String regime;
+
+  factory RiskName.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return RiskName(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      weightPct: n(json['weight_pct']),
+      vol20: n(json['vol_20']),
+      vol60: n(json['vol_60']),
+      betaSpy60: n(json['beta_spy_60']),
+      mvar95: n(json['mvar_95']),
+      cvar95: n(json['cvar_95']),
+      pctVar: n(json['pct_var']),
+      ivar95: n(json['ivar_95']),
+      flags: [
+        if (json['flags'] is List) for (final f in json['flags']) '$f',
+      ],
+      regime: '${json['regime'] ?? ''}',
+    );
+  }
+}
+
+class RiskCluster {
+  const RiskCluster({
+    this.id = 0,
+    this.members = const [],
+    this.pctVar,
+    this.vol20,
+    this.vol60,
+    this.regime = '',
+  });
+
+  final int id;
+  final List<String> members;
+  final double? pctVar;
+  final double? vol20;
+  final double? vol60;
+  final String regime;
+
+  factory RiskCluster.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return RiskCluster(
+      id: json['id'] is num ? (json['id'] as num).toInt() : 0,
+      members: [
+        if (json['members'] is List) for (final m in json['members']) '$m',
+      ],
+      pctVar: n(json['pct_var']),
+      vol20: n(json['vol_20']),
+      vol60: n(json['vol_60']),
+      regime: '${json['regime'] ?? ''}',
+    );
+  }
+}
+
+class RiskPack {
+  const RiskPack({
+    this.ready = false,
+    this.thin = true,
+    this.message = '',
+    this.note = '',
+    this.nNames = 0,
+    this.overlapDays = 0,
+    this.vol20,
+    this.vol60,
+    this.hist95Pct,
+    this.param95Pct,
+    this.hist99Pct,
+    this.param99Pct,
+    this.dayPct,
+    this.weekPct,
+    this.mtdPct,
+    this.ytdPct,
+    this.maxDdPct,
+    this.sharpe,
+    this.sortino,
+    this.curveKind = '',
+    this.names = const [],
+    this.clusters = const [],
+  });
+
+  final bool ready;
+  final bool thin;
+  final String message;
+  final String note;
+  final int nNames;
+  final int overlapDays;
+  final double? vol20;
+  final double? vol60;
+  final double? hist95Pct;
+  final double? param95Pct;
+  final double? hist99Pct;
+  final double? param99Pct;
+  final double? dayPct;
+  final double? weekPct;
+  final double? mtdPct;
+  final double? ytdPct;
+  final double? maxDdPct;
+  final double? sharpe;
+  final double? sortino;
+  final String curveKind;
+  final List<RiskName> names;
+  final List<RiskCluster> clusters;
+
+  static const empty = RiskPack(message: 'Thin book — Risk stack blank.');
+
+  factory RiskPack.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    Map<String, dynamic> pack(Object? raw) => raw is Map ? Map<String, dynamic>.from(raw) : const {};
+    final vr = json['var'] is Map ? Map<String, dynamic>.from(json['var'] as Map) : const <String, dynamic>{};
+    final vol = json['vol'] is Map ? Map<String, dynamic>.from(json['vol'] as Map) : const <String, dynamic>{};
+    final perf = json['perf'] is Map ? Map<String, dynamic>.from(json['perf'] as Map) : const <String, dynamic>{};
+    final ranked = json['ranked'] is List ? json['ranked'] : json['names'];
+    return RiskPack(
+      ready: json['ready'] == true,
+      thin: json['thin'] != false,
+      message: '${json['message'] ?? ''}',
+      note: '${json['note'] ?? ''}',
+      nNames: json['n_names'] is num ? (json['n_names'] as num).toInt() : 0,
+      overlapDays: json['overlap_days'] is num ? (json['overlap_days'] as num).toInt() : 0,
+      vol20: n(vol['vol_20']),
+      vol60: n(vol['vol_60']),
+      hist95Pct: n(pack(vr['hist_95'])['pct']),
+      param95Pct: n(pack(vr['param_95'])['pct']),
+      hist99Pct: n(pack(vr['hist_99'])['pct']),
+      param99Pct: n(pack(vr['param_99'])['pct']),
+      dayPct: n(perf['day']),
+      weekPct: n(perf['week']),
+      mtdPct: n(perf['mtd']),
+      ytdPct: n(perf['ytd']),
+      maxDdPct: n(perf['max_dd_pct']),
+      sharpe: n(perf['sharpe']),
+      sortino: n(perf['sortino']),
+      curveKind: '${perf['curve_kind'] ?? ''}',
+      names: [
+        if (ranked is List)
+          for (final r in ranked)
+            if (r is Map) RiskName.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      clusters: [
+        if (json['clusters'] is List)
+          for (final c in json['clusters'])
+            if (c is Map) RiskCluster.fromJson(Map<String, dynamic>.from(c)),
+      ],
+    );
+  }
+}
+
 class BookPnl {
   const BookPnl({
     this.ready = false,
@@ -1363,6 +1547,7 @@ class BookPnl {
     this.hhi,
     this.maxDdPct,
     this.alerts = const [],
+    this.risk = RiskPack.empty,
   });
 
   final bool ready;
@@ -1393,6 +1578,7 @@ class BookPnl {
   final double? hhi;
   final double? maxDdPct;
   final List<String> alerts;
+  final RiskPack risk;
 
   static const empty = BookPnl(
     message: 'Empty paper book. Import a Fidelity CSV or add a line.',
@@ -1458,6 +1644,9 @@ class BookPnl {
             if (a is Map) '${a['id'] ?? a['label'] ?? ''}'
             else if (a != null) '$a',
       ].where((e) => e.isNotEmpty).toList(),
+      risk: json['risk'] is Map
+          ? RiskPack.fromJson(Map<String, dynamic>.from(json['risk'] as Map))
+          : RiskPack.empty,
     );
   }
 }

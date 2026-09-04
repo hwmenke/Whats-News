@@ -19,6 +19,7 @@ class DeskDensityTests(unittest.TestCase):
             "scripts/paper_book.js",
             "scripts/engine_desk.js",
             "scripts/warnings_desk.js",
+            "risk_spec.py",
         ):
             with open(path, encoding="utf-8") as fh:
                 blob += fh.read()
@@ -59,7 +60,7 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("loadWarnings", self.blob)
         self.assertIn("scan-help", self.blob)
         self.assertIn("whats-news-risk-SPEC-2026-09-04.md", self.blob)
-        self.assertIn("risk-spec-pending", self.blob)
+        self.assertIn("risk-clusters", self.blob)
 
     def test_hard_ui_lock_font_c_v41_not_v2_v3(self):
         theme = ""

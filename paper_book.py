@@ -16,6 +16,7 @@ import numpy as np
 
 import database as db
 import market_data as md
+import risk_spec
 
 NOTE = (
     "Paper / local only. Marks and VaR use stored Yahoo daily closes. "
@@ -730,6 +731,7 @@ def empty_pnl() -> dict:
             "note": DRAWDOWN_NOTE,
         },
         "alerts": [],
+        "risk": risk_spec.blank_stack(reason=risk_spec.THIN_NOTE),
     }
 
 
@@ -823,6 +825,8 @@ def book_pnl() -> dict:
     drawdown = _max_drawdown(curve)
     alerts = _risk_alerts(concentration, drawdown)
     hmm_label = _spy_hmm_label() if ready else None
+    spy_closes = _daily_closes("SPY", limit=400)
+    risk_pack = risk_spec.evaluate(ready, curve=curve, spy_closes=spy_closes)
     today_abs = sum(abs(m["day_pnl"]) for m in ready if m.get("day_pnl") is not None)
     for m in marked:
         mv = _finite(m.get("market_value"))
@@ -906,4 +910,5 @@ def book_pnl() -> dict:
         "concentration": concentration,
         "drawdown": drawdown,
         "alerts": alerts,
+        "risk": risk_pack,
     }

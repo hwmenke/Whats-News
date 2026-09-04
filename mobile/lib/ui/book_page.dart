@@ -201,7 +201,9 @@ class BookPage extends StatelessWidget {
       return '${v < 0 ? '−' : ''}\$$abs';
     }
 
-    final rows = pnl.positions;
+    String pct(double? v) => v == null ? '—' : '${v.toStringAsFixed(2)}%';
+    final risk = pnl.risk;
+    final rows = risk.names;
     return [
       SliverToBoxAdapter(
         child: Padding(
@@ -213,57 +215,52 @@ class BookPage extends StatelessWidget {
                 'Portfolio risk',
                 style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4),
               ),
+              const SizedBox(height: 4),
+              const Text(
+                'SPEC /workspace/whats-news-risk-SPEC-2026-09-04.md · 1d VaR hist + param μ=0 60d Σ. Thin book is blank.',
+                style: TextStyle(color: DeskColors.muted, fontSize: 11),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
                 children: [
+                  if (risk.ready)
+                    _RiskChip('${risk.nNames} names · ${risk.overlapDays}d'),
+                  if (risk.vol60 != null) _RiskChip('σ60 ${risk.vol60!.toStringAsFixed(1)}%'),
                   if (pnl.topWeightPct != null)
                     _RiskChip('Top ${pnl.topSymbol.isEmpty ? '' : '${pnl.topSymbol} '}${pnl.topWeightPct!.toStringAsFixed(0)}%'),
                   if (pnl.hhi != null) _RiskChip('HHI ${pnl.hhi!.toStringAsFixed(0)}'),
-                  if (pnl.maxDdPct != null) _RiskChip('Max DD ${pnl.maxDdPct!.toStringAsFixed(1)}%'),
-                  if (pnl.betaSpy != null) _RiskChip('β ${pnl.betaSpy!.toStringAsFixed(2)}'),
                   for (final a in pnl.alerts) _RiskChip(a, alert: true),
+                  for (final r in rows)
+                    for (final f in r.flags) _RiskChip(f, alert: true),
                 ],
               ),
               const SizedBox(height: 10),
               _ExpRow('Net', usd(pnl.net)),
-              _ExpRow('Beta', pnl.betaSpy?.toStringAsFixed(2) ?? '—'),
-              _ExpRow('Top weight', pnl.topWeightPct == null ? '—' : '${pnl.topWeightPct!.toStringAsFixed(1)}%'),
-              _ExpRow('HHI', pnl.hhi?.toStringAsFixed(0) ?? '—'),
-              _ExpRow('Max DD', pnl.maxDdPct == null ? '—' : '${pnl.maxDdPct!.toStringAsFixed(1)}%'),
-              const SizedBox(height: 10),
-              Text(
-                'VaR hist 95% ${pnl.hist95Pct?.toStringAsFixed(2) ?? '—'}% · param ${pnl.param95Pct?.toStringAsFixed(2) ?? '—'}% · ES ${pnl.es95Pct?.toStringAsFixed(2) ?? '—'}%',
-                style: const TextStyle(color: DeskColors.dim, fontSize: 11, height: 1.4),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'SPEC pending',
-                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4, fontSize: 12),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'TODO: fold Quant formulas from /workspace/whats-news-risk-SPEC-2026-09-04.md when readable. Extra cells stay — — no invented numbers.',
-                style: TextStyle(color: DeskColors.muted, fontSize: 11, height: 1.35),
-              ),
-              const SizedBox(height: 6),
-              const _ExpRow('Groups / clusters', '—'),
-              const _ExpRow('Cluster vol / corr (20–60d)', '—'),
-              const _ExpRow('Marginal / component VaR', '—'),
-              const _ExpRow('% of port VaR', '—'),
-              const _ExpRow('Est. vol (SPEC)', '—'),
-              const _ExpRow('Week / MTD / YTD', '—'),
-              const _ExpRow('Sharpe / Sortino', '—'),
-              const _ExpRow('Per-name β SPY', '—'),
+              _ExpRow('σ20 / σ60', '${pct(risk.vol20)} / ${pct(risk.vol60)}'),
+              _ExpRow('Hist 95 / 99', '${pct(risk.hist95Pct)} / ${pct(risk.hist99Pct)}'),
+              _ExpRow('Param 95 / 99', '${pct(risk.param95Pct)} / ${pct(risk.param99Pct)}'),
+              _ExpRow('Day / week', '${pct(risk.dayPct)} / ${pct(risk.weekPct)}'),
+              _ExpRow('MTD / YTD', '${pct(risk.mtdPct)} / ${pct(risk.ytdPct)}'),
+              _ExpRow('Max DD', pct(risk.maxDdPct)),
+              _ExpRow('Sharpe / Sortino', '${risk.sharpe?.toStringAsFixed(2) ?? '—'} / ${risk.sortino?.toStringAsFixed(2) ?? '—'}'),
+              _ExpRow('NAV', risk.curveKind.isEmpty ? '—' : 'synthetic Yahoo marks'),
+              if (!risk.ready) ...[
+                const SizedBox(height: 8),
+                Text(
+                  risk.message.isEmpty ? 'Thin book — Risk stack blank.' : risk.message,
+                  style: const TextStyle(color: DeskColors.muted, fontSize: 11, height: 1.35),
+                ),
+              ],
               const SizedBox(height: 16),
               const Text(
-                'Per-name risk',
+                'Ranked %VaR',
                 style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4),
               ),
               const SizedBox(height: 4),
               const Text(
-                'Weight · stand-alone 30d vol · risk contribution. Blank if bars are missing.',
+                'w · σ20/σ60 · β SPY 60d · MVaR / CVaR / %VaR. FLAG = CONC/VOL_SPIKE/THIN/SHORT.',
                 style: TextStyle(color: DeskColors.muted, fontSize: 11),
               ),
             ],
@@ -275,7 +272,7 @@ class BookPage extends StatelessWidget {
           child: Padding(
             padding: EdgeInsets.all(24),
             child: Text(
-              'No marked names. Import a book and Fetch Yahoo so weight / vol / VaR can compute.',
+              'Thin or unmarked. Need ≥3 names, ≥60 overlapping daily closes, non-singular 60d Σ.',
               style: TextStyle(color: DeskColors.muted, height: 1.4),
             ),
           ),
@@ -292,19 +289,49 @@ class BookPage extends StatelessWidget {
                 child: Text(
                   [
                     r.symbol,
-                    r.weightPct == null ? 'wt —' : 'wt ${r.weightPct!.toStringAsFixed(1)}%',
-                    r.vol30 == null ? 'vol —' : 'vol ${r.vol30!.toStringAsFixed(1)}%',
-                    r.riskContribPct == null ? 'rc —' : 'rc ${r.riskContribPct!.toStringAsFixed(1)}%',
-                    if (r.concentrated) 'CONCENTRATED',
+                    r.weightPct == null ? 'w —' : 'w ${r.weightPct!.toStringAsFixed(1)}%',
+                    r.vol20 == null ? 'σ20 —' : 'σ20 ${r.vol20!.toStringAsFixed(1)}',
+                    r.vol60 == null ? 'σ60 —' : 'σ60 ${r.vol60!.toStringAsFixed(1)}',
+                    r.betaSpy60 == null ? 'β —' : 'β ${r.betaSpy60!.toStringAsFixed(2)}',
+                    r.mvar95 == null ? 'MVaR —' : 'MVaR ${usd(r.mvar95)}',
+                    r.cvar95 == null ? 'CVaR —' : 'CVaR ${usd(r.cvar95)}',
+                    r.pctVar == null ? '%VaR —' : '%VaR ${r.pctVar!.toStringAsFixed(1)}',
+                    if (r.flags.isNotEmpty) r.flags.join(' '),
                   ].join(' · '),
-                  style: TextStyle(
-                    color: r.ready ? DeskColors.text : DeskColors.dim,
-                    fontSize: 13,
-                  ),
+                  style: const TextStyle(color: DeskColors.text, fontSize: 13),
                 ),
               ),
             );
           },
+        ),
+      if (risk.clusters.isNotEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Clusters',
+                  style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4),
+                ),
+                const SizedBox(height: 6),
+                for (final c in risk.clusters)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      [
+                        'C${c.id}',
+                        c.members.join(' '),
+                        c.regime.isEmpty ? '—' : c.regime,
+                        c.pctVar == null ? '%VaR —' : '%VaR ${c.pctVar!.toStringAsFixed(1)}',
+                      ].join(' · '),
+                      style: const TextStyle(color: DeskColors.text, fontSize: 12),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
     ];
   }
