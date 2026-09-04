@@ -42,7 +42,7 @@ class ScansPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Same Python scans as the web desk. Market Moves is GET /api/market-moves (QUANT-locked z). Command / Setup / Pattern / RSI-C / Sigma are the ENGINE boards. Fractal is SPEC 25/27. HMM is a research label, not edge. Finviz is public HTML only. Breadth is our Yahoo/SQLite universe — not a scraped Market Monitor.',
+                  'Same Python scans as the web desk. Market Moves is GET /api/market-moves (QUANT-locked z). Command / Setup / Pattern / RSI-C / Sigma are the ENGINE boards. Column order/visibility: GET /api/boards/registry (JSON; YAML twin on disk). Web Customize writes whats-news-desk-prefs.boardColumns — Flutter should persist the same map and apply it in _movesSlivers / _setupEngineSlivers. Fractal is SPEC 25/27. HMM is a research label, not edge. Finviz is public HTML only. Breadth is our Yahoo/SQLite universe — not a scraped Market Monitor.',
                   style: TextStyle(color: DeskColors.muted, fontSize: 12),
                 ),
                 const SizedBox(height: 8),
@@ -1008,6 +1008,12 @@ class ScansPage extends StatelessWidget {
   }
 
   /// Flutter path for Market Moves: same GET /api/market-moves as the web grid.
+  ///
+  /// Customize (web first): GET /api/boards/registry or payload.columns[].
+  /// Persist SharedPreferences key `whats-news-desk-prefs` field `boardColumns`
+  /// `{ market_moves: { order: [...], hidden: [...] }, engine_setup: {...} }`
+  /// then render only visible ids in this sliver. Locked `name` / `symbol` stay on.
+  /// Do not invent PX / z when a measure is hidden.
   List<Widget> _movesSlivers(WhatsNewsState s) {
     final b = s.marketMoves;
     return [

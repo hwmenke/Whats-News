@@ -1,0 +1,44 @@
+/* ============================================================
+   Font C + v4.1 tokens — ONE theme file for faces + heat.
+   Public Sans (titles) · Inter (UI) · JetBrains Mono (numbers).
+   Soft R/G heat. No board borders. MM density.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Public+Sans:wght@500;600;700&display=swap');
+
+:root {
+  --font-title: 'Public Sans', 'Inter', sans-serif;
+  --font-main:  'Inter', sans-serif;
+  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
+
+  --heat-green-rgb: 34, 197, 94;
+  --heat-red-rgb:   239, 68, 68;
+  --heat-floor:     0.06;
+  --heat-span:      0.32;
+
+  --mm-row-h:       22px;
+  --engine-row-h:   28px;
+  --board-border:   none;
+  --board-radius:   0;
+}
+
+.mm-head h2,
+.mm-card h3,
+.engine-container h3,
+.engine-count span,
+.desk-ia-bar,
+.board-customize h3 {
+  font-family: var(--font-title);
+}
+
+.moves-container,
+.engine-container,
+.board-customize {
+  font-family: var(--font-main);
+}
+
+.mm-table,
+.engine-heat-table,
+.board-customize-keys {
+  font-family: var(--font-mono);
+}

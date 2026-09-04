@@ -169,15 +169,30 @@ def macro_board_api():
         return jsonify({"error": str(exc)}), 500
 
 
+def _with_board_columns(payload, board_id):
+    """Stamp registry columns onto a board payload. No measure math."""
+    if not board_id:
+        return payload
+    import board_registry
+    return board_registry.attach(payload, board_id)
+
+
+@app.route("/api/boards/registry", methods=["GET"])
+def boards_registry_api():
+    """Column + measure registry for Market Moves and ENGINE (JSON; YAML twin on disk)."""
+    import board_registry
+    return jsonify(board_registry.catalog())
+
+
 @app.route("/api/market-moves", methods=["GET"])
 def market_moves_api():
     """Dense Market Moves grid — QUANT-locked z from stored Yahoo closes."""
     import market_moves as mm
     try:
-        return jsonify(mm.build_board())
+        return jsonify(_with_board_columns(mm.build_board(), "market_moves"))
     except Exception as exc:
         if "no such table" in str(exc).lower():
-            return jsonify(mm.empty_board())
+            return jsonify(_with_board_columns(mm.empty_board(), "market_moves"))
         return jsonify({"error": str(exc)}), 500
 
 
@@ -516,18 +531,18 @@ def _engine_desk_symbols():
         raise
 
 
-def _engine_payload(builder, **kwargs):
+def _engine_payload(builder, board_id=None, **kwargs):
     import equity_engine
     ensure_local_schema()
     desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
     try:
         symbols = _engine_desk_symbols() if desk else None
         if desk and not symbols:
-            return jsonify(builder(symbols=[], **kwargs))
-        return jsonify(builder(symbols=symbols, **kwargs))
+            return jsonify(_with_board_columns(builder(symbols=[], **kwargs), board_id))
+        return jsonify(_with_board_columns(builder(symbols=symbols, **kwargs), board_id))
     except Exception as exc:
         if "no such table" in str(exc).lower():
-            return jsonify(builder(symbols=[], **kwargs))
+            return jsonify(_with_board_columns(builder(symbols=[], **kwargs), board_id))
         return jsonify({"error": str(exc)}), 500
 
 
@@ -549,7 +564,7 @@ def engine_command_api():
 def engine_board_api():
     """Dense Setup Breakout ENGINE heat board."""
     import equity_engine
-    return _engine_payload(equity_engine.board)
+    return _engine_payload(equity_engine.board, board_id="engine_setup")
 
 
 @app.route("/api/engine/rsi-counter", methods=["GET"])
@@ -587,14 +602,14 @@ def engine_stretch_api():
 def engine_sigma_api():
     """Macro-style return + σ grid from stored Yahoo closes."""
     import equity_engine
-    return _engine_payload(equity_engine.sigma_board)
+    return _engine_payload(equity_engine.sigma_board, board_id="engine_sigma")
 
 
 @app.route("/api/engine/maps", methods=["GET"])
 def engine_maps_api():
     """Scanner / Rotation / Coil / Fractal×TD / TMS Regime from stored bars."""
     import engine_maps
-    return _engine_payload(engine_maps.maps_board)
+    return _engine_payload(engine_maps.maps_board, board_id="engine_maps")
 
 
 @app.route("/api/hmm/combo", methods=["GET"])

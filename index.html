@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Whats-News – Watchlist Dashboard</title>
   <meta name="description" content="Whats-News: local watchlist dashboard with Yahoo Finance charts, analysis, and real headlines." />
+  <link rel="stylesheet" href="styles/theme.css" />
   <link rel="stylesheet" href="styles/main.css" />
   <!-- TradingView Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
@@ -1207,6 +1208,7 @@
         <div class="setup-scanner-header">
           <strong>Setup ENGINE</strong>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-engine-board">Load /api/engine/board</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-customize-board="engine_setup">Customize</button>
           <span id="engine-board-meta" class="scanner-ts"></span>
         </div>
         <p class="macro-blurb">WATCH | FORMING | TRIGGERED | ACCEPTED | OPPORTUNITY | DORMANT | EXTENDED | NO TRADE + D1.x + D+W. D is SPEC 25/27 only. VCP is an honest proxy, not certified VCP.</p>
@@ -1276,6 +1278,7 @@
         <div class="setup-scanner-header">
           <strong>Sigma grid</strong>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-engine-sigma">Load /api/engine/sigma</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-customize-board="engine_sigma">Customize</button>
           <span id="engine-sigma-meta" class="scanner-ts"></span>
         </div>
         <p class="macro-blurb">σ = move / (trailing daily σ × √horizon). Yahoo/SQLite only. TAKEAWAY is a research string, not a trade.</p>
@@ -1310,6 +1313,7 @@
         <div class="setup-scanner-header">
           <strong>Visual maps</strong>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-engine-maps">Load /api/engine/maps</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-customize-board="engine_maps">Customize</button>
           <span id="engine-maps-meta" class="scanner-ts"></span>
         </div>
         <p class="macro-blurb">Yahoo/SQLite only. Rotation + Coil first, then Fractal×TD + TMS Regime. TD is an honest approx — never invented TD13 stars. Fractal markers only when SPEC 25/27 D exists. TMAC* is a heat proxy, never branded TMAC. Not a win rate.</p>
@@ -1335,6 +1339,7 @@
         </div>
         <div class="mm-actions">
           <button type="button" class="btn btn-ghost btn-sm" id="btn-moves-reload">Reload</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-customize-board="market_moves">Customize</button>
           <button type="button" class="btn btn-primary btn-sm" id="btn-moves-fetch">Fetch Indexes + Big Tech + Sectors</button>
           <span id="moves-fetch-meta" class="scanner-ts"></span>
         </div>
@@ -1704,6 +1709,18 @@
   </div>
 </div>
 
+<aside id="board-customize" class="board-customize" hidden>
+  <header>
+    <h3 id="board-customize-title">Customize columns</h3>
+    <button type="button" class="btn btn-ghost btn-sm" id="board-customize-close">Close</button>
+  </header>
+  <p class="board-customize-blurb">Toggle and reorder columns for Market Moves and ENGINE. Locked identity columns stay visible. Layout is local only — same key Flutter should use: <code>whats-news-desk-prefs.boardColumns</code>.</p>
+  <ol id="board-customize-list"></ol>
+  <footer>
+    <button type="button" class="btn btn-ghost btn-sm" id="board-customize-reset">Reset defaults</button>
+  </footer>
+</aside>
+
 <!-- Scripts -->
 <script src="scripts/charts.js"></script>
 <script src="scripts/legend_stats.js"></script>
@@ -1719,6 +1736,7 @@
 <script src="scripts/setup_scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/macro_desk.js"></script>
+<script src="scripts/board_registry.js"></script>
 <script src="scripts/market_moves.js"></script>
 <script src="scripts/paper_book.js"></script>
 <script src="scripts/finviz_desk.js"></script>

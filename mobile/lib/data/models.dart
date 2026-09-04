@@ -602,6 +602,82 @@ class MacroSleeveBlock {
   }
 }
 
+/// Column + measure registry from GET /api/boards/registry.
+class BoardRegistryCatalog {
+  const BoardRegistryCatalog({
+    this.version = 1,
+    this.theme = '',
+    this.flutterPath = '',
+    this.boards = const {},
+  });
+
+  final int version;
+  final String theme;
+  final String flutterPath;
+  final Map<String, List<BoardColumn>> boards;
+
+  static const empty = BoardRegistryCatalog();
+
+  factory BoardRegistryCatalog.fromJson(Map<String, dynamic> json) {
+    final rawBoards = json['boards'];
+    final boards = <String, List<BoardColumn>>{};
+    if (rawBoards is Map) {
+      rawBoards.forEach((key, value) {
+        final cols = value is Map ? value['columns'] : null;
+        boards['$key'] = [
+          if (cols is List)
+            for (final item in cols)
+              if (item is Map) BoardColumn.fromJson(Map<String, dynamic>.from(item)),
+        ];
+      });
+    }
+    return BoardRegistryCatalog(
+      version: json['version'] is int ? json['version'] as int : 1,
+      theme: '${json['theme'] ?? ''}',
+      flutterPath: '${json['flutter_path'] ?? ''}',
+      boards: boards,
+    );
+  }
+}
+
+class BoardColumn {
+  const BoardColumn({
+    required this.id,
+    this.label = '',
+    this.measure = '',
+    this.key = '',
+    this.format = 'text',
+    this.heat = 'none',
+    this.visible = true,
+    this.locked = false,
+    this.formula = '',
+  });
+
+  final String id;
+  final String label;
+  final String measure;
+  final String key;
+  final String format;
+  final String heat;
+  final bool visible;
+  final bool locked;
+  final String formula;
+
+  factory BoardColumn.fromJson(Map<String, dynamic> json) {
+    return BoardColumn(
+      id: '${json['id'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+      measure: '${json['measure'] ?? ''}',
+      key: '${json['key'] ?? ''}',
+      format: '${json['format'] ?? 'text'}',
+      heat: '${json['heat'] ?? 'none'}',
+      visible: json['visible'] != false,
+      locked: json['locked'] == true,
+      formula: '${json['formula'] ?? ''}',
+    );
+  }
+}
+
 /// Market Moves board from GET /api/market-moves (QUANT-locked z).
 class MarketMovesBoard {
   const MarketMovesBoard({
@@ -611,6 +687,8 @@ class MarketMovesBoard {
     this.legend = '',
     this.source = '',
     this.note = '',
+    this.columns = const [],
+    this.boardId = '',
   });
 
   final String? asof;
@@ -619,6 +697,8 @@ class MarketMovesBoard {
   final String legend;
   final String source;
   final String note;
+  final List<BoardColumn> columns;
+  final String boardId;
 
   static const empty = MarketMovesBoard();
 
@@ -634,6 +714,12 @@ class MarketMovesBoard {
       legend: '${json['legend'] ?? ''}',
       source: '${json['source'] ?? ''}',
       note: '${json['note'] ?? ''}',
+      columns: [
+        if (json['columns'] is List)
+          for (final item in json['columns'])
+            if (item is Map) BoardColumn.fromJson(Map<String, dynamic>.from(item)),
+      ],
+      boardId: '${json['board_id'] ?? ''}',
     );
   }
 }

@@ -293,6 +293,15 @@ class WhatsNewsApi {
     return MarketMovesBoard.empty;
   }
 
+  /// Column + measure registry for Market Moves + ENGINE.
+  /// Flutter Customize path: persist `boardColumns` on `whats-news-desk-prefs`.
+  Future<BoardRegistryCatalog> getBoardRegistry() async {
+    final raw = await _get('/api/boards/registry');
+    if (raw is Map<String, dynamic>) return BoardRegistryCatalog.fromJson(raw);
+    if (raw is Map) return BoardRegistryCatalog.fromJson(Map<String, dynamic>.from(raw));
+    return BoardRegistryCatalog.empty;
+  }
+
   Future<MacroBoard> getMacroBoard() async {
     final raw = await _get('/api/macro/board');
     if (raw is Map<String, dynamic>) return MacroBoard.fromJson(raw);

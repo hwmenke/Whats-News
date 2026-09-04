@@ -2,7 +2,7 @@
    main.css — Financial Dashboard — Premium Dark Theme
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Faces + heat tokens live in styles/theme.css (Font C). */
 
 /* ── CSS Variables ────────────────────────────────────────── */
 :root {
@@ -27,9 +27,6 @@
   --text-primary:  #e6edf3;
   --text-muted:    #8b949e;
   --text-dim:      #4a5568;
-
-  --font-main:     'Inter', sans-serif;
-  --font-mono:     'JetBrains Mono', monospace;
 
   --radius-sm:     6px;
   --radius-md:     10px;
@@ -4032,8 +4029,8 @@ body.focus-mode.workspace-review #alert-log {
 .engine-count-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
 .engine-count {
   background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: var(--board-border, none);
+  border-radius: var(--board-radius, 0);
   padding: 8px 12px;
   min-width: 110px;
 }
@@ -4048,8 +4045,8 @@ body.focus-mode.workspace-review #alert-log {
 }
 .engine-col, .engine-bucket {
   background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: var(--board-border, none);
+  border-radius: var(--board-radius, 0);
   padding: 8px 10px;
 }
 .engine-col.is-bull { border-color: #22c55e66; }
@@ -4078,8 +4075,8 @@ body.focus-mode.workspace-review #alert-log {
 .engine-dim { color: var(--text-muted); font-size: 12px; }
 .engine-howto {
   background: #854d0e18;
-  border: 1px solid #ca8a0466;
-  border-radius: 8px;
+  border: var(--board-border, none);
+  border-radius: var(--board-radius, 0);
   padding: 8px 10px;
   margin: 10px 0;
   font-size: 12px;
@@ -4101,7 +4098,10 @@ body.focus-mode.workspace-review #alert-log {
 @media (max-width: 900px) {
   .engine-rsic-split { grid-template-columns: 1fr; }
 }
-.engine-heat-table th, .engine-heat-table td { height: 28px; padding: 2px 6px; }
+.engine-heat-table, .engine-heat-table th, .engine-heat-table td {
+  border: var(--board-border, none);
+}
+.engine-heat-table th, .engine-heat-table td { height: var(--engine-row-h, 28px); padding: 2px 6px; }
 .engine-dense td { font-size: 11px; }
 .engine-bar {
   display: inline-flex;
@@ -4116,7 +4116,7 @@ body.focus-mode.workspace-review #alert-log {
   border-radius: 99px;
 }
 .engine-bar em { font-style: normal; font-size: 10px; color: var(--text-dim); }
-.engine-scatter { width: 100%; max-width: 720px; height: auto; border: 1px solid var(--border); border-radius: 8px; }
+.engine-scatter { width: 100%; max-width: 720px; height: auto; border: var(--board-border, none); border-radius: var(--board-radius, 0); }
 .engine-dot { cursor: pointer; }
 .engine-legend { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 8px 0 12px; font-size: 11px; color: var(--text-muted); }
 .engine-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 99px; margin-right: 4px; }
@@ -4134,7 +4134,7 @@ body.focus-mode.workspace-review #alert-log {
   padding: 8px 10px;
 }
 
-/* Market Moves — utilitarian Inter + mono, ~24px rows, z heat */
+/* Market Moves — Font C + v4.1 density, soft z heat, no borders */
 .moves-container {
   display: flex;
   flex-direction: column;
@@ -4143,7 +4143,6 @@ body.focus-mode.workspace-review #alert-log {
   overflow: auto;
   min-height: 0;
   flex: 1;
-  font-family: 'Inter', sans-serif;
 }
 .mm-head {
   display: flex;
@@ -4153,7 +4152,7 @@ body.focus-mode.workspace-review #alert-log {
 }
 .mm-head h2 {
   margin: 0;
-  font-size: 22px;
+  font-size: 20px;
   letter-spacing: 0.04em;
   font-weight: 700;
 }
@@ -4179,18 +4178,19 @@ body.focus-mode.workspace-review #alert-log {
 .mm-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  border: var(--board-border, none);
 }
 .mm-table th, .mm-table td {
-  height: 24px;
+  height: var(--mm-row-h, 22px);
   padding: 0 6px;
   white-space: nowrap;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  border: var(--board-border, none);
 }
 .mm-table th {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-title);
   font-weight: 600;
   font-size: 10px;
   color: var(--text-muted);
@@ -4205,5 +4205,74 @@ body.focus-mode.workspace-review #alert-log {
 @media (max-width: 1100px) {
   .mm-grid { grid-template-columns: 1fr; }
 }
+
+/* Customize drawer — toggle + reorder MM / ENGINE columns */
+.board-customize {
+  position: fixed;
+  top: var(--topbar-h);
+  right: 0;
+  bottom: 0;
+  width: min(360px, 92vw);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px 16px;
+  gap: 8px;
+  box-shadow: none;
+  border: var(--board-border, none);
+}
+.board-customize[hidden] { display: none; }
+.board-customize header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.board-customize h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.board-customize-blurb {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.board-customize-blurb code { font-family: var(--font-mono); }
+.board-customize-list,
+#board-customize-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  flex: 1;
+}
+#board-customize-list li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 0;
+}
+#board-customize-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.board-customize-keys {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.board-customize-move button {
+  background: transparent;
+  color: var(--text-primary);
+  border: var(--board-border, none);
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.board-customize-move button:disabled { opacity: 0.35; cursor: default; }
 
 

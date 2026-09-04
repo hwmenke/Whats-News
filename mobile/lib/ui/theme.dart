@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 
-/// Desk palette — same colors as the Dash `styles/main.css` dark theme.
+/// Desk palette — same colors as the Dash `styles/theme.css` + `main.css`.
+/// Font C (web only, one theme file): Public Sans titles, Inter UI,
+/// JetBrains Mono numbers. Flutter stays SF until a font-bundle pass.
 class DeskColors {
   static const bg = Color(0xFF0D1117);
   static const elevated = Color(0xFF161B22);

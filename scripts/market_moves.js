@@ -30,10 +30,13 @@
     }
 
     function _heat(z) {
+        if (window.BoardRegistry) {
+            return window.BoardRegistry.heatStyle(z, { heat: 'z', heat_scale: { lo: -3, hi: 3 } });
+        }
         if (z == null || Number.isNaN(Number(z))) return '';
         const a = Math.min(1, Math.abs(Number(z)) / 3);
-        if (Number(z) >= 0) return `background: rgba(34,197,94,${(0.08 + 0.55 * a).toFixed(2)})`;
-        return `background: rgba(239,68,68,${(0.08 + 0.55 * a).toFixed(2)})`;
+        if (Number(z) >= 0) return `background: rgba(34,197,94,${(0.06 + 0.32 * a).toFixed(2)})`;
+        return `background: rgba(239,68,68,${(0.06 + 0.32 * a).toFixed(2)})`;
     }
 
     function _zCell(z, extreme) {
@@ -45,8 +48,20 @@
         return `<td class="mm-z ${cls}" style="${_heat(n)}">${bullet}${sign}${n.toFixed(1)}</td>`;
     }
 
-    function renderGroup(group) {
+    function _mmCols(data) {
+        if (window.BoardRegistry && window.BoardRegistry.visibleColumns) {
+            const cols = window.BoardRegistry.visibleColumns('market_moves');
+            if (cols && cols.length) return cols;
+        }
+        return data && data.columns ? data.columns : [];
+    }
+
+    function renderGroup(group, cols) {
+        const useReg = window.BoardRegistry && cols && cols.length;
         const rows = (group.rows || []).map(r => {
+            if (useReg) {
+                return `<tr>${cols.map(c => window.BoardRegistry.cellHtml(r, c)).join('')}</tr>`;
+            }
             const ready = r.ready && r.px != null;
             const chg = r.day_pct;
             const chgCls = chg == null ? '' : (chg >= 0 ? 'mm-up' : 'mm-dn');
@@ -59,10 +74,13 @@
                 ${_zCell(r.z14, false)}
             </tr>`;
         }).join('');
+        const head = useReg
+            ? window.BoardRegistry.headerHtml(cols)
+            : '<tr><th>Name</th><th>PX</th><th>DAY%</th><th>Z</th><th>14D Z</th></tr>';
         return `<section class="mm-card" data-group="${_esc(group.id)}">
             <h3>${_esc(group.label)}</h3>
             <table class="mm-table">
-                <thead><tr><th>Name</th><th>PX</th><th>DAY%</th><th>Z</th><th>14D Z</th></tr></thead>
+                <thead>${head}</thead>
                 <tbody>${rows}</tbody>
             </table>
         </section>`;
@@ -75,13 +93,14 @@
         const source = document.getElementById('moves-source');
         if (!root) return;
         const groups = data.groups || [];
+        const mmCols = _mmCols(data);
         const cols = [[], [], []];
         groups.forEach(g => {
             const c = Number(g.col);
             cols[c === 1 || c === 2 ? c : 0].push(g);
         });
         root.innerHTML = cols.map(col =>
-            `<div class="mm-col">${col.map(renderGroup).join('')}</div>`
+            `<div class="mm-col">${col.map(g => renderGroup(g, mmCols)).join('')}</div>`
         ).join('');
         if (meta) {
             const asof = data.asof ? `session ${data.asof}` : 'no stored session';
@@ -95,6 +114,9 @@
         const loading = document.getElementById('moves-loading');
         if (loading) loading.style.display = 'block';
         try {
+            if (window.BoardRegistry && window.BoardRegistry.load) {
+                await window.BoardRegistry.load();
+            }
             const res = await fetch(`${API}/api/market-moves`);
             const data = await res.json();
             renderBoard(data || {});

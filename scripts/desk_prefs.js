@@ -15,6 +15,7 @@ const _deskPrefDefaults = {
     edgeTag: '',
     qullaLens: 'all',
     finvizPreset: 'qulla_momentum',
+    boardColumns: {},
 };
 
 function readDeskPrefs() {

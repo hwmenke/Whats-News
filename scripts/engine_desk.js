@@ -20,15 +20,29 @@ function _engTone(v) {
 }
 
 function _engHeat(v, lo, hi) {
+    if (window.BoardRegistry) {
+        return window.BoardRegistry.heatStyle(v, { heat: 'range', heat_scale: { lo, hi } });
+    }
     if (v == null || Number.isNaN(Number(v))) return '';
     const n = Number(v);
     const t = Math.max(0, Math.min(1, (n - lo) / (hi - lo || 1)));
     if (t >= 0.5) {
         const g = (t - 0.5) * 2;
-        return `background: rgba(34,197,94,${(0.15 + 0.55 * g).toFixed(2)})`;
+        return `background: rgba(34,197,94,${(0.06 + 0.32 * g).toFixed(2)})`;
     }
     const r = (0.5 - t) * 2;
-    return `background: rgba(239,68,68,${(0.15 + 0.55 * r).toFixed(2)})`;
+    return `background: rgba(239,68,68,${(0.06 + 0.32 * r).toFixed(2)})`;
+}
+
+async function _engCols(boardId, fallback) {
+    if (window.BoardRegistry) {
+        try {
+            const reg = await window.BoardRegistry.load();
+            const cols = window.BoardRegistry.visibleColumns(boardId, reg);
+            if (cols && cols.length) return cols;
+        } catch (_) { /* payload / hardcoded fallback */ }
+    }
+    return fallback || [];
 }
 
 function hideEngineArea() {
@@ -166,13 +180,21 @@ async function loadEngineBoard() {
     try {
         const data = await apiFetch(`${API}/engine/board?desk=1`);
         const rows = Array.isArray(data.rows) ? data.rows : [];
+        const cols = await _engCols('engine_setup', data.columns);
+        const thead = document.querySelector('#engine-board-table thead');
+        if (thead && window.BoardRegistry && cols.length) {
+            thead.innerHTML = window.BoardRegistry.headerHtml(cols);
+        }
         tbody.innerHTML = '';
         rows.forEach(row => {
             const tr = document.createElement('tr');
             tr.dataset.symbol = row.symbol || '';
-            const sent = row.sentiment || '';
-            const takeCls = sent.includes('LONG') ? 'is-long' : sent.includes('SHORT') ? 'is-short' : 'is-neutral';
-            tr.innerHTML = `
+            if (window.BoardRegistry && cols.length) {
+                tr.innerHTML = cols.map(c => window.BoardRegistry.cellHtml(row, c)).join('');
+            } else {
+                const sent = row.sentiment || '';
+                const takeCls = sent.includes('LONG') ? 'is-long' : sent.includes('SHORT') ? 'is-short' : 'is-neutral';
+                tr.innerHTML = `
                 <td class="macro-sym">${_engEsc(row.symbol)}</td>
                 <td>${_engEsc(row.vcp || '—')}</td>
                 <td>${_engEsc(row.tms_zone || '—')}</td>
@@ -187,6 +209,7 @@ async function loadEngineBoard() {
                 <td style="${_engHeat(row.dist_52w_pct, -40, 0)}">${row.dist_52w_pct == null ? '—' : _engNum(row.dist_52w_pct)}</td>
                 <td class="${_engTone(row.str)}">${row.str == null ? '—' : row.str}</td>
                 <td class="engine-tmac" style="${_engHeat(row.tmac_star != null ? row.tmac_star : row.heat_proxy, 0, 99)}" title="${_engEsc(row.tmac_note || 'TMAC* heat proxy — never branded TMAC')}">${(row.tmac_star != null ? row.tmac_star : row.heat_proxy) == null ? '—' : (row.tmac_star != null ? row.tmac_star : row.heat_proxy)}</td>`;
+            }
             tbody.appendChild(tr);
         });
         if (empty) empty.style.display = rows.length ? 'none' : 'block';
@@ -396,13 +419,21 @@ async function loadEngineSigma() {
     try {
         const data = await apiFetch(`${API}/engine/sigma?desk=1`);
         const rows = Array.isArray(data.rows) ? data.rows : [];
+        const cols = await _engCols('engine_sigma', data.columns);
+        const thead = document.querySelector('#engine-sigma-table thead');
+        if (thead && window.BoardRegistry && cols.length) {
+            thead.innerHTML = window.BoardRegistry.headerHtml(cols);
+        }
         tbody.innerHTML = '';
         rows.forEach(row => {
             const tr = document.createElement('tr');
             tr.dataset.symbol = row.symbol || '';
-            const cell = (v, lo, hi, digits) =>
-                `<td class="${_engTone(v)}" style="${_engHeat(v, lo, hi)}">${v == null ? '—' : _engNum(v, digits)}</td>`;
-            tr.innerHTML = `
+            if (window.BoardRegistry && cols.length) {
+                tr.innerHTML = cols.map(c => window.BoardRegistry.cellHtml(row, c)).join('');
+            } else {
+                const cell = (v, lo, hi, digits) =>
+                    `<td class="${_engTone(v)}" style="${_engHeat(v, lo, hi)}">${v == null ? '—' : _engNum(v, digits)}</td>`;
+                tr.innerHTML = `
                 <td class="macro-sym">${_engEsc(row.symbol)}</td>
                 <td>${row.price == null ? '—' : _engNum(row.price, 2)}</td>
                 ${cell(row.ret_1d, -3, 3, 2)}
@@ -416,6 +447,7 @@ async function loadEngineSigma() {
                 ${cell(row.sigma_1m, -2, 2, 2)}
                 <td>${row.rsi14 == null ? '—' : _engNum(row.rsi14)}</td>
                 <td class="engine-takeaway">${_engEsc(row.takeaway || '—')}</td>`;
+            }
             tbody.appendChild(tr);
         });
         if (empty) empty.style.display = rows.length ? 'none' : 'block';
@@ -500,7 +532,14 @@ function renderEngineMaps(data, view) {
     }
     if (tab === 'scanner') {
         const rows = ((data.scanner || {}).rows) || [];
-        const body = rows.map(r => `<tr data-symbol="${_engEsc(r.symbol)}">
+        const cols = (window.BoardRegistry && window.BoardRegistry.visibleColumns)
+            ? window.BoardRegistry.visibleColumns('engine_maps')
+            : (data.columns || []);
+        const body = rows.map(r => {
+            if (window.BoardRegistry && cols.length) {
+                return `<tr data-symbol="${_engEsc(r.symbol)}">${cols.map(c => window.BoardRegistry.cellHtml(r, c)).join('')}</tr>`;
+            }
+            return `<tr data-symbol="${_engEsc(r.symbol)}">
             <td class="macro-sym">${_engEsc(r.symbol)}</td>
             <td class="${_engTone(r.str)}">${r.str == null ? '—' : r.str}</td>
             <td>${_engBar(r.stretch_pctile != null ? r.stretch_pctile : (r.stretch_pct == null ? null : 50 + r.stretch_pct))}</td>
@@ -513,13 +552,17 @@ function renderEngineMaps(data, view) {
             <td><span class="engine-gray">${_engEsc(r.gray_tag || '')}</span></td>
             <td class="engine-dir" style="${_engHeat(r.dir5, -5, 5)}">${r.dir5 == null ? '—' : r.dir5}</td>
             <td class="engine-tmac" style="${_engHeat(r.tmac_star, 0, 99)}">${r.tmac_star == null ? '—' : r.tmac_star}</td>
-        </tr>`).join('');
+        </tr>`;
+        }).join('');
+        const head = (window.BoardRegistry && cols.length)
+            ? window.BoardRegistry.headerHtml(cols)
+            : `<tr><th>Asset</th><th>Str</th><th>Stretch</th><th>ΔD 1m</th><th>D65</th><th>TMS-D</th><th>52w pos</th><th>Vol30</th><th>TES</th><th>RSI-C · VCP</th><th>Dir ±5</th><th title="TMAC* heat proxy — never branded TMAC">TMAC*</th></tr>`;
         el.innerHTML = `
             ${_engScatter((data.scanner || {}).scatter || [], { xLabel: 'Dir ±5', yLabel: 'RSI(14)', xmin: -5, xmax: 5, ymin: 0, ymax: 100, guides: [{ v: 0 }, { h: 25 }, { h: 50 }, { h: 75 }] })}
             ${_engLegend(classes)}
             <div class="scanner-table-wrap"><table class="scanner-table engine-heat-table engine-dense">
-                <thead><tr><th>Asset</th><th>Str</th><th>Stretch</th><th>ΔD 1m</th><th>D65</th><th>TMS-D</th><th>52w pos</th><th>Vol30</th><th>TES</th><th>RSI-C · VCP</th><th>Dir ±5</th><th title="TMAC* heat proxy — never branded TMAC">TMAC*</th></tr></thead>
-                <tbody>${body || '<tr><td colspan="12">none</td></tr>'}</tbody>
+                <thead>${head}</thead>
+                <tbody>${body || `<tr><td colspan="${Math.max(1, cols.length || 12)}">none</td></tr>`}</tbody>
             </table></div>
             <details class="engine-howto" open><summary>HOW TO READ — SCANNER + TES</summary>
                 <p>${_engEsc((data.scanner || {}).howto || '')}</p>
@@ -582,6 +625,9 @@ async function loadEngineMaps() {
     if (!el) return;
     if (meta) meta.textContent = 'GET /api/engine/maps…';
     try {
+        if (window.BoardRegistry && window.BoardRegistry.load) {
+            await window.BoardRegistry.load();
+        }
         const data = await apiFetch(`${API}/engine/maps?desk=1`);
         window._engineMaps = data;
         const on = document.querySelector('.engine-map-tabs .desk-ia-btn.on');
@@ -622,3 +668,7 @@ window.showEngineArea = showEngineArea;
 window.applyDeskIa = applyDeskIa;
 window.applyEnginePanel = applyEnginePanel;
 window.bindEngineDesk = bindEngineDesk;
+window.loadEngineBoard = loadEngineBoard;
+window.loadEngineSigma = loadEngineSigma;
+window.loadEngineMaps = loadEngineMaps;
+window.renderEngineMaps = renderEngineMaps;
