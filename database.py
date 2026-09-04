@@ -130,6 +130,44 @@ def _create_schema(conn):
         ON symbols(last_fetch)
     """)
     _create_paper_book(conn)
+    _create_research_cache(conn)
+
+
+def _create_research_cache(conn):
+    """Finviz HTML cache + SPY HMM fit cache. No secrets."""
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS finviz_quotes (
+            symbol      TEXT PRIMARY KEY,
+            fetched_at  TEXT NOT NULL,
+            http_status INTEGER,
+            reason      TEXT,
+            payload_json TEXT NOT NULL
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS finviz_screener_cache (
+            preset_id   TEXT PRIMARY KEY,
+            fetched_at  TEXT NOT NULL,
+            http_status INTEGER,
+            reason      TEXT,
+            payload_json TEXT NOT NULL
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS finviz_meta (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS hmm_cache (
+            cache_key    TEXT PRIMARY KEY,
+            as_of        TEXT,
+            fitted_at    TEXT NOT NULL,
+            payload_json TEXT NOT NULL
+        )
+    """)
 
 
 def _create_paper_book(conn):
@@ -165,6 +203,9 @@ def _ensure_schema(conn):
         return
     if "paper_positions" not in tables:
         _create_paper_book(conn)
+        conn.commit()
+    if "finviz_quotes" not in tables or "hmm_cache" not in tables:
+        _create_research_cache(conn)
         conn.commit()
 
 

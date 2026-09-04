@@ -91,6 +91,9 @@ class DeskLoopTests(unittest.TestCase):
         with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
             setup = fh.read()
         self.assertIn("NEAR_HIGH", setup)
+        self.assertIn("research label, not edge", html)
+        self.assertIn("data-lens=\"finviz\"", html)
+        self.assertIn("data-lens=\"hmm\"", html)
 
 
 if __name__ == "__main__":

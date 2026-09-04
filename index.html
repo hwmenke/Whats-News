@@ -876,6 +876,8 @@
         <button type="button" class="ind-pill scan-lens-btn" data-lens="setups">Setups</button>
         <button type="button" class="ind-pill scan-lens-btn" data-lens="metrics">Metrics</button>
         <button type="button" class="ind-pill scan-lens-btn" data-lens="fractal">Fractal</button>
+        <button type="button" class="ind-pill scan-lens-btn" data-lens="finviz">Finviz</button>
+        <button type="button" class="ind-pill scan-lens-btn" data-lens="hmm">HMM</button>
       </div>
       <div id="desk-trend-scan" class="setup-scanner-panel desk-trend-scan">
         <div class="setup-scanner-header">
@@ -921,6 +923,78 @@
         </div>
         <div id="fractal-scan-empty" class="scanner-empty">
           <p>No Fractal rows. Seed a sleeve / Core 50 and Fetch Yahoo so finance.db has daily closes. Null D is a failed window — not an invented number. SPEC 25/27 rebuild.</p>
+        </div>
+      </div>
+      <div id="finviz-scan-panel" class="setup-scanner-panel finviz-scan-panel">
+        <div class="setup-scanner-header">
+          <strong>Finviz</strong>
+          <select id="finviz-preset" class="dm-select" aria-label="Finviz preset">
+            <option value="qulla_momentum">Qulla / momentum</option>
+            <option value="near_high">Near 52-week high</option>
+            <option value="vol_surge">Relative volume surge</option>
+            <option value="new_high">New 52-week high</option>
+            <option value="eps_growth">EPS + sales growth</option>
+          </select>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-finviz-screener">Run /api/finviz/screener</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-finviz-refresh">Refresh</button>
+          <span id="finviz-screener-meta" class="scanner-ts"></span>
+        </div>
+        <p id="finviz-screener-note" class="macro-blurb">Public Finviz HTML only. Named presets map to f= filter codes. Empty when blocked — never invented tickers. Tap a row for Chart / quote / news.</p>
+        <div class="scanner-table-wrap">
+          <table id="finviz-screener-table" class="scanner-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Company</th>
+                <th>Sector</th>
+                <th>Industry</th>
+                <th>Mkt cap</th>
+                <th>P/E</th>
+                <th>Price</th>
+                <th>Change</th>
+              </tr>
+            </thead>
+            <tbody id="finviz-screener-tbody"></tbody>
+          </table>
+        </div>
+        <div id="finviz-screener-empty" class="scanner-empty">
+          <p>No Finviz rows. Enable fetch in Settings, or the cloud VM was blocked (HTTP 403). Empty is honest — not invented hits.</p>
+        </div>
+        <div id="finviz-quote-panel" class="finviz-quote-panel"></div>
+      </div>
+      <div id="hmm-scan-panel" class="setup-scanner-panel hmm-scan-panel">
+        <div class="setup-scanner-header">
+          <strong>HMM</strong>
+          <select id="hmm-states-n" class="dm-select" aria-label="HMM states">
+            <option value="2" selected>2-state</option>
+            <option value="3">3-state</option>
+          </select>
+          <select id="hmm-state-filter" class="dm-select" aria-label="SPY state filter">
+            <option value="">All desk (inherit SPY)</option>
+          </select>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-hmm-scan">Load /api/hmm/scan</button>
+          <span id="hmm-scan-meta" class="scanner-ts"></span>
+        </div>
+        <p id="hmm-scan-note" class="macro-blurb">research label, not edge. SPY Gaussian HMM on ~2y stored daily log returns. Desk names inherit SPY. Occupancy is not a win rate. Do not buy a regime flip.</p>
+        <p id="hmm-spy-label" class="hmm-spy-label"></p>
+        <div id="hmm-states" class="hmm-states"></div>
+        <div class="scanner-table-wrap">
+          <table id="hmm-scan-table" class="scanner-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Fit</th>
+                <th>SPY state</th>
+                <th>P(state)</th>
+                <th>Tag</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody id="hmm-scan-tbody"></tbody>
+          </table>
+        </div>
+        <div id="hmm-scan-empty" class="scanner-empty">
+          <p>No HMM rows. Fetch Yahoo for SPY (~2y daily). research label, not edge — empty is missing bars, not a fake regime.</p>
         </div>
       </div>
 
@@ -1033,6 +1107,7 @@
       <div id="edges-tag-filters" class="setup-filter-pills edges-tag-filters" role="group" aria-label="Edges tag filter"></div>
       <div id="edges-board" class="edges-board"></div>
       <p id="fractal-stub" class="fractal-stub">Fractal: SPEC 25/27 in-repo estimator. Load /api/fractal/scan — FRAGILE is D≤1.40 and |move|&gt;5%.</p>
+      <p class="fractal-stub">HMM: research label, not edge. SPY 2/3-state Gaussian on stored daily log returns — not a Q-trade / quote-FV model. Occupancy is not a win rate.</p>
     </div>
 
     <!-- ── Paper P&L / Risk (marks from stored Yahoo closes) ── -->
@@ -1184,9 +1259,23 @@
               <option value="setups">Setups</option>
               <option value="metrics">Metrics</option>
               <option value="fractal">Fractal</option>
+              <option value="finviz">Finviz</option>
+              <option value="hmm">HMM</option>
             </select>
           </div>
+          <div class="dm-field">
+            <label class="dm-label" for="finviz-enabled">Finviz fetch</label>
+            <label class="setup-universe-toggle">
+              <input type="checkbox" id="finviz-enabled" checked />
+              Enable public Finviz HTML + SQLite cache
+            </label>
+          </div>
+          <div class="dm-field">
+            <label class="dm-label" for="finviz-ttl">Finviz cache TTL (seconds)</label>
+            <input id="finviz-ttl" type="number" min="60" max="86400" step="60" value="3600" class="dm-input" />
+          </div>
         </div>
+        <p class="dm-hint">Finviz: no API keys. Blocks stay empty. HMM: research label, not edge — SPY only, desk inherits. No win rates from occupancy.</p>
         <div class="dm-section-rule" aria-hidden="true"></div>
 
         <div class="dm-panel-header">Batch Fetch Settings</div>
@@ -1356,6 +1445,8 @@
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/macro_desk.js"></script>
 <script src="scripts/paper_book.js"></script>
+<script src="scripts/finviz_desk.js"></script>
+<script src="scripts/hmm_desk.js"></script>
 <script src="scripts/desk_prefs.js"></script>
 <script src="scripts/desk_palette.js"></script>
 <script src="scripts/app.js"></script>

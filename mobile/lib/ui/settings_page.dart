@@ -144,8 +144,40 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Fractal loads /api/fractal/scan (SPEC 25/27 rebuild). Null D when the window is short. FRAGILE needs |move| > 5%. Not a BCA proprietary estimator.',
+                  'Fractal loads /api/fractal/scan (SPEC 25/27 rebuild). HMM is a research label, not edge — SPY only. Finviz is public HTML + cache.',
                   style: TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
+                ),
+                const SizedBox(height: 22),
+                const _SectionTitle('Finviz'),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Enable Finviz fetch + SQLite cache',
+                        style: TextStyle(color: DeskColors.text, fontSize: 13),
+                      ),
+                    ),
+                    CupertinoSwitch(
+                      value: state.finvizEnabled,
+                      onChanged: state.setFinvizEnabled,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Cache TTL ${state.finvizTtlSec}s. No API keys. Blocks stay empty.',
+                  style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                _Seg(
+                  value: '${state.finvizTtlSec}',
+                  children: const {
+                    '900': Text('15m'),
+                    '3600': Text('1h'),
+                    '14400': Text('4h'),
+                    '86400': Text('1d'),
+                  },
+                  onChanged: (v) => state.setFinvizTtl(int.tryParse(v) ?? 3600),
                 ),
                 const SizedBox(height: 22),
                 const _SectionTitle('Universe'),
@@ -195,7 +227,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   'Paper / local only — no live trading. No API keys. '
                   'Qulla tags are momentum / EP-style desk heuristics from our scanner, '
                   'not Kristjan Qullamaggie formulas or claimed returns.\n\n'
-                  '${state.fractalStatus.source.isEmpty ? 'Fractal: SPEC 25/27 in-repo estimator.' : state.fractalStatus.source}',
+                  '${state.fractalStatus.source.isEmpty ? 'Fractal: SPEC 25/27 in-repo estimator.' : state.fractalStatus.source} '
+                  'HMM: research label, not edge.',
                   style: const TextStyle(color: DeskColors.muted, fontSize: 13, height: 1.4),
                 ),
               ],

@@ -306,6 +306,104 @@ def book_pnl_api():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/finviz/settings", methods=["GET"])
+def finviz_settings_get():
+    import finviz_client
+    ensure_local_schema()
+    return jsonify(finviz_client.get_settings())
+
+
+@app.route("/api/finviz/settings", methods=["PUT"])
+def finviz_settings_put():
+    import finviz_client
+    ensure_local_schema()
+    body = request.get_json(silent=True) or {}
+    enabled = body.get("enabled")
+    if isinstance(enabled, str):
+        enabled = enabled.strip().lower() in ("1", "true", "yes", "on")
+    return jsonify(finviz_client.set_settings(enabled=enabled, ttl_sec=body.get("ttl_sec")))
+
+
+@app.route("/api/finviz/presets", methods=["GET"])
+def finviz_presets_api():
+    import finviz_client
+    ensure_local_schema()
+    return jsonify(finviz_client.list_presets_payload())
+
+
+@app.route("/api/finviz/quote/<string:symbol>", methods=["GET"])
+def finviz_quote_api(symbol):
+    """Public Finviz quote snapshot + headlines. Empty + reason if blocked."""
+    import finviz_client
+    ensure_local_schema()
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    return jsonify(finviz_client.get_quote(symbol, force=force))
+
+
+@app.route("/api/finviz/screener", methods=["GET"])
+def finviz_screener_api():
+    import finviz_client
+    ensure_local_schema()
+    preset = request.args.get("preset") or ""
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    return jsonify(finviz_client.get_screener(preset, force=force))
+
+
+@app.route("/api/finviz/screener/refresh", methods=["POST"])
+def finviz_screener_refresh():
+    import finviz_client
+    ensure_local_schema()
+    body = request.get_json(silent=True) or {}
+    preset = body.get("preset") or request.args.get("preset") or ""
+    return jsonify(finviz_client.get_screener(preset, force=True))
+
+
+@app.route("/api/hmm/status", methods=["GET"])
+def hmm_status_api():
+    """SPY Gaussian HMM — research label, not edge."""
+    import hmm_regime
+    return jsonify(hmm_regime.status())
+
+
+@app.route("/api/hmm/regime", methods=["GET"])
+def hmm_regime_api():
+    """SPY 2/3-state fit. Other symbols inherit SPY. No per-name HMM."""
+    import hmm_regime
+    ensure_local_schema()
+    symbol = request.args.get("symbol") or "SPY"
+    try:
+        n_states = int(request.args.get("states") or request.args.get("n_states") or 2)
+    except (TypeError, ValueError):
+        n_states = 2
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    try:
+        return jsonify(hmm_regime.regime(symbol, n_states=n_states, force=force))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(hmm_regime.empty_regime(str(exc)))
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/hmm/scan", methods=["GET"])
+def hmm_scan_api():
+    """Desk names tagged with the SPY research label. Informational filter only."""
+    import hmm_regime
+    ensure_local_schema()
+    desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+    try:
+        n_states = int(request.args.get("states") or request.args.get("n_states") or 2)
+    except (TypeError, ValueError):
+        n_states = 2
+    state = request.args.get("state") or None
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    try:
+        return jsonify(hmm_regime.scan(desk=desk, n_states=n_states, state=state, force=force))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(hmm_regime.empty_scan())
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/universe/core50", methods=["POST"])
 def seed_core50():
     """Add a curated ~50-name desk. Does not download Yahoo bars."""

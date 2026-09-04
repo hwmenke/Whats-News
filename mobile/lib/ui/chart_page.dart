@@ -134,6 +134,8 @@ class ChartPage extends StatelessWidget {
                 ],
               ),
               _DeskStrip(state: state),
+              _FinvizStrip(state: state),
+              _HmmStrip(state: state),
             ],
           ),
         ),
@@ -240,6 +242,52 @@ class _DeskStrip extends StatelessWidget {
             'vs SPY ${state.spyRs.lastRatio!.toStringAsFixed(2)}',
         ].join(' · '),
         style: const TextStyle(color: DeskColors.muted, fontSize: 11),
+      ),
+    );
+  }
+}
+
+class _FinvizStrip extends StatelessWidget {
+  const _FinvizStrip({required this.state});
+  final WhatsNewsState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final q = state.finvizQuote;
+    if (!q.ready || q.symbol != (state.selectedSymbol ?? '')) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Text(
+        [
+          'Finviz',
+          if (q.sector.isNotEmpty) q.sector,
+          if (q.snapshot['pe'] != null) 'P/E ${q.snapshot['pe']}',
+          if (q.snapshot['rsi_14'] != null) 'RSI ${q.snapshot['rsi_14']}',
+          if (q.snapshot['perf_ytd'] != null) 'YTD ${q.snapshot['perf_ytd']}',
+        ].join(' · '),
+        style: const TextStyle(color: DeskColors.muted, fontSize: 11),
+      ),
+    );
+  }
+}
+
+class _HmmStrip extends StatelessWidget {
+  const _HmmStrip({required this.state});
+  final WhatsNewsState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final h = state.hmmRegime;
+    if (!h.available || h.currentLabel.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        'SPY HMM ${h.currentLabel} — research label, not edge',
+        style: const TextStyle(color: DeskColors.dim, fontSize: 11),
       ),
     );
   }

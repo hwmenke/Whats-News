@@ -42,7 +42,7 @@ class ScansPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Same Python scans as the web desk. Fractal is the SPEC 25/27 rebuild from stored closes — not a BCA proprietary estimator.',
+                  'Same Python scans as the web desk. Fractal is SPEC 25/27. HMM is a research label, not edge — SPY Gaussian, desk inherits. Finviz is public HTML only.',
                   style: TextStyle(color: DeskColors.muted, fontSize: 12),
                 ),
                 if (running)
@@ -62,6 +62,8 @@ class ScansPage extends StatelessWidget {
                       ('qulla', 'Qulla'),
                       ('edges', 'Edges'),
                       ('fractal', 'Fractal'),
+                      ('finviz', 'Finviz'),
+                      ('hmm', 'HMM'),
                       ('setups', 'Setups'),
                       ('trend', 'Trend'),
                       ('metrics', 'Metrics'),
@@ -122,6 +124,10 @@ class ScansPage extends StatelessWidget {
         ),
         if (state.scanMode == 'fractal')
           ..._fractalSlivers(state)
+        else if (state.scanMode == 'finviz')
+          ..._finvizSlivers(state)
+        else if (state.scanMode == 'hmm')
+          ..._hmmSlivers(state)
         else if (state.scanMode == 'edges')
           ..._edgesSlivers(state)
         else if (state.loadingScans && _rowsEmpty(state))
@@ -210,6 +216,169 @@ class ScansPage extends StatelessWidget {
                           fontSize: 13,
                           fontWeight: row.isFragile ? FontWeight.w700 : FontWeight.w400,
                         ),
+                      ),
+                    ),
+                  ),
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _finvizSlivers(WhatsNewsState s) {
+    final scr = s.finvizScreener;
+    final q = s.finvizQuote;
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final e in const [
+                    ('qulla_momentum', 'Qulla / mom'),
+                    ('near_high', 'Near high'),
+                    ('vol_surge', 'RVOL'),
+                    ('new_high', 'New high'),
+                    ('eps_growth', 'EPS'),
+                  ])
+                    _ModeChip(
+                      label: e.$2,
+                      on: s.finvizPreset == e.$1,
+                      onTap: () => s.setFinvizPreset(e.$1),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                scr.reason.isEmpty
+                    ? 'Public Finviz HTML. Empty when blocked — not invented tickers.'
+                    : scr.reason,
+                style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
+              ),
+              const SizedBox(height: 10),
+              if (scr.rows.isEmpty)
+                const Text(
+                  'No Finviz rows. Enable fetch in Settings, or the host was blocked.',
+                  style: TextStyle(color: DeskColors.muted, fontSize: 13, height: 1.4),
+                )
+              else
+                for (final row in scr.rows)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: GestureDetector(
+                      onTap: () {
+                        s.loadFinvizQuote(row.symbol);
+                        onOpenChart(row.symbol);
+                      },
+                      child: Text(
+                        [
+                          row.symbol,
+                          if (row.company.isNotEmpty) row.company,
+                          if (row.sector.isNotEmpty) row.sector,
+                          if (row.price.isNotEmpty) row.price,
+                          if (row.change.isNotEmpty) row.change,
+                        ].join(' · '),
+                        style: const TextStyle(color: DeskColors.text, fontSize: 13),
+                      ),
+                    ),
+                  ),
+              if (q.symbol.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text(
+                  q.ready
+                      ? '${q.symbol} ${q.name} · ${q.sector} · ${q.industry}'
+                      : (q.reason.isEmpty ? 'No quote' : q.reason),
+                  style: const TextStyle(color: DeskColors.accentBright, fontSize: 12),
+                ),
+                if (q.ready)
+                  Text(
+                    [
+                      if (q.snapshot['pe'] != null) 'P/E ${q.snapshot['pe']}',
+                      if (q.snapshot['rsi_14'] != null) 'RSI ${q.snapshot['rsi_14']}',
+                      if (q.snapshot['perf_week'] != null) 'W ${q.snapshot['perf_week']}',
+                      if (q.snapshot['short_float'] != null) 'short ${q.snapshot['short_float']}',
+                    ].join(' · '),
+                    style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _hmmSlivers(WhatsNewsState s) {
+    final h = s.hmmRegime;
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'research label, not edge. SPY Gaussian HMM on stored daily log returns. Desk inherits SPY. Occupancy is not a win rate. Do not buy a regime flip.',
+                style: TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                children: [
+                  _ModeChip(label: '2-state', on: s.hmmStates == 2, onTap: () => s.setHmmStates(2)),
+                  _ModeChip(label: '3-state', on: s.hmmStates == 3, onTap: () => s.setHmmStates(3)),
+                  for (final st in h.states)
+                    _ModeChip(
+                      label: 'SPY=${st.label}',
+                      on: s.hmmStateFilter == st.label,
+                      onTap: () => s.setHmmStateFilter(st.label),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                h.available
+                    ? 'SPY ${h.currentLabel.isEmpty ? '—' : h.currentLabel} · as-of ${h.asOf.isEmpty ? '—' : h.asOf}'
+                    : (h.reason.isEmpty ? h.note : h.reason),
+                style: const TextStyle(color: DeskColors.text, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              for (final st in h.states)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '${st.label} · mean ${st.mean ?? '—'} · σ ${st.vol ?? '—'} · '
+                    'occ ${st.occupancy == null ? '—' : '${(st.occupancy! * 100).toStringAsFixed(0)}% of window (not a win rate)'}',
+                    style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              if (h.rows.isEmpty)
+                const Text(
+                  'No HMM rows. Fetch Yahoo for SPY (~2y daily). research label, not edge.',
+                  style: TextStyle(color: DeskColors.muted, fontSize: 13, height: 1.4),
+                )
+              else
+                for (final row in h.rows)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: GestureDetector(
+                      onTap: () => onOpenChart(row.symbol),
+                      child: Text(
+                        [
+                          row.symbol,
+                          row.inherited ? 'inherit SPY' : 'SPY fit',
+                          row.spyState.isEmpty ? '—' : row.spyState,
+                          if (row.spyProb != null) '${(row.spyProb! * 100).toStringAsFixed(0)}%',
+                          row.note,
+                        ].join(' · '),
+                        style: const TextStyle(color: DeskColors.text, fontSize: 13),
                       ),
                     ),
                   ),

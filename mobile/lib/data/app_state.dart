@@ -54,6 +54,14 @@ class WhatsNewsState extends ChangeNotifier {
   MacroBoard macroBoard = MacroBoard.empty;
   EdgesBoard edgesBoard = EdgesBoard.empty;
   FractalStatus fractalStatus = FractalStatus.empty;
+  FinvizScreener finvizScreener = FinvizScreener.empty;
+  FinvizQuote finvizQuote = FinvizQuote.empty;
+  bool finvizEnabled = true;
+  int finvizTtlSec = 3600;
+  String finvizPreset = 'qulla_momentum';
+  HmmRegime hmmRegime = HmmRegime.empty;
+  int hmmStates = 2;
+  String hmmStateFilter = '';
   BookPnl bookPnl = BookPnl.empty;
   bool loadingBook = false;
   String bookPane = 'pnl';
@@ -411,6 +419,14 @@ class WhatsNewsState extends ChangeNotifier {
         fractalStatus = FractalStatus.empty;
       }
     }
+    try {
+      final s = await api.getFinvizSettings();
+      if (s.containsKey('enabled')) finvizEnabled = s['enabled'] == true;
+      final ttl = s['ttl_sec'];
+      if (ttl is num) finvizTtlSec = ttl.toInt();
+    } on ApiException {
+      // older servers
+    }
     if (selectedSymbol != null) {
       try {
         spyRs = await api.getSpyRs(selectedSymbol!);
@@ -743,6 +759,12 @@ class WhatsNewsState extends ChangeNotifier {
       } on ApiException {
         fractalStatus = FractalStatus.empty;
       }
+      if (scanMode == 'finviz') {
+        await loadFinviz();
+      }
+      if (scanMode == 'hmm') {
+        await loadHmm();
+      }
     } on ApiException catch (e) {
       scanError = _friendly(e);
     } catch (_) {
@@ -753,18 +775,90 @@ class WhatsNewsState extends ChangeNotifier {
     }
   }
 
+  Future<void> loadFinviz({bool force = false}) async {
+    try {
+      finvizScreener = await api.getFinvizScreener(preset: finvizPreset, force: force);
+    } on ApiException {
+      finvizScreener = FinvizScreener.empty;
+    }
+    notifyListeners();
+  }
+
+  Future<void> loadFinvizQuote(String symbol) async {
+    try {
+      finvizQuote = await api.getFinvizQuote(symbol);
+    } on ApiException {
+      finvizQuote = FinvizQuote.empty;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setFinvizEnabled(bool on) async {
+    finvizEnabled = on;
+    notifyListeners();
+    try {
+      final s = await api.setFinvizSettings(enabled: on, ttlSec: finvizTtlSec);
+      if (s['enabled'] is bool) finvizEnabled = s['enabled'] == true;
+    } on ApiException {
+      // keep local
+    }
+    notifyListeners();
+  }
+
+  Future<void> setFinvizTtl(int sec) async {
+    finvizTtlSec = sec < 60 ? 60 : (sec > 86400 ? 86400 : sec);
+    notifyListeners();
+    try {
+      await api.setFinvizSettings(enabled: finvizEnabled, ttlSec: finvizTtlSec);
+    } on ApiException {
+      // keep local
+    }
+  }
+
+  void setFinvizPreset(String id) {
+    if (id.isEmpty) return;
+    finvizPreset = id;
+    notifyListeners();
+    loadFinviz();
+  }
+
+  Future<void> loadHmm() async {
+    try {
+      hmmRegime = await api.getHmmScan(states: hmmStates, state: hmmStateFilter);
+    } on ApiException {
+      hmmRegime = HmmRegime.empty;
+    }
+    notifyListeners();
+  }
+
+  void setHmmStates(int n) {
+    hmmStates = n == 3 ? 3 : 2;
+    notifyListeners();
+    loadHmm();
+  }
+
+  void setHmmStateFilter(String label) {
+    hmmStateFilter = hmmStateFilter == label ? '' : label;
+    notifyListeners();
+    loadHmm();
+  }
+
   void setScanMode(String mode) {
     if (mode != 'qulla' &&
         mode != 'edges' &&
         mode != 'trend' &&
         mode != 'metrics' &&
         mode != 'setups' &&
-        mode != 'fractal') {
+        mode != 'fractal' &&
+        mode != 'finviz' &&
+        mode != 'hmm') {
       return;
     }
     scanMode = mode;
     notifyListeners();
     _persist();
+    if (mode == 'finviz') loadFinviz();
+    if (mode == 'hmm') loadHmm();
   }
 
   String _friendly(ApiException e) {

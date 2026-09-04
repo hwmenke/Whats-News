@@ -340,6 +340,83 @@ class WhatsNewsApi {
     return const {};
   }
 
+  Future<FinvizScreener> getFinvizScreener({String preset = 'qulla_momentum', bool force = false}) async {
+    try {
+      final raw = force
+          ? await _send('POST', '/api/finviz/screener/refresh', body: {'preset': preset})
+          : await _get('/api/finviz/screener', {'preset': preset});
+      if (raw is Map<String, dynamic>) return FinvizScreener.fromJson(raw);
+      if (raw is Map) return FinvizScreener.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException {
+      return FinvizScreener.empty;
+    }
+    return FinvizScreener.empty;
+  }
+
+  Future<FinvizQuote> getFinvizQuote(String symbol, {bool force = false}) async {
+    try {
+      final raw = await _get(
+        '/api/finviz/quote/${symbol.trim().toUpperCase()}',
+        force ? const {'force': '1'} : null,
+      );
+      if (raw is Map<String, dynamic>) return FinvizQuote.fromJson(raw);
+      if (raw is Map) return FinvizQuote.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException {
+      return FinvizQuote.empty;
+    }
+    return FinvizQuote.empty;
+  }
+
+  Future<Map<String, dynamic>> getFinvizSettings() async {
+    try {
+      final raw = await _get('/api/finviz/settings');
+      if (raw is Map<String, dynamic>) return raw;
+      if (raw is Map) return Map<String, dynamic>.from(raw);
+    } on ApiException {
+      return const {};
+    }
+    return const {};
+  }
+
+  Future<Map<String, dynamic>> setFinvizSettings({bool? enabled, int? ttlSec}) async {
+    final raw = await _send('PUT', '/api/finviz/settings', body: {
+      if (enabled != null) 'enabled': enabled,
+      if (ttlSec != null) 'ttl_sec': ttlSec,
+    });
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return const {};
+  }
+
+  Future<HmmRegime> getHmmRegime({String symbol = 'SPY', int states = 2}) async {
+    try {
+      final raw = await _get('/api/hmm/regime', {
+        'symbol': symbol,
+        'states': '$states',
+      });
+      if (raw is Map<String, dynamic>) return HmmRegime.fromJson(raw);
+      if (raw is Map) return HmmRegime.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException {
+      return HmmRegime.empty;
+    }
+    return HmmRegime.empty;
+  }
+
+  Future<HmmRegime> getHmmScan({int states = 2, String? state}) async {
+    try {
+      final raw = await _get('/api/hmm/scan', {
+        'desk': '1',
+        'states': '$states',
+        if (state != null && state.isNotEmpty) 'state': state,
+      });
+      if (raw is Map<String, dynamic>) return HmmRegime.fromJson(raw);
+      if (raw is Map) return HmmRegime.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException {
+      return HmmRegime.empty;
+    }
+    return HmmRegime.empty;
+  }
+
   Future<BookPnl> getBookPnl() async {
     try {
       final raw = await _get('/api/book/pnl');

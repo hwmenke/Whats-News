@@ -1214,3 +1214,268 @@ class BookPnl {
     );
   }
 }
+
+class FinvizNewsItem {
+  const FinvizNewsItem({this.title = '', this.url = '', this.published = ''});
+  final String title;
+  final String url;
+  final String published;
+
+  factory FinvizNewsItem.fromJson(Map<String, dynamic> json) {
+    return FinvizNewsItem(
+      title: '${json['title'] ?? ''}',
+      url: '${json['url'] ?? ''}',
+      published: '${json['published'] ?? ''}',
+    );
+  }
+}
+
+class FinvizQuote {
+  const FinvizQuote({
+    this.symbol = '',
+    this.ready = false,
+    this.name = '',
+    this.sector = '',
+    this.industry = '',
+    this.snapshot = const {},
+    this.news = const [],
+    this.reason = '',
+  });
+
+  final String symbol;
+  final bool ready;
+  final String name;
+  final String sector;
+  final String industry;
+  final Map<String, String> snapshot;
+  final List<FinvizNewsItem> news;
+  final String reason;
+
+  static const empty = FinvizQuote(reason: 'No Finviz quote');
+
+  factory FinvizQuote.fromJson(Map<String, dynamic> json) {
+    final snap = <String, String>{};
+    final raw = json['snapshot'];
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (v != null && '$v'.isNotEmpty) snap['$k'] = '$v';
+      });
+    }
+    return FinvizQuote(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      ready: json['ready'] == true || json['ok'] == true,
+      name: '${json['name'] ?? ''}',
+      sector: '${json['sector'] ?? ''}',
+      industry: '${json['industry'] ?? ''}',
+      snapshot: snap,
+      news: [
+        if (json['news'] is List)
+          for (final n in json['news'])
+            if (n is Map) FinvizNewsItem.fromJson(Map<String, dynamic>.from(n)),
+      ],
+      reason: '${json['reason'] ?? ''}',
+    );
+  }
+}
+
+class FinvizScreenerRow {
+  const FinvizScreenerRow({
+    required this.symbol,
+    this.company = '',
+    this.sector = '',
+    this.industry = '',
+    this.marketCap = '',
+    this.pe = '',
+    this.price = '',
+    this.change = '',
+  });
+
+  final String symbol;
+  final String company;
+  final String sector;
+  final String industry;
+  final String marketCap;
+  final String pe;
+  final String price;
+  final String change;
+
+  factory FinvizScreenerRow.fromJson(Map<String, dynamic> json) {
+    return FinvizScreenerRow(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      company: '${json['company'] ?? ''}',
+      sector: '${json['sector'] ?? ''}',
+      industry: '${json['industry'] ?? ''}',
+      marketCap: '${json['market_cap'] ?? ''}',
+      pe: '${json['pe'] ?? ''}',
+      price: '${json['price'] ?? ''}',
+      change: '${json['change'] ?? ''}',
+    );
+  }
+}
+
+class FinvizScreener {
+  const FinvizScreener({
+    this.preset = '',
+    this.label = '',
+    this.ready = false,
+    this.rows = const [],
+    this.reason = '',
+    this.filters = const [],
+  });
+
+  final String preset;
+  final String label;
+  final bool ready;
+  final List<FinvizScreenerRow> rows;
+  final String reason;
+  final List<String> filters;
+
+  static const empty = FinvizScreener(reason: 'No Finviz rows');
+
+  factory FinvizScreener.fromJson(Map<String, dynamic> json) {
+    return FinvizScreener(
+      preset: '${json['preset'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+      ready: json['ready'] == true || json['ok'] == true,
+      reason: '${json['reason'] ?? json['blurb'] ?? ''}',
+      filters: [
+        if (json['filters'] is List)
+          for (final f in json['filters'])
+            if (f != null) '$f',
+      ],
+      rows: [
+        if (json['rows'] is List)
+          for (final r in json['rows'])
+            if (r is Map) FinvizScreenerRow.fromJson(Map<String, dynamic>.from(r)),
+      ],
+    );
+  }
+}
+
+class HmmState {
+  const HmmState({
+    this.id = 0,
+    this.label = '',
+    this.mean,
+    this.vol,
+    this.realizedVol,
+    this.occupancy,
+  });
+
+  final int id;
+  final String label;
+  final double? mean;
+  final double? vol;
+  final double? realizedVol;
+  final double? occupancy;
+
+  factory HmmState.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return HmmState(
+      id: n(json['id'])?.toInt() ?? 0,
+      label: '${json['label'] ?? ''}',
+      mean: n(json['mean']),
+      vol: n(json['vol']),
+      realizedVol: n(json['realized_vol']),
+      occupancy: n(json['occupancy']),
+    );
+  }
+}
+
+class HmmRegime {
+  const HmmRegime({
+    this.available = false,
+    this.inherited = false,
+    this.symbol = 'SPY',
+    this.currentLabel = '',
+    this.asOf = '',
+    this.note = 'research label, not edge',
+    this.states = const [],
+    this.currentProbs = const [],
+    this.rows = const [],
+    this.reason = '',
+  });
+
+  final bool available;
+  final bool inherited;
+  final String symbol;
+  final String currentLabel;
+  final String asOf;
+  final String note;
+  final List<HmmState> states;
+  final List<double> currentProbs;
+  final List<HmmScanRow> rows;
+  final String reason;
+
+  static const empty = HmmRegime(reason: 'research label, not edge');
+
+  factory HmmRegime.fromJson(Map<String, dynamic> json) {
+    final spy = json['spy'] is Map ? Map<String, dynamic>.from(json['spy'] as Map) : json;
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+    return HmmRegime(
+      available: json['available'] == true || json['ready'] == true,
+      inherited: json['inherited'] == true,
+      symbol: '${json['symbol'] ?? json['anchor'] ?? 'SPY'}',
+      currentLabel: '${spy['current_label'] ?? json['current_label'] ?? ''}',
+      asOf: '${spy['as_of'] ?? json['as_of'] ?? ''}',
+      note: '${json['note'] ?? json['message'] ?? 'research label, not edge'}',
+      reason: '${json['reason'] ?? ''}',
+      states: [
+        if (spy['states'] is List)
+          for (final s in spy['states'])
+            if (s is Map) HmmState.fromJson(Map<String, dynamic>.from(s)),
+      ],
+      currentProbs: [
+        if (spy['current_probs'] is List)
+          for (final p in spy['current_probs'])
+            if (n(p) != null) n(p)!,
+      ],
+      rows: [
+        if (json['rows'] is List)
+          for (final r in json['rows'])
+            if (r is Map) HmmScanRow.fromJson(Map<String, dynamic>.from(r)),
+      ],
+    );
+  }
+}
+
+class HmmScanRow {
+  const HmmScanRow({
+    required this.symbol,
+    this.inherited = true,
+    this.spyState = '',
+    this.spyProb,
+    this.tag = '',
+    this.note = 'research label, not edge',
+  });
+
+  final String symbol;
+  final bool inherited;
+  final String spyState;
+  final double? spyProb;
+  final String tag;
+  final String note;
+
+  factory HmmScanRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return HmmScanRow(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      inherited: json['inherited'] != false,
+      spyState: '${json['spy_state'] ?? ''}',
+      spyProb: n(json['spy_prob']),
+      tag: '${json['tag'] ?? ''}',
+      note: '${json['note'] ?? 'research label, not edge'}',
+    );
+  }
+}

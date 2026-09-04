@@ -95,6 +95,27 @@ void main() {
           'message': 'Empty paper book. Import a Fidelity Positions CSV or add a line.',
         });
       }
+      if (path == '/api/finviz/settings' || path == '/api/finviz/presets') {
+        return _json({
+          'enabled': true,
+          'ttl_sec': 3600,
+          'presets': [],
+          'filter_docs': {},
+        });
+      }
+      if (path == '/api/finviz/screener' || path.startsWith('/api/finviz/quote/')) {
+        return _json({'ready': false, 'rows': [], 'news': [], 'reason': 'fixture'});
+      }
+      if (path == '/api/hmm/status' || path == '/api/hmm/regime' || path == '/api/hmm/scan') {
+        return _json({
+          'available': false,
+          'research_label': true,
+          'note': 'research label, not edge',
+          'rows': [],
+          'states': [],
+          'current_probs': [],
+        });
+      }
       if (path == '/api/fractal/status' || path == '/api/fractal/scan') {
         return _json({
           'available': true,
