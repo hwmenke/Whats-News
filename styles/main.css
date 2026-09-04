@@ -3881,7 +3881,7 @@ body.focus-mode.workspace-review #alert-log {
 .hmm-bar.hmm-risk-on { background: #60a5fa; }
 .hmm-bar.hmm-risk-off { background: #fbbf24; }
 
-.pnl-container, .book-container {
+.pnl-container, .book-container, .risk-container {
   display: none;
   flex-direction: column;
   gap: 14px;

@@ -18,8 +18,10 @@ class BoardRegistryTests(unittest.TestCase):
         self.assertTrue(br.YAML_PATH.is_file())
         yaml_text = br.YAML_PATH.read_text(encoding="utf-8")
         self.assertIn("measure id", yaml_text)
-        for bid in ("market_moves", "engine_setup", "engine_sigma", "engine_maps"):
+        for bid in ("market_moves", "engine_setup", "engine_sigma", "engine_maps", "setup"):
             self.assertIn(bid, yaml_text)
+        self.assertIn("engine:", yaml_text)
+        self.assertIn("macro:", yaml_text)
         self.assertIn("mm.z", yaml_text)
         self.assertIn("eng.tmac_star", yaml_text)
         self.assertNotIn("bloomberg", yaml_text.lower())
@@ -30,9 +32,14 @@ class BoardRegistryTests(unittest.TestCase):
         self.assertEqual(body["theme"], "visual_v41")
         self.assertIn("market_moves", body["boards"])
         self.assertIn("engine_setup", body["boards"])
+        for bid in ("market_moves", "engine", "setup", "macro"):
+            self.assertIn(bid, body["boards"])
+        self.assertEqual(body.get("canonical_boards"), ["market_moves", "engine", "setup", "macro"])
         with open("styles/theme.css", encoding="utf-8") as fh:
             theme = fh.read()
-        self.assertIn("Barlow Condensed", theme)
+        self.assertIn("Public Sans", theme)
+        self.assertIn("JetBrains Mono", theme)
+        self.assertIn("--font-face-title", theme)
         self.assertIn("#111111", theme)
         self.assertIn("utilitarian red/green", theme)
         mm = body["boards"]["market_moves"]["columns"]
@@ -87,7 +94,8 @@ class BoardRegistryTests(unittest.TestCase):
         self.assertIn("data-customize-board=\"engine_setup\"", blob)
         self.assertIn("BoardRegistry", blob)
         self.assertIn("boardColumns", blob)
-        self.assertIn("Barlow Condensed", blob)
+        self.assertIn("Public Sans", blob)
+        self.assertIn("JetBrains Mono", blob)
         self.assertIn("visual-v41", blob)
         self.assertIn("/api/boards/registry", blob)
         self.assertIn("getBoardRegistry", blob)

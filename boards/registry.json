@@ -255,6 +255,10 @@
       "heat_scale": {"lo": -5, "hi": 5}
     }
   },
+  "aliases": {
+    "engine": "engine_setup",
+    "macro": "engine_sigma"
+  },
   "boards": {
     "market_moves": {
       "id": "market_moves",
@@ -267,6 +271,19 @@
         {"id": "day_pct", "measure": "mm.day_pct", "label": "DAY%", "visible": true},
         {"id": "z", "measure": "mm.z", "label": "Z", "visible": true},
         {"id": "z14", "measure": "mm.z14", "label": "14D Z", "visible": true}
+      ]
+    },
+    "setup": {
+      "id": "setup",
+      "label": "SETUP glance",
+      "api": "/api/engine/board",
+      "density": "engine",
+      "columns": [
+        {"id": "symbol", "measure": "eng.symbol", "label": "Symbol", "visible": true, "locked": true},
+        {"id": "str", "measure": "eng.str", "label": "Str", "visible": true},
+        {"id": "stretch", "measure": "eng.stretch", "label": "Stretch", "visible": true},
+        {"id": "vs20", "measure": "eng.vs20", "label": "vs20", "visible": true},
+        {"id": "pattern_w", "measure": "eng.pattern_w", "label": "Pattern W", "visible": true}
       ]
     },
     "engine_setup": {

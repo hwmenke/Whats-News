@@ -3,7 +3,8 @@
 JSON (`registry.json`) is the machine source. YAML (`registry.yaml`) is the
 human twin emitted by `python3 board_registry.py`.
 
-Used by Market Moves and ENGINE:
+Canonical boards: `market_moves`, `engine` (alias of `engine_setup`),
+`setup`, `macro` (alias of `engine_sigma`). Used by Market Moves and ENGINE:
 
 - ordered columns
 - visibility + locked identity columns

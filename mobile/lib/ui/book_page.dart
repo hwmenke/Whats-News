@@ -38,14 +38,19 @@ class BookPage extends StatelessWidget {
                   alignment: WrapAlignment.center,
                   children: [
                     _Chip(
+                      label: 'Upload',
+                      on: state.bookPane == 'upload' || state.bookPane == 'positions',
+                      onTap: () => state.setBookPane('upload'),
+                    ),
+                    _Chip(
                       label: 'P&L',
-                      on: state.bookPane != 'positions',
+                      on: state.bookPane == 'pnl',
                       onTap: () => state.setBookPane('pnl'),
                     ),
                     _Chip(
-                      label: 'Positions',
-                      on: state.bookPane == 'positions',
-                      onTap: () => state.setBookPane('positions'),
+                      label: 'Risk',
+                      on: state.bookPane == 'risk',
+                      onTap: () => state.setBookPane('risk'),
                     ),
                   ],
                 ),
@@ -73,8 +78,10 @@ class BookPage extends StatelessWidget {
             ),
           ),
         ),
-        if (state.bookPane == 'positions')
+        if (state.bookPane == 'upload' || state.bookPane == 'positions')
           ..._positionSlivers(state)
+        else if (state.bookPane == 'risk')
+          ..._riskSlivers(state, pnl)
         else
           ..._pnlSlivers(state, pnl),
       ],
@@ -118,21 +125,6 @@ class BookPage extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(usd(pnl.todayPnl), style: TextStyle(color: tone(pnl.todayPnl), fontSize: 26, fontWeight: FontWeight.w600)),
-              if (pnl.alerts.isNotEmpty || pnl.topWeightPct != null || pnl.maxDdPct != null) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    if (pnl.topWeightPct != null)
-                      _RiskChip('Top ${pnl.topSymbol.isEmpty ? '' : '${pnl.topSymbol} '}${pnl.topWeightPct!.toStringAsFixed(0)}%'),
-                    if (pnl.hhi != null) _RiskChip('HHI ${pnl.hhi!.toStringAsFixed(0)}'),
-                    if (pnl.maxDdPct != null) _RiskChip('Max DD ${pnl.maxDdPct!.toStringAsFixed(1)}%'),
-                    for (final a in pnl.alerts) _RiskChip(a, alert: true),
-                  ],
-                ),
-              ],
               const SizedBox(height: 10),
               Text(
                 pnl.curveLabel.isEmpty ? 'daily mark series from stored closes — no intraday bars' : pnl.curveLabel,
@@ -150,10 +142,6 @@ class BookPage extends StatelessWidget {
               _ExpRow('Longs', pnl.ready ? usd(pnl.longMv) : '—'),
               _ExpRow('Shorts', pnl.ready ? usd(pnl.shortMv) : '—'),
               _ExpRow('Net Exposure', pnl.ready ? netPct : '—'),
-              _ExpRow('Beta', pnl.betaSpy?.toStringAsFixed(2) ?? '—'),
-              _ExpRow('Top weight', pnl.topWeightPct == null ? '—' : '${pnl.topWeightPct!.toStringAsFixed(1)}%'),
-              _ExpRow('HHI', pnl.hhi?.toStringAsFixed(0) ?? '—'),
-              _ExpRow('Max DD', pnl.maxDdPct == null ? '—' : '${pnl.maxDdPct!.toStringAsFixed(1)}%'),
               const SizedBox(height: 14),
               if (tapeA.isNotEmpty)
                 SingleChildScrollView(
@@ -195,15 +183,6 @@ class BookPage extends StatelessWidget {
                   ),
                 ),
               ],
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'VaR hist 95% ${pnl.hist95Pct?.toStringAsFixed(2) ?? '—'}% · param ${pnl.param95Pct?.toStringAsFixed(2) ?? '—'}% · ES ${pnl.es95Pct?.toStringAsFixed(2) ?? '—'}%\n'
-                  'Dist n=${pnl.distN} · mean ${pnl.distMean?.toStringAsFixed(3) ?? '—'}% · σ ${pnl.distStdev?.toStringAsFixed(3) ?? '—'}%',
-                  style: const TextStyle(color: DeskColors.dim, fontSize: 11, height: 1.4),
-                ),
-              ),
               if (pnl.message.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Text(pnl.message, style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35)),
@@ -212,6 +191,102 @@ class BookPage extends StatelessWidget {
           ),
         ),
       ),
+    ];
+  }
+
+  List<Widget> _riskSlivers(WhatsNewsState s, BookPnl pnl) {
+    String usd(double? v) {
+      if (v == null) return '—';
+      final abs = v.abs().toStringAsFixed(2);
+      return '${v < 0 ? '−' : ''}\$$abs';
+    }
+
+    final rows = pnl.positions;
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Portfolio risk',
+                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  if (pnl.topWeightPct != null)
+                    _RiskChip('Top ${pnl.topSymbol.isEmpty ? '' : '${pnl.topSymbol} '}${pnl.topWeightPct!.toStringAsFixed(0)}%'),
+                  if (pnl.hhi != null) _RiskChip('HHI ${pnl.hhi!.toStringAsFixed(0)}'),
+                  if (pnl.maxDdPct != null) _RiskChip('Max DD ${pnl.maxDdPct!.toStringAsFixed(1)}%'),
+                  if (pnl.betaSpy != null) _RiskChip('β ${pnl.betaSpy!.toStringAsFixed(2)}'),
+                  for (final a in pnl.alerts) _RiskChip(a, alert: true),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _ExpRow('Net', usd(pnl.net)),
+              _ExpRow('Beta', pnl.betaSpy?.toStringAsFixed(2) ?? '—'),
+              _ExpRow('Top weight', pnl.topWeightPct == null ? '—' : '${pnl.topWeightPct!.toStringAsFixed(1)}%'),
+              _ExpRow('HHI', pnl.hhi?.toStringAsFixed(0) ?? '—'),
+              _ExpRow('Max DD', pnl.maxDdPct == null ? '—' : '${pnl.maxDdPct!.toStringAsFixed(1)}%'),
+              const SizedBox(height: 10),
+              Text(
+                'VaR hist 95% ${pnl.hist95Pct?.toStringAsFixed(2) ?? '—'}% · param ${pnl.param95Pct?.toStringAsFixed(2) ?? '—'}% · ES ${pnl.es95Pct?.toStringAsFixed(2) ?? '—'}%',
+                style: const TextStyle(color: DeskColors.dim, fontSize: 11, height: 1.4),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Per-name risk',
+                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Weight · stand-alone 30d vol · risk contribution. Blank if bars are missing.',
+                style: TextStyle(color: DeskColors.muted, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+      ),
+      if (rows.isEmpty)
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'No marked names. Import a book and Fetch Yahoo so weight / vol / VaR can compute.',
+              style: TextStyle(color: DeskColors.muted, height: 1.4),
+            ),
+          ),
+        )
+      else
+        SliverList.builder(
+          itemCount: rows.length,
+          itemBuilder: (context, i) {
+            final r = rows[i];
+            return GestureDetector(
+              onTap: () => onOpenChart(r.symbol),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+                child: Text(
+                  [
+                    r.symbol,
+                    r.weightPct == null ? 'wt —' : 'wt ${r.weightPct!.toStringAsFixed(1)}%',
+                    r.vol30 == null ? 'vol —' : 'vol ${r.vol30!.toStringAsFixed(1)}%',
+                    r.riskContribPct == null ? 'rc —' : 'rc ${r.riskContribPct!.toStringAsFixed(1)}%',
+                    if (r.concentrated) 'CONCENTRATED',
+                  ].join(' · '),
+                  style: TextStyle(
+                    color: r.ready ? DeskColors.text : DeskColors.dim,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
     ];
   }
 

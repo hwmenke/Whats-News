@@ -71,7 +71,15 @@ function applyDeskIa(id) {
         return;
     }
     if (next === 'book') {
+        if (typeof switchTab === 'function') switchTab('book');
+        return;
+    }
+    if (next === 'pnl') {
         if (typeof switchTab === 'function') switchTab('pnl');
+        return;
+    }
+    if (next === 'risk') {
+        if (typeof switchTab === 'function') switchTab('risk');
         return;
     }
     if (next === 'chart') {

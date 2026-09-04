@@ -309,7 +309,10 @@ class WhatsNewsState extends ChangeNotifier {
   }
 
   void setBookPane(String pane) {
-    bookPane = pane == 'positions' ? 'positions' : 'pnl';
+    const allowed = {'upload', 'positions', 'pnl', 'risk'};
+    var next = allowed.contains(pane) ? pane : 'pnl';
+    if (next == 'positions') next = 'upload';
+    bookPane = next;
     notifyListeners();
     loadBook();
   }

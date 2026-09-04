@@ -42,16 +42,27 @@ def measure(measure_id: str) -> dict:
     return {"id": measure_id, **found}
 
 
+def resolve_board_id(board_id: str) -> str:
+    aliases = load_registry().get("aliases") or {}
+    return aliases.get(board_id, board_id)
+
+
 def board_def(board_id: str) -> dict:
     reg = load_registry()
-    found = (reg.get("boards") or {}).get(board_id)
+    resolved = resolve_board_id(board_id)
+    found = (reg.get("boards") or {}).get(resolved)
     if not found:
         raise KeyError(f"unknown board: {board_id}")
     return found
 
 
 def board_ids() -> list[str]:
-    return list((load_registry().get("boards") or {}).keys())
+    reg = load_registry()
+    ids = list((reg.get("boards") or {}).keys())
+    for alias in (reg.get("aliases") or {}):
+        if alias not in ids:
+            ids.append(alias)
+    return ids
 
 
 def default_columns(board_id: str) -> list[dict]:
@@ -105,13 +116,17 @@ def catalog() -> dict:
     """Public GET /api/boards/registry payload."""
     reg = load_registry()
     boards = {}
+    aliases = reg.get("aliases") or {}
     for bid in board_ids():
         spec = board_def(bid)
         boards[bid] = {
             "id": bid,
-            "label": spec.get("label"),
+            "label": spec.get("label") if bid not in aliases else (
+                "ENGINE" if bid == "engine" else "MACRO" if bid == "macro" else spec.get("label")
+            ),
             "api": spec.get("api"),
             "density": spec.get("density"),
+            "alias_of": aliases.get(bid),
             "columns": default_columns(bid),
         }
     return {
@@ -119,6 +134,8 @@ def catalog() -> dict:
         "theme": reg.get("theme"),
         "note": reg.get("note"),
         "measures": reg.get("measures"),
+        "aliases": aliases,
+        "canonical_boards": ["market_moves", "engine", "setup", "macro"],
         "boards": boards,
         "yaml": str(YAML_PATH.relative_to(ROOT)),
         "json": str(JSON_PATH.relative_to(ROOT)),

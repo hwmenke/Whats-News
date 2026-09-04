@@ -1273,6 +1273,10 @@ class BookPosition {
     this.fractalRead,
     this.hmmLabel,
     this.weightPct,
+    this.vol30,
+    this.pnlContribPct,
+    this.riskContribPct,
+    this.concentrated = false,
   });
 
   final int? id;
@@ -1292,6 +1296,10 @@ class BookPosition {
   final String? fractalRead;
   final String? hmmLabel;
   final double? weightPct;
+  final double? vol30;
+  final double? pnlContribPct;
+  final double? riskContribPct;
+  final bool concentrated;
 
   factory BookPosition.fromJson(Map<String, dynamic> json) {
     double? n(Object? v) {
@@ -1317,6 +1325,10 @@ class BookPosition {
       fractalRead: json['fractal_read'] == null ? null : '${json['fractal_read']}',
       hmmLabel: json['hmm_label'] == null ? null : '${json['hmm_label']}',
       weightPct: n(json['weight_pct']),
+      vol30: n(json['vol_30']),
+      pnlContribPct: n(json['pnl_contrib_pct']),
+      riskContribPct: n(json['risk_contrib_pct']),
+      concentrated: json['concentrated'] == true,
     );
   }
 }

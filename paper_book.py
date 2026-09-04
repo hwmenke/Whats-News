@@ -308,6 +308,23 @@ def _daily_closes(symbol: str, limit: int = 320) -> list[tuple[str, float]]:
     return out
 
 
+def _stand_alone_vol(closes: list) -> float | None:
+    """30-session close-return sample σ, annualized %. Blank if <31 closes."""
+    if not closes or len(closes) < 31:
+        return None
+    px = [c[1] for c in closes[-31:] if c and _finite(c[1]) is not None and c[1] > 0]
+    if len(px) < 31:
+        return None
+    rets = [(px[i] / px[i - 1] - 1.0) for i in range(1, len(px))]
+    if len(rets) < 30:
+        return None
+    arr = np.asarray(rets, dtype=float)
+    sig = float(np.std(arr, ddof=1))
+    if sig <= 0 or not math.isfinite(sig):
+        return None
+    return _round(sig * math.sqrt(252.0) * 100.0, 2)
+
+
 def _mark_position(pos: dict) -> dict:
     closes = _daily_closes(pos["symbol"])
     last = closes[-1] if closes else None
@@ -806,12 +823,35 @@ def book_pnl() -> dict:
     drawdown = _max_drawdown(curve)
     alerts = _risk_alerts(concentration, drawdown)
     hmm_label = _spy_hmm_label() if ready else None
+    today_abs = sum(abs(m["day_pnl"]) for m in ready if m.get("day_pnl") is not None)
     for m in marked:
         mv = _finite(m.get("market_value"))
         m["weight_pct"] = _round(abs(mv) / gross * 100.0, 2) if mv is not None and gross > 0 else None
-        frac = _fractal_read(m.get("symbol") or "", m.get("_closes") or []) if m.get("ready") else None
+        closes = m.get("_closes") or []
+        m["vol_30"] = _stand_alone_vol(closes) if m.get("ready") else None
+        if m.get("day_pnl") is not None and today is not None and abs(today) > 1e-9:
+            m["pnl_contrib_pct"] = _round(m["day_pnl"] / today * 100.0, 2)
+        elif m.get("day_pnl") is not None and today_abs > 1e-9:
+            m["pnl_contrib_pct"] = _round(m["day_pnl"] / today_abs * 100.0, 2)
+        else:
+            m["pnl_contrib_pct"] = None
+        m["concentrated"] = bool(
+            m.get("weight_pct") is not None and m["weight_pct"] >= CONCENTRATED_TOP_WEIGHT
+        )
+        frac = _fractal_read(m.get("symbol") or "", closes) if m.get("ready") else None
         m.update(_holding_opinion(m, hmm_label=hmm_label, fractal_read=frac))
         m.pop("_closes", None)
+    risk_units = []
+    for m in marked:
+        w = m.get("weight_pct")
+        v = m.get("vol_30")
+        if w is not None and v is not None:
+            risk_units.append((m, (w / 100.0) * v))
+        else:
+            m["risk_contrib_pct"] = None
+    total_ru = sum(u for _, u in risk_units)
+    for m, unit in risk_units:
+        m["risk_contrib_pct"] = _round(unit / total_ru * 100.0, 2) if total_ru > 1e-12 else None
     tape = [
         {
             "symbol": m["symbol"],

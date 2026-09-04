@@ -16,6 +16,7 @@ const _deskPrefDefaults = {
     qullaLens: 'all',
     finvizPreset: 'qulla_momentum',
     boardColumns: {},
+    sidebarCollapsed: true,
 };
 
 function readDeskPrefs() {
@@ -165,6 +166,9 @@ function bindDeskPrefs() {
     if (scanDef) scanDef.value = prefs.scanLens || 'trend';
     applyDeskRefreshInterval(prefs.refreshSec || 0);
     applyScanLens(prefs.scanLens || 'trend');
+    if (typeof applySidebarCollapsed === 'function') {
+        applySidebarCollapsed(prefs.sidebarCollapsed !== false);
+    }
     if (typeof bindEngineDesk === 'function') bindEngineDesk();
 
     document.getElementById('desk-refresh-sec')?.addEventListener('change', e => {

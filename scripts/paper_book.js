@@ -1,4 +1,4 @@
-/* Paper P&L + Book — marks from /api/book/pnl. No invented AXE-scale numbers. */
+/* Paper P&L + Upload + Risk — marks from /api/book/pnl. No invented AXE-scale numbers. */
 
 function _pnlEsc(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({
@@ -32,8 +32,10 @@ function _pnlTone(v) {
 function hideBookAreas() {
     const pnl = document.getElementById('pnl-area');
     const book = document.getElementById('book-area');
+    const risk = document.getElementById('risk-area');
     if (pnl) pnl.style.display = 'none';
     if (book) book.style.display = 'none';
+    if (risk) risk.style.display = 'none';
     if (typeof hideEngineArea === 'function') hideEngineArea();
 }
 
@@ -51,19 +53,26 @@ function showBookArea() {
     loadPaperBook();
 }
 
+function showRiskArea() {
+    hideBookAreas();
+    const el = document.getElementById('risk-area');
+    if (el) el.style.display = 'flex';
+    loadPaperRisk();
+}
+
 function _drawPnlCurve(points) {
     const canvas = document.getElementById('pnl-curve');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const w = canvas.parentElement ? canvas.parentElement.clientWidth : 360;
     canvas.width = Math.max(280, w);
-    canvas.height = 168;
+    canvas.height = 120;
     const W = canvas.width;
     const H = canvas.height;
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#0d1117';
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = '#2a3140';
+    ctx.strokeStyle = '#f3f3f3';
     ctx.lineWidth = 1;
     for (let i = 1; i < 5; i++) {
         const y = (H / 5) * i;
@@ -72,16 +81,9 @@ function _drawPnlCurve(points) {
         ctx.lineTo(W, y);
         ctx.stroke();
     }
-    for (let i = 1; i < 5; i++) {
-        const x = (W / 5) * i;
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, H);
-        ctx.stroke();
-    }
     if (!points || points.length < 2) {
-        ctx.fillStyle = '#4a5568';
-        ctx.font = '12px sans-serif';
+        ctx.fillStyle = '#666';
+        ctx.font = '12px Inter, sans-serif';
         ctx.fillText('No daily mark series — add lines and store Yahoo closes.', 10, H / 2);
         return;
     }
@@ -102,7 +104,7 @@ function _drawPnlCurve(points) {
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.strokeStyle = vals[i] >= open ? '#22c55e' : '#ef4444';
-        ctx.lineWidth = 2.2;
+        ctx.lineWidth = 2;
         ctx.stroke();
     }
 }
@@ -117,7 +119,6 @@ async function loadPaperPnl() {
         }
         const pct = document.getElementById('pnl-today-pct');
         const usd = document.getElementById('pnl-today-usd');
-        const nav = document.getElementById('pnl-nav');
         if (pct) {
             pct.textContent = _pnlPct(data.today_pnl_pct);
             pct.className = `pnl-today-pct ${_pnlTone(data.today_pnl_pct)}`;
@@ -126,79 +127,23 @@ async function loadPaperPnl() {
             usd.textContent = _pnlMoney(data.today_pnl);
             usd.className = `pnl-today-usd ${_pnlTone(data.today_pnl)}`;
         }
-        const chips = document.getElementById('pnl-alert-chips');
-        if (chips) {
-            const conc = data.concentration || {};
-            const dd = data.drawdown || {};
-            const alerts = Array.isArray(data.alerts) ? data.alerts : [];
-            const bits = [];
-            if (conc.ready) {
-                bits.push(`<span class="pnl-chip">${_pnlEsc(`Top ${conc.top_symbol || ''} ${conc.top_weight_pct ?? '—'}% · HHI ${conc.hhi ?? '—'}`)}</span>`);
-            }
-            if (dd.ready && dd.max_dd_pct != null) {
-                bits.push(`<span class="pnl-chip">${_pnlEsc(`Max DD ${Number(dd.max_dd_pct).toFixed(1)}%`)}</span>`);
-            }
-            alerts.forEach(a => {
-                bits.push(`<span class="pnl-chip is-alert">${_pnlEsc(a.label || a.id)}</span>`);
-            });
-            chips.innerHTML = bits.join('');
-        }
         const exp = data.exposure || {};
         const metrics = document.getElementById('pnl-metrics');
         if (metrics) {
             const netPct = exp.net_pct == null ? '—' : `${Number(exp.net_pct).toFixed(0)}%`;
-            const conc = data.concentration || {};
-            const dd = data.drawdown || {};
             const rows = [
-                ['Equities', data.ready ? _pnlMoney(exp.gross) : '—'],
+                ['NAV', data.nav == null ? '—' : _pnlMoney(data.nav)],
+                ['Day P&L', data.ready ? _pnlMoney(data.today_pnl) : '—'],
                 ['Longs', data.ready ? _pnlMoney(exp.long) : '—'],
                 ['Shorts', data.ready ? _pnlMoney(exp.short) : '—'],
-                ['Net Exposure', data.ready ? netPct : '—'],
-                ['Beta', data.beta_spy == null ? '—' : Number(data.beta_spy).toFixed(2)],
-                ['Top weight', conc.top_weight_pct == null ? '—' : `${Number(conc.top_weight_pct).toFixed(1)}%`],
-                ['HHI', conc.hhi == null ? '—' : String(conc.hhi)],
-                ['Max DD', dd.max_dd_pct == null ? '—' : `${Number(dd.max_dd_pct).toFixed(1)}%`],
+                ['Net', data.ready ? netPct : '—'],
+                ['Gross', data.ready ? _pnlMoney(exp.gross) : '—'],
             ];
             metrics.innerHTML = rows.map(([k, v]) => `
                 <div class="pnl-exp-row">
                     <span>${_pnlEsc(k)}</span>
                     <span>${_pnlEsc(v)}</span>
                 </div>`).join('');
-        }
-        const varEl = document.getElementById('pnl-var');
-        if (varEl) {
-            const v = data.var || {};
-            if (!v.hist_95) {
-                varEl.innerHTML = '<p class="macro-blurb">VaR omitted — need ≥20 daily book returns from stored closes.</p>';
-            } else {
-                const row = (label, pack) => `
-                    <div class="pnl-metric">
-                        <span class="pnl-metric-k">${_pnlEsc(label)}</span>
-                        <span class="pnl-metric-v">${pack?.pct == null ? '—' : _pnlEsc(Number(pack.pct).toFixed(2) + '%')}</span>
-                        <span class="pnl-metric-p">${_pnlEsc(_pnlMoney(pack?.usd))}</span>
-                    </div>`;
-                varEl.innerHTML = `
-                    <div class="pnl-var-title">1-day VaR / ES (book NAV returns)</div>
-                    <div class="pnl-metrics">
-                        ${row('Hist 95%', v.hist_95)}
-                        ${row('Hist 99%', v.hist_99)}
-                        ${row('Param 95%', v.param_95)}
-                        ${row('Param 99%', v.param_99)}
-                        ${row('ES 95%', v.es_95)}
-                    </div>
-                    <p class="macro-blurb">${_pnlEsc(v.note || '')}</p>`;
-            }
-        }
-        const distEl = document.getElementById('pnl-dist');
-        if (distEl) {
-            const d = data.distribution || {};
-            const maxN = Math.max(1, ...(d.bins || []).map(b => b.n));
-            distEl.innerHTML = `
-                <div class="pnl-var-title">Daily return distribution</div>
-                <p class="macro-blurb">n=${d.n || 0} · mean ${d.mean == null ? '—' : d.mean.toFixed(3) + '%'} · σ ${d.stdev == null ? '—' : d.stdev.toFixed(3) + '%'} · skew ${d.skew == null ? '—' : d.skew.toFixed(2)}</p>
-                <div class="pnl-hist">${(d.bins || []).map(b => `
-                    <div class="pnl-hist-bar" style="height:${Math.max(4, (b.n / maxN) * 64)}px" title="${b.lo}–${b.hi}% · ${b.n}"></div>
-                `).join('')}</div>`;
         }
         const tape = document.getElementById('pnl-tape');
         if (tape) {
@@ -247,14 +192,6 @@ async function loadPaperBook() {
                 <td>${_pnlEsc(row.source || '')}</td>
                 <td>${row.avg_cost == null ? '—' : row.avg_cost}</td>
                 <td>${row.price == null ? '—' : row.price}</td>
-                <td>${_pnlEsc(_pnlMoney(row.market_value))}</td>
-                <td class="${_pnlTone(row.day_pct)}">${row.day_pct == null ? '—' : _pnlEsc(_pnlPct(row.day_pct))}</td>
-                <td>${row.vs_sma50 == null ? '—' : _pnlEsc(_pnlPct(row.vs_sma50))}</td>
-                <td>${row.rsi14 == null ? '—' : Number(row.rsi14).toFixed(1)}</td>
-                <td>${_pnlEsc(row.fractal_read || '—')}</td>
-                <td>${_pnlEsc(row.hmm_label || '—')}</td>
-                <td class="${_pnlTone(row.day_pnl)}">${_pnlEsc(_pnlMoney(row.day_pnl))}</td>
-                <td class="${_pnlTone(row.unrealized)}">${_pnlEsc(_pnlMoney(row.unrealized))}</td>
                 <td><button type="button" class="btn btn-ghost btn-sm book-del" data-id="${row.id}">✕</button></td>`;
             tr.querySelector('.macro-sym')?.addEventListener('click', () => {
                 if (row.symbol && typeof selectSymbol === 'function') selectSymbol(row.symbol);
@@ -263,6 +200,7 @@ async function loadPaperBook() {
                 await apiFetch(`${API}/book/positions/${row.id}`, { method: 'DELETE' });
                 await loadPaperBook();
                 await loadPaperPnl();
+                await loadPaperRisk();
             });
             tbody.appendChild(tr);
         });
@@ -275,9 +213,118 @@ async function loadPaperBook() {
     }
 }
 
+async function loadPaperRisk() {
+    const note = document.getElementById('risk-note');
+    const empty = document.getElementById('risk-empty');
+    try {
+        const data = await apiFetch(`${API}/book/pnl`);
+        const conc = data.concentration || {};
+        const dd = data.drawdown || {};
+        const exp = data.exposure || {};
+        const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+        const chips = document.getElementById('risk-alert-chips');
+        if (chips) {
+            const bits = [];
+            if (conc.ready) {
+                bits.push(`<span class="pnl-chip">${_pnlEsc(`Top ${conc.top_symbol || ''} ${conc.top_weight_pct ?? '—'}% · HHI ${conc.hhi ?? '—'}`)}</span>`);
+            }
+            if (dd.ready && dd.max_dd_pct != null) {
+                bits.push(`<span class="pnl-chip">${_pnlEsc(`Max DD ${Number(dd.max_dd_pct).toFixed(1)}%`)}</span>`);
+            }
+            if (data.beta_spy != null) {
+                bits.push(`<span class="pnl-chip">${_pnlEsc(`β ${Number(data.beta_spy).toFixed(2)}`)}</span>`);
+            }
+            alerts.forEach(a => {
+                bits.push(`<span class="pnl-chip is-alert">${_pnlEsc(a.label || a.id)}</span>`);
+            });
+            chips.innerHTML = bits.join('');
+        }
+        const port = document.getElementById('risk-portfolio');
+        if (port) {
+            const rows = [
+                ['Gross', data.ready ? _pnlMoney(exp.gross) : '—'],
+                ['Net', exp.net == null ? '—' : _pnlMoney(exp.net)],
+                ['Beta vs SPY', data.beta_spy == null ? '—' : Number(data.beta_spy).toFixed(2)],
+                ['Top weight', conc.top_weight_pct == null ? '—' : `${Number(conc.top_weight_pct).toFixed(1)}%`],
+                ['Top-5', conc.top5_share == null ? '—' : `${Number(conc.top5_share).toFixed(1)}%`],
+                ['HHI', conc.hhi == null ? '—' : String(conc.hhi)],
+                ['Max DD', dd.max_dd_pct == null ? '—' : `${Number(dd.max_dd_pct).toFixed(1)}%`],
+            ];
+            port.innerHTML = rows.map(([k, v]) => `
+                <div class="pnl-exp-row">
+                    <span>${_pnlEsc(k)}</span>
+                    <span>${_pnlEsc(v)}</span>
+                </div>`).join('');
+        }
+        const varEl = document.getElementById('risk-var');
+        if (varEl) {
+            const v = data.var || {};
+            if (!v.hist_95) {
+                varEl.innerHTML = '<p class="macro-blurb">VaR omitted — need ≥20 daily book returns from stored closes.</p>';
+            } else {
+                const row = (label, pack) => `
+                    <div class="pnl-metric">
+                        <span class="pnl-metric-k">${_pnlEsc(label)}</span>
+                        <span class="pnl-metric-v">${pack?.pct == null ? '—' : _pnlEsc(Number(pack.pct).toFixed(2) + '%')}</span>
+                        <span class="pnl-metric-p">${_pnlEsc(_pnlMoney(pack?.usd))}</span>
+                    </div>`;
+                varEl.innerHTML = `
+                    <div class="pnl-var-title">1-day VaR / ES (book NAV returns)</div>
+                    <div class="pnl-metrics">
+                        ${row('Hist 95%', v.hist_95)}
+                        ${row('Hist 99%', v.hist_99)}
+                        ${row('Param 95%', v.param_95)}
+                        ${row('Param 99%', v.param_99)}
+                        ${row('ES 95%', v.es_95)}
+                    </div>
+                    <p class="macro-blurb">${_pnlEsc(v.note || '')}</p>`;
+            }
+        }
+        const distEl = document.getElementById('risk-dist');
+        if (distEl) {
+            const d = data.distribution || {};
+            const maxN = Math.max(1, ...(d.bins || []).map(b => b.n));
+            distEl.innerHTML = `
+                <div class="pnl-var-title">Daily return distribution</div>
+                <p class="macro-blurb">n=${d.n || 0} · mean ${d.mean == null ? '—' : d.mean.toFixed(3) + '%'} · σ ${d.stdev == null ? '—' : d.stdev.toFixed(3) + '%'} · skew ${d.skew == null ? '—' : d.skew.toFixed(2)}</p>
+                <div class="pnl-hist">${(d.bins || []).map(b => `
+                    <div class="pnl-hist-bar" style="height:${Math.max(4, (b.n / maxN) * 64)}px" title="${b.lo}–${b.hi}% · ${b.n}"></div>
+                `).join('')}</div>`;
+        }
+        const tbody = document.getElementById('risk-tbody');
+        const rows = (data.positions || []).filter(r => !r.omitted_from_pnl);
+        if (tbody) {
+            tbody.innerHTML = '';
+            rows.forEach(row => {
+                const tr = document.createElement('tr');
+                const flag = row.concentrated ? 'CONCENTRATED' : '';
+                tr.innerHTML = `
+                    <td class="macro-sym">${_pnlEsc(row.symbol)}</td>
+                    <td>${_pnlEsc(row.side || '')}</td>
+                    <td>${row.weight_pct == null ? '—' : `${Number(row.weight_pct).toFixed(1)}%`}</td>
+                    <td class="${_pnlTone(row.day_pnl)}">${_pnlEsc(_pnlMoney(row.day_pnl))}</td>
+                    <td class="${_pnlTone(row.pnl_contrib_pct)}">${row.pnl_contrib_pct == null ? '—' : `${Number(row.pnl_contrib_pct).toFixed(1)}%`}</td>
+                    <td>${row.vol_30 == null ? '—' : `${Number(row.vol_30).toFixed(1)}%`}</td>
+                    <td>${row.risk_contrib_pct == null ? '—' : `${Number(row.risk_contrib_pct).toFixed(1)}%`}</td>
+                    <td>${flag ? `<span class="pnl-chip is-alert">${_pnlEsc(flag)}</span>` : '—'}</td>`;
+                tr.querySelector('.macro-sym')?.addEventListener('click', () => {
+                    if (row.symbol && typeof selectSymbol === 'function') selectSymbol(row.symbol);
+                });
+                tbody.appendChild(tr);
+            });
+        }
+        if (empty) empty.style.display = rows.length ? 'none' : 'block';
+        if (note) note.textContent = data.message || conc.note || data.note || '';
+    } catch (err) {
+        if (note) note.textContent = err.message || 'Risk unavailable';
+        if (empty) empty.style.display = 'block';
+    }
+}
+
 function bindPaperBook() {
     document.getElementById('btn-pnl-refresh')?.addEventListener('click', () => loadPaperPnl());
     document.getElementById('btn-book-reload')?.addEventListener('click', () => loadPaperBook());
+    document.getElementById('btn-risk-refresh')?.addEventListener('click', () => loadPaperRisk());
     document.getElementById('btn-alpaca-sync')?.addEventListener('click', async () => {
         const msg = document.getElementById('alpaca-sync-msg');
         if (msg) msg.textContent = 'POST /api/alpaca/sync…';
@@ -290,6 +337,7 @@ function bindPaperBook() {
             }
             await loadPaperBook();
             await loadPaperPnl();
+            await loadPaperRisk();
         } catch (err) {
             if (msg) msg.textContent = err.message || 'Alpaca paper sync failed';
         }
@@ -307,6 +355,7 @@ function bindPaperBook() {
             if (msg) msg.textContent = data.error || `Imported ${data.imported || 0} lines.`;
             await loadPaperBook();
             await loadPaperPnl();
+            await loadPaperRisk();
         } catch (err) {
             if (msg) msg.textContent = err.message || 'Import failed';
         }
@@ -330,6 +379,7 @@ function bindPaperBook() {
         document.getElementById('book-add-symbol').value = '';
         await loadPaperBook();
         await loadPaperPnl();
+        await loadPaperRisk();
     });
     const nameEl = document.getElementById('pnl-desk-name');
     nameEl?.addEventListener('change', async () => {
@@ -342,3 +392,10 @@ function bindPaperBook() {
 }
 
 document.addEventListener('DOMContentLoaded', bindPaperBook);
+window.showPnlArea = showPnlArea;
+window.showBookArea = showBookArea;
+window.showRiskArea = showRiskArea;
+window.hideBookAreas = hideBookAreas;
+window.loadPaperPnl = loadPaperPnl;
+window.loadPaperBook = loadPaperBook;
+window.loadPaperRisk = loadPaperRisk;

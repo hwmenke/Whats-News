@@ -14,11 +14,12 @@
 </head>
 <body class="workspace-chart visual-v41">
 
-<div class="app">
+<div class="app sidebar-collapsed">
 
   <!-- ═══════════════════ TOP BAR ═══════════════════ -->
   <header class="topbar">
-    <button id="btn-sidebar-toggle" class="btn-sidebar-toggle" onclick="toggleSidebar()" title="Toggle watchlist">☰</button>
+    <button id="btn-sidebar-toggle" class="btn-sidebar-toggle" onclick="toggleSidebar()" title="Toggle watchlist">▶</button>
+    <div id="watchlist-peek" class="watchlist-peek" hidden aria-label="Watchlist peek"></div>
 
     <a href="/" class="topbar-logo" title="Whats-News home">
       <span class="logo-icon">📰</span>
@@ -67,15 +68,18 @@
                 title="Bulk import a list of tickers" aria-haspopup="dialog" aria-controls="bulk-modal">≡</button>
       </div>
       <input id="watchlist-filter" type="text" class="watchlist-filter"
-             placeholder="Filter list…" autocomplete="off" spellcheck="false"
+             placeholder="Filter…" autocomplete="off" spellcheck="false"
              title="Filter visible tickers (j/k follow this list)" />
-      <div id="desk-family-filters" class="desk-family-filters" role="group" aria-label="Sleeve family">
-        <button type="button" class="family-chip on" data-family="">All</button>
-        <button type="button" class="family-chip" data-family="country">Country</button>
-        <button type="button" class="family-chip" data-family="sector">Sector</button>
-        <button type="button" class="family-chip" data-family="theme">Theme</button>
-        <button type="button" class="family-chip" data-family="index">Broad</button>
-      </div>
+      <details class="sidebar-extras">
+        <summary>Sleeves</summary>
+        <div id="desk-family-filters" class="desk-family-filters" role="group" aria-label="Sleeve family">
+          <button type="button" class="family-chip on" data-family="">All</button>
+          <button type="button" class="family-chip" data-family="country">Country</button>
+          <button type="button" class="family-chip" data-family="sector">Sector</button>
+          <button type="button" class="family-chip" data-family="theme">Theme</button>
+          <button type="button" class="family-chip" data-family="index">Broad</button>
+        </div>
+      </details>
     </div>
 
     <div id="symbol-list" class="symbol-list">
@@ -258,7 +262,8 @@
       <button id="tab-moves" class="tab-btn" onclick="switchTab('moves')" title="Market Moves — QUANT-locked z from stored Yahoo OHLCV">Market Moves</button>
       <button id="tab-macro" class="tab-btn" onclick="switchTab('macro')" title="Macro sleeves + edges from stored Yahoo bars">Macro</button>
       <button id="tab-pnl" class="tab-btn" onclick="switchTab('pnl')" title="Paper book P&amp;L from stored marks — not a live broker">P&amp;L</button>
-      <button id="tab-book" class="tab-btn" onclick="switchTab('book')" title="Paper positions — Fidelity CSV or manual">Book</button>
+      <button id="tab-book" class="tab-btn" onclick="switchTab('book')" title="Upload / Data — Fidelity CSV import only">Upload</button>
+      <button id="tab-risk" class="tab-btn" onclick="switchTab('risk')" title="Portfolio + per-name risk from stored marks">Risk</button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">Data</button>
     </nav>
     <nav id="desk-ia-bar" class="desk-ia-bar" aria-label="Desk groups">
@@ -270,8 +275,10 @@
       <button type="button" class="desk-ia-btn" data-ia="macro">Macro</button>
       <button type="button" class="desk-ia-btn" data-ia="sigma">Sigma</button>
       <button type="button" class="desk-ia-btn" data-ia="maps">Maps</button>
-      <button type="button" class="desk-ia-btn" data-ia="book">Book+P&amp;L</button>
-      <button type="button" class="desk-ia-btn" data-ia="chart">Watchlist · Chart · News</button>
+      <button type="button" class="desk-ia-btn" data-ia="book">Upload</button>
+      <button type="button" class="desk-ia-btn" data-ia="pnl">P&amp;L</button>
+      <button type="button" class="desk-ia-btn" data-ia="risk">Risk</button>
+      <button type="button" class="desk-ia-btn" data-ia="chart">Chart</button>
     </nav>
     <nav class="main-nav-tabs main-nav-overlays" aria-label="Chart overlays">
       <div class="tab-spacer"></div>
@@ -1416,15 +1423,14 @@
       <p class="fractal-stub">HMM: research label, not edge. SPY 2/3-state Gaussian on stored daily log returns — not a Q-trade / quote-FV model. Occupancy is not a win rate.</p>
     </div>
 
-    <!-- ── Paper P&L / Risk (marks from stored Yahoo closes) ── -->
+    <!-- ── Paper P&L — performance only (marks from stored Yahoo closes) ── -->
     <div id="pnl-area" class="pnl-container" style="display:none;">
       <div class="pnl-phone">
         <div class="pnl-head">
           <input id="pnl-desk-name" class="pnl-desk-name" value="WHATS-NEWS" maxlength="80" aria-label="Desk name" />
           <button type="button" class="btn btn-ghost btn-sm" id="btn-pnl-refresh">Reload</button>
         </div>
-        <p class="pnl-blurb">Alpaca paper — not live P&amp;L. Marks are stored Yahoo closes.</p>
-        <div id="pnl-alert-chips" class="pnl-alert-chips" aria-label="Risk chips"></div>
+        <p class="pnl-blurb">P&amp;L only — marks from stored Yahoo closes. Risk lives on the Risk tab. Alpaca paper — not live P&amp;L.</p>
         <div class="pnl-hero">
           <div id="pnl-today-pct" class="pnl-today-pct">—</div>
           <div class="pnl-hero-label">TODAY'S P&amp;L</div>
@@ -1432,22 +1438,20 @@
         </div>
         <div class="pnl-curve-wrap">
           <div class="pnl-curve-label" id="pnl-curve-label">daily mark series from stored closes — no intraday bars</div>
-          <canvas id="pnl-curve" height="160"></canvas>
+          <canvas id="pnl-curve" height="120"></canvas>
         </div>
         <div id="pnl-metrics" class="pnl-exposure" role="table" aria-label="Exposure"></div>
         <div id="pnl-tape" class="pnl-tape" aria-label="Position tape"></div>
-        <div id="pnl-var" class="pnl-var"></div>
-        <div id="pnl-dist" class="pnl-dist"></div>
         <p id="pnl-note" class="pnl-blurb"></p>
       </div>
     </div>
 
-    <!-- ── Paper Portfolio / Fidelity import ── -->
+    <!-- ── Upload / Data — Fidelity CSV import only (Alpaca keys later) ── -->
     <div id="book-area" class="book-container" style="display:none;">
       <div class="book-head">
         <div>
-          <strong>Paper book</strong>
-          <p class="pnl-blurb">Fidelity: Positions → download CSV. Needs <code>Symbol</code> + <code>Quantity</code>. <code>Cost Basis Average</code> optional. No Fidelity login, no orders.</p>
+          <strong class="book-title">Upload / Data</strong>
+          <p class="pnl-blurb">Fidelity: Positions → download CSV. Needs <code>Symbol</code> + <code>Quantity</code>. <code>Cost Basis Average</code> optional. No Fidelity login, no orders. Import only — P&amp;L and Risk are separate surfaces.</p>
         </div>
         <button type="button" class="btn btn-ghost btn-sm" id="btn-book-reload">Reload</button>
       </div>
@@ -1477,12 +1481,11 @@
         <button type="submit" class="btn btn-primary btn-sm">Add line</button>
       </form>
       <div class="scanner-table-wrap">
-        <table class="scanner-table" id="book-table">
+        <table class="scanner-table book-table" id="book-table">
           <thead>
             <tr>
               <th>Symbol</th><th>Side</th><th>Qty</th><th>Source</th><th>Avg cost</th>
-              <th>Mark</th><th>MV</th><th>Day%</th><th>vs50</th><th>RSI</th><th>Fractal</th><th>HMM</th>
-              <th>Day $</th><th>Unrl</th><th></th>
+              <th>Mark</th><th></th>
             </tr>
           </thead>
           <tbody id="book-tbody"></tbody>
@@ -1491,6 +1494,36 @@
       <div id="book-empty" class="scanner-empty">
         <p>Empty paper book. Import a Fidelity CSV or add a line. Marks stay blank until Yahoo bars are stored.</p>
       </div>
+    </div>
+
+    <!-- ── Risk — portfolio + per-name (VaR/ES, HHI, DD, beta, contribution) ── -->
+    <div id="risk-area" class="risk-container" style="display:none;">
+      <div class="book-head">
+        <div>
+          <strong class="risk-title">Risk</strong>
+          <p class="pnl-blurb">Portfolio and per-name risk from stored Yahoo marks. VaR/ES omitted under 20 daily NAV returns. Blank = no bars — never invented.</p>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-risk-refresh">Reload</button>
+      </div>
+      <div id="risk-alert-chips" class="pnl-alert-chips" aria-label="Risk chips"></div>
+      <div id="risk-portfolio" class="pnl-exposure" role="table" aria-label="Portfolio risk"></div>
+      <div id="risk-var" class="pnl-var"></div>
+      <div id="risk-dist" class="pnl-dist"></div>
+      <div class="scanner-table-wrap">
+        <table class="scanner-table risk-table" id="risk-table">
+          <thead>
+            <tr>
+              <th>Symbol</th><th>Side</th><th>Weight</th><th>Day $</th><th>P&amp;L %</th>
+              <th>Vol30</th><th>Risk %</th><th>Flag</th>
+            </tr>
+          </thead>
+          <tbody id="risk-tbody"></tbody>
+        </table>
+      </div>
+      <div id="risk-empty" class="scanner-empty" style="display:none;">
+        <p>No marked names. Import a book and Fetch Yahoo so weight / vol / VaR can compute.</p>
+      </div>
+      <p id="risk-note" class="pnl-blurb"></p>
     </div>
 
     <!-- ── Data Manager Area ── -->

@@ -121,6 +121,12 @@ class PaperBookTests(unittest.TestCase):
         self.assertTrue(pnl["equity_curve"])
         # No invented AXE-scale NAV
         self.assertLess(abs(pnl["nav"]), 1e7)
+        row = pnl["positions"][0]
+        self.assertIsNotNone(row.get("weight_pct"))
+        self.assertIsNotNone(row.get("vol_30"))
+        self.assertIsNotNone(row.get("pnl_contrib_pct"))
+        self.assertIsNotNone(row.get("risk_contrib_pct"))
+        self.assertIn("concentrated", row)
 
     def test_unmarked_position_omits_fake_pnl(self):
         pb.upsert_position(symbol="ZZZZ", qty=5, side="long", avg_cost=10)
@@ -199,15 +205,20 @@ class PaperBookTests(unittest.TestCase):
             dart = fh.read()
         blob = html + js + dart
         self.assertIn("TODAY'S P&amp;L", html)
-        self.assertIn("Equities", js)
-        self.assertIn("Net Exposure", js)
         self.assertIn("id=\"pnl-area\"", html)
         self.assertIn("id=\"book-area\"", html)
-        self.assertIn("id=\"pnl-alert-chips\"", html)
+        self.assertIn("id=\"risk-area\"", html)
+        self.assertIn("id=\"tab-risk\"", html)
+        self.assertIn("Upload / Data", html)
+        self.assertIn("id=\"risk-alert-chips\"", html)
+        self.assertIn("loadPaperRisk", js)
         self.assertIn("Max DD", js)
+        self.assertIn("vol_30", js)
+        self.assertIn("risk_contrib_pct", js)
         self.assertIn("_RiskChip", dart)
         self.assertIn("Fidelity", html)
         self.assertIn("_CsvPaste", dart)
+        self.assertIn("Per-name risk", dart)
         self.assertNotIn("10.95B", blob)
         self.assertNotIn("468.2", blob)
         self.assertNotIn("AXE CAPITAL", blob)

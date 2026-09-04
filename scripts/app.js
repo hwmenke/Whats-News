@@ -381,12 +381,51 @@ function setupKamaAddForm() {
 }
 
 // ── Sidebar toggle ────────────────────────────────────────────
-function toggleSidebar() {
+function applySidebarCollapsed(collapsed) {
     const app = document.querySelector('.app');
     const btn = document.getElementById('btn-sidebar-toggle');
     if (!app) return;
-    const collapsed = app.classList.toggle('sidebar-collapsed');
+    app.classList.toggle('sidebar-collapsed', !!collapsed);
     if (btn) btn.textContent = collapsed ? '▶' : '☰';
+    if (typeof writeDeskPrefs === 'function') writeDeskPrefs({ sidebarCollapsed: !!collapsed });
+    if (typeof renderWatchlistPeek === 'function') renderWatchlistPeek();
+}
+
+function toggleSidebar() {
+    const app = document.querySelector('.app');
+    if (!app) return;
+    applySidebarCollapsed(!app.classList.contains('sidebar-collapsed'));
+}
+
+function renderWatchlistPeek() {
+    const el = document.getElementById('watchlist-peek');
+    if (!el) return;
+    const collapsed = document.querySelector('.app')?.classList.contains('sidebar-collapsed');
+    if (!collapsed) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+    }
+    const items = [...document.querySelectorAll('.symbol-item:not([hidden])')];
+    if (!items.length) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+    }
+    const active = Math.max(0, items.findIndex(i => i.classList.contains('active')));
+    let start = Math.max(0, active - 1);
+    if (start + 3 > items.length) start = Math.max(0, items.length - 3);
+    const slice = items.slice(start, start + 3);
+    el.hidden = false;
+    el.innerHTML = slice.map(i => {
+        const on = i.classList.contains('active') ? ' on' : '';
+        return `<button type="button" class="wl-peek-btn${on}" data-symbol="${i.dataset.symbol || ''}">${i.dataset.symbol || ''}</button>`;
+    }).join('');
+    el.querySelectorAll('[data-symbol]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (btn.dataset.symbol && typeof selectSymbol === 'function') selectSymbol(btn.dataset.symbol);
+        });
+    });
 }
 
 // ── Symbol Watchlist ─────────────────────────────────────────
@@ -396,6 +435,7 @@ async function loadSymbols() {
         state.symbols = await apiFetch(url);
         renderSymbolList();
         updateSidebarCount();
+        if (typeof renderWatchlistPeek === 'function') renderWatchlistPeek();
         refreshPortfolioTape(); // non-blocking enrich with % change
     } catch (e) {
         toast('Failed to load symbols: ' + e.message, 'error');
@@ -2490,6 +2530,8 @@ async function switchTab(tabId, opts = {}) {
         if (typeof showPnlArea === 'function') showPnlArea();
     } else if (tabId === 'book') {
         if (typeof showBookArea === 'function') showBookArea();
+    } else if (tabId === 'risk') {
+        if (typeof showRiskArea === 'function') showRiskArea();
     }
 }
 
