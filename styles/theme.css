@@ -1,202 +1,46 @@
 /* ============================================================
-   VISUAL v3 ONLY — Ex Ante brand × 538 patterns.
-   Discard cream #F4F2EC v2 and dark neon.
-   Obsidian #1e211e · Paper #fff · Graphite #4b4d4b · Ash #d2d3d2
-   Mint #90fc95 SURFACE ONLY (hero, OPPORTUNITY, extreme +σ).
-   2px radius. No shadows.
-   Faces: Fraunces / Inter / IBM Plex Mono stand in for
-   Alliance No.2 + Geist + Geist Mono (swap in this file).
-   Comp AAA rows are NOT live data.
+   Face + heat TOKENS only — not a final Visual UX pack.
+   HOLD: neon rejected. Cream v2 (#F4F2EC) rejected.
+   Obsidian/Paper/Mint v3 rejected (too AI-looking).
+   Do not implement those packs. Dedicated polish waits on
+   Visual UX v4 via CoS. Boards stay functional for now.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Public+Sans:wght@500;600;700&display=swap');
 
 :root {
-  --obsidian:       #1e211e;
-  --paper:          #ffffff;
-  --graphite:       #4b4d4b;
-  --ash:            #d2d3d2;
-  --mint:           #90fc95;
+  --font-title: 'Public Sans', 'Inter', sans-serif;
+  --font-main:  'Inter', sans-serif;
+  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
 
-  --font-title:     'Fraunces', Georgia, serif;           /* stand-in: Alliance No.2 */
-  --font-main:      'Inter', sans-serif;                  /* stand-in: Geist */
-  --font-mono:      'IBM Plex Mono', ui-monospace, monospace; /* stand-in: Geist Mono */
+  --heat-green-rgb: 34, 197, 94;
+  --heat-red-rgb:   239, 68, 68;
+  --heat-floor:     0.06;
+  --heat-span:      0.32;
 
-  --heat-green-rgb: 144, 252, 149;  /* mint wash = constructive / +σ */
-  --heat-red-rgb:   210, 211, 210;  /* ash = risk / below */
-  --heat-up-rgb:    144, 252, 149;
-  --heat-dn-rgb:    30, 33, 30;
-  --heat-floor:     0.18;
-  --heat-span:      0.45;
-
-  --chip-radius:    2px;
   --mm-row-h:       22px;
-  --engine-row-h:   30px;
-  --board-border:   1px solid var(--obsidian);
-  --board-radius:   2px;
-
-  --bg-base:        var(--paper);
-  --bg-elevated:    var(--paper);
-  --bg-card:        var(--paper);
-  --bg-hover:       #f4f4f3;
-  --border:         var(--obsidian);
-  --border-accent:  var(--ash);
-  --text-primary:   var(--obsidian);
-  --text-muted:     var(--graphite);
-  --text-dim:       #8a8c8a;
-  --green:          var(--obsidian);
-  --red:            var(--obsidian);
-  --accent:         var(--obsidian);
-  --accent-bright:  var(--obsidian);
-  --shadow-card:    none;
-  --shadow-glow:    none;
-}
-
-html, body {
-  background: var(--paper);
-  color: var(--obsidian);
-  font-family: var(--font-main);
+  --engine-row-h:   28px;
+  --board-border:   none;
+  --board-radius:   0;
 }
 
 .mm-head h2,
 .mm-card h3,
 .engine-container h3,
-.engine-story,
-.macro-story,
-.v2-card-kicker,
-.desk-ia-bar,
-.board-customize h3,
 .engine-count span,
-.v3-hero p {
+.desk-ia-bar,
+.board-customize h3 {
   font-family: var(--font-title);
 }
 
 .moves-container,
 .engine-container,
-.macro-container,
 .board-customize {
   font-family: var(--font-main);
-  color: var(--obsidian);
-  box-shadow: none;
 }
 
 .mm-table,
 .engine-heat-table,
-.board-customize-keys,
-.v2-big {
+.board-customize-keys {
   font-family: var(--font-mono);
-}
-
-.v2-chip {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 2px;
-  font-size: 10px;
-  font-weight: 600;
-  background: var(--ash);
-  color: var(--obsidian);
-  border: 1px solid var(--obsidian);
-}
-.v2-chip.is-opp, .v2-chip.is-acc { background: var(--mint); }
-.v2-chip.is-gray, .v2-chip.is-watch, .v2-chip.is-no,
-.v2-chip.is-form, .v2-chip.is-ext, .v2-chip.is-trig { background: var(--ash); }
-.v2-chip.is-dw { background: var(--paper); }
-.v2-chip.is-coil, .v2-chip.is-break { background: var(--paper); }
-
-.engine-story, .macro-story {
-  font-size: 28px;
-  line-height: 1.15;
-  font-weight: 600;
-  margin: 8px 0 4px;
-}
-.engine-story-sub, .macro-story-sub {
-  font-family: var(--font-main);
-  font-size: 13px;
-  color: var(--graphite);
-  margin: 0 0 12px;
-}
-
-.v3-hero {
-  background: var(--mint);
-  color: var(--obsidian);
-  padding: 10px 14px;
-  margin: 0 0 14px;
-  border-radius: 2px;
-}
-.v3-hero .v2-card-kicker { letter-spacing: 0.08em; font-size: 10px; margin: 0; }
-.v3-hero p { font-size: 20px; margin: 2px 0 0; }
-
-.v2-split {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
-  gap: 14px;
-  align-items: start;
-}
-.v2-card {
-  background: var(--paper);
-  border: 1px solid var(--obsidian);
-  border-radius: 2px;
-  padding: 12px 14px;
-  box-shadow: none;
-}
-.v2-card-kicker {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--graphite);
-  margin: 0 0 6px;
-  font-family: var(--font-main);
-}
-.v2-howto {
-  font-size: 11px;
-  color: var(--graphite);
-  margin: 10px 0 0;
-  line-height: 1.4;
-}
-.v2-three {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-.v2-three .v2-card { min-height: 220px; box-shadow: inset 2px 0 0 var(--obsidian); }
-.v2-accent-coral, .v2-accent-teal, .v2-accent-purple { box-shadow: inset 2px 0 0 var(--obsidian); }
-
-.v2-big {
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--obsidian);
-  font-family: var(--font-title);
-}
-.v2-str-row, .v2-stretch-row {
-  display: grid;
-  grid-template-columns: 56px 48px 1fr;
-  gap: 8px;
-  align-items: center;
-  min-height: 32px;
-}
-.v2-stretch-row.is-mint { background: var(--mint); }
-.v2-bar { position: relative; height: 6px; background: var(--ash); }
-.v2-bar i { position: absolute; top: 0; height: 100%; background: var(--obsidian); }
-.v2-bar i.is-up { left: 50%; }
-.v2-bar i.is-dn { right: 50%; }
-.v2-pat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.v2-pat-cell {
-  border: 1px solid var(--obsidian);
-  border-radius: 2px;
-  padding: 8px 4px;
-  text-align: center;
-}
-.v2-pat-cell strong { display: block; font-size: 22px; font-family: var(--font-title); color: var(--obsidian); }
-
-.desk-ia-btn.on {
-  background: transparent;
-  color: var(--obsidian);
-  border: none;
-  border-bottom: 3px solid var(--obsidian);
-  border-radius: 0;
-}
-
-@media (max-width: 980px) {
-  .v2-split, .v2-three { grid-template-columns: 1fr; }
 }

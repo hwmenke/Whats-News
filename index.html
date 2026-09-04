@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Whats-News – Watchlist Dashboard</title>
   <meta name="description" content="Whats-News: local watchlist dashboard with Yahoo Finance charts, analysis, and real headlines." />
-  <link rel="stylesheet" href="styles/main.css" />
   <link rel="stylesheet" href="styles/theme.css" />
+  <link rel="stylesheet" href="styles/main.css" />
   <!-- TradingView Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <!-- Chart.js for statistics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body class="workspace-chart visual-v3">
+<body class="workspace-chart">
 
 <div class="app">
 
@@ -1198,85 +1198,45 @@
         <div class="setup-scanner-header">
           <strong>Command</strong>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-engine-command">Load /api/engine/command</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-customize-board="engine_setup">Customize</button>
           <span id="engine-command-meta" class="scanner-ts"></span>
         </div>
-        <h2 class="engine-story">Where the book is coiled — and which names already agree</h2>
-        <p class="engine-story-sub">ENGINE heat from stored Yahoo bars. Research labels, not a win rate. Comp AAA rows are not live data.</p>
-        <div id="engine-hero" class="v3-hero">
-          <p class="v2-card-kicker">HERO METRIC</p>
-          <p id="engine-hero-metric">—</p>
-        </div>
-        <div class="v2-split">
-          <div class="v2-card">
-            <p class="v2-card-kicker">ENGINE Heat board</p>
-            <div class="scanner-table-wrap">
-              <table id="engine-board-table" class="scanner-table engine-heat-table">
-                <thead>
-                  <tr>
-                    <th>TICKER</th>
-                    <th>VCP</th>
-                    <th>TMS</th>
-                    <th>IMP</th>
-                    <th>PAT</th>
-                    <th>BIAS</th>
-                    <th>D/W</th>
-                    <th>RSI-C</th>
-                    <th>VS20</th>
-                    <th>52W</th>
-                    <th>STR</th>
-                    <th>ENGINE</th>
-                  </tr>
-                </thead>
-                <tbody id="engine-board-tbody"></tbody>
-              </table>
-            </div>
-            <div id="engine-board-empty" class="scanner-empty">
-              <p>Empty ENGINE — seed a sleeve / Core 50 and Fetch Yahoo. No stored bars means no labels.</p>
-            </div>
-            <p class="v2-howto">How to read: cells are buckets, not prices. “—” = missing bars. Mint wash = constructive. Ash dense = risk. ENGINE ≠ order ticket.</p>
-          </div>
-          <aside>
-            <div id="engine-takeaway-card" class="v2-card">
-              <p class="v2-card-kicker">TAKEAWAY</p>
-              <p class="engine-dim">Select a live row. No demo AAA card.</p>
-            </div>
-            <div id="engine-command-scatter" class="v2-card" style="margin-top:12px;">
-              <p class="v2-card-kicker">RSI vs. volatility</p>
-              <p class="engine-dim">Horizontal: RSI posture · Vertical: σ. Soft blue / coral diverging tint. Empty until maps have stored bars.</p>
-            </div>
-          </aside>
-        </div>
+        <p class="macro-blurb">Yahoo/SQLite OHLCV only. ENGINE / TAKEAWAY are research labels — not a win rate. Blank when bars are missing.</p>
         <div id="engine-command-body"></div>
       </div>
 
       <div class="engine-panel" data-panel="setup" style="display:none;">
         <div class="setup-scanner-header">
-          <strong>Setup board</strong>
+          <strong>Setup ENGINE</strong>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-engine-board">Load /api/engine/board</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-customize-board="engine_setup">Customize</button>
           <span id="engine-board-meta" class="scanner-ts"></span>
         </div>
-        <h2 class="engine-story">Breakouts, stretch, and pattern counts — one glance each</h2>
-        <p class="engine-story-sub">Big Obsidian numbers. Mint only as a surface for the top compress metric. Stored Yahoo bars only.</p>
-        <div class="v2-three">
-          <section class="v2-card v2-accent-coral">
-            <p class="v2-card-kicker">BREAKOUT STRENGTH</p>
-            <h3>How far past recent ranges.</h3>
-            <div id="engine-setup-str"></div>
-            <p class="v2-howto">How to read: Str blends 20d + 55d range breaks + BB. Zero is pivot. Omit if &lt;56 bars.</p>
-          </section>
-          <section class="v2-card v2-accent-teal">
-            <p class="v2-card-kicker">STRETCH / COMPRESS</p>
-            <h3>ADMA percentile · top of book.</h3>
-            <div id="engine-setup-stretch"></div>
-            <p class="v2-howto">How to read: Low %ile = compress (coil fuel); high = stretch. Desk percentile if n≥3.</p>
-          </section>
-          <section class="v2-card v2-accent-purple">
-            <p class="v2-card-kicker">PATTERN SCANNER</p>
-            <h3>Counts from stored bars only.</h3>
-            <div id="engine-setup-pattern"></div>
-            <p class="v2-howto">How to read: Log counts only. Empty window shows 0 — never invent tickers.</p>
-          </section>
+        <p class="macro-blurb">WATCH | FORMING | TRIGGERED | ACCEPTED | OPPORTUNITY | DORMANT | EXTENDED | NO TRADE + D1.x + D+W. D is SPEC 25/27 only. VCP is an honest proxy, not certified VCP.</p>
+        <div class="scanner-table-wrap">
+          <table id="engine-board-table" class="scanner-table engine-heat-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>VCP</th>
+                <th>TMS</th>
+                <th>Impulse</th>
+                <th>Pattern W</th>
+                <th>Bias</th>
+                <th>TAKEAWAY</th>
+                <th>D vs W</th>
+                <th>ENGINE</th>
+                <th>RSI-C</th>
+                <th>vs20</th>
+                <th>52w%</th>
+                <th>Str</th>
+                <th title="TMAC* heat proxy — never branded TMAC. 0–99 from range_pct + RSI14 + vol_heat. Not a win rate.">TMAC*</th>
+              </tr>
+            </thead>
+            <tbody id="engine-board-tbody"></tbody>
+          </table>
+        </div>
+        <div id="engine-board-empty" class="scanner-empty">
+          <p>Empty ENGINE — seed a sleeve / Core 50 and Fetch Yahoo. No stored bars means no labels.</p>
         </div>
       </div>
 
@@ -1392,8 +1352,6 @@
 
     <!-- ── Macro / Edges desk (shared APIs with iPhone) ── -->
     <div id="macro-area" class="macro-container" style="display:none;">
-      <h2 class="macro-story">Macro sleeves in σ — then coil, regime, and fractal context</h2>
-      <p class="macro-story-sub">σ heat = Obsidian / Ash / mint-wash. Discrete regime bands. Captions under every plot. Comp example rows are not live data.</p>
       <div id="macro-regime" class="macro-regime is-missing">
         <strong>Regime</strong>
         <span>Loading stored VIX…</span>
