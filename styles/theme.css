@@ -1,219 +1,47 @@
 /* ============================================================
-   VISUAL v2 ONLY — Ex Ante × FiveThirtyEight editorial tokens.
-   Discard dark-desk neon. Dedicated faces live in THIS file.
-   Paper #F4F2EC · cards #FFF · ink #1C1917
-   Serif board titles · Inter UI · mono numbers
-   Soft coral ↔ blue-gray heat · 2–3px architectural chips
-   Example comp rows (AAA…) are NOT live data — never ship them.
+   Face + heat TOKENS only — not a final Visual UX pack.
+   HOLD: neon pack rejected. Cream-paper Ex Ante×538 v2
+   (#F4F2EC / serif comps) also rejected — do not restyle to it.
+   Dedicated polish waits on Visual UX v3 via CoS (Obsidian /
+   Paper / Mint surface-only). Do not implement v3 in this file
+   until that slice is unlocked. Boards stay functional.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Public+Sans:wght@500;600;700&display=swap');
 
 :root {
-  --paper:          #F4F2EC;
-  --card:           #ffffff;
-  --ink:            #1C1917;
-  --ink-muted:      #57534E;
-  --ink-dim:        #A8A29E;
-  --hairline:       #E7E5E0;
+  --font-title: 'Public Sans', 'Inter', sans-serif;
+  --font-main:  'Inter', sans-serif;
+  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
 
-  --font-title:     'Source Serif 4', Georgia, 'Times New Roman', serif;
-  --font-main:      'Inter', sans-serif;
-  --font-mono:      'JetBrains Mono', ui-monospace, monospace;
+  --heat-green-rgb: 34, 197, 94;
+  --heat-red-rgb:   239, 68, 68;
+  --heat-floor:     0.06;
+  --heat-span:      0.32;
 
-  --heat-up-rgb:    148, 163, 184;   /* blue-gray = above / constructive */
-  --heat-dn-rgb:    232, 140, 120;   /* coral = below / stretched */
-  --heat-green-rgb: 148, 163, 184;
-  --heat-red-rgb:   232, 140, 120;
-  --heat-floor:     0.10;
-  --heat-span:      0.34;
-
-  --teal-wash:      #D7EDEA;
-  --teal-ink:       #0F5C56;
-  --coral-wash:     #F3D6CF;
-  --coral-ink:      #9A3412;
-  --blue-wash:      #D9E3EE;
-  --blue-ink:       #1E3A5F;
-  --tan-wash:       #EDE3D0;
-  --tan-ink:        #7C5A1E;
-  --mint-wash:      #DCEEE4;
-  --orange-wash:    #F3E0C8;
-
-  --chip-radius:    3px;
   --mm-row-h:       22px;
-  --engine-row-h:   30px;
-  --board-border:   1px solid var(--hairline);
-  --board-radius:   2px;
-
-  --bg-base:        var(--paper);
-  --bg-elevated:    var(--card);
-  --bg-card:        var(--card);
-  --bg-hover:       #EFECE4;
-  --border:         var(--hairline);
-  --border-accent:  #D6D3CD;
-  --text-primary:   var(--ink);
-  --text-muted:     var(--ink-muted);
-  --text-dim:       var(--ink-dim);
-  --green:          #3F6F6A;
-  --red:            #B4532A;
-  --accent:         #1C1917;
-  --accent-bright:  #1C1917;
-}
-
-html, body {
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--font-main);
+  --engine-row-h:   28px;
+  --board-border:   none;
+  --board-radius:   0;
 }
 
 .mm-head h2,
 .mm-card h3,
 .engine-container h3,
-.engine-story,
-.macro-story,
-.v2-card-kicker,
+.engine-count span,
 .desk-ia-bar,
-.board-customize h3,
-.engine-count span {
+.board-customize h3 {
   font-family: var(--font-title);
 }
 
 .moves-container,
 .engine-container,
-.macro-container,
 .board-customize {
   font-family: var(--font-main);
-  color: var(--ink);
 }
 
 .mm-table,
 .engine-heat-table,
 .board-customize-keys {
   font-family: var(--font-mono);
-}
-
-.v2-chip {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: var(--chip-radius);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  background: #F5F4F0;
-  color: var(--ink);
-}
-
-.v2-chip.is-opp { background: var(--teal-wash); color: var(--teal-ink); }
-.v2-chip.is-watch { background: var(--tan-wash); color: var(--tan-ink); }
-.v2-chip.is-no { background: #F5F4F0; color: var(--coral-ink); }
-.v2-chip.is-form { background: var(--orange-wash); color: var(--tan-ink); }
-.v2-chip.is-ext { background: var(--coral-wash); color: var(--coral-ink); }
-.v2-chip.is-trig { background: var(--blue-wash); color: var(--blue-ink); }
-.v2-chip.is-acc { background: var(--mint-wash); color: var(--teal-ink); }
-.v2-chip.is-coil { background: var(--blue-wash); color: var(--blue-ink); }
-.v2-chip.is-break { background: var(--coral-wash); color: var(--coral-ink); }
-.v2-chip.is-riskon { background: var(--mint-wash); color: var(--teal-ink); }
-.v2-chip.is-riskoff { background: var(--coral-wash); color: var(--coral-ink); }
-.v2-chip.is-long { background: var(--mint-wash); color: var(--teal-ink); }
-.v2-chip.is-short { background: var(--coral-wash); color: var(--coral-ink); }
-.v2-chip.is-dw { background: var(--blue-wash); color: var(--blue-ink); }
-.v2-chip.is-gray { background: #EEEDE8; color: var(--ink-muted); }
-
-.engine-story, .macro-story {
-  font-size: 26px;
-  line-height: 1.2;
-  font-weight: 600;
-  margin: 8px 0 4px;
-  color: var(--ink);
-}
-
-.engine-story-sub, .macro-story-sub {
-  font-family: var(--font-main);
-  font-size: 12px;
-  color: var(--ink-muted);
-  margin: 0 0 12px;
-}
-
-.v2-split {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
-  gap: 14px;
-  align-items: start;
-}
-
-.v2-card {
-  background: var(--card);
-  border: var(--board-border);
-  border-radius: 2px;
-  padding: 12px 14px;
-}
-
-.v2-card-kicker {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-  margin: 0 0 6px;
-}
-
-.v2-howto {
-  font-size: 11px;
-  color: var(--ink-muted);
-  margin: 10px 0 0;
-  line-height: 1.4;
-}
-
-.v2-three {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.v2-three .v2-card { min-height: 220px; }
-.v2-accent-coral { box-shadow: inset 3px 0 0 #D97757; }
-.v2-accent-teal { box-shadow: inset 3px 0 0 #3F6F6A; }
-.v2-accent-purple { box-shadow: inset 3px 0 0 #6B5B8C; }
-
-.v2-big {
-  font-family: var(--font-title);
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.v2-str-row, .v2-stretch-row {
-  display: grid;
-  grid-template-columns: 56px 48px 1fr;
-  gap: 8px;
-  align-items: center;
-  min-height: 32px;
-}
-
-.v2-bar {
-  position: relative;
-  height: 6px;
-  background: #EFECE4;
-}
-.v2-bar i {
-  position: absolute;
-  top: 0;
-  height: 100%;
-}
-.v2-bar i.is-up { left: 50%; background: #7A9AA8; }
-.v2-bar i.is-dn { right: 50%; background: #D97757; }
-
-.v2-pat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-}
-.v2-pat-cell {
-  background: #F3F1EB;
-  padding: 8px 4px;
-  text-align: center;
-}
-.v2-pat-cell strong { display: block; font-size: 22px; font-family: var(--font-title); }
-
-@media (max-width: 980px) {
-  .v2-split, .v2-three { grid-template-columns: 1fr; }
 }

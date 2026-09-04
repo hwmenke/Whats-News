@@ -25,11 +25,12 @@ does not compute PX, z, D, or TMAC*.
 Dash: Customize on Market Moves + ENGINE Setup / Sigma / Maps.
 Prefs: `localStorage['whats-news-desk-prefs'].boardColumns`.
 
-## Visual v2
+## Visual HOLD
 
-Ex Ante × FiveThirtyEight editorial desk (`styles/theme.css`).
-Paper `#F4F2EC`, ink `#1C1917`, serif titles, coral↔blue-gray heat.
-Neon HUD discarded. Comp AAA rows are **not** live data.
+Neon pack rejected. Cream-paper Ex Ante×538 **v2** (`#F4F2EC` / serif
+comps) also rejected — do not restyle to it. Wait for Visual UX v3 via
+CoS; do not implement v3 in this slice. Boards stay functional.
+ENGINE math and this registry stay.
 
 ## Flutter path
 

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "theme": "visual_v2",
+  "theme": "font_c_v41",
   "note": "Column + measure registry for Market Moves and ENGINE. Formulas are locked — this file only names keys, formats, and heat. Never invent PX / z / D / TMAC / win rates.",
   "measures": {
     "mm.name": {
