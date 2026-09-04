@@ -2477,7 +2477,10 @@ async function switchTab(tabId, opts = {}) {
         initDataManager();
     } else if (tabId === 'moves') {
         if (typeof hideEngineArea === 'function') hideEngineArea();
+        const moves = document.getElementById('moves-area');
+        if (moves) moves.style.display = 'flex';
         if (typeof showMovesArea === 'function') showMovesArea();
+        else if (typeof loadMarketMoves === 'function') loadMarketMoves();
     } else if (tabId === 'macro') {
         showMacroArea();
         if (typeof initMacroDesk === 'function') initMacroDesk();

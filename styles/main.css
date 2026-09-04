@@ -4142,6 +4142,7 @@ body.focus-mode.workspace-review #alert-log {
   padding: 10px 14px 20px;
   overflow: auto;
   min-height: 0;
+  flex: 1;
   font-family: 'Inter', sans-serif;
 }
 .mm-head {
