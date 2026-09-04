@@ -147,6 +147,7 @@ class WarningsSurfaceTests(unittest.TestCase):
             "warnings/warnings_board.png",
             "warnings/risk_scaffold.png",
             "warnings/risk_live.png",
+            "warnings/risk_hero.png",
             "warnings/risk_ranked_clusters.png",
             "density/scans_dense.png",
         ):

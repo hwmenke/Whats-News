@@ -1,7 +1,8 @@
 # Warnings + denser Scans + Risk
 
-- [warnings_board.png](warnings_board.png) — alert surface from Pattern / VCP / RSI-C
-- [scans_dense.png](../density/scans_dense.png) — help wall collapsed; chip row tight
-- [risk_live.png](risk_live.png) — SPEC stack: portfolio + 1d hist/param VaR + MVaR ranked + clusters
+- [warnings_board.png](warnings_board.png) — dense takeaways (breaking up/down, coiled, stretch)
+- [scans_dense.png](../density/scans_dense.png) — one overflow chip row; help collapsed
+- [risk_hero.png](risk_hero.png) — ranked %VaR / MVaR / CVaR / clusters at top of viewport
+- [risk_live.png](risk_live.png) — same hero stack
 - [risk_ranked_clusters.png](risk_ranked_clusters.png) — Ranked %VaR table + HOT/COLD clusters
-- [risk_scaffold.png](risk_scaffold.png) — same live stack (filename kept for the existing test)
+- [risk_scaffold.png](risk_scaffold.png) — filename kept for the existing test

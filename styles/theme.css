@@ -478,6 +478,12 @@ body.board-focus .desk-ia-bar { padding: 2px 8px; }
   color: #666;
 }
 .risk-container .risk-more { margin-top: 4px; }
+.risk-container .scanner-table-wrap {
+  flex: 0 0 auto;
+  max-height: none;
+  overflow: visible;
+  min-height: 0;
+}
 
 @media (max-width: 980px) {
   .v2-split, .v2-three { grid-template-columns: 1fr; }
