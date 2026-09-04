@@ -498,14 +498,34 @@ async function loadEngineRsiC() {
 }
 
 function _engStretchCol(title, items, metric) {
-    const rows = (items || []).map(it => {
+    const list = items || [];
+    if (!list.length) return '';
+    return _engListCol(title, list.map(it => {
         const val = metric === 'str' ? it.str : (it.stretch_pctile == null ? it.stretch_pct : it.stretch_pctile);
         const unit = metric === 'str' ? '' : (it.stretch_pctile == null ? '%' : '%ile');
-        return `<li><button type="button" class="engine-name" data-sym="${_engEsc(it.symbol)}">${_engEsc(it.symbol)}</button>
-            <strong>${val == null ? '—' : (metric === 'str' ? val : _engNum(val))}${unit}</strong>
-            <span class="engine-gray">${_engEsc(it.gray_tag || '')}</span></li>`;
+        return {
+            symbol: it.symbol,
+            gray_tag: it.gray_tag,
+            takeaway: val == null ? '' : `${metric === 'str' ? val : _engNum(val)}${unit}`,
+        };
+    }));
+}
+
+function _engPtsTable(title, points, xh, yh, tagFn) {
+    const list = points || [];
+    if (!list.length) return '';
+    const rows = list.map(p => {
+        const tag = typeof tagFn === 'function' ? (tagFn(p) || '') : (p.gray_tag || p.coil_state || p.zone || '');
+        return `<tr class="wn-row"><td class="wn-sym" data-sym="${_engEsc(p.symbol)}">${_engEsc(p.symbol)}</td>
+            <td>${p.x == null ? '—' : _engNum(p.x, 2)}</td>
+            <td>${p.y == null ? '—' : _engNum(p.y, 2)}</td>
+            <td class="wn-note">${_engEsc(tag || '—')}</td></tr>`;
     }).join('');
-    return `<div class="engine-col"><h3>${_engEsc(title)}</h3><ul>${rows || '<li class="engine-dim">none</li>'}</ul></div>`;
+    return `<section class="wn-card">
+        <h3>${_engEsc(title)} <span class="wn-n">${list.length}</span></h3>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>${_engEsc(xh)}</th><th>${_engEsc(yh)}</th><th>Tag</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+    </section>`;
 }
 
 async function loadEngineStretch() {
@@ -516,14 +536,14 @@ async function loadEngineStretch() {
     try {
         const data = await apiFetch(`${API}/engine/stretch?desk=1`);
         el.innerHTML = `
-            <div class="engine-quad">
+            <div class="warnings-grid">
                 ${_engStretchCol('STRONGEST BREAKOUTS', data.strongest, 'str')}
                 ${_engStretchCol('BREAKDOWNS', data.breakdowns, 'str')}
                 ${_engStretchCol('MOST STRETCHED (ADMA)', data.stretched, 'pct')}
                 ${_engStretchCol('MOST COMPRESSED (ADMA)', data.compressed, 'pct')}
             </div>
-            <details class="engine-howto" open><summary>HOW TO READ — BREAKOUT-STRENGTH & STRETCH</summary>
-                <p>${_engEsc(data.howto || '')}</p>
+            <details class="scan-help"><summary>HOW TO READ — BREAKOUT-STRENGTH & STRETCH</summary>
+                <p class="scan-breadth-note">${_engEsc(data.howto || '')}</p>
             </details>`;
         if (meta) meta.textContent = data.ready ? 'stretch lists' : (data.message || 'empty');
         if (!data.ready) {
@@ -602,7 +622,7 @@ function _engBar(pct) {
 
 function _engScatter(points, opts) {
     const o = opts || {};
-    const w = 640, h = 320, pad = 36;
+    const w = 640, h = 168, pad = 28;
     const xs = (points || []).map(p => Number(p.x)).filter(v => Number.isFinite(v));
     const ys = (points || []).map(p => Number(p.y)).filter(v => Number.isFinite(v));
     if (!xs.length || !ys.length) {
@@ -628,10 +648,22 @@ function _engScatter(points, opts) {
     }).join('');
     const midX = X((x0 + x1) / 2);
     const midY = Y((y0 + y1) / 2);
+    const guides = (o.guides || []).map(g => {
+        if (g.v != null && Number.isFinite(Number(g.v))) {
+            const x = X(Number(g.v));
+            return `<line x1="${x}" y1="${pad}" x2="${x}" y2="${h - pad}" stroke="${g.color || '#cccccc'}" stroke-width="1" stroke-dasharray="3 3"/>`;
+        }
+        if (g.h != null && Number.isFinite(Number(g.h))) {
+            const y = Y(Number(g.h));
+            return `<line x1="${pad}" y1="${y}" x2="${w - pad}" y2="${y}" stroke="${g.color || '#cccccc'}" stroke-width="1" stroke-dasharray="3 3"/>`;
+        }
+        return '';
+    }).join('');
     return `<svg class="engine-scatter" viewBox="0 0 ${w} ${h}" role="img">
         <rect x="0" y="0" width="${w}" height="${h}" fill="#ffffff"></rect>
         <line x1="${midX}" y1="${pad}" x2="${midX}" y2="${h - pad}" stroke="#ccc" stroke-width="1"/>
         <line x1="${pad}" y1="${midY}" x2="${w - pad}" y2="${midY}" stroke="#ccc" stroke-width="1"/>
+        ${guides}
         <text x="${w / 2}" y="${h - 8}" fill="#666" font-size="10" text-anchor="middle">${_engEsc(o.xLabel || '')}</text>
         <text x="12" y="16" fill="#666" font-size="10">${_engEsc(o.yLabel || '')}</text>
         ${dots}
@@ -684,57 +716,67 @@ function renderEngineMaps(data, view) {
             : `<tr><th>Asset</th><th>Str</th><th>Stretch</th><th>ΔD 1m</th><th>D65</th><th>TMS-D</th><th>52w pos</th><th>Vol30</th><th>TES</th><th>RSI-C · VCP</th><th>Dir ±5</th><th title="TMAC* heat proxy — never branded TMAC">TMAC*</th></tr>`;
         el.innerHTML = `
             ${_engScatter((data.scanner || {}).scatter || [], { xLabel: 'Dir ±5', yLabel: 'RSI(14)', xmin: -5, xmax: 5, ymin: 0, ymax: 100, guides: [{ v: 0 }, { h: 25 }, { h: 50 }, { h: 75 }] })}
-            ${_engLegend(classes)}
-            <div class="scanner-table-wrap"><table class="scanner-table engine-heat-table engine-dense">
+            ${body ? `<div class="scanner-table-wrap"><table class="scanner-table engine-heat-table wn-table engine-dense">
                 <thead>${head}</thead>
-                <tbody>${body || `<tr><td colspan="${Math.max(1, cols.length || 12)}">none</td></tr>`}</tbody>
-            </table></div>
-            <details class="engine-howto" open><summary>HOW TO READ — SCANNER + TES</summary>
-                <p>${_engEsc((data.scanner || {}).howto || '')}</p>
-                <p>${_engEsc(data.tes_note || '')}</p>
-                <p>${_engEsc(data.tmac_note || '')}</p>
+                <tbody>${body}</tbody>
+            </table></div>` : ''}
+            <details class="scan-help"><summary>HOW TO READ — SCANNER + TES</summary>
+                <p class="scan-breadth-note">${_engEsc((data.scanner || {}).howto || '')}</p>
+                <p class="scan-breadth-note">${_engEsc(data.tes_note || '')}</p>
+                <p class="scan-breadth-note">${_engEsc(data.tmac_note || '')}</p>
             </details>`;
     } else if (tab === 'rotation') {
         const rot = data.rotation || {};
         el.innerHTML = `
-            <h3>CROSS-ASSET ROTATION</h3>
-            ${_engScatter(rot.points || [], { xLabel: rot.x_label, yLabel: rot.y_label, xmin: 0, xmax: 100, guides: [{ v: 50 }, { h: 0 }] })}
-            ${_engLegend(classes)}
-            <details class="engine-howto" open><summary>HOW TO READ — ROTATION</summary><p>${_engEsc(rot.howto || '')}</p></details>`;
+            <div class="warnings-grid">
+                ${_engScatter(rot.points || [], { xLabel: rot.x_label, yLabel: rot.y_label, xmin: 0, xmax: 100, guides: [{ v: 50 }, { h: 0 }] })}
+                ${_engPtsTable('Rotation', rot.points, 'RSI(14)', '1w σ', p => p.asset_class || p.gray_tag)}
+            </div>
+            <details class="scan-help"><summary>HOW TO READ — ROTATION</summary>
+                <p class="scan-breadth-note">${_engEsc(rot.howto || '')}</p>
+            </details>`;
     } else if (tab === 'coil') {
         const coil = data.coil || {};
         el.innerHTML = `
-            <h3>COIL MAP</h3>
-            ${_engScatter(coil.points || [], { xLabel: coil.x_label, yLabel: coil.y_label, xmin: 0, xmax: 1.2, ymin: -20, ymax: 120, band: [0, 0.65], guides: [{ v: 0.45, color: '#06B6D4' }, { v: 0.65, color: '#06B6D4' }, { h: 0 }, { h: 100 }] })}
-            ${_engLegend(classes)}
-            <details class="engine-howto" open><summary>HOW TO READ — COIL</summary><p>${_engEsc(coil.howto || '')}</p></details>`;
+            <div class="warnings-grid">
+                ${_engScatter(coil.points || [], { xLabel: coil.x_label, yLabel: coil.y_label, xmin: 0, xmax: 1.2, ymin: -20, ymax: 120, band: [0, 0.65], guides: [{ v: 0.45, color: '#111111' }, { v: 0.65, color: '#111111' }, { h: 0 }, { h: 100 }] })}
+                ${_engPtsTable('Coil', coil.points, 'coil_12', '13w %', p => p.coil_state || p.gray_tag)}
+            </div>
+            <details class="scan-help"><summary>HOW TO READ — COIL</summary>
+                <p class="scan-breadth-note">${_engEsc(coil.howto || '')}</p>
+            </details>`;
     } else if (tab === 'fractal') {
         const ft = data.fractal_td || {};
         el.innerHTML = `
-            <h3>FRACTAL × TD</h3>
-            ${_engScatter(ft.points || [], { xLabel: ft.x_label, yLabel: ft.y_label, xmin: 1.1, xmax: 2.1, ymin: -15, ymax: 15, guides: [{ v: 1.3 }, { v: 1.5 }, { h: 13, color: '#EF4444' }, { h: -13, color: '#22C55E' }, { h: 0 }], empty: 'No D65 — SPEC 25/27 window failed. No invented markers.' })}
-            ${_engLegend(classes)}
-            <details class="engine-howto" open><summary>HOW TO READ — FRACTAL × TD</summary>
-                <p>${_engEsc(ft.howto || '')}</p>
-                <p>${_engEsc(data.td_note || '')}</p>
+            <div class="warnings-grid">
+                ${_engScatter(ft.points || [], { xLabel: ft.x_label, yLabel: ft.y_label, xmin: 1.1, xmax: 2.1, ymin: -15, ymax: 15, guides: [{ v: 1.3 }, { v: 1.5 }, { h: 13, color: '#EF4444' }, { h: -13, color: '#22C55E' }, { h: 0 }], empty: 'No D65 — SPEC 25/27 window failed. No invented markers.' })}
+                ${_engPtsTable('Fractal × TD', ft.points, 'D65', 'TD', p => p.td_flag || p.gray_tag)}
+            </div>
+            <details class="scan-help"><summary>HOW TO READ — FRACTAL × TD</summary>
+                <p class="scan-breadth-note">${_engEsc(ft.howto || '')}</p>
+                <p class="scan-breadth-note">${_engEsc(data.td_note || '')}</p>
             </details>`;
     } else {
         const tm = data.tms_regime || {};
         const pts = [...(tm.weekly || []), ...(tm.daily || [])];
         const spy = tm.spy_strip || {};
         const ex = tm.extremes || {};
-        const list = (arr) => (arr || []).map(x => `<li><button type="button" class="engine-name" data-sym="${_engEsc(x.symbol)}">${_engEsc(x.symbol)}</button> ${_engNum(x.ret_12m)}%</li>`).join('');
+        const zoneRows = Object.entries(tm.by_zone || {}).filter(([, syms]) => (syms || []).length).map(([z, syms]) => ({
+            symbol: z, gray_tag: `${(syms || []).length}`, takeaway: (syms || []).join(' '),
+        }));
         el.innerHTML = `
-            <h3>TMS REGIME MAP</h3>
-            <p class="engine-dim">SPY strip: ${_engEsc(spy.label || '—')} — ${_engEsc(spy.note || '')}</p>
-            <p class="engine-dim">By zone: ${Object.keys(tm.by_zone || {}).map(z => `${_engEsc(z)} ${(tm.by_zone[z] || []).join(', ')}`).join(' · ') || '—'}</p>
-            ${_engScatter(pts, { xLabel: tm.x_label, yLabel: tm.y_label, xmin: -100, xmax: 100, ymin: -25, ymax: 25, guides: [{ v: 0 }, { h: 0 }] })}
-            ${_engLegend(classes)}
-            <div class="engine-quad">
-                <div class="engine-col is-bull"><h3>TOP 12M %</h3><ul>${list(ex.top_12m) || '<li class="engine-dim">none</li>'}</ul></div>
-                <div class="engine-col is-bear"><h3>BOTTOM 12M %</h3><ul>${list(ex.bottom_12m) || '<li class="engine-dim">none</li>'}</ul></div>
+            <div class="warnings-grid">
+                ${_engScatter(pts, { xLabel: tm.x_label, yLabel: tm.y_label, xmin: -100, xmax: 100, ymin: -25, ymax: 25, guides: [{ v: 0 }, { h: 0 }] })}
+                ${_engPtsTable('TMS-W', tm.weekly, 'score', 'impulse', p => p.zone || 'solid')}
+                ${_engPtsTable('TMS-D', tm.daily, 'score', 'impulse', p => p.zone || 'hollow')}
+                ${_engListCol('Zones', zoneRows)}
+                ${_engListCol('TOP 12M %', (ex.top_12m || []).map(x => ({ symbol: x.symbol, takeaway: x.ret_12m == null ? '' : `${_engNum(x.ret_12m)}%` })))}
+                ${_engListCol('BOTTOM 12M %', (ex.bottom_12m || []).map(x => ({ symbol: x.symbol, takeaway: x.ret_12m == null ? '' : `${_engNum(x.ret_12m)}%` })))}
             </div>
-            <details class="engine-howto" open><summary>HOW TO READ — TMS REGIME</summary><p>${_engEsc(tm.howto || '')}</p></details>`;
+            <p class="scan-breadth-note">SPY strip: ${_engEsc(spy.label || '—')} — ${_engEsc(spy.note || '')}</p>
+            <details class="scan-help"><summary>HOW TO READ — TMS REGIME</summary>
+                <p class="scan-breadth-note">${_engEsc(tm.howto || '')}</p>
+            </details>`;
     }
     el.querySelectorAll('[data-sym], tr[data-symbol], .engine-dot').forEach(node => {
         node.addEventListener('click', () => {

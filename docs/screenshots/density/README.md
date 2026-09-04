@@ -11,3 +11,7 @@ Watchlist before/after plus Book Upload | P&L | Risk.
 - [scans_dense.png](scans_dense.png) — help wall collapsed; chip row tight; no Empty universe when stored_n>0
 - [pattern_dw.png](pattern_dw.png) — Pattern D/W Excel boards; empty buckets omitted
 - [rsic_counter.png](rsic_counter.png) — RSI-C Counter Excel buckets; empty omitted
+- [macro_sigma.png](macro_sigma.png) — Macro sleeve σ grid (Z30/Z14) as stacked wn-tables
+- [coil_map.png](coil_map.png) — Coil map: compact scatter + Excel points
+- [tms_regime.png](tms_regime.png) — TMS Regime: W/D tables + zones, empty omitted
+- [sigma_grid.png](sigma_grid.png) — ENGINE σ heatmap flush, leftover chrome hidden

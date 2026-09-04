@@ -219,45 +219,32 @@ function renderSleeveGrid(sleeves) {
         grid.innerHTML = '<div class="macro-empty">No sleeves. Restart the Python app so /api/sleeves is live.</div>';
         return;
     }
-    grid.innerHTML = '';
+    const cards = [];
     sleeves.forEach(sleeve => {
-        const card = document.createElement('section');
-        card.className = 'macro-sleeve-card';
-        const rows = (sleeve.rows || []).map(row => {
-            if (!row.ready) {
-                return `<tr class="is-dark"><td>${_esc(row.symbol)}</td><td colspan="4" class="dim">no bars</td></tr>`;
-            }
+        const readyRows = (sleeve.rows || []).filter(row => row.ready);
+        if (!readyRows.length) return;
+        const rows = readyRows.map(row => {
             const zCls = row.extreme ? 'z-extreme' : '';
             return `<tr class="${row.extreme ? 'is-extreme' : ''}" data-symbol="${_esc(row.symbol)}">
-                <td class="macro-sym">${_esc(row.symbol)}</td>
+                <td class="wn-sym">${_esc(row.symbol)}</td>
                 <td>${_num(row.px)}</td>
                 <td class="${_chgClass(row.day_pct)}">${_pct(row.day_pct)}</td>
                 <td class="${zCls}">${_num(row.z30)}</td>
                 <td class="${zCls}">${_num(row.z14)}</td>
             </tr>`;
         }).join('');
-        const skip = sleeve.skipped
-            ? `<p class="macro-skipped">${_esc(sleeve.skipped)}</p>`
-            : '';
-        card.innerHTML = `
-            <header>
-                <strong>${_esc(sleeve.label)}</strong>
-                <span class="macro-lit">${sleeve.ready_count || 0}/${(sleeve.tickers || []).length} lit</span>
-                <button type="button" class="btn btn-ghost btn-sm" data-seed="${_esc(sleeve.id)}">Seed + fetch</button>
-            </header>
-            <p class="macro-blurb">${_esc(sleeve.blurb || '')}</p>
-            ${skip}
-            <table class="macro-mini">
-                <thead><tr><th></th><th>PX</th><th>Day</th><th>Z30</th><th>Z14</th></tr></thead>
-                <tbody>${rows}</tbody>
-            </table>`;
-        card.querySelector('[data-seed]')?.addEventListener('click', () => seedAndFetchSleeve(sleeve.id));
-        card.querySelectorAll('tr[data-symbol]').forEach(tr => {
-            tr.addEventListener('click', () => {
-                if (typeof selectSymbol === 'function') selectSymbol(tr.dataset.symbol);
-            });
+        cards.push(`<section class="wn-card macro-sleeve-card">
+            <h3>${_esc(sleeve.label)} <span class="wn-n">${readyRows.length}</span></h3>
+            <table class="wn-table mm-table macro-mini"><thead><tr><th>Sym</th><th>PX</th><th>Day</th><th>Z30</th><th>Z14</th></tr></thead>
+            <tbody>${rows}</tbody></table>
+        </section>`);
+    });
+    grid.className = 'macro-sleeve-grid warnings-grid';
+    grid.innerHTML = cards.join('') || '<div class="macro-empty">No lit sleeves. Seed + Fetch Yahoo.</div>';
+    grid.querySelectorAll('tr[data-symbol]').forEach(tr => {
+        tr.addEventListener('click', () => {
+            if (typeof selectSymbol === 'function') selectSymbol(tr.dataset.symbol);
         });
-        grid.appendChild(card);
     });
 }
 
@@ -350,10 +337,13 @@ function renderEdgesBoard(board) {
     }).join('');
 
     const buckets = board.setup_buckets || {};
-    const bucketHtml = Object.entries(buckets).filter(([id]) => !_edgeTag || id === _edgeTag).map(([id, names]) => {
+    const bucketHtml = Object.entries(buckets).filter(([id, names]) => {
+        if (_edgeTag && id !== _edgeTag) return false;
+        return (names || []).length;
+    }).map(([id, names]) => {
         const chips = (names || []).map(s =>
             `<button type="button" class="macro-chip" data-open="${_esc(s)}">${_esc(s)}</button>`
-        ).join('') || '<span class="dim">none</span>';
+        ).join('');
         return `<div class="edges-bucket"><strong>${_esc(id)}</strong><div>${chips}</div></div>`;
     }).join('');
 

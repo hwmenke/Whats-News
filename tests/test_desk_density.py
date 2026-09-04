@@ -102,6 +102,12 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("if (!list.length) return '';", self.blob)
         self.assertIn("HOW TO READ — PATTERN SCANNER", self.blob)
         self.assertIn("HOW TO READ — RSI COUNTER", self.blob)
+        self.assertIn("HOW TO READ — COIL", self.blob)
+        self.assertIn("_engPtsTable", self.blob)
+        self.assertIn("max-height: 168px", self.blob)
+        macro = Path("scripts/macro_desk.js").read_text(encoding="utf-8")
+        self.assertIn("wn-table", macro)
+        self.assertIn("warnings-grid", macro)
         self.assertIn("/api/desk/seed-fetch", Path("app.py").read_text(encoding="utf-8"))
         self.assertIn("See docs/YAHOO_SEED.md", Path("app.py").read_text(encoding="utf-8"))
         self.assertTrue(Path("docs/YAHOO_SEED.md").is_file())
@@ -132,6 +138,10 @@ class DeskDensityTests(unittest.TestCase):
             "book_risk.png",
             "pattern_dw.png",
             "rsic_counter.png",
+            "macro_sigma.png",
+            "coil_map.png",
+            "tms_regime.png",
+            "sigma_grid.png",
         ):
             path = root / name
             self.assertTrue(path.is_file(), name)
