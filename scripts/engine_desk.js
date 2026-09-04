@@ -182,7 +182,7 @@ async function loadEngineBoard() {
                 <td class="${_engTone(row.vs20)}">${row.vs20 == null ? '—' : _engNum(row.vs20)}</td>
                 <td style="${_engHeat(row.dist_52w_pct, -40, 0)}">${row.dist_52w_pct == null ? '—' : _engNum(row.dist_52w_pct)}</td>
                 <td class="${_engTone(row.str)}">${row.str == null ? '—' : row.str}</td>
-                <td class="engine-tmac" style="${_engHeat(row.tmac_star, 0, 99)}" title="${_engEsc(row.tmac_note || 'TMAC* heat proxy')}">${row.tmac_star == null ? '—' : row.tmac_star}</td>`;
+                <td class="engine-tmac" style="${_engHeat(row.tmac_star, 0, 99)}" title="${_engEsc(row.tmac_note || 'TMAC interim — awaiting Quant SPEC')}">${row.tmac_star == null ? '—' : row.tmac_star}</td>`;
             tbody.appendChild(tr);
         });
         if (empty) empty.style.display = rows.length ? 'none' : 'block';
@@ -514,7 +514,7 @@ function renderEngineMaps(data, view) {
             ${_engScatter((data.scanner || {}).scatter || [], { xLabel: 'Dir ±5', yLabel: 'RSI(14)', xmin: -5, xmax: 5, ymin: 0, ymax: 100, guides: [{ v: 0 }, { h: 25 }, { h: 50 }, { h: 75 }] })}
             ${_engLegend(classes)}
             <div class="scanner-table-wrap"><table class="scanner-table engine-heat-table engine-dense">
-                <thead><tr><th>Asset</th><th>Str</th><th>Stretch</th><th>ΔD 1m</th><th>D65</th><th>TMS-D</th><th>52w pos</th><th>Vol30</th><th>TES</th><th>RSI-C · VCP</th><th>Dir ±5</th><th>TMAC*</th></tr></thead>
+                <thead><tr><th>Asset</th><th>Str</th><th>Stretch</th><th>ΔD 1m</th><th>D65</th><th>TMS-D</th><th>52w pos</th><th>Vol30</th><th>TES</th><th>RSI-C · VCP</th><th>Dir ±5</th><th title="TMAC interim — awaiting Quant SPEC">TMAC*</th></tr></thead>
                 <tbody>${body || '<tr><td colspan="12">none</td></tr>'}</tbody>
             </table></div>
             <details class="engine-howto" open><summary>HOW TO READ — SCANNER + TES</summary>

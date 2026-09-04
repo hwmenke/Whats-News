@@ -78,6 +78,10 @@ class SetupScannerTests(unittest.TestCase):
         self.assertAlmostEqual(expected, round(portfolio.legend_adr_pct(daily), 2))
         self.assertIn("vol_ratio_5_20", row)
         self.assertIsNotNone(row["vol_ratio_5_20"])
+        self.assertIn("tmac_star", row)
+        self.assertIsNone(row["tmac_star"])  # TEST1 has 60 daily bars; interim needs 63
+        self.assertEqual(out["tmac_note"], "TMAC interim — awaiting Quant SPEC")
+        self.assertNotIn("tmac", [k for k in row if k == "tmac"])
 
     def test_scan_adr_pct_matches_legend_math(self):
         rows = [{"high": 102.41, "low": 100.0, "close": 100.0}] * 20
@@ -86,6 +90,81 @@ class SetupScannerTests(unittest.TestCase):
         self.assertIsNone(setup_scanner.scan_adr_pct([{"high": 102.0, "low": 100.0, "close": 100.0}] * 4))
         self.assertIsNone(setup_scanner.scan_adr_pct(None))
         self.assertIsNone(setup_scanner.scan_adr_pct([]))
+
+    def test_scan_payload_includes_tmac_star_when_bars_suffice(self):
+        idx = pd.date_range("2024-01-01", periods=90, freq="D")
+        frame = pd.DataFrame(
+            {
+                "open": np.linspace(80, 150, 90),
+                "high": np.linspace(81, 152, 90),
+                "low": np.linspace(79, 148, 90),
+                "close": np.linspace(80.5, 151, 90),
+                "volume": np.full(90, 2_000_000.0),
+            },
+            index=idx,
+        )
+        db.add_symbol("LONG1")
+        db.upsert_ohlcv("LONG1", "daily", frame)
+        with patch("setup_scanner.md.list_symbols_with_ohlcv", return_value=["LONG1"]):
+            out = setup_scanner.scan_setups(limit=10)
+        ready = [r for r in out["results"] if r.get("ready") and r.get("symbol") == "LONG1"]
+        self.assertTrue(ready)
+        row = ready[0]
+        self.assertIsInstance(row["tmac_star"], int)
+        self.assertGreaterEqual(row["tmac_star"], 70)
+        self.assertLessEqual(row["tmac_star"], 99)
+        self.assertEqual(row["tmac_note"], "TMAC interim — awaiting Quant SPEC")
+        self.assertEqual(out["tmac_note"], "TMAC interim — awaiting Quant SPEC")
+        self.assertNotIn("win rate", str(row["tmac_star"]))
+
+
+class SetupScanTmacColumnTests(unittest.TestCase):
+    """TMAC* 0–99 heat on the setup scanner table — interim until Quant SPEC."""
+
+    def test_table_column_and_heat_contract(self):
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("setup_scanner.py", encoding="utf-8") as fh:
+            py = fh.read()
+
+        self.assertIn("function setupTmacHeat", setup)
+        self.assertIn("row.tmac_star", setup)
+        self.assertIn("TMAC interim — awaiting Quant SPEC", setup)
+        self.assertIn("setupTmacHeat(row.tmac_star)", setup)
+        self.assertIn("rgba(34,197,94", setup)
+        self.assertIn("rgba(239,68,68", setup)
+
+        self.assertIn("TMAC interim — awaiting Quant SPEC", html)
+        self.assertIn(">TMAC*</th>", html)
+        self.assertIn('id="setup-scan-table"', html)
+
+        self.assertIn("tmac_star", py)
+        self.assertIn("TMAC interim — awaiting Quant SPEC", py)
+        self.assertIn("SCAN_TMAC_BARS", py)
+        self.assertNotIn('"tmac":', py)
+
+        start = setup.index("function setupTmacHeat")
+        end = setup.index("function renderSetupScanTable")
+        script = setup[start:end] + r"""
+const lo = setupTmacHeat(0);
+const mid = setupTmacHeat(50);
+const hi = setupTmacHeat(99);
+const blank = setupTmacHeat(null);
+console.log(JSON.stringify({lo, mid, hi, blank}));
+"""
+        proc = subprocess.run(
+            ["node", "-e", script],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = __import__("json").loads(proc.stdout.strip())
+        self.assertIn("239,68,68", out["lo"])
+        self.assertIn("34,197,94", out["hi"])
+        self.assertEqual(out["blank"], "")
 
 
 class SetupScanRowMetricChipTests(unittest.TestCase):

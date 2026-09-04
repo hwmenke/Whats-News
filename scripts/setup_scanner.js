@@ -216,6 +216,18 @@ function setupMetricChipsHtml(row) {
     return `<div class="setup-metric-chips">${chips.join('')}</div>`;
 }
 
+function setupTmacHeat(v) {
+    if (v == null || Number.isNaN(Number(v))) return '';
+    const n = Number(v);
+    const t = Math.max(0, Math.min(1, n / 99));
+    if (t >= 0.5) {
+        const g = (t - 0.5) * 2;
+        return `background: rgba(34,197,94,${(0.15 + 0.55 * g).toFixed(2)})`;
+    }
+    const r = (0.5 - t) * 2;
+    return `background: rgba(239,68,68,${(0.15 + 0.55 * r).toFixed(2)})`;
+}
+
 function renderSetupScanTable(results) {
     results = applyQullaLens(results);
     const tbody = document.getElementById('setup-scan-tbody');
@@ -269,6 +281,7 @@ function renderSetupScanTable(results) {
             <td>${dist}</td>
             <td>${vol}</td>
             <td>${row.regime || '—'}</td>
+            <td class="engine-tmac" style="${setupTmacHeat(row.tmac_star)}" title="${row.tmac_note || 'TMAC interim — awaiting Quant SPEC'}">${row.tmac_star == null ? '—' : row.tmac_star}</td>
             <td class="setup-actions">
                 <button type="button" class="btn btn-ghost btn-sm setup-open" data-symbol="${row.symbol}">Chart</button>
                 <button type="button" class="btn btn-ghost btn-sm setup-promote" data-symbol="${row.symbol}">+ Desk</button>

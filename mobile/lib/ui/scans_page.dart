@@ -974,7 +974,7 @@ class ScansPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                m.tmacNote.isEmpty ? 'TMAC* heat proxy — not branded TMAC.' : m.tmacNote,
+                m.tmacNote.isEmpty ? 'TMAC interim — awaiting Quant SPEC' : m.tmacNote,
                 style: const TextStyle(color: DeskColors.muted, fontSize: 12),
               ),
               if (m.spyLabel.isNotEmpty)
@@ -1364,6 +1364,7 @@ class _SetupTile extends StatelessWidget {
                 [
                   if (row.setups.isNotEmpty) row.setups.join(', '),
                   if (row.adrPct != null) 'ADR% ${row.adrPct!.toStringAsFixed(2)}',
+                  if (row.tmacStar != null) 'TMAC* ${row.tmacStar}',
                   if (row.regime != null) row.regime!,
                 ].join(' · '),
                 style: const TextStyle(color: DeskColors.muted, fontSize: 12),

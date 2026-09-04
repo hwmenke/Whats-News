@@ -381,6 +381,7 @@ class SetupScanRow {
     this.dist20dHighPct,
     this.volRatio,
     this.gapPct,
+    this.tmacStar,
     this.error,
   });
 
@@ -395,6 +396,7 @@ class SetupScanRow {
   final double? dist20dHighPct;
   final double? volRatio;
   final double? gapPct;
+  final int? tmacStar;
   final String? error;
 
   /// Desk heuristic — high-ADR names (not a published rating).
@@ -433,6 +435,7 @@ class SetupScanRow {
       dist20dHighPct: n(json['dist_20d_high_pct']),
       volRatio: n(json['vol_ratio_5_20']),
       gapPct: n(json['gap_pct']),
+      tmacStar: json['tmac_star'] is num ? (json['tmac_star'] as num).toInt() : int.tryParse('${json['tmac_star'] ?? ''}'),
       error: json['error'] as String?,
     );
   }

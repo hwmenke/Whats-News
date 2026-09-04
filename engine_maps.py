@@ -212,7 +212,8 @@ def maps_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = Non
             "howto": (
                 "Scanner: Str −5…+5, Stretch% / %ile bar, ΔD 1m and D65 from SPEC 25/27, "
                 "TMS-D signed (TMS−50)/5, 52w position bar, Vol30, TES state (see formulas.tes), "
-                "gray RSI-C · VCP tag, Dir ±5 heat. Scatter X=Dir Y=RSI14, color by class."
+                "gray RSI-C · VCP tag, Dir ±5 heat, TMAC* 0–99 (TMAC interim — awaiting Quant SPEC). "
+                "Scatter X=Dir Y=RSI14, color by class. Not a win rate."
             ),
         },
         "rotation": {

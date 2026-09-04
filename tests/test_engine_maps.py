@@ -48,8 +48,22 @@ class TmacStarTests(unittest.TestCase):
         row = ee.measure("AAA", daily=_frame(np.linspace(80, 150, 90)))
         self.assertIn("tmac_star", row)
         self.assertNotIn("tmac", [k for k in row if k == "tmac"])
-        self.assertIn("TMAC*", row["tmac_note"])
-        self.assertNotIn("branded TMAC", row["tmac_note"].lower())
+        self.assertEqual(row["tmac_note"], "TMAC interim — awaiting Quant SPEC")
+        self.assertIn("TODO: replace this interim when Quant Excel TMAC SPEC lands", ee.tmac_star.__doc__)
+
+    def test_ma_stack_uptrend_vs_downtrend(self):
+        up = pd.Series(np.linspace(80, 150, 90))
+        dn = pd.Series(np.linspace(150, 40, 90))
+        self.assertGreaterEqual(ee.ma_stack_score(up), 99)
+        self.assertLessEqual(ee.ma_stack_score(dn), 1)
+        self.assertIsNone(ee.ma_stack_score(pd.Series(np.linspace(1, 2, 20))))
+
+    def test_tmac_star_low_in_downtrend(self):
+        close = np.linspace(150, 40, 90)
+        heat = ee.tmac_star(pd.Series(close + 0.3), pd.Series(close - 0.3), pd.Series(close))
+        self.assertIsNotNone(heat)
+        self.assertLessEqual(heat, 30)
+        self.assertGreaterEqual(heat, 0)
 
 
 class TesAndTdTests(unittest.TestCase):
@@ -127,7 +141,10 @@ class MapsBoardTests(unittest.TestCase):
     def test_formulas_include_tmac_tes_coil(self):
         cat = ee.catalog()
         self.assertIn("tmac_star", cat["formulas"])
-        self.assertIn("TMAC*", cat["formulas"]["tmac_star"])
+        self.assertIn("TMAC interim — awaiting Quant SPEC", cat["formulas"]["tmac_star"])
+        self.assertIn("TODO: replace when Quant Excel TMAC SPEC lands", cat["formulas"]["tmac_star"])
+        self.assertIn("Not a win rate", cat["formulas"]["tmac_star"])
+        self.assertIn("ma_stack", cat["formulas"]["tmac_star"])
         self.assertIn("tes", cat["formulas"])
         self.assertIn("coil", cat["formulas"])
 
@@ -154,15 +171,27 @@ class FlaskMapsTests(unittest.TestCase):
 
     def test_surfaces_tmac_star_and_maps(self):
         blob = ""
-        for path in ("index.html", "scripts/engine_desk.js", "mobile/lib/ui/scans_page.dart", "engine_maps.py"):
+        for path in (
+            "index.html",
+            "scripts/engine_desk.js",
+            "scripts/setup_scanner.js",
+            "setup_scanner.py",
+            "mobile/lib/ui/scans_page.dart",
+            "engine_maps.py",
+            "equity_engine.py",
+        ):
             with open(path, encoding="utf-8") as fh:
                 blob += fh.read()
         self.assertIn("TMAC*", blob)
+        self.assertIn("TMAC interim — awaiting Quant SPEC", blob)
+        self.assertIn("function setupTmacHeat", blob)
+        self.assertIn("tmac_star", blob)
         self.assertIn("/api/engine/maps", blob)
         self.assertIn("HOW TO READ", blob)
         self.assertNotIn("bloomberg", blob.lower())
         self.assertNotIn("stockbee.blogspot", blob.lower())
         self.assertNotIn("★ TD13", blob)
+        self.assertNotRegex(blob, r"\bwin rate \d")
 
 
 if __name__ == "__main__":
