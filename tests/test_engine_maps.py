@@ -120,7 +120,8 @@ class MapsBoardTests(unittest.TestCase):
     def test_empty_maps(self):
         out = em.maps_board(symbols=[])
         self.assertFalse(out["ready"])
-        self.assertIn("Empty", out["message"] or "")
+        self.assertIn("empty", (out["message"] or "").lower())
+        self.assertIn("stored_n", out)
         self.assertEqual(out["scanner"]["rows"], [])
         self.assertEqual(out["rotation"]["points"], [])
 

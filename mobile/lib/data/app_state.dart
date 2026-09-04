@@ -614,12 +614,17 @@ class WhatsNewsState extends ChangeNotifier {
         try {
           await api.seedFetchDesk(core50: false);
         } on ApiException catch (e) {
-          if (e.isThrottle) throttleMessage = e.message;
+          if (e.isThrottle) {
+            throttleMessage = e.message;
+          } else {
+            error = _friendly(e);
+          }
         }
       }
       await loadWatchlist();
       await loadMacro();
       await loadScanBreadth();
+      await reloadMapsAfterSeed();
     } on ApiException catch (e) {
       error = _friendly(e);
     } finally {
@@ -637,11 +642,32 @@ class WhatsNewsState extends ChangeNotifier {
       await loadWatchlist();
       await loadMacro();
       await loadScanBreadth();
+      await reloadMapsAfterSeed();
     } on ApiException catch (e) {
       error = _friendly(e);
     } finally {
       seedingSleeve = false;
       notifyListeners();
+    }
+  }
+
+  /// Sleeve seed writes names + Yahoo ohlcv. Maps/Coil stay empty until this reload.
+  Future<void> reloadMapsAfterSeed() async {
+    try {
+      engineMaps = await api.getEngineMaps();
+    } on ApiException catch (e) {
+      engineMaps = EngineMaps(message: _friendly(e));
+    } catch (_) {
+      engineMaps = const EngineMaps(
+        message: 'Maps unavailable after seed — refresh Scans → Maps.',
+      );
+    }
+    if (_isEngineMode(scanMode) && scanMode != 'maps') {
+      await loadEngine();
+    } else if (scanMode == 'macro') {
+      await loadMacro();
+    } else if (scanMode == 'moves') {
+      await loadMarketMoves();
     }
   }
 

@@ -670,68 +670,17 @@ class ScansPage extends StatelessWidget {
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Text(
-            b.note.isEmpty
-                ? 'WATCH | FORMING | TRIGGERED | ACCEPTED | OPPORTUNITY | DORMANT | EXTENDED | NO TRADE. D is SPEC 25/27 only.'
-                : b.note,
-            style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
-          ),
-        ),
-      ),
-      SliverPadding(
-        padding: const EdgeInsets.only(bottom: 8),
-        sliver: SliverList.separated(
-          itemCount: b.rows.length,
-          separatorBuilder: (_, _) => const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: ColoredBox(color: DeskColors.border, child: SizedBox(height: 0.5)),
-          ),
-          itemBuilder: (context, i) {
-            final r = b.rows[i];
-            return GestureDetector(
-              onTap: () => onOpenChart(r.symbol),
-              child: Padding(
-                padding: DeskSpace.cellPad,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(r.symbol, style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 16)),
-                        const Spacer(),
-                        Text(r.engine, style: const TextStyle(color: DeskColors.accentBright, fontSize: 11, fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      r.takeaway.isEmpty ? '—' : r.takeaway,
-                      style: TextStyle(
-                        color: r.sentiment.contains('LONG')
-                            ? DeskColors.green
-                            : r.sentiment.contains('SHORT')
-                                ? DeskColors.red
-                                : DeskColors.muted,
-                        fontSize: 12,
-                        height: 1.3,
-                      ),
-                    ),
-                    Text(
-                      [
-                        if (r.vcp.isNotEmpty) r.vcp,
-                        if (r.tmsZone.isNotEmpty) r.tmsZone,
-                        if (r.impulse.isNotEmpty) r.impulse,
-                        if (r.dw.isNotEmpty) r.dw,
-                        if (r.str != null) 'Str ${r.str}',
-                        if (r.tmacStar != null) 'TMAC* ${r.tmacStar}',
-                      ].join(' · '),
-                      style: const TextStyle(color: DeskColors.dim, fontSize: 11),
-                    ),
-                  ],
-                ),
+          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Setup (${b.rows.length})',
+                style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
               ),
-            );
-          },
+              for (final r in b.rows) _nameChip(r.symbol, r.engine),
+            ],
+          ),
         ),
       ),
       ..._howto(b.formulas['engine'] ?? ''),
@@ -1022,8 +971,12 @@ class ScansPage extends StatelessWidget {
   List<Widget> _mapsSlivers(WhatsNewsState s) {
     final m = s.engineMaps;
     if (!m.ready) {
+      final stored = s.scanBreadth.storedN;
+      final fallback = stored > 0
+          ? 'Maps not loaded — refresh. $stored names have stored bars.'
+          : 'Empty maps — seed a sleeve and Fetch Yahoo.';
       return [
-        ..._emptyNote(m.message.isEmpty ? 'Empty maps — seed a sleeve and Fetch Yahoo.' : m.message),
+        ..._emptyNote(m.message.isEmpty ? fallback : m.message),
         ..._howto(m.howto),
       ];
     }

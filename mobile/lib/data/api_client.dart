@@ -351,7 +351,7 @@ class WhatsNewsApi {
     final raw = await _send(
       'POST',
       '/api/desk/seed-fetch',
-      body: {'core50': core50 ? '1' : '0', 'delay': delay, 'period': '1y'},
+      body: {'core50': core50 ? '1' : '0', 'delay': delay, 'period': '2y'},
     );
     if (raw is Map<String, dynamic>) return raw;
     if (raw is Map) return Map<String, dynamic>.from(raw);
@@ -515,8 +515,14 @@ class WhatsNewsApi {
   }
 
   Future<EngineMaps> getEngineMaps() async {
-    final raw = await _engineGet('/api/engine/maps');
-    return raw.isEmpty ? EngineMaps.empty : EngineMaps.fromJson(raw);
+    try {
+      final raw = await _get('/api/engine/maps', const {'desk': '1'});
+      if (raw is Map<String, dynamic>) return EngineMaps.fromJson(raw);
+      if (raw is Map) return EngineMaps.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException catch (e) {
+      return EngineMaps(message: e.message);
+    }
+    return const EngineMaps(message: 'Empty maps — seed a sleeve and Fetch Yahoo.');
   }
 
   Future<WarningsBoard> getEngineWarnings() async {

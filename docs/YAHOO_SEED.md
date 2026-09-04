@@ -26,6 +26,14 @@ Public Yahoo/SQLite only. Seed registers names. Fetch writes `ohlcv`. Scans and 
 - Empty desk + `stored_n>0` → “Desk list empty — N names have stored bars.”  
 - “Empty universe — no stored bars” only when **no** symbol in SQLite has ≥20 daily bars.
 
+## Maps / Coil
+
+Coil needs ~28 weekly bars (`coil_12 = r12/r26`). `POST /api/desk/seed-fetch` uses period `2y` and still fetches desk extras if Market Moves `fetch_core` throttles.
+
+- Empty maps + `stored_n=0` → “Empty maps — seed a sleeve and Fetch Yahoo.”
+- Empty maps + `stored_n>0` → “Desk maps empty — N names have stored bars. Refresh after Fetch.”
+- iPhone: Seed Core 50 / sleeve calls seed-fetch then `reloadMapsAfterSeed()` so Scans → Maps is not a stale empty.
+
 ## iPhone empty vs Warnings hits
 
-If Warnings has hits, stored bars exist. Breadth/Scans must use `stored_n` (and ENGINE ready) and must not show Empty-universe copy.
+If Warnings has hits, stored bars exist. Breadth/Scans must use `stored_n` (and ENGINE ready) and must not show Empty-universe copy. Maps must not keep the seed-a-sleeve lie when `stored_n>0`.

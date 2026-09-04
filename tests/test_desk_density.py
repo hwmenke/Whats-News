@@ -115,6 +115,9 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("warnings-grid", macro)
         self.assertIn("/api/desk/seed-fetch", Path("app.py").read_text(encoding="utf-8"))
         self.assertIn("See docs/YAHOO_SEED.md", Path("app.py").read_text(encoding="utf-8"))
+        self.assertIn("coil_n", Path("app.py").read_text(encoding="utf-8"))
+        self.assertIn("reloadMapsAfterSeed", Path("mobile/lib/data/app_state.dart").read_text(encoding="utf-8"))
+        self.assertIn("for (final r in b.rows) _nameChip(r.symbol, r.engine)", Path("mobile/lib/ui/scans_page.dart").read_text(encoding="utf-8"))
         self.assertTrue(Path("docs/YAHOO_SEED.md").is_file())
 
     def test_hard_ui_lock_font_c_v41_not_v2_v3(self):

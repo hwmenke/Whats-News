@@ -224,6 +224,19 @@ class ScanPackApiTests(unittest.TestCase):
         self.assertTrue(mock_fetch.called)
         missing = (body["desk_extra"] or {}).get("missing_before") or []
         self.assertIn("AAA", missing)
+        self.assertIn("coil_n", body)
+        self.assertIn("2y", body.get("note") or "")
+
+    @patch("data_fetcher.fetch_and_store")
+    @patch("market_moves.fetch_core", side_effect=RuntimeError("yahoo throttle"))
+    def test_desk_seed_fetch_continues_when_mm_core_fails(self, mock_core, mock_fetch):
+        mock_fetch.return_value = {"symbol": "BBB", "daily_rows": 250, "weekly_rows": 52}
+        db.add_symbol("BBB")
+        body = self.client.post("/api/desk/seed-fetch", json={"core50": False, "delay": 0}).get_json()
+        self.assertIn("yahoo throttle", (body.get("market_moves") or {}).get("error") or "")
+        self.assertTrue(mock_fetch.called)
+        symbols = [r.get("symbol") for r in ((body.get("desk_extra") or {}).get("fetched") or [])]
+        self.assertIn("BBB", symbols)
 
     def test_flask_pack_filters_ma(self):
         close = _uptrend(220)
@@ -253,6 +266,8 @@ class ScanPackApiTests(unittest.TestCase):
         seed_doc = Path("docs/YAHOO_SEED.md").read_text(encoding="utf-8")
         self.assertIn("Seed registers names", seed_doc)
         self.assertIn("/api/desk/seed-fetch", seed_doc)
+        self.assertIn("Maps / Coil", seed_doc)
+        self.assertIn("reloadMapsAfterSeed", seed_doc)
         self.assertTrue(Path("docs/YAHOO_SEED.md").is_file())
 
 

@@ -390,6 +390,9 @@ async function seedAndFetchSleeve(id) {
         }
         await loadEdgesBoard();
         if (typeof loadSymbols === 'function') await loadSymbols();
+        if (typeof loadEngineMaps === 'function') {
+            try { await loadEngineMaps(); } catch (_) { /* maps refresh is best-effort */ }
+        }
     } catch (err) {
         if (typeof toast === 'function') toast(err.message || 'Sleeve seed failed', 'error');
     } finally {

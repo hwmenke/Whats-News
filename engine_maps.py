@@ -10,6 +10,7 @@ from typing import Optional
 
 import ticker_lists as tl
 import equity_engine as ee
+import market_data as md
 
 NOTE = (
     "Yahoo/SQLite only. Maps are research plots from stored bars — not a live "
@@ -204,6 +205,18 @@ def maps_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = Non
             tms_d_pts.append(dpt)
 
     empty = not ready
+    try:
+        stored_n = len(md.list_symbols_with_ohlcv("daily", min_bars=20))
+    except Exception:
+        stored_n = 0
+    if empty:
+        maps_message = (
+            f"Desk maps empty — {stored_n} names have stored bars. Refresh after Fetch."
+            if stored_n
+            else "Empty maps — seed a sleeve and Fetch Yahoo."
+        )
+    else:
+        maps_message = None
     by_zone: dict[str, list[str]] = {}
     for r in ready:
         zone = r.get("tms_w_zone") or r.get("tms_zone")
@@ -263,7 +276,8 @@ def maps_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = Non
             ),
         },
         "classes": CLASS_COLORS,
-        "message": None if not empty else "Empty maps — seed a sleeve and Fetch Yahoo.",
+        "message": maps_message,
+        "stored_n": stored_n,
         "note": NOTE,
         "formulas": ee.FORMULAS,
         "tes_note": ee.TES_NOTE,

@@ -244,7 +244,7 @@ def desk_seed_fetch():
         delay = float(body.get("delay", 0.4))
     except (TypeError, ValueError):
         delay = 0.4
-    period = str(body.get("period") or "1y")
+    period = str(body.get("period") or "2y")
     want_core50 = str(body.get("core50", "1")).lower() in ("1", "true", "yes")
     ensure_local_schema()
     core50 = {}
@@ -254,25 +254,45 @@ def desk_seed_fetch():
         for raw in tickers:
             md.set_symbol_group(raw, tl.library_group_tag(raw))
         core50 = {"count": len(tickers), **result}
-    mm_core = mm.fetch_core(delay=delay, period=period)
-    have = set(md.list_symbols_with_ohlcv("daily", min_bars=20))
-    missing = [s["symbol"] for s in md.list_desk_symbols() if s["symbol"] not in have]
+    # Maps/Coil need ~28 weekly bars. Keep fetching desk extras even if MM core
+    # throttles — sleeve seed on iPhone must still write Yahoo ohlcv.
+    try:
+        mm_core = mm.fetch_core(delay=delay, period=period)
+    except Exception as exc:
+        mm_core = {"error": str(exc), "fetched": [], "failed": [{"error": str(exc)}]}
+    have20 = set(md.list_symbols_with_ohlcv("daily", min_bars=20))
+    have_coil = set(md.list_symbols_with_ohlcv("daily", min_bars=140))
+    desk = [s["symbol"] for s in md.list_desk_symbols()]
+    missing = [s for s in desk if s not in have20]
+    short = [s for s in desk if s in have20 and s not in have_coil]
+    queue = missing + short
     extra_fetched, extra_failed = [], []
-    for i, sym in enumerate(missing[:40]):
+    for i, sym in enumerate(queue[:40]):
         if i:
             time.sleep(max(0.0, delay))
         out = fetcher.fetch_and_store(sym, period=period)
         if out.get("error"):
             extra_failed.append({"symbol": sym, "error": out.get("error")})
         else:
-            extra_fetched.append({"symbol": sym, "daily_rows": out.get("daily_rows")})
+            extra_fetched.append({
+                "symbol": sym,
+                "daily_rows": out.get("daily_rows"),
+                "weekly_rows": out.get("weekly_rows"),
+            })
     stored_n = len(md.list_symbols_with_ohlcv("daily", min_bars=20))
+    coil_n = len(md.list_symbols_with_ohlcv("daily", min_bars=140))
     return jsonify({
         "core50": core50,
         "market_moves": mm_core,
-        "desk_extra": {"fetched": extra_fetched, "failed": extra_failed, "missing_before": missing},
+        "desk_extra": {
+            "fetched": extra_fetched,
+            "failed": extra_failed,
+            "missing_before": missing,
+            "short_before": short,
+        },
         "stored_n": stored_n,
-        "note": "Yahoo seed→fetch. Failed names stay blank — not invented. See docs/YAHOO_SEED.md.",
+        "coil_n": coil_n,
+        "note": "Yahoo seed→fetch (2y for Maps/Coil). Failed names stay blank — not invented. See docs/YAHOO_SEED.md.",
     })
 
 
