@@ -32,7 +32,9 @@ function renderScanBreadth(strip) {
             : (stored > 0
                 ? `Desk list empty — ${stored} names have stored bars.`
                 : 'ENGINE has hits from stored bars. Breadth dashes until the desk list is scored.'))
-        : (data.message || 'Empty universe — no stored bars to score.');
+        : (stored > 0
+            ? `Desk list empty — ${stored} names have stored bars.`
+            : (data.message || 'Empty universe — no stored bars to score.'));
     const help = empty
         ? (hasBars
             ? emptyMsg

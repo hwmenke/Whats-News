@@ -1655,6 +1655,8 @@ class ScanBreadth {
   const ScanBreadth({
     this.ready = false,
     this.n = 0,
+    this.storedN = 0,
+    this.deskN = 0,
     this.pctAboveSma50,
     this.pctAboveSma200,
     this.adv1d,
@@ -1667,6 +1669,8 @@ class ScanBreadth {
 
   final bool ready;
   final int n;
+  final int storedN;
+  final int deskN;
   final double? pctAboveSma50;
   final double? pctAboveSma200;
   final int? adv1d;
@@ -1676,6 +1680,7 @@ class ScanBreadth {
   final String message;
   final String note;
 
+  /// True-empty SQLite fallback only. Never show when [storedN] > 0.
   static const empty = ScanBreadth(message: 'Empty universe — no stored bars to score.');
 
   factory ScanBreadth.fromJson(Map<String, dynamic> json) {
@@ -1692,6 +1697,8 @@ class ScanBreadth {
     return ScanBreadth(
       ready: json['ready'] == true,
       n: i(json['n']) ?? 0,
+      storedN: i(json['stored_n']) ?? 0,
+      deskN: i(json['desk_n']) ?? 0,
       pctAboveSma50: n(json['pct_above_sma50']),
       pctAboveSma200: n(json['pct_above_sma200']),
       adv1d: i(json['adv_1d']),

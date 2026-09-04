@@ -345,6 +345,19 @@ class WhatsNewsApi {
     return const {};
   }
 
+  /// Seed MM core (+ optional Core 50) then Fetch Yahoo for desk names missing ≥20 bars.
+  /// Documented: docs/YAHOO_SEED.md. Does not invent prices.
+  Future<Map<String, dynamic>> seedFetchDesk({bool core50 = true, double delay = 0.4}) async {
+    final raw = await _send(
+      'POST',
+      '/api/desk/seed-fetch',
+      body: {'core50': core50 ? '1' : '0', 'delay': delay, 'period': '1y'},
+    );
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return const {};
+  }
+
   Future<Map<String, dynamic>> universeSync({List<String> indices = const ['sp500']}) async {
     final raw = await _send(
       'POST',

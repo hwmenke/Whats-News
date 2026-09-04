@@ -2,6 +2,7 @@
 
 import os
 import unittest
+from pathlib import Path
 
 os.environ["DATA_SERVICE_MODE"] = "embedded"
 
@@ -69,7 +70,13 @@ class DeskDensityTests(unittest.TestCase):
             self.blob.find('id="risk-portfolio"'),
             "ranked %VaR must sit above portfolio chrome",
         )
-        self.assertNotIn("btn-alpaca-sync", self.blob[self.blob.find('id="risk-area"'):self.blob.find('id="data-manager-area"')])
+        start_pnl = self.blob.find('id="pnl-area"')
+        start_book = self.blob.find('id="book-area"')
+        start_risk = self.blob.find('id="risk-area"')
+        start_dm = self.blob.find('id="data-manager-area"')
+        self.assertNotIn("btn-alpaca-sync", self.blob[start_pnl:start_book])
+        self.assertIn("btn-alpaca-sync", self.blob[start_book:start_risk])
+        self.assertNotIn("btn-alpaca-sync", self.blob[start_risk:start_dm])
         self.assertIn("gap: 0 !important", self.blob)
         self.assertIn("HARD spacing", self.blob)
         self.assertIn("body.board-focus #empty-state", self.blob)
@@ -88,6 +95,11 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("static const double row = 30", self.blob)
         self.assertIn("static const double inset = 12", self.blob)
         self.assertIn("max(8, safeArea.bottom)", self.blob)
+        self.assertIn("if (!list.length) return '';", self.blob)
+        self.assertIn("HOW TO READ — PATTERN SCANNER", self.blob)
+        self.assertIn("HOW TO READ — RSI COUNTER", self.blob)
+        self.assertIn("/api/desk/seed-fetch", Path("app.py").read_text(encoding="utf-8"))
+        self.assertIn("YAHOO_SEED.md", Path("docs/YAHOO_SEED.md").read_text(encoding="utf-8"))
 
     def test_hard_ui_lock_font_c_v41_not_v2_v3(self):
         theme = ""

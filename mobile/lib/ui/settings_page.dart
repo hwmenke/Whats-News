@@ -182,7 +182,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(height: 22),
                 const _SectionTitle('Universe'),
                 const Text(
-                  'Core 50 adds liquid desk names (no Yahoo download). S&P sync registers univ:* archive only — fetch is optional and slow.',
+                  'Core 50 / sleeve seed then Fetch Yahoo (docs/YAHOO_SEED.md). S&P sync registers univ:* archive only — fetch is optional and slow.',
                   style: TextStyle(color: DeskColors.muted, fontSize: 12),
                 ),
                 const SizedBox(height: 8),

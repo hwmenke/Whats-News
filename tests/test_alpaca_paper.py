@@ -171,6 +171,11 @@ class AlpacaApiTests(unittest.TestCase):
         self.assertIn("/api/alpaca/sync", js)
         self.assertNotIn("api.alpaca.markets", js)
         self.assertNotIn("submit_order", blob)
+        self.assertEqual(dart.count("Sync Alpaca paper"), 1)
+        self.assertGreater(dart.find("Sync Alpaca paper"), dart.find("_positionSlivers"))
+        self.assertLess(dart.find("Sync Alpaca paper"), dart.find("_CsvPaste"))
+        self.assertNotIn("Sync Alpaca paper", dart[dart.find("_pnlSlivers"):dart.find("_positionSlivers")])
+        self.assertNotIn("Sync Alpaca paper", dart[dart.find("_riskSlivers"):dart.find("_positionSlivers")])
 
 
 if __name__ == "__main__":

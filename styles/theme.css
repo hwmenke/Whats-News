@@ -661,6 +661,20 @@ body.workspace-scan .desk-ia-bar {
   margin: 0;
   padding: 0;
 }
+/* Pattern D/W + RSI-C — Excel wn-table boards; leftover chrome hidden */
+.engine-panel[data-panel="pattern"] .setup-scanner-header,
+.engine-panel[data-panel="rsic"] .setup-scanner-header strong,
+.engine-panel[data-panel="rsic"] .setup-scanner-header .btn,
+.engine-panel[data-panel="rsic"] .setup-scanner-header .scanner-ts,
+.engine-panel[data-panel="rsic"] > .macro-blurb {
+  display: none !important;
+}
+#engine-pattern-body .warnings-grid,
+#engine-rsic-body .warnings-grid {
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: var(--space-section) !important;
+}
 .scanner-empty { padding: 0 !important; margin: 0; }
 .scanner-empty .empty-icon { display: none; }
 .risk-container > :last-child,

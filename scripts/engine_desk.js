@@ -364,15 +364,19 @@ async function loadEngineBoard() {
 }
 
 function _engListCol(title, items, tone) {
-    const rows = (items || []).map(it => {
-        const tag = it.gray_tag || it.state || '';
-        return `<li><button type="button" class="engine-name" data-sym="${_engEsc(it.symbol)}">${_engEsc(it.symbol)}</button>
-            <span class="engine-gray">${_engEsc(tag)}</span></li>`;
+    const list = items || [];
+    if (!list.length) return '';
+    const rows = list.map(it => {
+        const tag = it.gray_tag || it.state || it.note || '';
+        const note = it.takeaway || '';
+        return `<tr class="wn-row"><td class="wn-sym" data-sym="${_engEsc(it.symbol)}">${_engEsc(it.symbol)}</td>
+            <td>${_engEsc(tag || '—')}</td><td class="wn-note">${_engEsc(note || '—')}</td></tr>`;
     }).join('');
-    return `<div class="engine-col ${tone || ''}">
-        <h3>${_engEsc(title)} <em>${(items || []).length}</em></h3>
-        <ul>${rows || '<li class="engine-dim">none</li>'}</ul>
-    </div>`;
+    return `<section class="wn-card ${tone || ''}">
+        <h3>${_engEsc(title)} <span class="wn-n">${list.length}</span></h3>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>Tag</th><th>Note</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+    </section>`;
 }
 
 async function loadEnginePatterns() {
@@ -384,25 +388,25 @@ async function loadEnginePatterns() {
         const data = await apiFetch(`${API}/engine/patterns?desk=1`);
         const d = data.daily || { counts: {}, rows: {} };
         const w = data.weekly || { counts: {}, rows: {} };
-        const dc = d.counts || {};
-        const wc = w.counts || {};
+        const dailyHtml = [
+            _engListCol(`Breakouts D`, (d.rows || {}).Breakout),
+            _engListCol(`From Bottom D`, (d.rows || {})['From Bottom']),
+            _engListCol(`Breakdowns D`, (d.rows || {}).Breakdown),
+            _engListCol(`From Top D`, (d.rows || {})['From Top']),
+        ].filter(Boolean).join('');
+        const weeklyHtml = [
+            _engListCol(`Breakouts W`, (w.rows || {}).Breakout),
+            _engListCol(`From Bottom W`, (w.rows || {})['From Bottom']),
+            _engListCol(`Breakdowns W`, (w.rows || {}).Breakdown),
+            _engListCol(`From Top W`, (w.rows || {})['From Top']),
+        ].filter(Boolean).join('');
         el.innerHTML = `
-            <h3>Daily Pattern Scanner (3M / 1M)</h3>
-            <div class="engine-quad">
-                ${_engListCol(`Breakouts (${dc.Breakout || 0})`, (d.rows || {}).Breakout, 'is-bull')}
-                ${_engListCol(`From Bottom (${dc['From Bottom'] || 0})`, (d.rows || {})['From Bottom'], 'is-bull-soft')}
-                ${_engListCol(`Breakdowns (${dc.Breakdown || 0})`, (d.rows || {}).Breakdown, 'is-bear')}
-                ${_engListCol(`From Top (${dc['From Top'] || 0})`, (d.rows || {})['From Top'], 'is-bear-soft')}
+            <div class="warnings-grid">
+                ${dailyHtml || ''}
+                ${weeklyHtml || ''}
             </div>
-            <h3>Weekly Pattern Scanner (1Y / 6M)</h3>
-            <div class="engine-quad">
-                ${_engListCol(`Breakouts W (${wc.Breakout || 0})`, (w.rows || {}).Breakout, 'is-bull')}
-                ${_engListCol(`From Bottom W (${wc['From Bottom'] || 0})`, (w.rows || {})['From Bottom'], 'is-bull-soft')}
-                ${_engListCol(`Breakdowns W (${wc.Breakdown || 0})`, (w.rows || {}).Breakdown, 'is-bear')}
-                ${_engListCol(`From Top W (${wc['From Top'] || 0})`, (w.rows || {})['From Top'], 'is-bear-soft')}
-            </div>
-            <details class="engine-howto" open><summary>HOW TO READ — PATTERN SCANNER</summary>
-                <p>${_engEsc(data.howto || '')}</p>
+            <details class="scan-help"><summary>HOW TO READ — PATTERN SCANNER</summary>
+                <p class="scan-breadth-note">${_engEsc(data.howto || '')}</p>
             </details>`;
         if (meta) meta.textContent = data.ready ? 'pattern lists' : (data.message || 'empty');
         if (!data.ready) {
@@ -420,18 +424,20 @@ async function loadEnginePatterns() {
 }
 
 function _engBucketTable(title, rows, extra) {
+    const list = rows || [];
+    if (!list.length) return '';
     const head = extra || 'Align';
-    const body = (rows || []).map(r => `<tr data-symbol="${_engEsc(r.symbol)}">
-        <td class="macro-sym">${_engEsc(r.symbol)}</td>
+    const body = list.map(r => `<tr data-symbol="${_engEsc(r.symbol)}">
+        <td class="wn-sym">${_engEsc(r.symbol)}</td>
         <td>${_engEsc(r.state || '—')}</td>
         <td>${r.avg_rsi == null ? '—' : _engNum(r.avg_rsi)}</td>
         <td>${r.align == null ? '—' : _engNum(r.align, 2)}</td>
     </tr>`).join('');
-    return `<div class="engine-bucket">
-        <h3>${_engEsc(title)}</h3>
-        <table class="scanner-table"><thead><tr><th>Asset</th><th>State</th><th>Avg RSI</th><th>${_engEsc(head)}</th></tr></thead>
-        <tbody>${body || '<tr><td colspan="4">none</td></tr>'}</tbody></table>
-    </div>`;
+    return `<section class="wn-card">
+        <h3>${_engEsc(title)} <span class="wn-n">${list.length}</span></h3>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>State</th><th>Avg</th><th>${_engEsc(head)}</th></tr></thead>
+        <tbody>${body}</tbody></table>
+    </section>`;
 }
 
 async function loadEngineRsiC() {
@@ -447,46 +453,33 @@ async function loadEngineRsiC() {
         const data = await apiFetch(`${API}/engine/rsi-counter?desk=1&n=${encodeURIComponent(n)}&lag=${encodeURIComponent(lag)}`);
         const d = data.daily || {};
         const w = data.weekly || {};
-        const accel = (data.accelerating || []).map(r =>
-            `<li><button type="button" class="engine-name" data-sym="${_engEsc(r.symbol)}">${_engEsc(r.symbol)}</button> <span class="is-up">${r.delta == null ? '—' : '+' + _engNum(r.delta)}</span></li>`).join('');
-        const fade = (data.fading || []).map(r =>
-            `<li><button type="button" class="engine-name" data-sym="${_engEsc(r.symbol)}">${_engEsc(r.symbol)}</button> <span class="is-down">${r.delta == null ? '—' : _engNum(r.delta)}</span></li>`).join('');
-        const sectors = (data.sectors || []).map(r =>
-            `<tr data-symbol="${_engEsc(r.symbol)}"><td class="macro-sym">${_engEsc(r.symbol)}</td><td>${r.rsi14 == null ? '—' : _engNum(r.rsi14)}</td><td class="${_engTone(r.delta)}">${r.delta == null ? '—' : _engNum(r.delta)}</td><td>${_engEsc(r.state || '—')}</td></tr>`).join('');
-        const pbs = (data.pullbacks || []).map(p =>
-            `<li><button type="button" class="engine-name" data-sym="${_engEsc(p.symbol)}">${_engEsc(p.symbol)}</button> <span class="engine-dim">${_engEsc(p.note || '')}</span></li>`).join('');
+        const accelItems = (data.accelerating || []).map(r => ({
+            symbol: r.symbol, gray_tag: r.delta == null ? '' : `Δ ${r.delta >= 0 ? '+' : ''}${_engNum(r.delta)}`, takeaway: r.state || '',
+        }));
+        const fadeItems = (data.fading || []).map(r => ({
+            symbol: r.symbol, gray_tag: r.delta == null ? '' : `Δ ${_engNum(r.delta)}`, takeaway: r.state || '',
+        }));
+        const pbItems = (data.pullbacks || []).map(p => ({ symbol: p.symbol, takeaway: p.note || '' }));
+        const sectorRows = (data.sectors || []).map(r => ({
+            symbol: r.symbol, state: r.state, avg_rsi: r.rsi14, align: r.delta,
+        }));
         el.innerHTML = `
-            <div class="engine-rsic-split">
-                <section>
-                    <h3>Daily LEFT — RSI(2)…RSI(21)</h3>
-                    <div class="engine-quad">
-                        ${_engBucketTable('OVERSOLD', d.oversold)}
-                        ${_engBucketTable('OVERBOUGHT', d.overbought)}
-                        ${_engBucketTable('TRENDING HIGHER', d.trend_up)}
-                        ${_engBucketTable('TRENDING LOWER', d.trend_dn)}
-                    </div>
-                </section>
-                <section>
-                    <h3>Weekly RIGHT — RSI(2)…RSI(21)</h3>
-                    <div class="engine-quad">
-                        ${_engBucketTable('OVERSOLD W', w.oversold)}
-                        ${_engBucketTable('OVERBOUGHT W', w.overbought)}
-                        ${_engBucketTable('TRENDING HIGHER W', w.trend_up)}
-                        ${_engBucketTable('TRENDING LOWER W', w.trend_dn)}
-                    </div>
-                </section>
+            <div class="warnings-grid">
+                ${_engBucketTable('OVERSOLD D', d.oversold)}
+                ${_engBucketTable('OVERBOUGHT D', d.overbought)}
+                ${_engBucketTable('TREND ↑ D', d.trend_up)}
+                ${_engBucketTable('TREND ↓ D', d.trend_dn)}
+                ${_engBucketTable('OVERSOLD W', w.oversold)}
+                ${_engBucketTable('OVERBOUGHT W', w.overbought)}
+                ${_engBucketTable('TREND ↑ W', w.trend_up)}
+                ${_engBucketTable('TREND ↓ W', w.trend_dn)}
+                ${_engListCol('Accelerating', accelItems)}
+                ${_engListCol('Fading', fadeItems)}
+                ${_engBucketTable('Sector RSI', sectorRows, 'Δ')}
+                ${_engListCol('Pullback-in-uptrend', pbItems)}
             </div>
-            <div class="engine-quad">
-                <div class="engine-col"><h3>Accelerating (Δ RSI14)</h3><ul>${accel || '<li class="engine-dim">none</li>'}</ul></div>
-                <div class="engine-col"><h3>Fading (Δ RSI14)</h3><ul>${fade || '<li class="engine-dim">none</li>'}</ul></div>
-                <div class="engine-col"><h3>Sector RSI</h3>
-                    <table class="scanner-table"><thead><tr><th>ETF</th><th>RSI</th><th>Δ</th><th>State</th></tr></thead>
-                    <tbody>${sectors || '<tr><td colspan="4">none — sector ETFs only if on the desk</td></tr>'}</tbody></table>
-                </div>
-                <div class="engine-col"><h3>Pullback-in-uptrend</h3><ul>${pbs || '<li class="engine-dim">none</li>'}</ul></div>
-            </div>
-            <details class="engine-howto" open><summary>HOW TO READ — RSI COUNTER (DAILY & WEEKLY)</summary>
-                <p>${_engEsc(data.howto || '')}</p>
+            <details class="scan-help"><summary>HOW TO READ — RSI COUNTER (DAILY & WEEKLY)</summary>
+                <p class="scan-breadth-note">${_engEsc(data.howto || '')}</p>
             </details>`;
         if (meta) meta.textContent = data.ready ? `n=${data.rsi_n} lag=${data.lag}` : (data.message || 'empty');
         if (!data.ready) {

@@ -324,11 +324,13 @@ class WhatsNewsState extends ChangeNotifier {
     notifyListeners();
     try {
       bookPnl = await api.getBookPnl();
-      try {
-        alpacaStatus = await api.getAlpacaStatus();
-        alpacaMessage = '${alpacaStatus['reason'] ?? alpacaStatus['note'] ?? ''}';
-      } on ApiException {
-        alpacaStatus = const {};
+      if (bookPane == 'upload') {
+        try {
+          alpacaStatus = await api.getAlpacaStatus();
+          alpacaMessage = '${alpacaStatus['reason'] ?? alpacaStatus['note'] ?? ''}';
+        } on ApiException {
+          alpacaStatus = const {};
+        }
       }
     } on ApiException catch (e) {
       bookError = _friendly(e);
@@ -608,27 +610,16 @@ class WhatsNewsState extends ChangeNotifier {
     try {
       await api.seedSleeve(id);
       await loadWatchlist();
-      Sleeve? sleeve;
-      for (final s in sleeves) {
-        if (s.id == id) sleeve = s;
-      }
-      final tickers = sleeve?.tickers ?? const <String>[];
-      final fetchList = fetchAnchors
-          ? (tickers.isNotEmpty ? tickers : const ['SPY', 'QQQ'])
-          : const <String>[];
-      for (final anchor in fetchList) {
+      if (fetchAnchors) {
         try {
-          await api.fetchSymbol(anchor);
-          await loadMacro();
+          await api.seedFetchDesk(core50: false);
         } on ApiException catch (e) {
-          if (e.isThrottle) {
-            throttleMessage = e.message;
-            break;
-          }
+          if (e.isThrottle) throttleMessage = e.message;
         }
       }
       await loadWatchlist();
       await loadMacro();
+      await loadScanBreadth();
     } on ApiException catch (e) {
       error = _friendly(e);
     } finally {
@@ -642,9 +633,10 @@ class WhatsNewsState extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      await api.seedCore50();
+      await api.seedFetchDesk(core50: true);
       await loadWatchlist();
       await loadMacro();
+      await loadScanBreadth();
     } on ApiException catch (e) {
       error = _friendly(e);
     } finally {

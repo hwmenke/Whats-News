@@ -461,23 +461,29 @@ def _stored_bar_count() -> int:
 
 def empty_breadth(reason: str | None = None) -> dict:
     stored = _stored_bar_count()
-    if reason is None:
-        if stored:
-            reason = (
-                f"Desk list empty — {stored} names have stored bars. "
-                "Add names to the desk to score breadth."
-            )
-        else:
-            reason = "Empty universe — no stored bars to score."
-    elif stored and "no stored bars" in reason.lower():
+    try:
+        desk_n = len(md.list_desk_symbols())
+    except Exception:
+        desk_n = 0
+    low = (reason or "").lower()
+    if stored and (reason is None or "empty universe" in low or "no stored bars" in low):
+        # Never say Empty universe when SQLite already has ≥20-bar names.
         reason = (
             f"Desk list empty — {stored} names have stored bars. "
             "Add names to the desk to score breadth."
+            if not desk_n
+            else (
+                f"{stored} names have stored bars. "
+                "Desk list not scored yet — Fetch Yahoo on desk names."
+            )
         )
+    elif reason is None:
+        reason = "Empty universe — no stored bars to score."
     return {
         "ready": False,
         "n": 0,
         "stored_n": stored,
+        "desk_n": desk_n,
         "n_sma50": 0,
         "n_sma200": 0,
         "n_ad_1d": 0,
@@ -631,8 +637,8 @@ def scan(
     breadth = _breadth_from_rows(rows, frames=frames)
     empty_reason = None
     if not names:
-        empty_reason = "Empty universe — no stored bars to score."
-        breadth = empty_breadth(empty_reason)
+        breadth = empty_breadth("Empty universe — no stored bars to score.")
+        empty_reason = breadth.get("message")
     elif not hits:
         empty_reason = f"No {kind} hits from stored bars. Empty is honest — not a fake print."
 

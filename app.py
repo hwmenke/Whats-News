@@ -228,6 +228,54 @@ def market_moves_fetch_core():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/desk/seed-fetch", methods=["POST"])
+def desk_seed_fetch():
+    """Seed MM core (+ optional Core 50) then Fetch Yahoo for desk names missing ≥20 daily bars.
+
+    Documented path: docs/YAHOO_SEED.md. Seed registers names; Fetch writes ohlcv.
+    Does not invent prices. Archive univ:* stays off the desk.
+    """
+    import time
+    import data_fetcher as fetcher
+    import market_moves as mm
+    import ticker_lists as tl
+    body = request.get_json(force=True, silent=True) or {}
+    try:
+        delay = float(body.get("delay", 0.4))
+    except (TypeError, ValueError):
+        delay = 0.4
+    period = str(body.get("period") or "1y")
+    want_core50 = str(body.get("core50", "1")).lower() in ("1", "true", "yes")
+    ensure_local_schema()
+    core50 = {}
+    if want_core50:
+        tickers = tl.core50_tickers()
+        result = md.add_symbols(tickers)
+        for raw in tickers:
+            md.set_symbol_group(raw, tl.library_group_tag(raw))
+        core50 = {"count": len(tickers), **result}
+    mm_core = mm.fetch_core(delay=delay, period=period)
+    have = set(md.list_symbols_with_ohlcv("daily", min_bars=20))
+    missing = [s["symbol"] for s in md.list_desk_symbols() if s["symbol"] not in have]
+    extra_fetched, extra_failed = [], []
+    for i, sym in enumerate(missing[:40]):
+        if i:
+            time.sleep(max(0.0, delay))
+        out = fetcher.fetch_and_store(sym, period=period)
+        if out.get("error"):
+            extra_failed.append({"symbol": sym, "error": out.get("error")})
+        else:
+            extra_fetched.append({"symbol": sym, "daily_rows": out.get("daily_rows")})
+    stored_n = len(md.list_symbols_with_ohlcv("daily", min_bars=20))
+    return jsonify({
+        "core50": core50,
+        "market_moves": mm_core,
+        "desk_extra": {"fetched": extra_fetched, "failed": extra_failed, "missing_before": missing},
+        "stored_n": stored_n,
+        "note": "Yahoo seed→fetch. Failed names stay blank — not invented. See docs/YAHOO_SEED.md.",
+    })
+
+
 @app.route("/api/edges/board", methods=["GET"])
 def edges_board_api():
     """Which-edge-is-online surface — real indicators, no screenshot win rates."""

@@ -3,6 +3,7 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -189,6 +190,40 @@ class ScanPackApiTests(unittest.TestCase):
         self.assertFalse(body["ready"])
         self.assertIsNone(body["pct_above_sma50"])
         self.assertIn("Empty", body["message"] or "")
+        self.assertEqual(body.get("stored_n"), 0)
+
+    def test_never_empty_universe_when_stored_n(self):
+        db.add_symbol("ARCH")
+        db.set_symbol_group("ARCH", "univ:sp500")
+        db.upsert_ohlcv("ARCH", "daily", _frame(_uptrend(80)))
+        out = sp.empty_breadth()
+        self.assertGreater(out["stored_n"], 0)
+        self.assertNotIn("empty universe", (out["message"] or "").lower())
+        body = self.client.get("/api/scans/breadth?desk=1").get_json()
+        self.assertGreater(body["stored_n"], 0)
+        self.assertNotIn("empty universe", (body["message"] or "").lower())
+        pack = self.client.get("/api/scans/pack?desk=1&lens=ma").get_json()
+        self.assertNotIn("empty universe", (pack.get("message") or "").lower())
+        self.assertNotIn("empty universe", ((pack.get("breadth") or {}).get("message") or "").lower())
+
+    @patch("data_fetcher.fetch_and_store")
+    @patch("market_moves.fetch_core")
+    def test_desk_seed_fetch_mocked(self, mock_core, mock_fetch):
+        mock_core.return_value = {
+            "seeded": {"tickers": ["SPY"]},
+            "fetched": [{"symbol": "SPY", "daily_rows": 250}],
+            "failed": [],
+        }
+        mock_fetch.return_value = {"symbol": "AAA", "daily_rows": 250}
+        db.add_symbol("AAA")
+        body = self.client.post("/api/desk/seed-fetch", json={"core50": False, "delay": 0}).get_json()
+        self.assertIn("desk_extra", body)
+        self.assertIn("stored_n", body)
+        self.assertIn("YAHOO_SEED", body.get("note") or "")
+        mock_core.assert_called_once()
+        self.assertTrue(mock_fetch.called)
+        missing = (body["desk_extra"] or {}).get("missing_before") or []
+        self.assertIn("AAA", missing)
 
     def test_flask_pack_filters_ma(self):
         close = _uptrend(220)
@@ -212,6 +247,11 @@ class ScanPackApiTests(unittest.TestCase):
         self.assertIn("/api/scans/pack", js)
         self.assertIn("not certified VCP", js + dart)
         self.assertNotIn("stockbee.blogspot", blob.lower())
+        self.assertIn("stored_n", js)
+        self.assertIn("empty universe", js.lower())
+        self.assertIn("/api/desk/seed-fetch", Path("mobile/lib/data/api_client.dart").read_text(encoding="utf-8"))
+        self.assertIn("docs/YAHOO_SEED.md", Path("docs/YAHOO_SEED.md").read_text(encoding="utf-8"))
+        self.assertIn("Seed registers names", Path("docs/YAHOO_SEED.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

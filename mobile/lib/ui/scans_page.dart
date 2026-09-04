@@ -753,39 +753,41 @@ class ScansPage extends StatelessWidget {
         ..._howto(b.howto),
       ];
     }
-    Widget col(String title, List<EngineNamed> rows) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 13)),
-              if (rows.isEmpty)
-                const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 12))
-              else
-                for (final r in rows) _nameChip(r.symbol, r.tag),
-            ],
-          ),
-        );
+    Widget col(String title, List<EngineNamed> rows) {
+      if (rows.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: DeskSpace.section),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$title (${rows.length})',
+              style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
+            ),
+            for (final r in rows) _nameChip(r.symbol, r.tag.isEmpty ? r.note : r.tag),
+          ],
+        ),
+      );
+    }
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              col('Daily Breakouts (${b.dailyCounts['Breakout'] ?? 0})', b.daily['Breakout'] ?? const []),
-              col('Daily From Bottom (${b.dailyCounts['From Bottom'] ?? 0})', b.daily['From Bottom'] ?? const []),
-              col('Daily Breakdowns (${b.dailyCounts['Breakdown'] ?? 0})', b.daily['Breakdown'] ?? const []),
-              col('Daily From Top (${b.dailyCounts['From Top'] ?? 0})', b.daily['From Top'] ?? const []),
-              col('Weekly Breakouts (${b.weeklyCounts['Breakout'] ?? 0})', b.weekly['Breakout'] ?? const []),
-              col('Weekly From Bottom (${b.weeklyCounts['From Bottom'] ?? 0})', b.weekly['From Bottom'] ?? const []),
-              col('Weekly Breakdowns (${b.weeklyCounts['Breakdown'] ?? 0})', b.weekly['Breakdown'] ?? const []),
-              col('Weekly From Top (${b.weeklyCounts['From Top'] ?? 0})', b.weekly['From Top'] ?? const []),
+              col('Breakouts D', b.daily['Breakout'] ?? const []),
+              col('From Bottom D', b.daily['From Bottom'] ?? const []),
+              col('Breakdowns D', b.daily['Breakdown'] ?? const []),
+              col('From Top D', b.daily['From Top'] ?? const []),
+              col('Breakouts W', b.weekly['Breakout'] ?? const []),
+              col('From Bottom W', b.weekly['From Bottom'] ?? const []),
+              col('Breakdowns W', b.weekly['Breakdown'] ?? const []),
+              col('From Top W', b.weekly['From Top'] ?? const []),
             ],
           ),
         ),
       ),
-      ..._howto(b.howto),
     ];
   }
 
@@ -797,43 +799,42 @@ class ScansPage extends StatelessWidget {
         ..._howto(b.howto),
       ];
     }
-    Widget bucket(String title, List<EngineNamed> rows) => Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 13)),
-              if (rows.isEmpty)
-                const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 12))
-              else
-                for (final r in rows)
-                  _nameChip(
-                    r.symbol,
-                    r.state.isEmpty ? r.tag : r.state,
-                    metric: r.avgRsi == null ? null : 'avg ${r.avgRsi!.toStringAsFixed(1)}',
-                  ),
-            ],
-          ),
-        );
+    Widget bucket(String title, List<EngineNamed> rows) {
+      if (rows.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: DeskSpace.section),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$title (${rows.length})',
+              style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
+            ),
+            for (final r in rows)
+              _nameChip(
+                r.symbol,
+                r.state.isEmpty ? r.tag : r.state,
+                metric: r.avgRsi == null ? null : 'avg ${r.avgRsi!.toStringAsFixed(1)}',
+              ),
+          ],
+        ),
+      );
+    }
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('CONTROLS RSI n=${b.rsiN}  Δ lag=${b.lag}', style: const TextStyle(color: DeskColors.muted, fontSize: 12)),
-              const SizedBox(height: 8),
-              const Text('Daily LEFT', style: TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700)),
-              bucket('OVERSOLD', b.daily['oversold'] ?? const []),
-              bucket('OVERBOUGHT', b.daily['overbought'] ?? const []),
-              bucket('TRENDING HIGHER', b.daily['trend_up'] ?? const []),
-              bucket('TRENDING LOWER', b.daily['trend_dn'] ?? const []),
-              const Text('Weekly RIGHT', style: TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700)),
+              bucket('OVERSOLD D', b.daily['oversold'] ?? const []),
+              bucket('OVERBOUGHT D', b.daily['overbought'] ?? const []),
+              bucket('TREND ↑ D', b.daily['trend_up'] ?? const []),
+              bucket('TREND ↓ D', b.daily['trend_dn'] ?? const []),
               bucket('OVERSOLD W', b.weekly['oversold'] ?? const []),
               bucket('OVERBOUGHT W', b.weekly['overbought'] ?? const []),
-              bucket('TRENDING HIGHER W', b.weekly['trend_up'] ?? const []),
-              bucket('TRENDING LOWER W', b.weekly['trend_dn'] ?? const []),
+              bucket('TREND ↑ W', b.weekly['trend_up'] ?? const []),
+              bucket('TREND ↓ W', b.weekly['trend_dn'] ?? const []),
               bucket('Accelerating', b.accelerating),
               bucket('Fading', b.fading),
               bucket('Sector RSI', b.sectors),
@@ -842,7 +843,6 @@ class ScansPage extends StatelessWidget {
           ),
         ),
       ),
-      ..._howto(b.howto),
     ];
   }
 
@@ -1557,13 +1557,31 @@ class _BreadthStrip extends StatelessWidget {
             ],
           ),
         );
-    final footnote = breadth.ready
-        ? null
-        : (engineReady
-            ? 'ENGINE has hits from stored bars. Breadth dashes until the desk list is scored.'
-            : (breadth.message.contains('no stored bars')
-                ? 'Breadth not scored yet.'
-                : (breadth.message.isEmpty ? 'Breadth not scored yet.' : breadth.message)));
+    String? footnote;
+    if (!breadth.ready) {
+      final raw = breadth.message;
+      final emptyU = raw.toLowerCase().contains('empty universe');
+      final noBars = raw.toLowerCase().contains('no stored bars');
+      if (breadth.storedN > 0) {
+        footnote = (emptyU || noBars || raw.isEmpty)
+            ? (breadth.deskN == 0
+                ? 'Desk list empty — ${breadth.storedN} names have stored bars. Add names to the desk to score breadth.'
+                : '${breadth.storedN} names have stored bars. Desk list not scored yet — Fetch Yahoo on desk names.')
+            : raw;
+      } else if (engineReady) {
+        footnote = 'ENGINE has hits from stored bars. Breadth dashes until the desk list is scored.';
+      } else if (noBars || raw.isEmpty) {
+        footnote = 'Breadth not scored yet.';
+      } else {
+        footnote = raw;
+      }
+      final shown = footnote ?? '';
+      if (shown.toLowerCase().contains('empty universe') && (breadth.storedN > 0 || engineReady)) {
+        footnote = breadth.storedN > 0
+            ? 'Desk list empty — ${breadth.storedN} names have stored bars.'
+            : 'ENGINE has hits from stored bars. Breadth dashes until the desk list is scored.';
+      }
+    }
     return Padding(
       padding: EdgeInsets.zero,
       child: Column(
