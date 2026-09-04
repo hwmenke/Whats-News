@@ -23,9 +23,9 @@ class ScansPage extends StatelessWidget {
       slivers: [
         SliverToBoxAdapter(
           child: SizedBox(
-            height: 22,
+            height: DeskSpace.chrome,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: DeskSpace.pageX,
               child: Row(
                 children: [
                   Expanded(
@@ -72,7 +72,7 @@ class ScansPage extends StatelessWidget {
                   ),
                   CupertinoButton(
                     padding: EdgeInsets.zero,
-                    minSize: 22,
+                    minSize: DeskSpace.chrome,
                     onPressed: state.loadingScans
                         ? null
                         : () {
@@ -88,7 +88,7 @@ class ScansPage extends StatelessWidget {
         ),
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+            padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.headerContent, DeskSpace.inset, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -190,10 +190,9 @@ class ScansPage extends StatelessWidget {
             child: Center(child: CupertinoActivityIndicator()),
           )
         else if (_rowsEmpty(state))
-          const SliverFillRemaining(
-            hasScrollBody: false,
+          const SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(8, 4, 8, 4),
+              padding: EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
               child: Text(
                 'No scan rows yet.\n\nSeed a Macro sleeve or Core 50, Fetch from Yahoo, then refresh. Empty is missing bars — not a fake print.',
                 style: TextStyle(color: DeskColors.muted, height: 1.4),
@@ -201,20 +200,11 @@ class ScansPage extends StatelessWidget {
             ),
           )
         else
-          SliverPadding(
-            padding: const EdgeInsets.only(bottom: 0),
-            sliver: SliverList.separated(
-              itemCount: _count(state),
-              separatorBuilder: (_, _) => const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: ColoredBox(
-                  color: DeskColors.border,
-                  child: SizedBox(height: 0.5),
-                ),
-              ),
-              itemBuilder: (context, i) => _row(state, i),
-            ),
+          SliverList.builder(
+            itemCount: _count(state),
+            itemBuilder: (context, i) => _row(state, i),
           ),
+        SliverToBoxAdapter(child: SizedBox(height: DeskSpace.bottomInset(context))),
       ],
     );
   }
@@ -584,7 +574,7 @@ class ScansPage extends StatelessWidget {
   List<Widget> _emptyNote(String msg) => [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
+            padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
             child: Text(msg, style: const TextStyle(color: DeskColors.muted, height: 1.3, fontSize: 12)),
           ),
         ),
@@ -594,7 +584,7 @@ class ScansPage extends StatelessWidget {
         if (text.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+              padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
               child: Text(
                 'HOW TO READ\n$text',
                 style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
@@ -606,19 +596,22 @@ class ScansPage extends StatelessWidget {
   Widget _nameChip(String symbol, String tag, {String? metric}) {
     return GestureDetector(
       onTap: () => onOpenChart(symbol),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          children: [
-            Text(symbol, style: const TextStyle(color: DeskColors.accentBright, fontWeight: FontWeight.w700)),
-            if (metric != null && metric.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Text(metric, style: const TextStyle(color: DeskColors.text, fontSize: 12)),
+      child: SizedBox(
+        height: DeskSpace.row,
+        child: Padding(
+          padding: DeskSpace.cellPad,
+          child: Row(
+            children: [
+              Text(symbol, style: const TextStyle(color: DeskColors.accentBright, fontWeight: FontWeight.w700)),
+              if (metric != null && metric.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(metric, style: const TextStyle(color: DeskColors.text, fontSize: 12)),
+              ],
+              const Spacer(),
+              if (tag.isNotEmpty)
+                Text(tag, style: const TextStyle(color: DeskColors.dim, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
             ],
-            const Spacer(),
-            if (tag.isNotEmpty)
-              Text(tag, style: const TextStyle(color: DeskColors.dim, fontSize: 11)),
-          ],
+          ),
         ),
       ),
     );
@@ -706,7 +699,7 @@ class ScansPage extends StatelessWidget {
             return GestureDetector(
               onTap: () => onOpenChart(r.symbol),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+                padding: DeskSpace.cellPad,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -867,7 +860,7 @@ class ScansPage extends StatelessWidget {
     Widget col(String title, List<WarningHit> rows) {
       if (rows.isEmpty) return const SizedBox.shrink();
       return Padding(
-        padding: const EdgeInsets.only(bottom: 0),
+        padding: const EdgeInsets.only(bottom: DeskSpace.section),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -893,7 +886,7 @@ class ScansPage extends StatelessWidget {
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -990,7 +983,7 @@ class ScansPage extends StatelessWidget {
             return GestureDetector(
               onTap: () => onOpenChart(sym),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+                padding: DeskSpace.cellPad,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1362,7 +1355,7 @@ class _TrendTile extends StatelessWidget {
     return GestureDetector(
       onTap: () => onOpen(row.symbol),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+        padding: DeskSpace.cellPad,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1429,7 +1422,7 @@ class _MetricTile extends StatelessWidget {
     return GestureDetector(
       onTap: () => onOpen(row.symbol),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+        padding: DeskSpace.cellPad,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1494,7 +1487,7 @@ class _SetupTile extends StatelessWidget {
     return GestureDetector(
       onTap: () => onOpen(row.symbol),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+        padding: DeskSpace.cellPad,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1605,7 +1598,7 @@ class _PackTile extends StatelessWidget {
     return GestureDetector(
       onTap: () => onOpen(row.symbol),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+        padding: DeskSpace.cellPad,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

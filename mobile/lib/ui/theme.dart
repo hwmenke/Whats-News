@@ -4,6 +4,28 @@ import 'package:flutter/cupertino.dart';
 /// Mint ≤1 OPPORTUNITY fill. Soft R/G heat. Discard neon/cream/v3.
 /// Web faces: Font C — Public Sans + Inter + JetBrains Mono (`styles/theme.css`).
 /// Market Moves stays utilitarian red/green z heat.
+/// LOCKED UX spacing — keep in lockstep with `styles/theme.css` `:root --space-*`.
+/// header→content 8–12 · section 8–12 · row 28–32 · cell 2×8
+/// inset 12–16 · bottom = max(8, safeArea.bottom) only.
+class DeskSpace {
+  static const double headerContent = 10;
+  static const double section = 10;
+  static const double row = 30;
+  static const double cellY = 2;
+  static const double cellX = 8;
+  static const double bottom = 8;
+  static const double inset = 12;
+  static const double chrome = 22;
+
+  static const EdgeInsets cellPad = EdgeInsets.symmetric(vertical: cellY, horizontal: cellX);
+  static const EdgeInsets pageX = EdgeInsets.symmetric(horizontal: inset);
+
+  static double bottomInset(BuildContext context) {
+    final safe = MediaQuery.paddingOf(context).bottom;
+    return safe > bottom ? safe : bottom;
+  }
+}
+
 class DeskColors {
   static const bg = Color(0xFFFFFFFF);
   static const elevated = Color(0xFFFFFFFF);

@@ -17,9 +17,9 @@ class BookPage extends StatelessWidget {
       slivers: [
         SliverToBoxAdapter(
           child: SizedBox(
-            height: 22,
+            height: DeskSpace.chrome,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: DeskSpace.pageX,
               child: Row(
                 children: [
                   _Chip(
@@ -42,7 +42,7 @@ class BookPage extends StatelessWidget {
                   const Spacer(),
                   CupertinoButton(
                     padding: EdgeInsets.zero,
-                    minSize: 22,
+                    minSize: DeskSpace.chrome,
                     onPressed: state.loadingBook ? null : state.loadBook,
                     child: const Icon(CupertinoIcons.refresh, size: 16),
                   ),
@@ -54,7 +54,7 @@ class BookPage extends StatelessWidget {
         if (state.bookError != null && state.bookPane != 'risk')
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+              padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.headerContent, DeskSpace.inset, 0),
               child: Text(state.bookError!, style: const TextStyle(color: DeskColors.red, fontSize: 12)),
             ),
           ),
@@ -64,6 +64,7 @@ class BookPage extends StatelessWidget {
           ..._riskSlivers(state, pnl)
         else
           ..._pnlSlivers(state, pnl),
+        SliverToBoxAdapter(child: SizedBox(height: DeskSpace.bottomInset(context))),
       ],
     );
   }
@@ -191,12 +192,12 @@ class BookPage extends StatelessWidget {
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.headerContent, DeskSpace.inset, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                height: 22,
+                height: DeskSpace.chrome,
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -220,7 +221,7 @@ class BookPage extends StatelessWidget {
       if (rows.isEmpty)
         const SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+            padding: EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
             child: Text(
               'Thin or unmarked. Need ≥3 names, ≥60 overlapping daily closes, non-singular 60d Σ.',
               style: TextStyle(color: DeskColors.muted, height: 1.4, fontSize: 12),
@@ -234,27 +235,30 @@ class BookPage extends StatelessWidget {
             final r = rows[i];
             return GestureDetector(
               onTap: () => onOpenChart(r.symbol),
-              child: SizedBox(
-                height: 24,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      [
-                        r.symbol,
-                        r.weightPct == null ? 'w —' : 'w ${r.weightPct!.toStringAsFixed(1)}%',
-                        r.vol20 == null ? 'σ20 —' : 'σ20 ${r.vol20!.toStringAsFixed(0)}',
-                        r.vol60 == null ? 'σ60 —' : 'σ60 ${r.vol60!.toStringAsFixed(0)}',
-                        r.betaSpy60 == null ? 'β —' : 'β ${r.betaSpy60!.toStringAsFixed(2)}',
-                        r.mvar95 == null ? 'MVaR —' : 'MVaR ${usd(r.mvar95)}',
-                        r.cvar95 == null ? 'CVaR —' : 'CVaR ${usd(r.cvar95)}',
-                        r.pctVar == null ? '%VaR —' : '%VaR ${r.pctVar!.toStringAsFixed(1)}',
-                        if (r.flags.isNotEmpty) r.flags.join(' '),
-                      ].join(' · '),
-                      style: const TextStyle(color: DeskColors.text, fontSize: 12),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              child: ColoredBox(
+                color: i.isOdd ? DeskColors.card : DeskColors.bg,
+                child: SizedBox(
+                  height: DeskSpace.row,
+                  child: Padding(
+                    padding: DeskSpace.cellPad,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        [
+                          r.symbol,
+                          r.weightPct == null ? 'w —' : 'w ${r.weightPct!.toStringAsFixed(1)}%',
+                          r.vol20 == null ? 'σ20 —' : 'σ20 ${r.vol20!.toStringAsFixed(0)}',
+                          r.vol60 == null ? 'σ60 —' : 'σ60 ${r.vol60!.toStringAsFixed(0)}',
+                          r.betaSpy60 == null ? 'β —' : 'β ${r.betaSpy60!.toStringAsFixed(2)}',
+                          r.mvar95 == null ? 'MVaR —' : 'MVaR ${usd(r.mvar95)}',
+                          r.cvar95 == null ? 'CVaR —' : 'CVaR ${usd(r.cvar95)}',
+                          r.pctVar == null ? '%VaR —' : '%VaR ${r.pctVar!.toStringAsFixed(1)}',
+                          if (r.flags.isNotEmpty) r.flags.join(' '),
+                        ].join(' · '),
+                        style: const TextStyle(color: DeskColors.text, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                 ),
@@ -264,7 +268,7 @@ class BookPage extends StatelessWidget {
         ),
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -277,7 +281,7 @@ class BookPage extends StatelessWidget {
               else
                 for (final c in risk.clusters)
                   SizedBox(
-                    height: 24,
+                    height: DeskSpace.row,
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Text(

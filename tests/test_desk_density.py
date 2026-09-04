@@ -20,6 +20,7 @@ class DeskDensityTests(unittest.TestCase):
             "scripts/engine_desk.js",
             "scripts/warnings_desk.js",
             "risk_spec.py",
+            "mobile/lib/ui/theme.dart",
         ):
             with open(path, encoding="utf-8") as fh:
                 blob += fh.read()
@@ -76,6 +77,17 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("flex-flow: column nowrap !important", self.blob)
         self.assertIn('class="risk-title visually-hidden"', self.blob)
         self.assertIn('class="mm-head visually-hidden"', self.blob)
+        self.assertIn("--space-header-content: 10px", self.blob)
+        self.assertIn("--space-section:        10px", self.blob)
+        self.assertIn("--space-row:            30px", self.blob)
+        self.assertIn("--space-cell-y:         2px", self.blob)
+        self.assertIn("--space-cell-x:         8px", self.blob)
+        self.assertIn("--space-bottom:         8px", self.blob)
+        self.assertIn("--space-inset:          12px", self.blob)
+        self.assertIn("headerContent = 10", self.blob)
+        self.assertIn("static const double row = 30", self.blob)
+        self.assertIn("static const double inset = 12", self.blob)
+        self.assertIn("max(8, safeArea.bottom)", self.blob)
 
     def test_hard_ui_lock_font_c_v41_not_v2_v3(self):
         theme = ""

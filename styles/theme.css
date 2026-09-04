@@ -45,6 +45,17 @@
   --topbar-h:       32px;
   --sidebar-w:      156px;
   --chrome-row-h:   26px;
+
+  /* UX spacing locks — Flutter DeskSpace must match (theme.dart).
+     header→content 8–12 · section 8–12 · row 28–32 · cell 2×8
+     inset 12–16 · bottom max(8, safeArea.bottom) */
+  --space-header-content: 10px;
+  --space-section:        10px;
+  --space-row:            30px;
+  --space-cell-y:         2px;
+  --space-cell-x:         8px;
+  --space-bottom:         8px;
+  --space-inset:          12px;
 }
 
 .engine-container,
@@ -485,7 +496,7 @@ body.board-focus .desk-ia-bar { padding: 2px 8px; }
   min-height: 0;
 }
 
-/* HARD spacing — IA bar → chips/table. No title band. No trailing air. */
+/* HARD spacing — tokens only. IA bar → 8–12pt → content. */
 body.board-focus .main,
 body.workspace-scan .main {
   padding: 0 !important;
@@ -498,10 +509,10 @@ body.workspace-scan .main {
 body.board-focus .desk-ia-bar,
 body.board-focus .main-nav-tabs.desk-ia-bar,
 body.workspace-scan .desk-ia-bar {
-  height: 22px;
-  min-height: 22px;
-  max-height: 22px;
-  padding: 0 8px !important;
+  height: var(--chrome-row-h);
+  min-height: var(--chrome-row-h);
+  max-height: var(--chrome-row-h);
+  padding: 0 var(--space-inset) !important;
   margin: 0 !important;
   flex-shrink: 0;
   overflow: hidden;
@@ -536,20 +547,20 @@ body.workspace-scan #chart-area {
 .book-container,
 .pnl-container,
 .moves-container {
-  gap: 0 !important;
-  padding: 0 8px 0 !important;
+  gap: var(--space-section) !important;
+  padding: var(--space-header-content) var(--space-inset) var(--space-bottom) !important;
   margin: 0 !important;
   justify-content: flex-start !important;
 }
 .risk-hero-head {
   display: flex;
-  height: 22px;
-  min-height: 22px;
-  max-height: 22px;
+  height: var(--chrome-row-h);
+  min-height: var(--chrome-row-h);
+  max-height: var(--chrome-row-h);
   margin: 0 !important;
   padding: 0 !important;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-cell-x);
 }
 .risk-hero-head .risk-title,
 .warnings-container .mm-head,
@@ -563,15 +574,15 @@ body.workspace-scan #chart-area {
 .risk-container .pnl-alert-chips {
   flex: 1 1 auto;
   margin: 0 !important;
-  height: 22px;
+  height: var(--chrome-row-h);
   align-items: center;
   flex-wrap: nowrap !important;
   overflow-x: auto;
 }
 .risk-container .pnl-chip {
-  height: 20px;
-  line-height: 20px;
-  padding: 0 6px !important;
+  height: var(--chrome-row-h);
+  line-height: var(--chrome-row-h);
+  padding: 0 var(--space-cell-x) !important;
   border: none !important;
   border-radius: 0;
   font-size: 10px;
@@ -584,8 +595,8 @@ body.workspace-scan #chart-area {
 }
 .risk-spec-title {
   margin: 0 !important;
-  line-height: 22px;
-  height: 22px;
+  line-height: var(--chrome-row-h);
+  height: var(--chrome-row-h);
   font-size: 11px;
 }
 .risk-container .pnl-var { margin: 0; padding: 0; }
@@ -595,12 +606,19 @@ body.workspace-scan #chart-area {
   margin: 0 !important;
   padding: 0 !important;
 }
-.warnings-grid { gap: 0 !important; }
-.wn-card { margin: 0; padding: 0; }
-.wn-card h3 { margin: 0; line-height: 22px; height: 22px; }
+.warnings-grid { gap: var(--space-section) !important; }
+.wn-card { margin: 0; padding: 0; background: transparent; border: none; box-shadow: none; }
+.wn-card h3 { margin: 0; line-height: var(--chrome-row-h); height: var(--chrome-row-h); }
+.risk-table td, .risk-table th,
+.wn-table th, .wn-table td,
+.scanner-table td, .scanner-table th {
+  height: var(--space-row) !important;
+  padding: var(--space-cell-y) var(--space-cell-x) !important;
+  border: none !important;
+}
 #scanner-area.scanner-container {
-  padding: 0 8px 0 !important;
-  gap: 0 !important;
+  padding: var(--space-header-content) var(--space-inset) var(--space-bottom) !important;
+  gap: var(--space-section) !important;
   margin: 0 !important;
 }
 body.workspace-scan #scanner-area {
@@ -610,19 +628,39 @@ body.workspace-scan #scanner-area {
   max-width: none !important;
   min-height: 0 !important;
   border: none !important;
-  padding: 0 8px 0 !important;
-  gap: 0 !important;
+  padding: var(--space-header-content) var(--space-inset) var(--space-bottom) !important;
+  gap: var(--space-section) !important;
   margin: 0 !important;
   background: var(--paper) !important;
   color: var(--ink) !important;
 }
 body.workspace-scan .desk-ia-bar {
   width: 100% !important;
-  flex: 0 0 22px !important;
+  flex: 0 0 var(--chrome-row-h) !important;
 }
-.scan-lens-bar { height: 22px; margin: 0 !important; padding: 0 !important; }
+.scan-lens-bar {
+  height: var(--chrome-row-h);
+  margin: 0 !important;
+  padding: 0 !important;
+}
 .scan-breadth { margin: 0 !important; padding: 0 !important; }
-.setup-scanner-header { height: 22px; min-height: 22px; margin: 0; padding: 0; }
+.scan-help,
+.scan-help > summary,
+.scan-help .scan-breadth-note,
+.scan-help .macro-blurb {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.scan-help[open] .scan-breadth-note,
+.scan-help[open] .macro-blurb {
+  margin-top: var(--space-section) !important;
+}
+.setup-scanner-header {
+  height: var(--chrome-row-h);
+  min-height: var(--chrome-row-h);
+  margin: 0;
+  padding: 0;
+}
 .scanner-empty { padding: 0 !important; margin: 0; }
 .scanner-empty .empty-icon { display: none; }
 .risk-container > :last-child,
