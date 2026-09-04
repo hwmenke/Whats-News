@@ -1148,16 +1148,16 @@ function renderSymbolList() {
         return;
     }
 
-    // Group symbols by group_tag / group_label. Empty groups are omitted.
+    // Group symbols by group_tag / group_label. Hidden items stay in the DOM
+    // so j/k can walk .symbol-item:not([hidden]).
     let lastGroup = undefined;
     let visibleCount = 0;
     state.symbols.forEach(sym => {
         const tag = sym.group_tag || '';
-        const hidden = !matchesWatchlistFilter(sym.symbol, tag, q) || !matchesDeskFamily(sym);
-        if (hidden) return;
-        visibleCount += 1;
+        const hideItem = !matchesWatchlistFilter(sym.symbol, tag, q) || !matchesDeskFamily(sym);
+        if (!hideItem) visibleCount += 1;
 
-        if (tag !== lastGroup) {
+        if (!hideItem && tag !== lastGroup) {
             lastGroup = tag;
             const hdr = document.createElement('div');
             hdr.className = 'sym-group-header';
@@ -1168,6 +1168,12 @@ function renderSymbolList() {
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
         item.dataset.symbol = sym.symbol;
+        if (!matchesWatchlistFilter(sym.symbol, tag, q)) {
+            item.hidden = true;
+        }
+        if (!matchesDeskFamily(sym)) {
+            item.hidden = true;
+        }
 
         const ticker = document.createElement('span');
         ticker.className = 'sym-ticker';
