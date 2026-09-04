@@ -19,3 +19,4 @@ Watchlist before/after plus Book Upload | P&L | Risk.
 - [setup_glance.png](setup_glance.png) — Setup glance Stretch/Pattern wn-tables
 - [rotation_map.png](rotation_map.png) — Rotation: compact scatter + Excel RSI/σ table
 - [tes_dir.png](tes_dir.png) — TES / Dir: compact scatter + Excel TES/Dir/Tag (not stubs)
+- [fractal_td.png](fractal_td.png) — Fractal×TD: D65 / TD / Read / Flag; no invented D or TD13

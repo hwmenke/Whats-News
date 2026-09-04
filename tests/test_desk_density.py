@@ -170,6 +170,7 @@ class DeskDensityTests(unittest.TestCase):
             "setup_glance.png",
             "rotation_map.png",
             "tes_dir.png",
+            "fractal_td.png",
         ):
             path = root / name
             self.assertTrue(path.is_file(), name)
