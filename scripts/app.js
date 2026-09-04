@@ -2466,6 +2466,8 @@ async function switchTab(tabId, opts = {}) {
     }
 
     state.activeTab = tabId;
+    const boardTabs = ['engine', 'moves', 'macro', 'pnl', 'book', 'risk'];
+    document.body.classList.toggle('board-focus', boardTabs.includes(tabId));
 
     // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {

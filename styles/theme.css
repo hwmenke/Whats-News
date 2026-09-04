@@ -338,6 +338,15 @@ html, body { font-family: var(--font-face-body); }
 .pnl-blurb { font-size: 11px; margin: 2px 0; }
 .book-csv { min-height: 72px; }
 
+/* Board tabs: hide chart chrome so content ≥70% viewport */
+body.board-focus .symbol-header,
+body.board-focus .main-nav-overlays,
+body.board-focus #portfolio-tape,
+body.board-focus .main-nav-tabs:not(.desk-ia-bar) {
+  display: none !important;
+}
+body.board-focus .desk-ia-bar { padding: 2px 8px; }
+
 @media (max-width: 980px) {
   .v2-split, .v2-three { grid-template-columns: 1fr; }
 }

@@ -49,6 +49,8 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("showRiskArea", self.blob)
         self.assertIn("loadPaperRisk", self.blob)
         self.assertNotIn("Book+P&amp;L", self.blob)
+        self.assertIn("board-focus", self.blob)
+        self.assertIn("boardTabs", self.blob)
 
     def test_no_invented_numbers(self):
         low = self.blob.lower()
