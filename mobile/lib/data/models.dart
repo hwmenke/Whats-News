@@ -1759,6 +1759,7 @@ class EngineRow {
     this.str,
     this.grayTag = '',
     this.sentiment = '',
+    this.tmacStar,
   });
 
   final String symbol;
@@ -1776,6 +1777,7 @@ class EngineRow {
   final int? str;
   final String grayTag;
   final String sentiment;
+  final int? tmacStar;
 
   factory EngineRow.fromJson(Map<String, dynamic> json) {
     double? n(Object? v) {
@@ -1800,6 +1802,7 @@ class EngineRow {
       str: json['str'] is num ? (json['str'] as num).toInt() : int.tryParse('${json['str'] ?? ''}'),
       grayTag: '${json['gray_tag'] ?? ''}',
       sentiment: '${json['sentiment'] ?? ''}',
+      tmacStar: json['tmac_star'] is num ? (json['tmac_star'] as num).toInt() : int.tryParse('${json['tmac_star'] ?? ''}'),
     );
   }
 }
@@ -2118,6 +2121,129 @@ class SigmaBoard {
       ],
       message: '${json['message'] ?? ''}',
       note: '${json['note'] ?? ''}',
+    );
+  }
+}
+
+class MapPoint {
+  const MapPoint({
+    required this.symbol,
+    this.x,
+    this.y,
+    this.assetClass = 'Stock',
+    this.tag = '',
+    this.marker = 'solid',
+    this.arrow = '',
+  });
+
+  final String symbol;
+  final double? x;
+  final double? y;
+  final String assetClass;
+  final String tag;
+  final String marker;
+  final String arrow;
+
+  factory MapPoint.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return MapPoint(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      x: n(json['x']),
+      y: n(json['y']),
+      assetClass: '${json['asset_class'] ?? 'Stock'}',
+      tag: '${json['gray_tag'] ?? json['td_flag'] ?? ''}',
+      marker: '${json['marker'] ?? 'solid'}',
+      arrow: '${json['arrow'] ?? ''}',
+    );
+  }
+}
+
+class EngineMaps {
+  const EngineMaps({
+    this.ready = false,
+    this.count = 0,
+    this.scanner = const [],
+    this.rotation = const [],
+    this.coil = const [],
+    this.fractalTd = const [],
+    this.tmsWeekly = const [],
+    this.tmsDaily = const [],
+    this.spyLabel = '',
+    this.top12m = const [],
+    this.bottom12m = const [],
+    this.howto = '',
+    this.message = '',
+    this.tmacNote = '',
+    this.tdNote = '',
+  });
+
+  final bool ready;
+  final int count;
+  final List<EngineNamed> scanner;
+  final List<MapPoint> rotation;
+  final List<MapPoint> coil;
+  final List<MapPoint> fractalTd;
+  final List<MapPoint> tmsWeekly;
+  final List<MapPoint> tmsDaily;
+  final String spyLabel;
+  final List<EngineNamed> top12m;
+  final List<EngineNamed> bottom12m;
+  final String howto;
+  final String message;
+  final String tmacNote;
+  final String tdNote;
+
+  static const empty = EngineMaps();
+
+  static List<MapPoint> _pts(Object? raw) => [
+        if (raw is List)
+          for (final r in raw)
+            if (r is Map) MapPoint.fromJson(Map<String, dynamic>.from(r)),
+      ];
+
+  factory EngineMaps.fromJson(Map<String, dynamic> json) {
+    final scan = json['scanner'];
+    final rot = json['rotation'];
+    final coil = json['coil'];
+    final ft = json['fractal_td'];
+    final tm = json['tms_regime'];
+    final spy = tm is Map ? tm['spy_strip'] : null;
+    final ex = tm is Map ? tm['extremes'] : null;
+    return EngineMaps(
+      ready: json['ready'] == true,
+      count: json['count'] is num ? (json['count'] as num).toInt() : 0,
+      scanner: [
+        if (scan is Map && scan['rows'] is List)
+          for (final r in scan['rows'])
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      rotation: rot is Map ? _pts(rot['points']) : const [],
+      coil: coil is Map ? _pts(coil['points']) : const [],
+      fractalTd: ft is Map ? _pts(ft['points']) : const [],
+      tmsWeekly: tm is Map ? _pts(tm['weekly']) : const [],
+      tmsDaily: tm is Map ? _pts(tm['daily']) : const [],
+      spyLabel: spy is Map ? '${spy['label'] ?? ''}' : '',
+      top12m: [
+        if (ex is Map && ex['top_12m'] is List)
+          for (final r in ex['top_12m'])
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      bottom12m: [
+        if (ex is Map && ex['bottom_12m'] is List)
+          for (final r in ex['bottom_12m'])
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      howto: [
+        if (rot is Map) '${rot['howto'] ?? ''}',
+        if (coil is Map) '${coil['howto'] ?? ''}',
+      ].where((s) => s.isNotEmpty).join('\n'),
+      message: '${json['message'] ?? ''}',
+      tmacNote: '${json['tmac_note'] ?? ''}',
+      tdNote: '${json['td_note'] ?? ''}',
     );
   }
 }

@@ -266,6 +266,7 @@
       <button type="button" class="desk-ia-btn" data-ia="rsic">RSI-C</button>
       <button type="button" class="desk-ia-btn" data-ia="macro">Macro</button>
       <button type="button" class="desk-ia-btn" data-ia="sigma">Sigma</button>
+      <button type="button" class="desk-ia-btn" data-ia="maps">Maps</button>
       <button type="button" class="desk-ia-btn" data-ia="book">Book+P&amp;L</button>
       <button type="button" class="desk-ia-btn" data-ia="chart">Watchlist · Chart · News</button>
     </nav>
@@ -1186,6 +1187,7 @@
         <button type="button" class="desk-ia-btn" data-ia="rsic">RSI-C</button>
         <button type="button" class="desk-ia-btn" data-ia="stretch">Stretch</button>
         <button type="button" class="desk-ia-btn" data-ia="sigma">Sigma</button>
+        <button type="button" class="desk-ia-btn" data-ia="maps">Maps</button>
       </div>
 
       <div class="engine-panel" data-panel="command">
@@ -1222,6 +1224,7 @@
                 <th>vs20</th>
                 <th>52w%</th>
                 <th>Str</th>
+                <th title="TMAC* heat proxy — not branded TMAC">TMAC*</th>
               </tr>
             </thead>
             <tbody id="engine-board-tbody"></tbody>
@@ -1298,6 +1301,23 @@
         <div id="engine-sigma-empty" class="scanner-empty">
           <p>Empty sigma grid — no stored closes.</p>
         </div>
+      </div>
+
+      <div class="engine-panel" data-panel="maps" style="display:none;">
+        <div class="setup-scanner-header">
+          <strong>Visual maps</strong>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-engine-maps">Load /api/engine/maps</button>
+          <span id="engine-maps-meta" class="scanner-ts"></span>
+        </div>
+        <p class="macro-blurb">Yahoo/SQLite only. Rotation + Coil first, then Fractal×TD + TMS Regime. TD is an honest approx — never invented TD13 stars. Fractal markers only when SPEC 25/27 D exists. TMAC* is a heat proxy, not branded TMAC.</p>
+        <div class="engine-map-tabs" role="tablist">
+          <button type="button" class="desk-ia-btn on" data-map="scanner">Scanner</button>
+          <button type="button" class="desk-ia-btn" data-map="rotation">Rotation</button>
+          <button type="button" class="desk-ia-btn" data-map="coil">Coil</button>
+          <button type="button" class="desk-ia-btn" data-map="fractal">Fractal×TD</button>
+          <button type="button" class="desk-ia-btn" data-map="tms">TMS Regime</button>
+        </div>
+        <div id="engine-maps-body"></div>
       </div>
     </div><!-- #engine-area -->
 

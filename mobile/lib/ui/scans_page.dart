@@ -67,6 +67,7 @@ class ScansPage extends StatelessWidget {
                       ('rsic', 'RSI-C'),
                       ('stretch', 'Stretch'),
                       ('sigma', 'Sigma'),
+                      ('maps', 'Maps'),
                     ])
                       _ModeChip(
                         label: e.$2,
@@ -170,6 +171,8 @@ class ScansPage extends StatelessWidget {
           ..._stretchSlivers(state)
         else if (state.scanMode == 'sigma')
           ..._sigmaSlivers(state)
+        else if (state.scanMode == 'maps')
+          ..._mapsSlivers(state)
         else if (state.scanMode == 'ma' ||
             state.scanMode == 'rsi' ||
             state.scanMode == 'breakout' ||
@@ -730,6 +733,7 @@ class ScansPage extends StatelessWidget {
                         if (r.impulse.isNotEmpty) r.impulse,
                         if (r.dw.isNotEmpty) r.dw,
                         if (r.str != null) 'Str ${r.str}',
+                        if (r.tmacStar != null) 'TMAC* ${r.tmacStar}',
                       ].join(' · '),
                       style: const TextStyle(color: DeskColors.dim, fontSize: 11),
                     ),
@@ -931,6 +935,72 @@ class ScansPage extends StatelessWidget {
           },
         ),
       ),
+    ];
+  }
+
+  List<Widget> _mapsSlivers(WhatsNewsState s) {
+    final m = s.engineMaps;
+    if (!m.ready) {
+      return [
+        ..._emptyNote(m.message.isEmpty ? 'Empty maps — seed a sleeve and Fetch Yahoo.' : m.message),
+        ..._howto(m.howto),
+      ];
+    }
+    Widget pts(String title, List<MapPoint> rows) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 13)),
+              if (rows.isEmpty)
+                const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 12))
+              else
+                for (final p in rows)
+                  _nameChip(
+                    p.symbol,
+                    [p.assetClass, if (p.tag.isNotEmpty) p.tag, if (p.arrow.isNotEmpty) p.arrow].join(' · '),
+                    metric: (p.x == null || p.y == null)
+                        ? null
+                        : '${p.x!.toStringAsFixed(1)}, ${p.y!.toStringAsFixed(1)}',
+                  ),
+            ],
+          ),
+        );
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                m.tmacNote.isEmpty ? 'TMAC* heat proxy — not branded TMAC.' : m.tmacNote,
+                style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+              ),
+              if (m.spyLabel.isNotEmpty)
+                Text('SPY strip ${m.spyLabel} — research label, not edge.',
+                    style: const TextStyle(color: DeskColors.yellow, fontSize: 12)),
+              const SizedBox(height: 8),
+              pts('Scanner', [
+                for (final r in m.scanner)
+                  MapPoint(symbol: r.symbol, tag: r.tag, assetClass: r.state),
+              ]),
+              pts('Rotation RSI(14) vs 1w σ', m.rotation),
+              pts('Coil 12w/26w vs 13w pos', m.coil),
+              pts('Fractal × TD (D only)', m.fractalTd),
+              pts('TMS-W solid', m.tmsWeekly),
+              pts('TMS-D hollow', m.tmsDaily),
+              pts('Top 12M', [
+                for (final r in m.top12m) MapPoint(symbol: r.symbol, tag: r.note),
+              ]),
+              pts('Bottom 12M', [
+                for (final r in m.bottom12m) MapPoint(symbol: r.symbol, tag: r.note),
+              ]),
+            ],
+          ),
+        ),
+      ),
+      ..._howto('${m.howto}\n${m.tdNote}'.trim()),
     ];
   }
 

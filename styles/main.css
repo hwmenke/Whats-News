@@ -4101,6 +4101,31 @@ body.focus-mode.workspace-review #alert-log {
 @media (max-width: 900px) {
   .engine-rsic-split { grid-template-columns: 1fr; }
 }
+.engine-heat-table th, .engine-heat-table td { height: 28px; padding: 2px 6px; }
+.engine-dense td { font-size: 11px; }
+.engine-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 72px;
+}
+.engine-bar i {
+  display: inline-block;
+  height: 6px;
+  background: #3B82F6;
+  border-radius: 99px;
+}
+.engine-bar em { font-style: normal; font-size: 10px; color: var(--text-dim); }
+.engine-scatter { width: 100%; max-width: 720px; height: auto; border: 1px solid var(--border); border-radius: 8px; }
+.engine-dot { cursor: pointer; }
+.engine-legend { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 8px 0 12px; font-size: 11px; color: var(--text-muted); }
+.engine-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 99px; margin-right: 4px; }
+.engine-map-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.engine-tmac, .engine-dir { font-variant-numeric: tabular-nums; font-weight: 700; }
+.engine-pill-opp { color: #22C55E; }
+.engine-pill-watch { color: #EAB308; }
+.engine-pill-no { color: #8B949E; }
+.engine-gray { color: #8B949E; } /* RSI-C · VCP research tag — never green */
 .book-add-form input, .book-add-form select {
   background: var(--bg-card);
   color: var(--text-primary);

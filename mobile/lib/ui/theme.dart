@@ -11,6 +11,10 @@ class DeskColors {
   static const accentBright = Color(0xFF60A5FA);
   static const green = Color(0xFF22C55E);
   static const red = Color(0xFFEF4444);
+  static const yellow = Color(0xFFEAB308);
+  static const cyan = Color(0xFF06B6D4);
+  static const orange = Color(0xFFF97316);
+  static const purple = Color(0xFFA855F7);
   static const text = Color(0xFFE6EDF3);
   static const muted = Color(0xFF8B949E);
   static const dim = Color(0xFF4A5568);

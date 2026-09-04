@@ -2506,7 +2506,7 @@ function showEngineDesk(ia) {
     if (typeof hideBookAreas === 'function') hideBookAreas();
     if (typeof showEngineArea === 'function') showEngineArea();
     const panel = ia || (typeof readDeskPrefs === 'function' ? (readDeskPrefs().deskIa || 'command') : 'command');
-    const engineIa = ['command', 'setup', 'pattern', 'rsic', 'stretch', 'sigma'].includes(panel) ? panel : 'command';
+    const engineIa = ['command', 'setup', 'pattern', 'rsic', 'stretch', 'sigma', 'maps'].includes(panel) ? panel : 'command';
     if (typeof applyEnginePanel === 'function') applyEnginePanel(engineIa);
 }
 

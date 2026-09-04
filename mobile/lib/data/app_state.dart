@@ -69,6 +69,7 @@ class WhatsNewsState extends ChangeNotifier {
   PatternBoard patternBoard = PatternBoard.empty;
   StretchBoard stretchBoard = StretchBoard.empty;
   SigmaBoard sigmaBoard = SigmaBoard.empty;
+  EngineMaps engineMaps = EngineMaps.empty;
   int hmmStates = 2;
   String hmmStateFilter = '';
   String hmmView = 'all';
@@ -885,7 +886,8 @@ class WhatsNewsState extends ChangeNotifier {
       mode == 'pattern' ||
       mode == 'rsic' ||
       mode == 'stretch' ||
-      mode == 'sigma';
+      mode == 'sigma' ||
+      mode == 'maps';
 
   Future<void> loadEngine() async {
     try {
@@ -901,6 +903,8 @@ class WhatsNewsState extends ChangeNotifier {
         stretchBoard = await api.getEngineStretch();
       } else if (scanMode == 'sigma') {
         sigmaBoard = await api.getEngineSigma();
+      } else if (scanMode == 'maps') {
+        engineMaps = await api.getEngineMaps();
       }
     } on ApiException {
       if (scanMode == 'command') engineCommand = EngineBoard.empty;
@@ -909,6 +913,7 @@ class WhatsNewsState extends ChangeNotifier {
       if (scanMode == 'rsic') rsiCounter = RsiCounterBoard.empty;
       if (scanMode == 'stretch') stretchBoard = StretchBoard.empty;
       if (scanMode == 'sigma') sigmaBoard = SigmaBoard.empty;
+      if (scanMode == 'maps') engineMaps = EngineMaps.empty;
     }
     notifyListeners();
   }

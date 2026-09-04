@@ -74,7 +74,7 @@ function applyEnginePanel(id) {
         btn.classList.toggle('on', btn.dataset.ia === next);
     });
     document.querySelectorAll('#desk-ia-bar .desk-ia-btn').forEach(btn => {
-        if (['command', 'setup', 'pattern', 'rsic', 'sigma', 'stretch'].includes(btn.dataset.ia)) {
+        if (['command', 'setup', 'pattern', 'rsic', 'sigma', 'stretch', 'maps'].includes(btn.dataset.ia)) {
             btn.classList.toggle('on', btn.dataset.ia === next);
         }
     });
@@ -87,6 +87,7 @@ function applyEnginePanel(id) {
     if (next === 'rsic') loadEngineRsiC();
     if (next === 'stretch') loadEngineStretch();
     if (next === 'sigma') loadEngineSigma();
+    if (next === 'maps') loadEngineMaps();
 }
 
 function _engEmpty(el, msg) {
@@ -180,7 +181,8 @@ async function loadEngineBoard() {
                 <td>${_engEsc((row.rsi_c && row.rsi_c.state) || '—')}</td>
                 <td class="${_engTone(row.vs20)}">${row.vs20 == null ? '—' : _engNum(row.vs20)}</td>
                 <td style="${_engHeat(row.dist_52w_pct, -40, 0)}">${row.dist_52w_pct == null ? '—' : _engNum(row.dist_52w_pct)}</td>
-                <td class="${_engTone(row.str)}">${row.str == null ? '—' : row.str}</td>`;
+                <td class="${_engTone(row.str)}">${row.str == null ? '—' : row.str}</td>
+                <td class="engine-tmac" style="${_engHeat(row.tmac_star, 0, 99)}" title="${_engEsc(row.tmac_note || 'TMAC* heat proxy')}">${row.tmac_star == null ? '—' : row.tmac_star}</td>`;
             tbody.appendChild(tr);
         });
         if (empty) empty.style.display = rows.length ? 'none' : 'block';
@@ -426,6 +428,166 @@ async function loadEngineSigma() {
     }
 }
 
+function _engBar(pct) {
+    if (pct == null || Number.isNaN(Number(pct))) return '—';
+    const n = Math.max(0, Math.min(100, Number(pct)));
+    return `<span class="engine-bar"><i style="width:${n}%"></i><em>${_engNum(n, 0)}%</em></span>`;
+}
+
+function _engScatter(points, opts) {
+    const o = opts || {};
+    const w = 640, h = 320, pad = 36;
+    const xs = (points || []).map(p => Number(p.x)).filter(v => Number.isFinite(v));
+    const ys = (points || []).map(p => Number(p.y)).filter(v => Number.isFinite(v));
+    if (!xs.length || !ys.length) {
+        return `<p class="scanner-empty">${_engEsc(o.empty || 'Empty plot — no scored points.')}</p>`;
+    }
+    const x0 = o.xmin != null ? o.xmin : Math.min(...xs);
+    const x1 = o.xmax != null ? o.xmax : Math.max(...xs);
+    const y0 = o.ymin != null ? o.ymin : Math.min(...ys);
+    const y1 = o.ymax != null ? o.ymax : Math.max(...ys);
+    const dx = (x1 - x0) || 1, dy = (y1 - y0) || 1;
+    const X = v => pad + ((v - x0) / dx) * (w - 2 * pad);
+    const Y = v => h - pad - ((v - y0) / dy) * (h - 2 * pad);
+    const dots = (points || []).map(p => {
+        const cx = X(Number(p.x)), cy = Y(Number(p.y));
+        const fill = p.color || '#F97316';
+        const r = 4.5;
+        const hollow = p.marker === 'hollow';
+        const arrow = p.arrow === 'strengthen' ? '↑' : p.arrow === 'weaken' ? '↓' : '';
+        return `<g class="engine-dot" data-sym="${_engEsc(p.symbol)}">
+            <circle cx="${cx}" cy="${cy}" r="${r}" fill="${hollow ? 'none' : fill}" stroke="${fill}" stroke-width="1.4"></circle>
+            <text x="${cx + 6}" y="${cy + 3}" fill="#8B949E" font-size="9">${_engEsc(p.symbol)}${arrow}</text>
+        </g>`;
+    }).join('');
+    const guides = (o.guides || []).map(g => {
+        if (g.v != null) return `<line x1="${X(g.v)}" y1="${pad}" x2="${X(g.v)}" y2="${h - pad}" stroke="${g.color || '#30363d'}" stroke-dasharray="3 3" stroke-width="1"/>`;
+        if (g.h != null) return `<line x1="${pad}" y1="${Y(g.h)}" x2="${w - pad}" y2="${Y(g.h)}" stroke="${g.color || '#30363d'}" stroke-dasharray="3 3" stroke-width="1"/>`;
+        return '';
+    }).join('');
+    const band = o.band ? `<rect x="${X(o.band[0])}" y="${pad}" width="${Math.max(0, X(o.band[1]) - X(o.band[0]))}" height="${h - 2 * pad}" fill="#06B6D422"></rect>` : '';
+    return `<svg class="engine-scatter" viewBox="0 0 ${w} ${h}" role="img">
+        <rect x="0" y="0" width="${w}" height="${h}" fill="#0D1117"></rect>
+        ${band}${guides}
+        <line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="#30363d"/>
+        <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="#30363d"/>
+        <text x="${w / 2}" y="${h - 8}" fill="#8B949E" font-size="10" text-anchor="middle">${_engEsc(o.xLabel || '')}</text>
+        <text x="12" y="16" fill="#8B949E" font-size="10">${_engEsc(o.yLabel || '')}</text>
+        ${dots}
+    </svg>`;
+}
+
+function _engLegend(classes) {
+    return `<div class="engine-legend">${Object.entries(classes || {}).map(([k, c]) =>
+        `<span><i style="background:${c}"></i>${_engEsc(k)}</span>`).join('')}</div>`;
+}
+
+function renderEngineMaps(data, view) {
+    const el = document.getElementById('engine-maps-body');
+    if (!el) return;
+    const tab = view || 'scanner';
+    document.querySelectorAll('.engine-map-tabs .desk-ia-btn').forEach(btn => {
+        btn.classList.toggle('on', btn.dataset.map === tab);
+    });
+    const classes = data.classes || {};
+    if (!data.ready) {
+        el.innerHTML = `<p class="scanner-empty">${_engEsc(data.message || 'Empty maps — no stored bars.')}</p>`;
+        return;
+    }
+    if (tab === 'scanner') {
+        const rows = ((data.scanner || {}).rows) || [];
+        const body = rows.map(r => `<tr data-symbol="${_engEsc(r.symbol)}">
+            <td class="macro-sym">${_engEsc(r.symbol)}</td>
+            <td class="${_engTone(r.str)}">${r.str == null ? '—' : r.str}</td>
+            <td>${_engBar(r.stretch_pctile != null ? r.stretch_pctile : (r.stretch_pct == null ? null : 50 + r.stretch_pct))}</td>
+            <td class="${_engTone(r.delta_d_1m)}">${r.delta_d_1m == null ? '—' : _engNum(r.delta_d_1m, 2)}</td>
+            <td>${r.d65 == null ? '—' : _engNum(r.d65, 2)}</td>
+            <td class="${_engTone(r.tms_d)}">${r.tms_d == null ? '—' : r.tms_d}</td>
+            <td>${_engBar(r.pos_52w)}</td>
+            <td>${r.vol30 == null ? '—' : _engNum(r.vol30)}</td>
+            <td>${_engEsc(r.tes_state || '—')}</td>
+            <td><span class="engine-gray">${_engEsc(r.gray_tag || '')}</span></td>
+            <td class="engine-dir" style="${_engHeat(r.dir5, -5, 5)}">${r.dir5 == null ? '—' : r.dir5}</td>
+            <td class="engine-tmac" style="${_engHeat(r.tmac_star, 0, 99)}">${r.tmac_star == null ? '—' : r.tmac_star}</td>
+        </tr>`).join('');
+        el.innerHTML = `
+            ${_engScatter((data.scanner || {}).scatter || [], { xLabel: 'Dir ±5', yLabel: 'RSI(14)', xmin: -5, xmax: 5, ymin: 0, ymax: 100, guides: [{ v: 0 }, { h: 25 }, { h: 50 }, { h: 75 }] })}
+            ${_engLegend(classes)}
+            <div class="scanner-table-wrap"><table class="scanner-table engine-heat-table engine-dense">
+                <thead><tr><th>Asset</th><th>Str</th><th>Stretch</th><th>ΔD 1m</th><th>D65</th><th>TMS-D</th><th>52w pos</th><th>Vol30</th><th>TES</th><th>RSI-C · VCP</th><th>Dir ±5</th><th>TMAC*</th></tr></thead>
+                <tbody>${body || '<tr><td colspan="12">none</td></tr>'}</tbody>
+            </table></div>
+            <details class="engine-howto" open><summary>HOW TO READ — SCANNER + TES</summary>
+                <p>${_engEsc((data.scanner || {}).howto || '')}</p>
+                <p>${_engEsc(data.tes_note || '')}</p>
+                <p>${_engEsc(data.tmac_note || '')}</p>
+            </details>`;
+    } else if (tab === 'rotation') {
+        const rot = data.rotation || {};
+        el.innerHTML = `
+            <h3>CROSS-ASSET ROTATION</h3>
+            ${_engScatter(rot.points || [], { xLabel: rot.x_label, yLabel: rot.y_label, xmin: 0, xmax: 100, guides: [{ v: 50 }, { h: 0 }] })}
+            ${_engLegend(classes)}
+            <details class="engine-howto" open><summary>HOW TO READ — ROTATION</summary><p>${_engEsc(rot.howto || '')}</p></details>`;
+    } else if (tab === 'coil') {
+        const coil = data.coil || {};
+        el.innerHTML = `
+            <h3>COIL MAP</h3>
+            ${_engScatter(coil.points || [], { xLabel: coil.x_label, yLabel: coil.y_label, xmin: 0, xmax: 1.2, ymin: -20, ymax: 120, band: [0, 0.65], guides: [{ v: 0.45, color: '#06B6D4' }, { v: 0.65, color: '#06B6D4' }, { h: 0 }, { h: 100 }] })}
+            ${_engLegend(classes)}
+            <details class="engine-howto" open><summary>HOW TO READ — COIL</summary><p>${_engEsc(coil.howto || '')}</p></details>`;
+    } else if (tab === 'fractal') {
+        const ft = data.fractal_td || {};
+        el.innerHTML = `
+            <h3>FRACTAL × TD</h3>
+            ${_engScatter(ft.points || [], { xLabel: ft.x_label, yLabel: ft.y_label, xmin: 1.1, xmax: 2.1, ymin: -15, ymax: 15, guides: [{ v: 1.3 }, { v: 1.5 }, { h: 13, color: '#EF4444' }, { h: -13, color: '#22C55E' }, { h: 0 }], empty: 'No D65 — SPEC 25/27 window failed. No invented markers.' })}
+            ${_engLegend(classes)}
+            <details class="engine-howto" open><summary>HOW TO READ — FRACTAL × TD</summary>
+                <p>${_engEsc(ft.howto || '')}</p>
+                <p>${_engEsc(data.td_note || '')}</p>
+            </details>`;
+    } else {
+        const tm = data.tms_regime || {};
+        const pts = [...(tm.weekly || []), ...(tm.daily || [])];
+        const spy = tm.spy_strip || {};
+        const ex = tm.extremes || {};
+        const list = (arr) => (arr || []).map(x => `<li><button type="button" class="engine-name" data-sym="${_engEsc(x.symbol)}">${_engEsc(x.symbol)}</button> ${_engNum(x.ret_12m)}%</li>`).join('');
+        el.innerHTML = `
+            <h3>TMS REGIME MAP</h3>
+            <p class="engine-dim">SPY strip: ${_engEsc(spy.label || '—')} — ${_engEsc(spy.note || '')}</p>
+            ${_engScatter(pts, { xLabel: tm.x_label, yLabel: tm.y_label, xmin: -100, xmax: 100, ymin: -25, ymax: 25, guides: [{ v: 0 }, { h: 0 }] })}
+            ${_engLegend(classes)}
+            <div class="engine-quad">
+                <div class="engine-col is-bull"><h3>TOP 12M %</h3><ul>${list(ex.top_12m) || '<li class="engine-dim">none</li>'}</ul></div>
+                <div class="engine-col is-bear"><h3>BOTTOM 12M %</h3><ul>${list(ex.bottom_12m) || '<li class="engine-dim">none</li>'}</ul></div>
+            </div>
+            <details class="engine-howto" open><summary>HOW TO READ — TMS REGIME</summary><p>${_engEsc(tm.howto || '')}</p></details>`;
+    }
+    el.querySelectorAll('[data-sym], tr[data-symbol], .engine-dot').forEach(node => {
+        node.addEventListener('click', () => {
+            const sym = node.dataset.sym || node.dataset.symbol;
+            if (sym && typeof selectSymbol === 'function') selectSymbol(sym);
+        });
+    });
+}
+
+async function loadEngineMaps() {
+    const el = document.getElementById('engine-maps-body');
+    const meta = document.getElementById('engine-maps-meta');
+    if (!el) return;
+    if (meta) meta.textContent = 'GET /api/engine/maps…';
+    try {
+        const data = await apiFetch(`${API}/engine/maps?desk=1`);
+        window._engineMaps = data;
+        const on = document.querySelector('.engine-map-tabs .desk-ia-btn.on');
+        renderEngineMaps(data, on ? on.dataset.map : 'scanner');
+        if (meta) meta.textContent = data.ready ? `${data.count || 0} names` : (data.message || 'empty');
+    } catch (err) {
+        el.innerHTML = `<p class="scanner-empty">${_engEsc(err.message || 'Maps unavailable')}</p>`;
+        if (meta) meta.textContent = 'error';
+    }
+}
+
 function bindEngineDesk() {
     document.querySelectorAll('#desk-ia-bar .desk-ia-btn').forEach(btn => {
         btn.addEventListener('click', () => applyDeskIa(btn.dataset.ia));
@@ -439,6 +601,13 @@ function bindEngineDesk() {
     document.getElementById('btn-engine-rsic')?.addEventListener('click', () => loadEngineRsiC());
     document.getElementById('btn-engine-stretch')?.addEventListener('click', () => loadEngineStretch());
     document.getElementById('btn-engine-sigma')?.addEventListener('click', () => loadEngineSigma());
+    document.getElementById('btn-engine-maps')?.addEventListener('click', () => loadEngineMaps());
+    document.querySelectorAll('.engine-map-tabs .desk-ia-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.engine-map-tabs .desk-ia-btn').forEach(b => b.classList.toggle('on', b === btn));
+            if (window._engineMaps) renderEngineMaps(window._engineMaps, btn.dataset.map);
+        });
+    });
     document.getElementById('engine-rsic-lag')?.addEventListener('change', () => loadEngineRsiC());
     document.getElementById('engine-rsic-n')?.addEventListener('change', () => loadEngineRsiC());
 }

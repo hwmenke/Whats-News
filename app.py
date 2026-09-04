@@ -546,6 +546,13 @@ def engine_sigma_api():
     return _engine_payload(equity_engine.sigma_board)
 
 
+@app.route("/api/engine/maps", methods=["GET"])
+def engine_maps_api():
+    """Scanner / Rotation / Coil / Fractal×TD / TMS Regime from stored bars."""
+    import engine_maps
+    return _engine_payload(engine_maps.maps_board)
+
+
 @app.route("/api/hmm/combo", methods=["GET"])
 def hmm_combo_api():
     """AND of real Fractal FRAGILE + inherited SPY HMM + setup tags. No invented hits."""

@@ -85,6 +85,9 @@ NOTE = (
 )
 VCP_NOTE = "honest proxy, not certified VCP"
 FRACTAL_NOTE = "SPEC 25/27 only — null D is a failed window, not invented."
+TMAC_NOTE = "TMAC* heat proxy — awaiting Quant Excel TMAC SPEC. Not branded TMAC."
+TD_NOTE = "TD Sequential honest approx — not certified DeMark. Never invented TD13 stars."
+TES_NOTE = "TES state is an honest proxy from D65 + RSI-C + VCP. Not the Excel TES box."
 
 RSI_LOOKBACKS = tuple(range(2, 22))
 RSI_N_DEFAULT = 14
@@ -129,6 +132,30 @@ FORMULAS = {
     ),
     "takeaway": "SENTIMENT — VCP — RSI-C — TMS (Impulse) — Pattern W. Bias is a point sum, not a win rate.",
     "adma_stretch": "ADMA(er=20,fast=2,slow=60); stretch%=(close/ADMA-1)*100; desk percentile if n≥3.",
+    "tmac_star": (
+        "TMAC* heat proxy (never bare TMAC): "
+        "round(0.50*range_pct + 0.35*rsi14 + 0.15*vol_heat) → 0–99. "
+        "range_pct=100*(C−L63)/(H63−L63) clipped. "
+        "vol_heat=50+50*tanh((ATR14/SMA20*100−2)/2). Awaiting Excel TMAC SPEC."
+    ),
+    "tes": (
+        "TES state (honest proxy, not the Excel TES box). Needs SPEC 25/27 D65. "
+        "EMERGING L: D65≤1.40 and |Dir|≥2 and RSI-C TREND. "
+        "TRANSITION L: |ΔD 1m|≥0.12 or 1.40<D65≤1.48. "
+        "CHOP L: D65≥1.55 and RSI-C MIXED/LEAN. "
+        "RANGE/CHOP: D65≥1.50 and (VCP tight/coil or 52w pos 30–70). "
+        "NEUTRAL L: D present, none of the above. Blank if D missing."
+    ),
+    "td_approx": (
+        "TD Sequential honest approx: setup = consecutive close ? close[t-4] (cap 9); "
+        "countdown after a completed 9 = consecutive close ? close[t-2] (cap 13). "
+        "Flags 9B/9S/13B/13S only when the count actually hits. Never invented TD13 stars."
+    ),
+    "coil": (
+        "Weekly coil_12=σ12/σ26 of weekly returns; coil_13=σ13/σ26. "
+        "COMPRESSED≤0.45 COILING≤0.65 EXPANDING≥0.90. "
+        "Coil map: x=coil_12 (tighter←), y=13w range position %."
+    ),
 }
 
 
@@ -442,6 +469,159 @@ def breakout_str(high: pd.Series, low: pd.Series, close: pd.Series) -> Optional[
     return int(max(-5, min(5, score)))
 
 
+def range_pct_63(high: pd.Series, low: pd.Series, close: pd.Series) -> Optional[float]:
+    if close is None or len(close.dropna()) < 63:
+        return None
+    last = _finite(close.iloc[-1])
+    lo = _finite(low.tail(63).min())
+    hi = _finite(high.tail(63).max())
+    if last is None or lo is None or hi is None or hi <= lo:
+        return None
+    return _round(float(np.clip(100.0 * (last - lo) / (hi - lo), 0.0, 100.0)), 2)
+
+
+def vol_heat(high: pd.Series, low: pd.Series, close: pd.Series) -> Optional[float]:
+    """ATR%/SMA tanh map. 2% ATR → ~50. SPEC §1 interim."""
+    if close is None or len(close.dropna()) < 21:
+        return None
+    atr = portfolio._atr(high.astype(float), low.astype(float), close.astype(float), 14).dropna()
+    sma = portfolio.last_sma(close, 20)
+    last_atr = _finite(atr.iloc[-1]) if len(atr) else None
+    if last_atr is None or not sma or sma <= 0:
+        return None
+    atr_pct = (last_atr / sma) * 100.0
+    heat = 50.0 + 50.0 * float(np.tanh((atr_pct - 2.0) / 2.0))
+    return _round(float(np.clip(heat, 0.0, 100.0)), 2)
+
+
+def tmac_star(high: pd.Series, low: pd.Series, close: pd.Series) -> Optional[int]:
+    """TMAC* 0–99 heat proxy. Never brand as bare TMAC."""
+    rp = range_pct_63(high, low, close)
+    rsi = last_rsi(close, 14)
+    vh = vol_heat(high, low, close)
+    if rp is None or rsi is None or vh is None:
+        return None
+    return int(round(0.50 * rp + 0.35 * rsi + 0.15 * vh))
+
+
+def pos_range(high: pd.Series, low: pd.Series, close: pd.Series, bars: int) -> Optional[float]:
+    if close is None or len(close.dropna()) < bars:
+        return None
+    last = _finite(close.iloc[-1])
+    lo = _finite(low.tail(bars).min())
+    hi = _finite(high.tail(bars).max())
+    if last is None or lo is None or hi is None or hi <= lo:
+        return None
+    return _round(100.0 * (last - lo) / (hi - lo), 1)
+
+
+def weekly_coil(close: pd.Series) -> dict:
+    empty = {"coil_12": None, "coil_13": None, "coil_state": None}
+    if close is None or len(close.dropna()) < 28:
+        return empty
+    rets = close.astype(float).pct_change().dropna()
+    if len(rets) < 26:
+        return empty
+    s26 = float(rets.tail(26).std(ddof=1) or 0.0)
+    if s26 <= 1e-12:
+        return empty
+    c12 = _round(float(rets.tail(12).std(ddof=1)) / s26, 3) if len(rets) >= 12 else None
+    c13 = _round(float(rets.tail(13).std(ddof=1)) / s26, 3) if len(rets) >= 13 else None
+    ratio = c12 if c12 is not None else c13
+    state = None
+    if ratio is not None:
+        if ratio <= 0.45:
+            state = "COMPRESSED"
+        elif ratio <= 0.65:
+            state = "COILING"
+        elif ratio >= 0.90:
+            state = "EXPANDING"
+        else:
+            state = "NORMAL"
+    return {"coil_12": c12, "coil_13": c13, "coil_state": state}
+
+
+def td_sequential_approx(close: pd.Series) -> dict:
+    """Honest TD Sequential stub. Flags only when the count actually hits 9 or 13."""
+    empty = {"td_count": None, "td_flag": None, "td_side": None, "td_note": TD_NOTE}
+    if close is None or len(close.dropna()) < 14:
+        return empty
+    c = close.astype(float).dropna().to_numpy()
+    buy_setup = sell_setup = 0
+    buy_cd = sell_cd = 0
+    buy_ready = sell_ready = False
+    for i in range(4, len(c)):
+        if c[i] < c[i - 4]:
+            buy_setup = min(buy_setup + 1, 9)
+            sell_setup = 0
+            sell_ready = False
+            sell_cd = 0
+            if buy_setup == 9:
+                buy_ready = True
+        elif c[i] > c[i - 4]:
+            sell_setup = min(sell_setup + 1, 9)
+            buy_setup = 0
+            buy_ready = False
+            buy_cd = 0
+            if sell_setup == 9:
+                sell_ready = True
+        else:
+            buy_setup = sell_setup = 0
+        if buy_ready and i >= 2 and c[i] < c[i - 2]:
+            buy_cd = min(buy_cd + 1, 13)
+        if sell_ready and i >= 2 and c[i] > c[i - 2]:
+            sell_cd = min(sell_cd + 1, 13)
+    count = flag = side = None
+    if buy_cd:
+        count, side = -int(buy_cd), "buy"
+        flag = "13B" if buy_cd == 13 else ("9B" if buy_setup == 9 else None)
+    elif sell_cd:
+        count, side = int(sell_cd), "sell"
+        flag = "13S" if sell_cd == 13 else ("9S" if sell_setup == 9 else None)
+    elif buy_setup:
+        count, side = -int(buy_setup), "buy"
+        flag = "9B" if buy_setup == 9 else None
+    elif sell_setup:
+        count, side = int(sell_setup), "sell"
+        flag = "9S" if sell_setup == 9 else None
+    return {"td_count": count, "td_flag": flag, "td_side": side, "td_note": TD_NOTE}
+
+
+def tes_state(d65, delta_d, dir5, rsi_state, vcp, pos_52w) -> Optional[str]:
+    """Documented TES proxy. Blank when D65 is missing."""
+    d = _finite(d65)
+    if d is None:
+        return None
+    dd = abs(_finite(delta_d) or 0.0)
+    mag = abs(dir5 or 0)
+    rsi = rsi_state or ""
+    trending = _trend_up_state(rsi) or _trend_dn_state(rsi)
+    if d <= 1.40 and mag >= 2 and trending:
+        return "EMERGING L"
+    if dd >= 0.12 or (1.40 < d <= 1.48):
+        return "TRANSITION L"
+    if d >= 1.55 and (rsi in ("MIXED", "OS LEAN", "OB LEAN") or rsi == "MIXED"):
+        return "CHOP L"
+    if d >= 1.50 and (vcp in ("TIGHTENING", "COILED") or (pos_52w is not None and 30 <= pos_52w <= 70)):
+        return "RANGE/CHOP"
+    return "NEUTRAL L"
+
+
+def tms_signed(tms_val) -> Optional[int]:
+    num = _finite(tms_val)
+    if num is None:
+        return None
+    return int(max(-10, min(10, round((num - 50.0) / 5.0))))
+
+
+def tms_score_100(tms_val) -> Optional[float]:
+    """Map TMS 0–100 → −100…+100 for the regime map."""
+    num = _finite(tms_val)
+    if num is None:
+        return None
+    return _round((num - 50.0) * 2.0, 1)
+
+
 def adma_stretch(close: pd.Series) -> Optional[float]:
     if close is None or len(close.dropna()) < 40:
         return None
@@ -532,16 +712,34 @@ def _ret(close: pd.Series, bars: int) -> Optional[float]:
 
 def _fractal_d(symbol: str, close: pd.Series) -> tuple[Optional[str], Optional[str]]:
     """SPEC 25/27 only. Returns (D1.x label, read) or (None, None)."""
+    pack = _fractal_pack(symbol, close)
+    return pack.get("d_label"), pack.get("read")
+
+
+def _fractal_pack(symbol: str, close: pd.Series) -> dict:
+    """SPEC 25/27 only. Includes ΔD over ~21 daily bars when both windows score."""
+    out = {"d65": None, "d130": None, "d_label": None, "read": None, "delta_d_1m": None}
     try:
         px = close.astype(float).dropna().to_numpy()
         row = fractal_scan.measure_symbol(symbol, closes=px)
     except Exception:
-        return None, None
+        return out
     if not row:
-        return None, None
+        return out
     d = _finite(row.get("d_65d"))
-    label = f"D{d:.1f}" if d is not None else None
-    return label, row.get("read")
+    out["d65"] = _round(d, 3) if d is not None else None
+    out["d130"] = _round(row.get("d_130d"), 3) if _finite(row.get("d_130d")) is not None else None
+    out["d_label"] = f"D{d:.1f}" if d is not None else None
+    out["read"] = row.get("read")
+    if d is not None and len(px) > 86:
+        try:
+            prior = fractal_scan.measure_symbol(symbol, closes=px[:-21])
+        except Exception:
+            prior = None
+        prev = _finite((prior or {}).get("d_65d"))
+        if prev is not None:
+            out["delta_d_1m"] = _round(d - prev, 3)
+    return out
 
 
 def _bias(vcp, rsi_state, tms_zone, daily_pat) -> float:
@@ -661,14 +859,27 @@ def measure(
     sma20 = portfolio.last_sma(close, 20)
     vs20 = _round((last / sma20 - 1.0) * 100.0, 2) if last and sma20 else None
     hi52 = _finite(high.tail(252).max()) if len(high.dropna()) >= 60 else None
+    lo52 = _finite(low.tail(252).min()) if len(low.dropna()) >= 60 else None
     dist_52w = _round((last / hi52 - 1.0) * 100.0, 2) if last and hi52 else None
-    d_label, d_read = _fractal_d(sym, close)
+    pos_52w = None
+    if last is not None and hi52 is not None and lo52 is not None and hi52 > lo52:
+        pos_52w = _round(100.0 * (last - lo52) / (hi52 - lo52), 1)
+    frac = _fractal_pack(sym, close)
+    d_label, d_read = frac.get("d_label"), frac.get("read")
+    tmac = tmac_star(high, low, close)
+    td = td_sequential_approx(close)
+    w_close = _series(wdf, "close") if wdf is not None else pd.Series(dtype=float)
+    w_high = _series(wdf, "high") if wdf is not None else w_close
+    w_low = _series(wdf, "low") if wdf is not None else w_close
+    coil = weekly_coil(w_close)
+    tms_w = tms_pack(w_close) if len(w_close.dropna()) >= 50 else {"tms": None, "zone": None, "impulse": None, "delta": None}
     dw = None
     if _trend_up_state(rsi_d.get("state")) and _trend_up_state(rsi_w.get("state")):
         dw = "D+W ↑"
     elif _trend_dn_state(rsi_d.get("state")) and _trend_dn_state(rsi_w.get("state")):
         dw = "D+W ↓"
     bias = _bias(vcp.get("phase"), rsi_d.get("state"), tms.get("zone"), pat_d)
+    dir5 = str_n if str_n is not None else (int(max(-5, min(5, round(bias)))) if bias else None)
     sent = _sentiment(bias)
     primary, phase = _engine_states(
         vcp.get("phase"), rsi_d.get("state"), pat_d, str_n, stretch, dw, int(len(close.dropna())),
@@ -747,6 +958,32 @@ def measure(
         "rsi_delta": rsi_delta,
         "pullback_in_uptrend": pb_note,
         "gray_tag": " · ".join(x for x in (rsi_d.get("state"), vcp.get("phase")) if x),
+        "tmac_star": tmac,
+        "tmac_note": TMAC_NOTE,
+        "range_pct_63": range_pct_63(high, low, close),
+        "d65": frac.get("d65"),
+        "d130": frac.get("d130"),
+        "delta_d_1m": frac.get("delta_d_1m"),
+        "pos_52w": pos_52w,
+        "tms_d": tms_signed(tms.get("tms")),
+        "tms_w": tms_w.get("tms"),
+        "tms_w_zone": tms_w.get("zone"),
+        "tms_w_impulse": tms_w.get("impulse"),
+        "tms_score": tms_score_100(tms.get("tms")),
+        "tms_w_score": tms_score_100(tms_w.get("tms")),
+        "tms_impulse_y": tms.get("delta"),
+        "tms_w_impulse_y": tms_w.get("delta"),
+        "dir5": dir5,
+        "tes_state": tes_state(frac.get("d65"), frac.get("delta_d_1m"), dir5, rsi_d.get("state"), vcp.get("phase"), pos_52w),
+        "tes_note": TES_NOTE,
+        "td_count": td.get("td_count"),
+        "td_flag": td.get("td_flag"),
+        "td_side": td.get("td_side"),
+        "td_note": TD_NOTE,
+        "coil_12": coil.get("coil_12"),
+        "coil_13": coil.get("coil_13"),
+        "coil_state": coil.get("coil_state"),
+        "pos_13w": pos_range(w_high, w_low, w_close, 13),
         "note": NOTE,
     }
 
@@ -1031,7 +1268,7 @@ def command_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = 
         "message": None if ready else "Empty command — seed a sleeve and Fetch Yahoo.",
         "note": NOTE,
         "formulas": FORMULAS,
-        "nav": ["command", "setup", "pattern", "rsi_c", "macro", "sigma", "book", "chart"],
+        "nav": ["command", "setup", "pattern", "rsi_c", "macro", "sigma", "maps", "book", "chart"],
     }
 
 

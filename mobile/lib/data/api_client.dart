@@ -485,6 +485,11 @@ class WhatsNewsApi {
     return raw.isEmpty ? SigmaBoard.empty : SigmaBoard.fromJson(raw);
   }
 
+  Future<EngineMaps> getEngineMaps() async {
+    final raw = await _engineGet('/api/engine/maps');
+    return raw.isEmpty ? EngineMaps.empty : EngineMaps.fromJson(raw);
+  }
+
   Future<ScanBreadth> getScanBreadth() async {
     try {
       final raw = await _get('/api/scans/breadth', const {'desk': '1'});

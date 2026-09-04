@@ -45,7 +45,7 @@ def _crash(n=80, start=150.0, end=40.0):
 class FormulaCatalogTests(unittest.TestCase):
     def test_formulas_document_engine_vcp_str_rsic(self):
         cat = ee.catalog()
-        for key in ("rsi_c", "vcp", "str", "engine", "pattern", "takeaway", "adma_stretch"):
+        for key in ("rsi_c", "vcp", "str", "engine", "pattern", "takeaway", "adma_stretch", "tmac_star", "tes", "coil"):
             self.assertIn(key, cat["formulas"])
             self.assertTrue(cat["formulas"][key])
         self.assertIn("NO TRADE", cat["state_machine"])
@@ -246,7 +246,7 @@ class DeterministicLabelTests(unittest.TestCase):
         out = ee.command_board(symbols=[])
         self.assertEqual(
             out["nav"],
-            ["command", "setup", "pattern", "rsi_c", "macro", "sigma", "book", "chart"],
+            ["command", "setup", "pattern", "rsi_c", "macro", "sigma", "maps", "book", "chart"],
         )
 
 
