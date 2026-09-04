@@ -32,22 +32,28 @@ class SleeveApiTests(unittest.TestCase):
         self._path_patch.stop()
         self._tmpdir.cleanup()
 
-    def test_sleeves_are_yahoo_etf_proxies(self):
-        ids = {s["id"] for s in tl.MACRO_SLEEVES}
-        self.assertIn("core", ids)
-        self.assertIn("countries", ids)
-        self.assertIn("sectors", ids)
-        self.assertGreaterEqual(len(ids), 12)
+    def test_sleeves_wrap_ticker_library(self):
+        ids = {s["id"] for s in tl.sleeves()}
+        for needed in (
+            "core", "broad_etfs", "sector_etfs", "intl_etfs",
+            "themes", "rates", "commodities",
+        ):
+            self.assertIn(needed, ids)
         core = tl.get_sleeve("core")
         self.assertEqual(core["tickers"], ["SPY", "QQQ", "IWM"])
-        self.assertTrue(all(t.isupper() for s in tl.MACRO_SLEEVES for t in s["tickers"]))
+        self.assertEqual(core["library_id"], "broad_etfs")
+        intl = tl.get_sleeve("countries")
+        self.assertEqual(intl["id"], "intl_etfs")
+        self.assertEqual(intl["tickers"], tl.get_category("intl_etfs")["tickers"])
+        self.assertEqual(tl.get_sleeve("sectors")["id"], "sector_etfs")
+        self.assertTrue(all(t.isupper() for s in tl.sleeves() for t in s["tickers"]))
 
     def test_list_and_seed_sleeve(self):
         listed = self.client.get("/api/sleeves")
         self.assertEqual(listed.status_code, 200)
         body = listed.get_json()
         self.assertGreaterEqual(len(body["sleeves"]), 5)
-        self.assertIn("ETF", body.get("note", ""))
+        self.assertIn("ticker_lists", body.get("note", ""))
 
         seeded = self.client.post("/api/sleeves/core/seed")
         self.assertIn(seeded.status_code, (200, 201))

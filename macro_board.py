@@ -153,7 +153,7 @@ def empty_macro_board() -> dict:
 
 def build_macro_board() -> dict:
     sleeves = []
-    for spec in tl.MACRO_SLEEVES:
+    for spec in tl.sleeves():
         rows = [sleeve_row(t) for t in spec.get("tickers") or []]
         lit = sum(1 for r in rows if r.get("ready"))
         sleeves.append({
@@ -342,8 +342,8 @@ def build_edges_board() -> dict:
     online = []
     for sleeve_id, label in (
         ("core", "Core indices"),
-        ("sectors", "Sectors"),
-        ("countries", "Country ETFs"),
+        ("sector_etfs", "Sector ETFs"),
+        ("intl_etfs", "International ETFs"),
     ):
         spec = tl.get_sleeve(sleeve_id) or {}
         rows = [edge_instrument(t) for t in spec.get("tickers") or []]

@@ -152,6 +152,24 @@ TICKER_LIBRARY = [
         "label": "Listed Crypto Proxies",
         "tickers": ["IBIT", "COIN", "MSTR", "WGMI"],
     },
+    {
+        "id": "themes",
+        "label": "Themes",
+        "tickers": [
+            "SMH", "SOXX", "IGV", "BOTZ", "ICLN",
+            "HACK", "CIBR", "ITA", "XBI",
+        ],
+    },
+    {
+        "id": "rates",
+        "label": "Rates & Credit",
+        "tickers": ["TLT", "IEF", "SHY", "HYG", "LQD", "UUP"],
+    },
+    {
+        "id": "commodities",
+        "label": "Commodities",
+        "tickers": ["GLD", "SLV", "USO", "UNG", "DBA"],
+    },
 ]
 
 
@@ -167,129 +185,112 @@ def get_all_tickers() -> list:
     return result
 
 
-# Liquid Yahoo-tradable proxies for the iPhone Macro board. Not GDP, not NAV,
-# not futures spots. Categories match the MARKET MOVES desk sleeves.
-MACRO_SLEEVES = [
-    {
-        "id": "core",
-        "label": "Core indices",
-        "group_tag": "sleeve:core",
-        "filter_kind": "index",
-        "blurb": "US index ETF proxies — paper tape anchors, not forecasts.",
-        "tickers": ["SPY", "QQQ", "IWM"],
-    },
-    {
-        "id": "indexes",
-        "label": "Indexes",
-        "group_tag": "sleeve:indexes",
-        "filter_kind": "index",
-        "blurb": "Broad US index ETFs — not futures (no NQ/ES).",
-        "tickers": ["SPY", "QQQ", "IWM", "DIA", "MDY", "RSP"],
-    },
-    {
-        "id": "big_tech",
-        "label": "Big Tech",
-        "group_tag": "sleeve:big_tech",
-        "filter_kind": "theme",
-        "blurb": "Liquid mega-cap names yfinance serves.",
-        "tickers": [
-            "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN",
-            "META", "TSLA", "NFLX", "AMD", "AVGO",
-        ],
-    },
-    {
-        "id": "countries",
-        "label": "Country ETFs",
-        "group_tag": "sleeve:countries",
-        "filter_kind": "country",
-        "blurb": "Single-country / EM ETF proxies — not country GDP.",
-        "tickers": [
-            "EWC", "EWJ", "EWU", "EWA", "EWG", "EWW",
-            "EEM", "EWT", "EWY", "EWZ", "INDA", "MCHI",
-        ],
-    },
-    {
-        "id": "sectors",
-        "label": "Sectors",
-        "group_tag": "sleeve:sectors",
-        "filter_kind": "sector",
-        "blurb": "SPDR sector ETFs.",
-        "tickers": [
-            "XLK", "XLF", "XLE", "XLV", "XLY", "XLP",
-            "XLI", "XLU", "XLB", "XLRE", "XLC",
-        ],
-    },
-    {
-        "id": "tech_themes",
-        "label": "Tech Themes",
-        "group_tag": "sleeve:tech_themes",
-        "filter_kind": "theme",
-        "blurb": "Liquid theme ETFs — not a fund pick.",
-        "tickers": ["SMH", "SOXX", "IGV", "BOTZ", "ICLN", "HACK", "CIBR", "ITA"],
-    },
-    {
-        "id": "resources",
-        "label": "Resource Themes",
-        "group_tag": "sleeve:resources",
-        "filter_kind": "theme",
-        "blurb": "Miners and energy ETFs — not spot.",
-        "tickers": ["GDX", "GDXJ", "SIL", "URA", "XOP", "OIH", "AMLP"],
-    },
-    {
-        "id": "ags",
-        "label": "Ags & Softs",
-        "group_tag": "sleeve:ags",
-        "filter_kind": "theme",
-        "blurb": "No Yahoo futures (ZC=F, KC=F, …). DBA is the liquid ag ETF proxy.",
-        "tickers": ["DBA"],
-        "skipped": "Futures/softs are not fetched here — no invented PX/Z.",
-    },
-    {
-        "id": "metals_energy",
-        "label": "Metals & Energy",
-        "group_tag": "sleeve:metals_energy",
-        "filter_kind": "theme",
-        "blurb": "ETF proxies — not CL/NG/HG futures.",
-        "tickers": ["GLD", "SLV", "USO", "UNG", "PPLT", "PALL", "CPER"],
-    },
-    {
-        "id": "fx",
-        "label": "FX",
-        "group_tag": "sleeve:fx",
-        "filter_kind": "theme",
-        "blurb": "Dollar ETF proxy — not EURUSD spots.",
-        "tickers": ["UUP"],
-        "skipped": "Spot FX pairs are not stored. UUP only.",
-    },
-    {
-        "id": "yields",
-        "label": "Yields",
-        "group_tag": "sleeve:yields",
-        "filter_kind": "theme",
-        "blurb": "Duration ETF proxies — not raw 10Y/30Y yields.",
-        "tickers": ["SHY", "IEF", "TLT"],
-        "skipped": "Raw government yields are not invented. Duration ETFs only.",
-    },
-    {
-        "id": "bonds",
-        "label": "Bond ETFs",
-        "group_tag": "sleeve:bonds",
-        "filter_kind": "theme",
-        "blurb": "Liquid fixed-income ETFs.",
-        "tickers": ["TLT", "IEF", "AGG", "TIP", "EMB", "HYG", "LQD"],
-    },
-    {
-        "id": "crypto",
-        "label": "Crypto",
-        "group_tag": "sleeve:crypto",
-        "filter_kind": "theme",
-        "blurb": "Listed proxies — not fake NAV.",
-        "tickers": ["IBIT", "COIN", "MSTR", "WGMI"],
-    },
-]
+# Desk sleeves wrap TICKER_LIBRARY — no second universe file.
+# Aliases keep older /api/sleeves/<id>/seed paths working.
+_SLEEVE_ALIASES = {
+    "indexes": "broad_etfs",
+    "index": "broad_etfs",
+    "countries": "intl_etfs",
+    "sectors": "sector_etfs",
+    "big_tech": "mega_tech",
+    "bonds": "rates",
+    "crypto": "listed_crypto",
+    "tech_themes": "themes",
+    "resources": "commodities",
+    "ags": "commodities",
+    "metals_energy": "commodities",
+    "fx": "rates",
+    "yields": "rates",
+}
+
+_CORE_FROM_BROAD = ("SPY", "QQQ", "IWM")
+
+_SLEEVE_KIND = {
+    "broad_etfs": "index",
+    "sector_etfs": "sector",
+    "intl_etfs": "country",
+    "mega_tech": "theme",
+    "themes": "theme",
+    "rates": "theme",
+    "commodities": "theme",
+    "listed_crypto": "theme",
+    "tech_themes": "theme",
+    "resource_themes": "theme",
+    "bond_etfs": "theme",
+}
 
 
-# Curated ~50 liquid names for a one-tap desk — not the full S&P archive.
+def _category_tickers(cat_id: str) -> list:
+    cat = get_category(cat_id)
+    if not cat:
+        return []
+    return [str(t).strip().upper() for t in cat.get("tickers") or [] if str(t).strip()]
+
+
+def _sleeve_from_library(cat_id: str, *, blurb: str = "") -> dict:
+    cat = get_category(cat_id) or {"id": cat_id, "label": cat_id, "tickers": []}
+    return {
+        "id": cat_id,
+        "label": cat.get("label") or cat_id,
+        "group_tag": f"lib:{cat_id}",
+        "filter_kind": _SLEEVE_KIND.get(cat_id) or filter_kind_for_tag(f"lib:{cat_id}"),
+        "library_id": cat_id,
+        "blurb": blurb or f"{cat.get('label') or cat_id} from ticker_lists — Yahoo names only.",
+        "tickers": _category_tickers(cat_id),
+    }
+
+
+def sleeves() -> list:
+    """Thin desk view over TICKER_LIBRARY. Core is SPY/QQQ/IWM from Broad Market ETFs."""
+    broad = set(_category_tickers("broad_etfs"))
+    core_tickers = [t for t in _CORE_FROM_BROAD if t in broad] or list(_CORE_FROM_BROAD)
+    out = [
+        {
+            "id": "core",
+            "label": "Core indices",
+            "group_tag": "sleeve:core",
+            "filter_kind": "index",
+            "library_id": "broad_etfs",
+            "blurb": "SPY / QQQ / IWM from Broad Market ETFs — not a new universe.",
+            "tickers": core_tickers,
+        },
+        _sleeve_from_library("broad_etfs", blurb="Broad Market ETFs from ticker_lists."),
+        _sleeve_from_library("sector_etfs", blurb="Sector ETFs from ticker_lists."),
+        _sleeve_from_library("intl_etfs", blurb="International ETFs from ticker_lists — not GDP."),
+        _sleeve_from_library("mega_tech", blurb="Mega-cap tech from ticker_lists."),
+        _sleeve_from_library("themes", blurb="Theme ETFs from ticker_lists — not a fund pick."),
+        _sleeve_from_library("rates", blurb="Duration, credit, and dollar ETF proxies."),
+        _sleeve_from_library("commodities", blurb="Metals / energy / ag ETF proxies — not spot or futures."),
+        _sleeve_from_library("listed_crypto", blurb="Listed crypto proxies — not fake NAV."),
+    ]
+    return out
+
+
+def get_sleeve(sleeve_id: str):
+    raw = (sleeve_id or "").strip()
+    if not raw:
+        return None
+    if raw == "core":
+        for sleeve in sleeves():
+            if sleeve["id"] == "core":
+                return sleeve
+        return None
+    resolved = _SLEEVE_ALIASES.get(raw, raw)
+    for sleeve in sleeves():
+        if sleeve["id"] == raw or sleeve["id"] == resolved:
+            return sleeve
+    if get_category(resolved):
+        return _sleeve_from_library(resolved)
+    return None
+
+
+def __getattr__(name: str):
+    if name == "MACRO_SLEEVES":
+        return sleeves()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# Curated ~50 liquid names for a one-tap desk — taken from TICKER_LIBRARY, not S&P scrape.
 CORE50 = [
     "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "ORCL", "AMD",
     "NFLX", "CRM", "INTC", "IBM",
@@ -304,13 +305,6 @@ CORE50 = [
     "TLT", "GLD",
     "EWJ", "EEM",
 ]
-
-
-def get_sleeve(sleeve_id: str):
-    for sleeve in MACRO_SLEEVES:
-        if sleeve["id"] == sleeve_id:
-            return sleeve
-    return None
 
 
 def get_category(cat_id: str):
@@ -349,7 +343,7 @@ def filter_kind_for_tag(group_tag: str) -> str:
         return "sector"
     if any(k in tag for k in (
         "theme", "tech", "resource", "crypto", "bond", "ags",
-        "metal", "fx", "yield", "big_tech", "commodit",
+        "metal", "fx", "yield", "big_tech", "commodit", "rates",
     )):
         return "theme"
     if "index" in tag or tag in ("sleeve:core", "lib:broad_etfs", "lib:indices"):

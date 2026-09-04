@@ -121,9 +121,10 @@ def portfolio_snapshot():
 def list_sleeves():
     """Curated Yahoo ETF sleeves for the iPhone Macro board."""
     import ticker_lists as tl
+    listed = tl.sleeves() if hasattr(tl, "sleeves") else getattr(tl, "MACRO_SLEEVES", [])
     return jsonify({
-        "sleeves": getattr(tl, "MACRO_SLEEVES", []),
-        "note": "Liquid ETF proxies from Yahoo — not GDP, not a published rating.",
+        "sleeves": listed,
+        "note": "Sleeves wrap ticker_lists.TICKER_LIBRARY — Yahoo names, not GDP.",
     })
 
 

@@ -50,23 +50,23 @@ class MacroBoardTests(unittest.TestCase):
         return frame
 
     def test_sleeves_match_market_moves_categories(self):
-        ids = {s["id"] for s in tl.MACRO_SLEEVES}
+        ids = {s["id"] for s in tl.sleeves()}
         for needed in (
-            "core", "indexes", "big_tech", "countries", "sectors",
-            "tech_themes", "resources", "ags", "metals_energy",
-            "fx", "yields", "bonds", "crypto",
+            "core", "broad_etfs", "sector_etfs", "intl_etfs",
+            "themes", "rates", "commodities", "mega_tech",
         ):
             self.assertIn(needed, ids)
-        ags = tl.get_sleeve("ags")
-        self.assertEqual(ags["tickers"], ["DBA"])
-        self.assertIn("invented", ags.get("skipped", "").lower())
-        fx = tl.get_sleeve("fx")
-        self.assertEqual(fx["tickers"], ["UUP"])
+        lib_ids = {c["id"] for c in tl.TICKER_LIBRARY}
+        self.assertIn("themes", lib_ids)
+        self.assertIn("rates", lib_ids)
+        self.assertIn("commodities", lib_ids)
+        self.assertIn("DBA", tl.get_sleeve("commodities")["tickers"])
+        self.assertIn("UUP", tl.get_sleeve("rates")["tickers"])
         self.assertGreaterEqual(len(tl.core50_tickers()), 45)
         self.assertLessEqual(len(tl.core50_tickers()), 55)
-        self.assertEqual(tl.filter_kind_for_tag("sleeve:countries"), "country")
-        self.assertEqual(tl.filter_kind_for_tag("sleeve:sectors"), "sector")
-        self.assertEqual(tl.filter_kind_for_tag("sleeve:tech_themes"), "theme")
+        self.assertEqual(tl.filter_kind_for_tag("lib:intl_etfs"), "country")
+        self.assertEqual(tl.filter_kind_for_tag("lib:sector_etfs"), "sector")
+        self.assertEqual(tl.filter_kind_for_tag("lib:themes"), "theme")
 
     def test_macro_board_omits_missing_and_marks_z(self):
         # Quiet grind then a +4 sigma jump so |z30| ≥ 2.
