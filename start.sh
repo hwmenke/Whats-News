@@ -25,10 +25,15 @@ echo ""
 echo "  Whats-News"
 echo "  Dashboard → http://localhost:${PORT}"
 echo "  News      → http://localhost:${PORT}/news"
+echo "  iPhone    → keep this running, then: cd mobile && flutter run"
 echo "  Press Ctrl+C to stop."
 echo ""
 
 export PORT
 # One-process default: analysis talks to local SQLite (no :8051 required).
 export DATA_SERVICE_MODE="${DATA_SERVICE_MODE:-embedded}"
+
+echo "Ensuring finance.db schema…"
+python -c "import database as db; db.init_db(); print('  tables ready:', ', '.join(db.schema_tables()) or '(none)', 'at', db.DB_PATH)"
+
 exec python app.py

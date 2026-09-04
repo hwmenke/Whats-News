@@ -24,6 +24,9 @@ let state = {
     stopMode: 'atr',   // 'atr' | 'box' | 'user'
     riskBox: null,     // last-applied { entry, stop, target } for the active symbol
     workspace: 'chart', // 'chart' | 'scan' | 'review'
+    familyFilter: '',  // '' | country | sector | theme | index
+    newsScope: 'symbol', // 'symbol' | 'desk'
+    rightFreq: 'weekly', // 'weekly' | 'monthly'
 };
 
 const JOURNAL_KEY = 'whats-news-journal';
@@ -378,12 +381,51 @@ function setupKamaAddForm() {
 }
 
 // ── Sidebar toggle ────────────────────────────────────────────
-function toggleSidebar() {
+function applySidebarCollapsed(collapsed) {
     const app = document.querySelector('.app');
     const btn = document.getElementById('btn-sidebar-toggle');
     if (!app) return;
-    const collapsed = app.classList.toggle('sidebar-collapsed');
+    app.classList.toggle('sidebar-collapsed', !!collapsed);
     if (btn) btn.textContent = collapsed ? '▶' : '☰';
+    if (typeof writeDeskPrefs === 'function') writeDeskPrefs({ sidebarCollapsed: !!collapsed });
+    if (typeof renderWatchlistPeek === 'function') renderWatchlistPeek();
+}
+
+function toggleSidebar() {
+    const app = document.querySelector('.app');
+    if (!app) return;
+    applySidebarCollapsed(!app.classList.contains('sidebar-collapsed'));
+}
+
+function renderWatchlistPeek() {
+    const el = document.getElementById('watchlist-peek');
+    if (!el) return;
+    const collapsed = document.querySelector('.app')?.classList.contains('sidebar-collapsed');
+    if (!collapsed) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+    }
+    const items = [...document.querySelectorAll('.symbol-item:not([hidden])')];
+    if (!items.length) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+    }
+    const active = Math.max(0, items.findIndex(i => i.classList.contains('active')));
+    let start = Math.max(0, active - 1);
+    if (start + 3 > items.length) start = Math.max(0, items.length - 3);
+    const slice = items.slice(start, start + 3);
+    el.hidden = false;
+    el.innerHTML = slice.map(i => {
+        const on = i.classList.contains('active') ? ' on' : '';
+        return `<button type="button" class="wl-peek-btn${on}" data-symbol="${i.dataset.symbol || ''}">${i.dataset.symbol || ''}</button>`;
+    }).join('');
+    el.querySelectorAll('[data-symbol]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (btn.dataset.symbol && typeof selectSymbol === 'function') selectSymbol(btn.dataset.symbol);
+        });
+    });
 }
 
 // ── Symbol Watchlist ─────────────────────────────────────────
@@ -393,6 +435,7 @@ async function loadSymbols() {
         state.symbols = await apiFetch(url);
         renderSymbolList();
         updateSidebarCount();
+        if (typeof renderWatchlistPeek === 'function') renderWatchlistPeek();
         refreshPortfolioTape(); // non-blocking enrich with % change
     } catch (e) {
         toast('Failed to load symbols: ' + e.message, 'error');
@@ -1114,6 +1157,21 @@ function matchesWatchlistFilter(symbol, groupTag, q) {
     return code.includes(q) || tag.includes(q);
 }
 
+function filterKindForTag(tag) {
+    const t = String(tag || '').toLowerCase();
+    if (t.includes('countries') || t.includes('intl')) return 'country';
+    if (t.includes('sector')) return 'sector';
+    if (/theme|tech|resource|crypto|bond|ags|metal|fx|yield|big_tech|commodit|rates/.test(t)) return 'theme';
+    if (t.includes('index') || t === 'sleeve:core' || t.includes('broad_etf')) return 'index';
+    return '';
+}
+
+function matchesDeskFamily(sym) {
+    if (!state.familyFilter) return true;
+    const kind = (sym && sym.filter_kind) || filterKindForTag(sym && (sym.group_tag || sym));
+    return kind === state.familyFilter;
+}
+
 function filterByWatchlistQuery(rows) {
     const q = watchlistFilterQuery();
     if (!q) return rows || [];
@@ -1126,30 +1184,34 @@ function renderSymbolList() {
     const q = watchlistFilterQuery();
 
     if (!state.symbols.length) {
-        list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No symbols yet.</div>';
+        list.innerHTML = '<div style="padding:14px;color:var(--text-dim);font-size:12px;">No symbols yet. Seed a sleeve or Core 50.</div>';
         return;
     }
 
-    // Group symbols by group_tag
+    // Group symbols by group_tag / group_label. Hidden items stay in the DOM
+    // so j/k can walk .symbol-item:not([hidden]).
     let lastGroup = undefined;
+    let visibleCount = 0;
     state.symbols.forEach(sym => {
         const tag = sym.group_tag || '';
+        const hideItem = !matchesWatchlistFilter(sym.symbol, tag, q) || !matchesDeskFamily(sym);
+        if (!hideItem) visibleCount += 1;
 
-        // Render group header when group changes
-        if (tag !== lastGroup) {
+        if (!hideItem && tag !== lastGroup) {
             lastGroup = tag;
-            if (tag) {
-                const hdr = document.createElement('div');
-                hdr.className = 'sym-group-header';
-                hdr.textContent = tag;
-                list.appendChild(hdr);
-            }
+            const hdr = document.createElement('div');
+            hdr.className = 'sym-group-header';
+            hdr.textContent = sym.group_label || tag || 'Ungrouped';
+            list.appendChild(hdr);
         }
 
         const item = document.createElement('div');
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
         item.dataset.symbol = sym.symbol;
         if (!matchesWatchlistFilter(sym.symbol, tag, q)) {
+            item.hidden = true;
+        }
+        if (!matchesDeskFamily(sym)) {
             item.hidden = true;
         }
 
@@ -1205,6 +1267,28 @@ function renderSymbolList() {
             al.title = snap.alert === 'RSI_OB' ? 'RSI overbought' : 'RSI oversold';
             item.appendChild(al);
         }
+        if (snap?.is_ep) {
+            const b = document.createElement('span');
+            b.className = 'sym-qulla';
+            b.textContent = 'EP';
+            b.title = 'Episodic pivot path (gap + volume) — scanner tag, not a published rating';
+            item.appendChild(b);
+        } else if (snap?.is_vol_surge) {
+            const b = document.createElement('span');
+            b.className = 'sym-qulla';
+            b.textContent = 'VOL';
+            item.appendChild(b);
+        } else if (snap?.is_near_high) {
+            const b = document.createElement('span');
+            b.className = 'sym-qulla';
+            b.textContent = 'HI';
+            item.appendChild(b);
+        } else if (snap?.is_breakout_queue) {
+            const b = document.createElement('span');
+            b.className = 'sym-qulla';
+            b.textContent = 'BQ';
+            item.appendChild(b);
+        }
 
         // Group tag badge (click to edit inline)
         const tagBadge = document.createElement('span');
@@ -1242,6 +1326,14 @@ function renderSymbolList() {
         item.addEventListener('click', () => selectSymbol(sym.symbol));
         list.appendChild(item);
     });
+    if (!visibleCount) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'padding:14px;color:var(--text-dim);font-size:12px;';
+        empty.textContent = state.familyFilter
+            ? 'No names in this Country / Sector / Theme / Broad filter.'
+            : 'No symbols match the filter.';
+        list.appendChild(empty);
+    }
 }
 
 function startTagEdit(symbol, currentTag, badgeEl) {
@@ -1673,6 +1765,28 @@ function neighborVisibleSymbols(symbol) {
     return neighbors;
 }
 
+async function applyRightPaneFreq(freq) {
+    const next = freq === 'monthly' ? 'monthly' : 'weekly';
+    state.rightFreq = next;
+    const symbol = state.activeSymbol;
+    if (!symbol || typeof loadOHLCV !== 'function') return;
+    const kama = kamaApiParam();
+    try {
+        const [ohlcv, inds] = await Promise.all([
+            apiFetch(`${API}/ohlcv/${encodeURIComponent(symbol)}?freq=${next}`),
+            apiFetch(`${API}/indicators/${encodeURIComponent(symbol)}?freq=${next}&kama=${kama}`),
+        ]);
+        loadOHLCV('weekly', ohlcv);
+        loadIndicatorsToPanel('weekly', inds);
+        if (typeof fitContent === 'function') fitContent();
+    } catch (err) {
+        if (typeof toast === 'function') {
+            toast(err.message || 'Monthly bars unavailable — stored OHLCV only.', 'warning');
+        }
+    }
+}
+window.applyRightPaneFreq = applyRightPaneFreq;
+
 function abortChartPrefetch(keepSymbol) {
     _prefetchGen += 1;
     const keep = keepSymbol ? String(keepSymbol).toUpperCase() : '';
@@ -1819,7 +1933,8 @@ async function loadStatsData(symbol) {
 
 // ── News Data Loading ─────────────────────────────────────
 async function loadNewsData(symbol) {
-    if (!symbol) return;
+    const scope = (typeof readDeskPrefs === 'function' ? readDeskPrefs().newsScope : state.newsScope) || 'symbol';
+    if (scope === 'symbol' && !symbol) return;
     showNewsArea();
     
     const loadingEl = document.getElementById('news-loading');
@@ -1833,11 +1948,17 @@ async function loadNewsData(symbol) {
     if (emptyEl) emptyEl.style.display = 'none';
     if (errorEl) errorEl.style.display = 'none';
     
-    updateSymbolHeader(symbol, null);
+    if (symbol) updateSymbolHeader(symbol, null);
+    const title = document.getElementById('news-title');
+    const scopeLabel = document.getElementById('news-scope-label');
+    if (title) title.textContent = scope === 'desk' ? 'Desk news' : `News for ${symbol || 'this ticker'}`;
+    if (scopeLabel) scopeLabel.textContent = scope === 'desk' ? 'Desk watchlist' : 'Selected symbol only';
 
     try {
-        // Fetch news from API - returns { symbol, articles: [...], article_count, source } or { symbol, message, source } or { symbol, error, source }
-        const data = await apiFetch(`${API}/news/${symbol}`);
+        const url = scope === 'desk'
+            ? `${API}/news?desk=1`
+            : `${API}/news/${encodeURIComponent(symbol)}`;
+        const data = await apiFetch(url);
         
         // Hide loading
         if (loadingEl) loadingEl.style.display = 'none';
@@ -2079,6 +2200,9 @@ async function loadChartData(symbol) {
         loadOHLCV('weekly', weeklyOhlcv);
         loadIndicatorsToPanel('daily',  dailyInd);
         loadIndicatorsToPanel('weekly', weeklyInd);
+        if ((state.rightFreq || 'weekly') === 'monthly') {
+            await applyRightPaneFreq('monthly');
+        }
         state.chartedSymbol = symbol;
         fitContent();
         const pending = window._pendingChartPack;
@@ -2171,6 +2295,7 @@ function showEmptyState() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
     const pm = document.getElementById('pm-desk');
     if (pm) pm.style.display = 'none';
 
@@ -2239,6 +2364,12 @@ function showScanSplit() {
     document.getElementById('backtest-area').style.display     = 'none';
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
+    if (typeof hideEngineArea === 'function') hideEngineArea();
+    if (typeof hideMovesArea === 'function') hideMovesArea();
+    if (typeof hideBookAreas === 'function') hideBookAreas();
+    if (typeof hideWarningsArea === 'function') hideWarningsArea();
+    document.body.classList.remove('board-focus');
     document.getElementById('chart-area').style.display        = 'flex';
     document.getElementById('scanner-area').style.display      = 'flex';
     state.activeTab = 'charts';
@@ -2296,6 +2427,11 @@ function setWorkspace(id, opts = {}) {
         showScanSplit();
         if (typeof initSetupScanner === 'function') initSetupScanner();
         loadSetupScan({ allowStaleRows: true });
+        if (typeof applyScanLens === 'function') {
+            applyScanLens((typeof readDeskPrefs === 'function' ? readDeskPrefs().scanLens : null) || 'trend');
+        } else if (typeof loadFractalScan === 'function') {
+            loadFractalScan();
+        }
         if (!opts.skipChart && state.activeSymbol) loadChartData(state.activeSymbol);
         requestAnimationFrame(() => window.resizeAllCharts?.());
         return next;
@@ -2334,6 +2470,8 @@ async function switchTab(tabId, opts = {}) {
     }
 
     state.activeTab = tabId;
+    const boardTabs = ['engine', 'moves', 'macro', 'pnl', 'book', 'risk', 'warnings'];
+    document.body.classList.toggle('board-focus', boardTabs.includes(tabId));
 
     // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -2351,6 +2489,11 @@ async function switchTab(tabId, opts = {}) {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
+    if (typeof hideMovesArea === 'function') hideMovesArea();
+    if (typeof hideEngineArea === 'function') hideEngineArea();
+    if (typeof hideBookAreas === 'function') hideBookAreas();
+    if (typeof hideWarningsArea === 'function') hideWarningsArea();
 
     if (tabId === 'charts') {
         showChartArea();
@@ -2379,7 +2522,71 @@ async function switchTab(tabId, opts = {}) {
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
+    } else if (tabId === 'moves') {
+        if (typeof hideEngineArea === 'function') hideEngineArea();
+        const moves = document.getElementById('moves-area');
+        if (moves) moves.style.display = 'flex';
+        if (typeof showMovesArea === 'function') showMovesArea();
+        else if (typeof loadMarketMoves === 'function') loadMarketMoves();
+    } else if (tabId === 'macro') {
+        showMacroArea();
+        if (typeof initMacroDesk === 'function') initMacroDesk();
+    } else if (tabId === 'engine') {
+        showEngineDesk(opts.ia);
+    } else if (tabId === 'warnings') {
+        if (typeof showWarningsArea === 'function') showWarningsArea();
+        if (typeof loadWarnings === 'function') loadWarnings();
+    } else if (tabId === 'pnl') {
+        if (typeof showPnlArea === 'function') showPnlArea();
+    } else if (tabId === 'book') {
+        if (typeof showBookArea === 'function') showBookArea();
+    } else if (tabId === 'risk') {
+        if (typeof showRiskArea === 'function') showRiskArea();
     }
+}
+
+function hideMacroArea() {
+    const el = document.getElementById('macro-area');
+    if (el) el.style.display = 'none';
+}
+
+function showEngineDesk(ia) {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('news-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('dist-area').style.display         = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
+    if (typeof hideMovesArea === 'function') hideMovesArea();
+    if (typeof hideBookAreas === 'function') hideBookAreas();
+    if (typeof hideWarningsArea === 'function') hideWarningsArea();
+    if (typeof showEngineArea === 'function') showEngineArea();
+    const panel = ia || (typeof readDeskPrefs === 'function' ? (readDeskPrefs().deskIa || 'command') : 'command');
+    const engineIa = ['command', 'setup', 'pattern', 'rsic', 'stretch', 'sigma', 'maps'].includes(panel) ? panel : 'command';
+    if (typeof applyEnginePanel === 'function') applyEnginePanel(engineIa);
+}
+
+function showMacroArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('news-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('dist-area').style.display         = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    const macro = document.getElementById('macro-area');
+    if (macro) macro.style.display = 'flex';
+    if (typeof hideMovesArea === 'function') hideMovesArea();
+    if (typeof hideEngineArea === 'function') hideEngineArea();
+    if (typeof hideWarningsArea === 'function') hideWarningsArea();
 }
 
 function showStatsArea() {
@@ -2392,6 +2599,7 @@ function showStatsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
 }
 
 function showDistArea() {
@@ -2405,6 +2613,7 @@ function showDistArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
     if (!document.querySelector('#dist-conditions .dist-row')) {
         addConditionRow({ left: 'RSI(14)', op: '<', right: 30 });
     }
@@ -2421,6 +2630,7 @@ function showChartArea() {
     document.getElementById('scanner-area').style.display      =
         state.workspace === 'scan' ? 'flex' : 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
 }
 
 function showTrendArea() {
@@ -2433,6 +2643,7 @@ function showTrendArea() {
     document.getElementById('trend-area').style.display        = 'flex';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
 }
 
 function showScannerArea() {
@@ -2445,6 +2656,8 @@ function showScannerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'flex';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
+    if (typeof hideWarningsArea === 'function') hideWarningsArea();
 }
 
 function showDataManagerArea() {
@@ -2457,6 +2670,7 @@ function showDataManagerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'flex';
+    hideMacroArea();
 }
 
 function showNewsArea() {
@@ -2469,6 +2683,7 @@ function showNewsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
 }
 
 // ── Stats Rendering ───────────────────────────────────────────
@@ -3618,6 +3833,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderSymbolList();
         if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
     });
+    document.querySelectorAll('#desk-family-filters .family-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+            state.familyFilter = btn.dataset.family || '';
+            if (typeof writeDeskPrefs === 'function') writeDeskPrefs({ familyFilter: state.familyFilter });
+            document.querySelectorAll('#desk-family-filters .family-chip').forEach(b => {
+                b.classList.toggle('on', b === btn);
+            });
+            renderSymbolList();
+            if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
+        });
+    });
     document.getElementById('new-symbol-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') addSymbol();
     });
@@ -3708,8 +3934,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     syncWorkspacePills();
 
+    if (typeof bindDeskPrefs === 'function') bindDeskPrefs();
+
     await loadSymbols();
     restoreWatchlistFilter();
+    apiFetch(`${API}/macro/board`).then(data => {
+        if (typeof renderDeskRegime === 'function') renderDeskRegime(data.regime);
+    }).catch(() => {});
 
     const codes = (state.symbols || []).map(s => s.symbol).filter(Boolean);
     if (!codes.length) {

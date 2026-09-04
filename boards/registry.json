@@ -1,0 +1,353 @@
+{
+  "version": 1,
+  "theme": "visual_v41",
+  "note": "Column + measure registry for Market Moves and ENGINE. Formulas are locked — this file only names keys, formats, and heat. Never invent PX / z / D / TMAC / win rates.",
+  "measures": {
+    "mm.name": {
+      "key": "name",
+      "formula": "Display name for the Yahoo ticker on this sleeve",
+      "format": "text",
+      "heat": "none"
+    },
+    "mm.px": {
+      "key": "px",
+      "formula": "Last stored close C_t. Blank if no bars.",
+      "format": "price",
+      "heat": "none"
+    },
+    "mm.day_pct": {
+      "key": "day_pct",
+      "formula": "DAY% = C_t/C_{t-1}−1. Yields: 100*(y_t−y_{t-1}) bp.",
+      "format": "signed_1",
+      "heat": "signed"
+    },
+    "mm.z": {
+      "key": "z",
+      "formula": "z = (r_t − mean(r_{t−29…t})) / sample_stdev(ddof=1). Today in window. Blank if σ≈0. Bullet when |z|≥2. NOT bare r/σ.",
+      "format": "z_1",
+      "heat": "z",
+      "heat_scale": {"lo": -3, "hi": 3, "extreme": 2},
+      "bullet_from": "extreme"
+    },
+    "mm.z14": {
+      "key": "z14",
+      "formula": "R_14 = C_t/C_{t−14}−1; z_14 = R_14 / sample_stdev({rolling 14d simple returns over ~126 ends}, ddof=1). NOT R_14/(σ_daily√14).",
+      "format": "z_1",
+      "heat": "z",
+      "heat_scale": {"lo": -3, "hi": 3}
+    },
+    "eng.symbol": {
+      "key": "symbol",
+      "formula": "Desk ticker",
+      "format": "text",
+      "heat": "none"
+    },
+    "eng.vcp": {
+      "key": "vcp",
+      "formula": "Honest VCP proxy: TIGHTENING if range10/range50≤0.55 or ATR14↓; COILED near 20d extreme; BREAK if close beyond prior 20d",
+      "format": "text",
+      "heat": "none"
+    },
+    "eng.tms_zone": {
+      "key": "tms_zone",
+      "formula": "TMS zone from 0.5*RSI14 + 0.5*clip(50+10*(close/SMA50−1)*100,0,100)",
+      "format": "text",
+      "heat": "none"
+    },
+    "eng.impulse": {
+      "key": "impulse",
+      "formula": "Impulse from 5-bar ΔTMS",
+      "format": "text",
+      "heat": "none"
+    },
+    "eng.pattern_w": {
+      "key": "pattern_w",
+      "formula": "Weekly Pattern 1Y=52 / 6M=26 ±0.1%",
+      "format": "text",
+      "heat": "signed_text"
+    },
+    "eng.bias": {
+      "key": "bias",
+      "formula": "Point sum — not a win rate",
+      "format": "signed_1",
+      "heat": "signed"
+    },
+    "eng.takeaway": {
+      "key": "takeaway",
+      "formula": "SENTIMENT — VCP — RSI-C — TMS (Impulse) — Pattern W. Research string, not a trade.",
+      "format": "takeaway",
+      "heat": "none"
+    },
+    "eng.dw": {
+      "key": "dw",
+      "formula": "D+W when daily and weekly RSI-C trend agree",
+      "format": "text",
+      "heat": "signed_text"
+    },
+    "eng.engine": {
+      "key": "engine",
+      "formula": "NO TRADE if <55 bars; WATCH if forming/lean; OPPORTUNITY if VCP/3M break and D+W or RSI-C agrees. Phase EXTENDED>ACCEPTED>TRIGGERED>FORMING>DORMANT. D1.x=SPEC 25/27. TF!=FRAGILE only.",
+      "format": "text",
+      "heat": "none"
+    },
+    "eng.rsi_c": {
+      "key": "rsi_c.state",
+      "formula": "Wilder RSI(2)…RSI(21); Extreme≥90% Lean≥70% Tilt≥55%",
+      "format": "text",
+      "heat": "none"
+    },
+    "eng.vs20": {
+      "key": "vs20",
+      "formula": "100*(C/SMA20−1)",
+      "format": "signed_1",
+      "heat": "signed"
+    },
+    "eng.dist_52w": {
+      "key": "dist_52w_pct",
+      "formula": "100*(C/52w high−1)",
+      "format": "signed_1",
+      "heat": "range",
+      "heat_scale": {"lo": -40, "hi": 0}
+    },
+    "eng.str": {
+      "key": "str",
+      "formula": "Str −5…+5: +2/−2 prior 20d; +2/−2 prior 55d; +1/−1 BB %B≥1/≤0. Omit if <56 bars",
+      "format": "int",
+      "heat": "signed"
+    },
+    "eng.tmac_star": {
+      "key": "tmac_star",
+      "formula": "TMAC* = clip(round(0.50*range_pct + 0.35*rsi14 + 0.15*vol_heat),0,99). Heat proxy — never branded TMAC. Alias heat_proxy.",
+      "format": "int",
+      "heat": "range",
+      "heat_scale": {"lo": 0, "hi": 99},
+      "fallback_key": "heat_proxy"
+    },
+    "eng.price": {
+      "key": "price",
+      "formula": "Last stored close",
+      "format": "price",
+      "heat": "none"
+    },
+    "eng.ret_1d": {
+      "key": "ret_1d",
+      "formula": "Simple return over 1 session",
+      "format": "signed_2",
+      "heat": "range",
+      "heat_scale": {"lo": -3, "hi": 3}
+    },
+    "eng.ret_1w": {
+      "key": "ret_1w",
+      "formula": "Simple return over 5 sessions",
+      "format": "signed_2",
+      "heat": "range",
+      "heat_scale": {"lo": -6, "hi": 6}
+    },
+    "eng.ret_1m": {
+      "key": "ret_1m",
+      "formula": "Simple return over 21 sessions",
+      "format": "signed_2",
+      "heat": "range",
+      "heat_scale": {"lo": -12, "hi": 12}
+    },
+    "eng.ret_3m": {
+      "key": "ret_3m",
+      "formula": "Simple return over 63 sessions",
+      "format": "signed_2",
+      "heat": "range",
+      "heat_scale": {"lo": -20, "hi": 20}
+    },
+    "eng.ret_6m": {
+      "key": "ret_6m",
+      "formula": "Simple return over 126 sessions",
+      "format": "signed_2",
+      "heat": "range",
+      "heat_scale": {"lo": -30, "hi": 30}
+    },
+    "eng.ret_12m": {
+      "key": "ret_12m",
+      "formula": "Simple return over 252 sessions",
+      "format": "signed_2",
+      "heat": "range",
+      "heat_scale": {"lo": -40, "hi": 40}
+    },
+    "eng.sigma_1d": {
+      "key": "sigma_1d",
+      "formula": "σ = move / (trailing daily σ × √horizon)",
+      "format": "signed_2",
+      "heat": "range",
+      "heat_scale": {"lo": -2, "hi": 2}
+    },
+    "eng.sigma_1w": {
+      "key": "sigma_1w",
+      "formula": "σ = move / (trailing daily σ × √horizon)",
+      "format": "signed_2",
+      "heat": "range",
+      "heat_scale": {"lo": -2, "hi": 2}
+    },
+    "eng.sigma_1m": {
+      "key": "sigma_1m",
+      "formula": "σ = move / (trailing daily σ × √horizon)",
+      "format": "signed_2",
+      "heat": "range",
+      "heat_scale": {"lo": -2, "hi": 2}
+    },
+    "eng.rsi14": {
+      "key": "rsi14",
+      "formula": "Wilder RSI(14) unless n override",
+      "format": "signed_1",
+      "heat": "none"
+    },
+    "eng.stretch": {
+      "key": "stretch_pctile",
+      "formula": "ADMA stretch desk percentile if n≥3; else stretch_pct",
+      "format": "bar",
+      "heat": "none",
+      "fallback_key": "stretch_pct"
+    },
+    "eng.delta_d_1m": {
+      "key": "delta_d_1m",
+      "formula": "SPEC 25/27 ΔD over ~1m. Blank if D window failed.",
+      "format": "signed_2",
+      "heat": "signed"
+    },
+    "eng.d65": {
+      "key": "d65",
+      "formula": "SPEC 25/27 65d D. Null = failed window, not invented.",
+      "format": "signed_2",
+      "heat": "none"
+    },
+    "eng.tms_d": {
+      "key": "tms_d",
+      "formula": "Signed TMS daily",
+      "format": "int",
+      "heat": "signed"
+    },
+    "eng.pos_52w": {
+      "key": "pos_52w",
+      "formula": "100*(C−52w low)/(52w high−52w low)",
+      "format": "bar",
+      "heat": "none"
+    },
+    "eng.vol30": {
+      "key": "vol30",
+      "formula": "30d close σ annualized %",
+      "format": "signed_1",
+      "heat": "none"
+    },
+    "eng.tes": {
+      "key": "tes_state",
+      "formula": "TES from stored bars. Blank if D65 missing. Never invent TD13 stars.",
+      "format": "text",
+      "heat": "none"
+    },
+    "eng.gray_tag": {
+      "key": "gray_tag",
+      "formula": "RSI-C · VCP research tag — never green",
+      "format": "gray",
+      "heat": "none"
+    },
+    "eng.dir5": {
+      "key": "dir5",
+      "formula": "Dir ±5 from Str (or clipped bias)",
+      "format": "int",
+      "heat": "range",
+      "heat_scale": {"lo": -5, "hi": 5}
+    }
+  },
+  "aliases": {
+    "engine": "engine_setup",
+    "macro": "engine_sigma"
+  },
+  "boards": {
+    "market_moves": {
+      "id": "market_moves",
+      "label": "Market Moves",
+      "api": "/api/market-moves",
+      "density": "mm",
+      "columns": [
+        {"id": "name", "measure": "mm.name", "label": "Name", "visible": true, "locked": true},
+        {"id": "px", "measure": "mm.px", "label": "PX", "visible": true},
+        {"id": "day_pct", "measure": "mm.day_pct", "label": "DAY%", "visible": true},
+        {"id": "z", "measure": "mm.z", "label": "Z", "visible": true},
+        {"id": "z14", "measure": "mm.z14", "label": "14D Z", "visible": true}
+      ]
+    },
+    "setup": {
+      "id": "setup",
+      "label": "SETUP glance",
+      "api": "/api/engine/board",
+      "density": "engine",
+      "columns": [
+        {"id": "symbol", "measure": "eng.symbol", "label": "Symbol", "visible": true, "locked": true},
+        {"id": "str", "measure": "eng.str", "label": "Str", "visible": true},
+        {"id": "stretch", "measure": "eng.stretch", "label": "Stretch", "visible": true},
+        {"id": "vs20", "measure": "eng.vs20", "label": "vs20", "visible": true},
+        {"id": "pattern_w", "measure": "eng.pattern_w", "label": "Pattern W", "visible": true}
+      ]
+    },
+    "engine_setup": {
+      "id": "engine_setup",
+      "label": "ENGINE Setup",
+      "api": "/api/engine/board",
+      "density": "engine",
+      "columns": [
+        {"id": "symbol", "measure": "eng.symbol", "label": "Symbol", "visible": true, "locked": true},
+        {"id": "vcp", "measure": "eng.vcp", "label": "VCP", "visible": true},
+        {"id": "tms", "measure": "eng.tms_zone", "label": "TMS", "visible": true},
+        {"id": "impulse", "measure": "eng.impulse", "label": "Impulse", "visible": true},
+        {"id": "pattern_w", "measure": "eng.pattern_w", "label": "Pattern W", "visible": true},
+        {"id": "bias", "measure": "eng.bias", "label": "Bias", "visible": true},
+        {"id": "takeaway", "measure": "eng.takeaway", "label": "TAKEAWAY", "visible": true},
+        {"id": "dw", "measure": "eng.dw", "label": "D vs W", "visible": true},
+        {"id": "engine", "measure": "eng.engine", "label": "ENGINE", "visible": true, "locked": true},
+        {"id": "rsi_c", "measure": "eng.rsi_c", "label": "RSI-C", "visible": true},
+        {"id": "vs20", "measure": "eng.vs20", "label": "vs20", "visible": true},
+        {"id": "dist_52w", "measure": "eng.dist_52w", "label": "52w%", "visible": true},
+        {"id": "str", "measure": "eng.str", "label": "Str", "visible": true},
+        {"id": "tmac_star", "measure": "eng.tmac_star", "label": "TMAC*", "visible": true, "title": "TMAC* heat proxy — never branded TMAC"}
+      ]
+    },
+    "engine_sigma": {
+      "id": "engine_sigma",
+      "label": "ENGINE Sigma",
+      "api": "/api/engine/sigma",
+      "density": "engine",
+      "columns": [
+        {"id": "symbol", "measure": "eng.symbol", "label": "Asset", "visible": true, "locked": true},
+        {"id": "price", "measure": "eng.price", "label": "Last", "visible": true},
+        {"id": "ret_1d", "measure": "eng.ret_1d", "label": "1D%", "visible": true},
+        {"id": "ret_1w", "measure": "eng.ret_1w", "label": "1W%", "visible": true},
+        {"id": "ret_1m", "measure": "eng.ret_1m", "label": "1M%", "visible": true},
+        {"id": "ret_3m", "measure": "eng.ret_3m", "label": "3M%", "visible": true},
+        {"id": "ret_6m", "measure": "eng.ret_6m", "label": "6M%", "visible": true},
+        {"id": "ret_12m", "measure": "eng.ret_12m", "label": "12M%", "visible": true},
+        {"id": "sigma_1d", "measure": "eng.sigma_1d", "label": "σ1D", "visible": true},
+        {"id": "sigma_1w", "measure": "eng.sigma_1w", "label": "σ1W", "visible": true},
+        {"id": "sigma_1m", "measure": "eng.sigma_1m", "label": "σ1M", "visible": true},
+        {"id": "rsi14", "measure": "eng.rsi14", "label": "RSI", "visible": true},
+        {"id": "takeaway", "measure": "eng.takeaway", "label": "TAKEAWAY", "visible": true}
+      ]
+    },
+    "engine_maps": {
+      "id": "engine_maps",
+      "label": "ENGINE Maps scanner",
+      "api": "/api/engine/maps",
+      "density": "engine",
+      "columns": [
+        {"id": "symbol", "measure": "eng.symbol", "label": "Asset", "visible": true, "locked": true},
+        {"id": "str", "measure": "eng.str", "label": "Str", "visible": true},
+        {"id": "stretch", "measure": "eng.stretch", "label": "Stretch", "visible": true},
+        {"id": "delta_d_1m", "measure": "eng.delta_d_1m", "label": "ΔD 1m", "visible": true},
+        {"id": "d65", "measure": "eng.d65", "label": "D65", "visible": true},
+        {"id": "tms_d", "measure": "eng.tms_d", "label": "TMS-D", "visible": true},
+        {"id": "pos_52w", "measure": "eng.pos_52w", "label": "52w pos", "visible": true},
+        {"id": "vol30", "measure": "eng.vol30", "label": "Vol30", "visible": true},
+        {"id": "tes", "measure": "eng.tes", "label": "TES", "visible": true},
+        {"id": "gray_tag", "measure": "eng.gray_tag", "label": "RSI-C · VCP", "visible": true},
+        {"id": "dir5", "measure": "eng.dir5", "label": "Dir ±5", "visible": true},
+        {"id": "tmac_star", "measure": "eng.tmac_star", "label": "TMAC*", "visible": true, "title": "TMAC* heat proxy — never branded TMAC"}
+      ]
+    }
+  }
+}

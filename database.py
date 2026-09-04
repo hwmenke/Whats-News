@@ -32,11 +32,17 @@ _PRAGMAS = (
 
 
 def get_connection():
-    """Open a connection with scale-friendly pragmas applied."""
+    """Open a connection with scale-friendly pragmas applied.
+
+    An empty ``finance.db`` file (created by a previous connect with no
+    ``init_db``) gets tables here so watchlist / news / chart never hit
+    ``no such table: symbols``.
+    """
     conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
     for name, value in _PRAGMAS:
         conn.execute(f"PRAGMA {name}={value}")
+    _ensure_schema(conn)
     return conn
 
 
@@ -54,67 +60,165 @@ def connection():
         conn.close()
 
 
+def _schema_tables(conn):
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master "
+        "WHERE type='table' AND name NOT LIKE 'sqlite_%' "
+        "ORDER BY name"
+    ).fetchall()
+    return [r["name"] if isinstance(r, sqlite3.Row) else r[0] for r in rows]
+
+
+def _create_schema(conn):
+    """Idempotent CREATE TABLE / INDEX. Safe on an already-initialized DB."""
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS symbols (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol      TEXT    NOT NULL UNIQUE,
+            name        TEXT,
+            sector      TEXT,
+            added_at    TEXT    NOT NULL,
+            last_fetch  TEXT
+        )
+    """)
+
+    # Migrations — add new columns to existing DBs without data loss
+    for col, defn in [
+        ("group_tag", "TEXT    DEFAULT ''"),
+        ("sort_order", "INTEGER DEFAULT 0"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE symbols ADD COLUMN {col} {defn}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS ohlcv (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol     TEXT    NOT NULL,
+            freq       TEXT    NOT NULL,   -- 'daily' | 'weekly'
+            date       TEXT    NOT NULL,
+            open       REAL,
+            high       REAL,
+            low        REAL,
+            close      REAL,
+            volume     REAL,
+            UNIQUE(symbol, freq, date)
+        )
+    """)
+
+    # Primary lookup path: symbol + freq + date range / LIMIT
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_ohlcv_symbol_freq_date
+        ON ohlcv(symbol, freq, date)
+    """)
+    # Keep the legacy name for older DBs that already have it
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_ohlcv
+        ON ohlcv(symbol, freq, date)
+    """)
+    # Watchlist grouping / listing
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_symbols_group_symbol
+        ON symbols(group_tag, symbol)
+    """)
+    # Incremental refresh scans
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_symbols_last_fetch
+        ON symbols(last_fetch)
+    """)
+    _create_paper_book(conn)
+    _create_research_cache(conn)
+
+
+def _create_research_cache(conn):
+    """Finviz HTML cache + SPY HMM fit cache. No secrets."""
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS finviz_quotes (
+            symbol      TEXT PRIMARY KEY,
+            fetched_at  TEXT NOT NULL,
+            http_status INTEGER,
+            reason      TEXT,
+            payload_json TEXT NOT NULL
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS finviz_screener_cache (
+            preset_id   TEXT PRIMARY KEY,
+            fetched_at  TEXT NOT NULL,
+            http_status INTEGER,
+            reason      TEXT,
+            payload_json TEXT NOT NULL
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS finviz_meta (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS hmm_cache (
+            cache_key    TEXT PRIMARY KEY,
+            as_of        TEXT,
+            fitted_at    TEXT NOT NULL,
+            payload_json TEXT NOT NULL
+        )
+    """)
+
+
+def _create_paper_book(conn):
+    """Paper book only — positions + desk name. No broker credentials."""
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS paper_positions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol      TEXT    NOT NULL UNIQUE,
+            qty         REAL    NOT NULL,
+            side        TEXT    NOT NULL DEFAULT 'long',
+            avg_cost    REAL,
+            note        TEXT    DEFAULT '',
+            source      TEXT    DEFAULT 'manual',
+            created_at  TEXT    NOT NULL,
+            updated_at  TEXT    NOT NULL
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS paper_book_meta (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+
+
+def _ensure_schema(conn):
+    """If this file has no ``symbols`` table, create the full schema now."""
+    tables = _schema_tables(conn)
+    if "symbols" not in tables:
+        _create_schema(conn)
+        conn.commit()
+        return
+    if "paper_positions" not in tables:
+        _create_paper_book(conn)
+        conn.commit()
+    if "finviz_quotes" not in tables or "hmm_cache" not in tables:
+        _create_research_cache(conn)
+        conn.commit()
+
+
 def init_db():
-    """Create tables and indexes if they don't exist."""
+    """Create tables and indexes if they don't exist. Idempotent."""
     with connection() as conn:
-        cur = conn.cursor()
+        _create_schema(conn)
 
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS symbols (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                symbol      TEXT    NOT NULL UNIQUE,
-                name        TEXT,
-                sector      TEXT,
-                added_at    TEXT    NOT NULL,
-                last_fetch  TEXT
-            )
-        """)
 
-        # Migrations — add new columns to existing DBs without data loss
-        for col, defn in [
-            ("group_tag", "TEXT    DEFAULT ''"),
-            ("sort_order", "INTEGER DEFAULT 0"),
-        ]:
-            try:
-                cur.execute(f"ALTER TABLE symbols ADD COLUMN {col} {defn}")
-            except sqlite3.OperationalError:
-                pass  # column already exists
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS ohlcv (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                symbol     TEXT    NOT NULL,
-                freq       TEXT    NOT NULL,   -- 'daily' | 'weekly'
-                date       TEXT    NOT NULL,
-                open       REAL,
-                high       REAL,
-                low        REAL,
-                close      REAL,
-                volume     REAL,
-                UNIQUE(symbol, freq, date)
-            )
-        """)
-
-        # Primary lookup path: symbol + freq + date range / LIMIT
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_ohlcv_symbol_freq_date
-            ON ohlcv(symbol, freq, date)
-        """)
-        # Keep the legacy name for older DBs that already have it
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_ohlcv
-            ON ohlcv(symbol, freq, date)
-        """)
-        # Watchlist grouping / listing
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_symbols_group_symbol
-            ON symbols(group_tag, symbol)
-        """)
-        # Incremental refresh scans
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_symbols_last_fetch
-            ON symbols(last_fetch)
-        """)
+def schema_tables():
+    """User table names in the current DB file (health / tests)."""
+    with connection() as conn:
+        return _schema_tables(conn)
 
 
 # ── Symbol CRUD ────────────────────────────────────────────────────────────────

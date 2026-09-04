@@ -12,6 +12,7 @@ const SETUP_SORT_STORAGE_KEY = 'whats-news-setup-sort';
 let _setupScanCache = null;
 let _setupSort = 'scan';
 let _setupScanRows = [];
+let _qullaLens = 'all'; // all | qulla | ep | breakout | vol | adr
 
 function currentSetupUniverse() {
     return document.getElementById('chk-setup-universe')?.checked ?? true;
@@ -71,6 +72,7 @@ async function initSetupScanner() {
     bindSetupHitHighlight();
     restoreSetupSort();
     bindSetupSortControl();
+    renderQullaPills();
     try {
         const data = await apiFetch(`${API}/setups/catalog`);
         _setupCatalog = data.setups || {};
@@ -82,6 +84,83 @@ async function initSetupScanner() {
     } catch (e) {
         console.warn('Setup catalog failed:', e);
     }
+}
+
+function isQullaRow(row) {
+    const s = (row && row.setups) || [];
+    return s.includes('EP') || s.includes('BREAKOUT_QUEUE') || s.includes('VOL_SURGE')
+        || s.includes('NEAR_HIGH') || Number(row && row.adr_pct) >= 4;
+}
+
+function applyQullaLens(rows) {
+    if (!_qullaLens || _qullaLens === 'all') return rows || [];
+    return (rows || []).filter(row => {
+        const s = row.setups || [];
+        if (_qullaLens === 'qulla') return isQullaRow(row);
+        if (_qullaLens === 'ep') return s.includes('EP');
+        if (_qullaLens === 'breakout') return s.includes('BREAKOUT_QUEUE');
+        if (_qullaLens === 'vol') return s.includes('VOL_SURGE');
+        if (_qullaLens === 'high') return s.includes('NEAR_HIGH');
+        if (_qullaLens === 'adr') return Number(row.adr_pct) >= 4;
+        return true;
+    });
+}
+
+function paintSetupTable() {
+    renderSetupScanTable(sortedSetupScanRows(_setupScanRows, _setupSort));
+}
+
+function setQullaLens(id) {
+    _qullaLens = id || 'all';
+    if (typeof writeDeskPrefs === 'function') writeDeskPrefs({ qullaLens: _qullaLens });
+    const wrap = document.getElementById('setup-qulla-pills');
+    if (wrap) {
+        wrap.querySelectorAll('.setup-pill').forEach(p => {
+            p.classList.toggle('setup-pill-on', p.textContent && (
+                (_qullaLens === 'all' && p.textContent.startsWith('All')) ||
+                (_qullaLens === 'qulla' && p.textContent.startsWith('Qulla')) ||
+                (_qullaLens === 'ep' && p.textContent === 'EP') ||
+                (_qullaLens === 'breakout' && p.textContent === 'Breakout') ||
+                (_qullaLens === 'vol' && p.textContent === 'VOL_SURGE') ||
+                (_qullaLens === 'high' && p.textContent === 'NEAR_HIGH') ||
+                (_qullaLens === 'adr' && p.textContent.startsWith('ADR'))
+            ));
+        });
+    }
+    applySetupScanSort();
+}
+window.setQullaLens = setQullaLens;
+
+function renderQullaPills() {
+    const wrap = document.getElementById('setup-qulla-pills');
+    if (!wrap || wrap.dataset.ready) return;
+    wrap.dataset.ready = '1';
+    const specs = [
+        ['all', 'All hits'],
+        ['qulla', 'Qulla lens'],
+        ['ep', 'EP'],
+        ['breakout', 'Breakout'],
+        ['vol', 'VOL_SURGE'],
+        ['high', 'NEAR_HIGH'],
+        ['adr', 'ADR≥4'],
+    ];
+    specs.forEach(([id, label]) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ind-pill setup-pill' + (_qullaLens === id ? ' setup-pill-on' : '');
+        btn.textContent = label;
+        btn.title = id === 'qulla'
+            ? 'EP / breakout / vol / near-high / ADR≥4 from our scanner — not Qullamaggie formulas'
+            : label;
+        btn.addEventListener('click', () => {
+            _qullaLens = id;
+            if (typeof writeDeskPrefs === 'function') writeDeskPrefs({ qullaLens: id });
+            wrap.querySelectorAll('.setup-pill').forEach(p => p.classList.remove('setup-pill-on'));
+            btn.classList.add('setup-pill-on');
+            applySetupScanSort();
+        });
+        wrap.appendChild(btn);
+    });
 }
 
 function renderSetupFilterPills() {
@@ -137,7 +216,20 @@ function setupMetricChipsHtml(row) {
     return `<div class="setup-metric-chips">${chips.join('')}</div>`;
 }
 
+function setupTmacHeat(v) {
+    if (v == null || Number.isNaN(Number(v))) return '';
+    const n = Number(v);
+    const t = Math.max(0, Math.min(1, n / 99));
+    if (t >= 0.5) {
+        const g = (t - 0.5) * 2;
+        return `background: rgba(34,197,94,${(0.15 + 0.55 * g).toFixed(2)})`;
+    }
+    const r = (0.5 - t) * 2;
+    return `background: rgba(239,68,68,${(0.15 + 0.55 * r).toFixed(2)})`;
+}
+
 function renderSetupScanTable(results) {
+    results = applyQullaLens(results);
     const tbody = document.getElementById('setup-scan-tbody');
     const empty = document.getElementById('setup-scan-empty');
     const table = document.getElementById('setup-scan-table');
@@ -165,6 +257,9 @@ function renderSetupScanTable(results) {
             ? `${row.change_pct >= 0 ? '+' : ''}${row.change_pct.toFixed(1)}%`
             : '—';
         const chgCls = row.change_pct >= 0 ? 'positive' : 'negative';
+        const adr = row.adr_pct != null && Number.isFinite(Number(row.adr_pct))
+            ? Number(row.adr_pct).toFixed(1)
+            : '—';
 
         const rs = row.rs_rank_21d != null ? `#${row.rs_rank_21d}/${row.rs_n ?? '—'}` : '—';
         const dist = row.dist_20d_high_pct != null
@@ -181,10 +276,12 @@ function renderSetupScanTable(results) {
             <td class="setup-sym">${row.symbol}${metricChips}</td>
             <td class="setup-tags">${setups || '—'}</td>
             <td class="${chgCls}">${chg}</td>
+            <td>${adr}</td>
             <td>${rs}</td>
             <td>${dist}</td>
             <td>${vol}</td>
             <td>${row.regime || '—'}</td>
+            <td class="engine-tmac" style="${setupTmacHeat(row.tmac_star != null ? row.tmac_star : row.heat_proxy)}" title="${row.tmac_note || 'TMAC* heat proxy — never branded TMAC'}">${(row.tmac_star != null ? row.tmac_star : row.heat_proxy) == null ? '—' : (row.tmac_star != null ? row.tmac_star : row.heat_proxy)}</td>
             <td class="setup-actions">
                 <button type="button" class="btn btn-ghost btn-sm setup-open" data-symbol="${row.symbol}">Chart</button>
                 <button type="button" class="btn btn-ghost btn-sm setup-promote" data-symbol="${row.symbol}">+ Desk</button>

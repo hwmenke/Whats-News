@@ -1,4 +1,4 @@
-.PHONY: install run test clean
+.PHONY: install run test test-mobile clean
 
 install:
 	python3 -m venv .venv
@@ -9,6 +9,9 @@ run:
 
 test:
 	python3 -m unittest discover -s tests -v
+
+test-mobile:
+	cd mobile && flutter test
 
 clean:
 	rm -rf .venv __pycache__ */__pycache__ .pytest_cache

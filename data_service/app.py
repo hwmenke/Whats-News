@@ -29,11 +29,12 @@ if str(_ROOT) not in sys.path:
 import database as db
 import data_fetcher as fetcher
 import ticker_lists as tl
+import yahoo_news
 
 app = Flask(__name__, static_folder=str(_ROOT), static_url_path="")
 CORS(app)
 
-db.init_db()
+db.init_db()  # idempotent; also re-run on health so leftover empty files recover
 
 
 @app.route("/")
@@ -43,6 +44,7 @@ def index():
 
 @app.route("/api/health")
 def health():
+    db.init_db()
     stats = {}
     try:
         if hasattr(db, "get_db_stats"):
@@ -50,14 +52,17 @@ def health():
         else:
             stats = {"symbol_count": len(db.list_symbols())}
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
-    return jsonify({"ok": True, "service": "data", **stats})
+        return jsonify({"ok": False, "schema_ok": False, "error": str(exc)}), 500
+    return jsonify({"ok": True, "schema_ok": True, "service": "data", **stats})
 
 
 # -- Symbols --------------------------------------------------------------------
 
 @app.route("/api/symbols", methods=["GET"])
 def get_symbols():
+    desk = request.args.get("desk", "").lower() in ("1", "true", "yes")
+    if desk and hasattr(db, "list_desk_symbols"):
+        return jsonify(db.list_desk_symbols())
     return jsonify(db.list_symbols())
 
 
@@ -177,12 +182,19 @@ def get_ohlcv(symbol):
     except (TypeError, ValueError):
         return jsonify({"error": "limit must be an integer"}), 400
 
-    if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if freq not in ("daily", "weekly", "monthly"):
+        return jsonify({"error": "freq must be 'daily', 'weekly', or 'monthly'"}), 400
     if limit <= 0:
         return jsonify({"error": "limit must be a positive integer"}), 400
 
-    rows = db.get_ohlcv(symbol.upper(), freq, limit)
+    if freq == "monthly":
+        import data_client as dc
+        daily = db.get_ohlcv(symbol.upper(), "daily", max(limit * 23, 800))
+        rows = dc.monthly_from_daily(daily)
+        if limit and len(rows) > limit:
+            rows = rows[-limit:]
+    else:
+        rows = db.get_ohlcv(symbol.upper(), freq, limit)
     if not rows:
         return jsonify({"error": "No data. Fetch the symbol first."}), 404
     return jsonify(rows)
@@ -280,7 +292,35 @@ def fetch_batch():
     )
 
 
+# -- News (same Yahoo contract as the analysis app / iPhone client) -------------
+
+@app.route("/api/news", methods=["GET"])
+def get_all_news():
+    try:
+        if hasattr(db, "list_symbol_codes"):
+            symbols = db.list_symbol_codes()
+        else:
+            symbols = [s["symbol"] for s in db.list_symbols()]
+    except Exception:
+        symbols = []
+    try:
+        return jsonify(yahoo_news.watchlist_news(symbols))
+    except Exception as exc:
+        return jsonify({
+            "articles": [],
+            "message": str(exc),
+            "source": yahoo_news.DEFAULT_PROVIDER,
+        })
+
+
+@app.route("/api/news/<string:symbol>", methods=["GET"])
+def get_symbol_news(symbol):
+    payload, status = yahoo_news.symbol_news(symbol)
+    return jsonify(payload), status
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("DATA_PORT", os.environ.get("PORT", 8051)))
-    print(f"\n  Data Management service at http://localhost:{port}\n")
-    app.run(debug=True, port=port, threaded=True)
+    host = os.environ.get("HOST", "127.0.0.1")
+    print(f"\n  Data Management service at http://{host}:{port}\n")
+    app.run(debug=True, host=host, port=port, threaded=True)
