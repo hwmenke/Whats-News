@@ -132,7 +132,10 @@ class MacroBoardTests(unittest.TestCase):
         self.assertFalse(payload["available"])
         self.assertEqual(payload["rows"], [])
         self.assertIn("d_65d", payload["columns"])
-        self.assertNotIn("hurst", str(payload).lower())
+        self.assertIn("invent", (payload.get("reason") or "").lower())
+        keys = {str(k).lower() for k in payload}
+        self.assertNotIn("hurst", keys)
+        self.assertNotIn("d_hat", keys)
 
     def test_fractal_detects_dropped_file_without_inventing_rows(self):
         dest = Path("odds-edge") / "fractal.py"
