@@ -983,7 +983,7 @@ class ScansPage extends StatelessWidget {
           String n(Object? v) => v is num ? v.toStringAsFixed(1) : '—';
           return _nameChip(
             sym,
-            '${r['takeaway'] ?? ''}',
+            '',
             metric: 'σ ${n(s1)} / ${n(s2)} / ${n(s3)}',
           );
         },

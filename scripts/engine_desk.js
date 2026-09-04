@@ -135,16 +135,20 @@ function _engOpenChart(sym) {
 }
 
 function _engTakeawayStrip(rows) {
-    const list = (rows || []).filter(r => r && (r.takeaway || r.tes_state || r.dir5 != null));
+    const list = (rows || []).filter(r => r && (r.takeaway || r.tes_state || r.dir5 != null || r.engine_primary || r.engine));
     if (!list.length) return '';
+    const hasDir = list.some(r => r.dir5 != null);
+    const hasTes = list.some(r => r.tes_state);
+    const hasEng = list.some(r => r.engine_primary || r.engine);
     const body = list.map(r => `<tr class="wn-row" data-sym="${_engEsc(r.symbol)}" title="${_engEsc(r.takeaway || '')}">
         <td class="wn-sym">${_engEsc(r.symbol)}</td>
-        <td class="engine-dir">${r.dir5 == null ? '—' : r.dir5}</td>
-        <td>${_engEsc(r.tes_state || '—')}</td>
-        <td class="wn-note">${_engEsc(r.engine_primary || r.engine || '—')}</td></tr>`).join('');
+        ${hasDir ? `<td class="engine-dir">${r.dir5 == null ? '' : r.dir5}</td>` : ''}
+        ${hasTes ? `<td>${_engEsc(r.tes_state || '')}</td>` : ''}
+        ${hasEng ? `<td class="wn-note">${_engEsc(r.engine_primary || r.engine || '')}</td>` : ''}
+    </tr>`).join('');
     return `<section class="wn-card">
         <h3>Takeaways <span class="wn-n">${list.length}</span></h3>
-        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>Dir</th><th>TES</th><th>ENGINE</th></tr></thead>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th>${hasDir ? '<th>Dir</th>' : ''}${hasTes ? '<th>TES</th>' : ''}${hasEng ? '<th>ENGINE</th>' : ''}</tr></thead>
         <tbody>${body}</tbody></table>
     </section>`;
 }
@@ -245,11 +249,14 @@ async function loadEngineSetupGlance() {
     }
     if (meta) meta.textContent = 'GET /api/engine/stretch + /patterns…';
     try {
-        const [stretch, patterns] = await Promise.all([
+        const [stretch, patterns, board] = await Promise.all([
             apiFetch(`${API}/engine/stretch?desk=1`),
             apiFetch(`${API}/engine/patterns?desk=1`),
+            apiFetch(`${API}/engine/board?desk=1`).catch(() => ({ rows: [] })),
         ]);
+        window._engineBoardRows = Array.isArray(board.rows) ? board.rows : [];
         strEl.innerHTML = [
+            _engTakeawayStrip(window._engineBoardRows),
             _engStretchCol('Strongest breakouts', stretch.strongest, 'str'),
             _engStretchCol('Breakdowns', stretch.breakdowns, 'str'),
         ].filter(Boolean).join('') || '';
@@ -701,7 +708,7 @@ function renderEngineMaps(data, view) {
         el.innerHTML = `
             <div class="warnings-grid">
                 ${_engScatter(rot.points || [], { xLabel: rot.x_label, yLabel: rot.y_label, xmin: 0, xmax: 100, guides: [{ v: 50 }, { h: 0 }] })}
-                ${_engPtsTable('Rotation', rot.points, 'RSI(14)', '1w σ', p => p.asset_class || p.gray_tag)}
+                ${_engPtsTable('Rotation', rot.points, 'RSI(14)', '1w σ', p => p.asset_class)}
             </div>
             <details class="scan-help"><summary>HOW TO READ — ROTATION</summary>
                 <p class="scan-breadth-note">${_engEsc(rot.howto || '')}</p>
@@ -744,13 +751,13 @@ function renderEngineMaps(data, view) {
         el.innerHTML = `
             <div class="warnings-grid">
                 ${_engScatter(pts, { xLabel: tm.x_label, yLabel: tm.y_label, xmin: -100, xmax: 100, ymin: -25, ymax: 25, guides: [{ v: 0 }, { h: 0 }] })}
-                ${_engPtsTable('TMS-W', tm.weekly, 'score', 'impulse', p => p.zone || 'solid')}
-                ${_engPtsTable('TMS-D', tm.daily, 'score', 'impulse', p => p.zone || 'hollow')}
+                ${_engPtsTable('TMS-W', tm.weekly, 'score', 'impulse', p => p.zone)}
+                ${_engPtsTable('TMS-D', tm.daily, 'score', 'impulse', p => p.zone)}
                 ${_engListCol('Zones', zoneRows)}
                 ${_engListCol('TOP 12M %', (ex.top_12m || []).map(x => ({ symbol: x.symbol, takeaway: x.ret_12m == null ? '' : `${_engNum(x.ret_12m)}%` })))}
                 ${_engListCol('BOTTOM 12M %', (ex.bottom_12m || []).map(x => ({ symbol: x.symbol, takeaway: x.ret_12m == null ? '' : `${_engNum(x.ret_12m)}%` })))}
             </div>
-            <p class="scan-breadth-note">SPY strip: ${_engEsc(spy.label || '—')} — ${_engEsc(spy.note || '')}</p>
+            ${spy.label ? `<p class="scan-breadth-note">SPY strip: ${_engEsc(spy.label)}${spy.note ? ` — ${_engEsc(spy.note)}` : ''}</p>` : ''}
             <details class="scan-help"><summary>HOW TO READ — TMS REGIME</summary>
                 <p class="scan-breadth-note">${_engEsc(tm.howto || '')}</p>
             </details>`;

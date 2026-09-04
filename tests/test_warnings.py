@@ -169,6 +169,8 @@ class WarningsSurfaceTests(unittest.TestCase):
         self.assertIn("fractalRead", Path("mobile/lib/data/models.dart").read_text(encoding="utf-8"))
         self.assertIn("tmsZones", Path("mobile/lib/data/models.dart").read_text(encoding="utf-8"))
         self.assertIn("SPY strip:", Path("mobile/lib/ui/scans_page.dart").read_text(encoding="utf-8"))
+        dart = Path("mobile/lib/ui/scans_page.dart").read_text(encoding="utf-8")
+        self.assertIn("_nameChip(\n            sym,\n            '',", dart)
         self.assertIn("bookPane == 'upload'", Path("mobile/lib/data/app_state.dart").read_text(encoding="utf-8"))
         self.assertNotIn("bloomberg", blob.lower())
         self.assertNotIn("gamma strip", blob.lower())

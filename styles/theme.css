@@ -697,6 +697,12 @@ body.workspace-scan .desk-ia-bar {
 .engine-panel[data-panel="setup"] .setup-scanner-header {
   display: none !important;
 }
+.engine-panel[data-panel="setup"] .v2-three {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: var(--space-section) !important;
+  grid-template-columns: none !important;
+}
 #engine-command-body .warnings-grid,
 #engine-setup-str,
 #engine-setup-stretch,
