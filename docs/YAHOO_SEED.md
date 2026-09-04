@@ -1,5 +1,7 @@
 # Yahoo seed → fetch → score
 
+Path: `docs/YAHOO_SEED.md`.
+
 Public Yahoo/SQLite only. Seed registers names. Fetch writes `ohlcv`. Scans and ENGINE score **desk** names (`list_desk_symbols`). Archive `univ:*` is hidden from the desk.
 
 ## Paths

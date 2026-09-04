@@ -250,8 +250,10 @@ class ScanPackApiTests(unittest.TestCase):
         self.assertIn("stored_n", js)
         self.assertIn("empty universe", js.lower())
         self.assertIn("/api/desk/seed-fetch", Path("mobile/lib/data/api_client.dart").read_text(encoding="utf-8"))
-        self.assertIn("docs/YAHOO_SEED.md", Path("docs/YAHOO_SEED.md").read_text(encoding="utf-8"))
-        self.assertIn("Seed registers names", Path("docs/YAHOO_SEED.md").read_text(encoding="utf-8"))
+        seed_doc = Path("docs/YAHOO_SEED.md").read_text(encoding="utf-8")
+        self.assertIn("Seed registers names", seed_doc)
+        self.assertIn("/api/desk/seed-fetch", seed_doc)
+        self.assertTrue(Path("docs/YAHOO_SEED.md").is_file())
 
 
 if __name__ == "__main__":

@@ -99,7 +99,8 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("HOW TO READ — PATTERN SCANNER", self.blob)
         self.assertIn("HOW TO READ — RSI COUNTER", self.blob)
         self.assertIn("/api/desk/seed-fetch", Path("app.py").read_text(encoding="utf-8"))
-        self.assertIn("YAHOO_SEED.md", Path("docs/YAHOO_SEED.md").read_text(encoding="utf-8"))
+        self.assertIn("See docs/YAHOO_SEED.md", Path("app.py").read_text(encoding="utf-8"))
+        self.assertTrue(Path("docs/YAHOO_SEED.md").is_file())
 
     def test_hard_ui_lock_font_c_v41_not_v2_v3(self):
         theme = ""
