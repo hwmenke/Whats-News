@@ -28,6 +28,20 @@ void main() {
           {'symbol': 'AAPL', 'name': 'Apple Inc', 'group_tag': ''},
         ]);
       }
+      if (path.startsWith('/api/indicators/')) {
+        return _json({
+          'kama_20': [
+            {'date': '2026-01-02', 'value': 104.0},
+            {'date': '2026-01-03', 'value': 106.0},
+          ],
+        });
+      }
+      if (path == '/api/trend-scan' || path == '/api/scanner' || path == '/api/scanner/status') {
+        return _json(path == '/api/scanner/status' ? {'running': false} : []);
+      }
+      if (path == '/api/setups/scan') {
+        return _json({'results': [], 'count': 0});
+      }
       if (path.startsWith('/api/ohlcv/')) {
         return _json([
           {
@@ -77,6 +91,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Watchlist'), findsWidgets);
+    expect(find.text('Scans'), findsWidgets);
     expect(find.text('AAPL'), findsOneWidget);
     expect(find.text('Paper / local only — no live trading.'), findsOneWidget);
 

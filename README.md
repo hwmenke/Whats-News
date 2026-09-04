@@ -18,8 +18,9 @@ When it says the server is running, open your browser:
 - **News:** http://localhost:8050/news  
 
 **iPhone (Mac + Simulator):** keep this server running, then see
-[`mobile/README.md`](mobile/README.md). Same watchlist, Yahoo charts, and
-Yahoo headlines — no extra API keys.
+[`mobile/README.md`](mobile/README.md). Same watchlist, Yahoo charts
+(KAMA/BB overlays, D/W/M), watchlist scans, and Yahoo headlines — no extra
+API keys.
 
 Stop with `Ctrl+C`.
 

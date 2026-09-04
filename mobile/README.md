@@ -49,9 +49,12 @@ Xcode on that VM). Caspar runs it on a Mac as below.
    Or open `mobile/ios/Runner.xcworkspace` in Xcode, pick an iPhone simulator,
    Run. If CocoaPods asks: `cd ios && pod install`.
 
-4. In the app, Watchlist → type `AAPL` → **+**. Chart tab → **Fetch from Yahoo**.
-   News tab shows Yahoo headlines for the desk. Gear (Watchlist) sets the
-   server URL. Simulator default is `http://127.0.0.1:8050`.
+4. In the app, Watchlist → type `AAPL` → **+**. Chart loads stored bars
+   automatically (D/W/M, KAMA/BB overlays from `/api/indicators`, drag for
+   OHLC). **Scans** runs watchlist trend/metrics/setups from the Python
+   scanner — tap a row to open Chart. News is the same Yahoo feed as Dash.
+   Gear (Watchlist) sets the server URL. Simulator default is
+   `http://127.0.0.1:8050`.
 
 ### Physical iPhone on Wi-Fi
 

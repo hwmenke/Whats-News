@@ -159,6 +159,70 @@ class WhatsNewsApi {
     ];
   }
 
+  Future<IndicatorPack> getIndicators(
+    String symbol, {
+    String freq = 'daily',
+  }) async {
+    final raw = await _get('/api/indicators/${symbol.trim().toUpperCase()}', {
+      'freq': freq,
+    });
+    if (raw is Map<String, dynamic>) return IndicatorPack.fromJson(raw);
+    if (raw is Map) {
+      return IndicatorPack.fromJson(Map<String, dynamic>.from(raw));
+    }
+    return IndicatorPack.empty;
+  }
+
+  Future<List<TrendScanRow>> getTrendScan({
+    bool desk = true,
+    String freq = 'daily',
+  }) async {
+    final raw = await _get('/api/trend-scan', {
+      if (desk) 'desk': '1',
+      'freq': freq,
+    });
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map)
+          TrendScanRow.fromJson(Map<String, dynamic>.from(item)),
+    ];
+  }
+
+  Future<List<ScannerRow>> getScanner({bool universe = false}) async {
+    final raw = await _get('/api/scanner', {
+      'universe': universe ? '1' : '0',
+    });
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map) ScannerRow.fromJson(Map<String, dynamic>.from(item)),
+    ];
+  }
+
+  Future<List<SetupScanRow>> getSetupScan({bool universe = false}) async {
+    final raw = await _get('/api/setups/scan', {
+      'universe': universe ? '1' : '0',
+    });
+    List<dynamic> rows = const [];
+    if (raw is Map && raw['results'] is List) {
+      rows = raw['results'] as List;
+    } else if (raw is List) {
+      rows = raw;
+    }
+    return [
+      for (final item in rows)
+        if (item is Map) SetupScanRow.fromJson(Map<String, dynamic>.from(item)),
+    ];
+  }
+
+  Future<Map<String, dynamic>> getScannerStatus() async {
+    final raw = await _get('/api/scanner/status');
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return const {};
+  }
+
   Future<NewsFeed> getNews({String? symbol}) async {
     final path = (symbol == null || symbol.trim().isEmpty)
         ? '/api/news'

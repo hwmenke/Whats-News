@@ -16,13 +16,30 @@ class WhatsNewsState extends ChangeNotifier {
   String? selectedSymbol;
   String freq = 'daily';
   List<OhlcvBar> bars = const [];
+  IndicatorPack indicators = IndicatorPack.empty;
   NewsFeed news = const NewsFeed(articles: []);
+
+  List<TrendScanRow> trendScan = const [];
+  List<ScannerRow> metricScan = const [];
+  List<SetupScanRow> setupScan = const [];
+  String scanMode = 'trend';
+  Map<String, dynamic> scannerStatus = const {};
+
+  bool showKama10 = false;
+  bool showKama20 = true;
+  bool showKama50 = false;
+  bool showBollinger = false;
+
+  OhlcvBar? scrubBar;
 
   bool loadingWatchlist = false;
   bool loadingChart = false;
   bool loadingNews = false;
+  bool loadingScans = false;
   bool fetching = false;
   String? error;
+  String? chartError;
+  String? scanError;
   String? throttleMessage;
   bool paperBanner = true;
 
@@ -39,11 +56,16 @@ class WhatsNewsState extends ChangeNotifier {
 
   OhlcvBar? get lastBar => bars.isEmpty ? null : bars.last;
 
+  OhlcvBar? get displayBar => scrubBar ?? lastBar;
+
   double? get sessionChangePct {
-    if (bars.length < 2) return null;
-    final prev = bars[bars.length - 2].close;
+    final bar = displayBar;
+    if (bar == null || bars.length < 2) return null;
+    final idx = bars.indexWhere((b) => b.date == bar.date);
+    if (idx < 1) return null;
+    final prev = bars[idx - 1].close;
     if (prev == 0) return null;
-    return (bars.last.close - prev) / prev * 100;
+    return (bar.close - prev) / prev * 100;
   }
 
   Future<void> loadSavedBaseUrl() async {
@@ -97,6 +119,10 @@ class WhatsNewsState extends ChangeNotifier {
 
   Future<void> selectSymbol(String symbol) async {
     selectedSymbol = symbol.toUpperCase();
+    scrubBar = null;
+    bars = const [];
+    indicators = IndicatorPack.empty;
+    chartError = null;
     notifyListeners();
     await Future.wait([
       loadChart(selectedSymbol!),
@@ -105,12 +131,33 @@ class WhatsNewsState extends ChangeNotifier {
   }
 
   Future<void> setFreq(String next) async {
-    if (next != 'daily' && next != 'weekly') return;
+    if (next != 'daily' && next != 'weekly' && next != 'monthly') return;
     freq = next;
+    scrubBar = null;
     notifyListeners();
     if (selectedSymbol != null) {
       await loadChart(selectedSymbol!);
     }
+  }
+
+  void setScrubBar(OhlcvBar? bar) {
+    if (identical(scrubBar, bar)) return;
+    scrubBar = bar;
+    notifyListeners();
+  }
+
+  void toggleOverlay(String id) {
+    switch (id) {
+      case 'kama10':
+        showKama10 = !showKama10;
+      case 'kama20':
+        showKama20 = !showKama20;
+      case 'kama50':
+        showKama50 = !showKama50;
+      case 'bb':
+        showBollinger = !showBollinger;
+    }
+    notifyListeners();
   }
 
   Future<void> addSymbol(String raw) async {
@@ -135,6 +182,8 @@ class WhatsNewsState extends ChangeNotifier {
       if (selectedSymbol == symbol) {
         selectedSymbol = null;
         bars = const [];
+        indicators = IndicatorPack.empty;
+        scrubBar = null;
       }
       await loadWatchlist();
     } on ApiException catch (e) {
@@ -145,21 +194,30 @@ class WhatsNewsState extends ChangeNotifier {
 
   Future<void> loadChart(String symbol) async {
     loadingChart = true;
+    chartError = null;
     error = null;
+    scrubBar = null;
     notifyListeners();
     try {
-      bars = await api.getOhlcv(symbol, freq: freq);
+      bars = await api.getOhlcv(symbol, freq: freq, limit: 260);
       throttleMessage = null;
+      try {
+        indicators = await api.getIndicators(symbol, freq: freq);
+      } on ApiException {
+        indicators = IndicatorPack.empty;
+      }
     } on ApiException catch (e) {
       bars = const [];
+      indicators = IndicatorPack.empty;
       if (e.isMissingBars) {
-        error = 'No bars stored for $symbol yet. Tap Fetch from Yahoo.';
+        chartError = 'No stored $freq bars for $symbol. Fetch from Yahoo.';
       } else {
-        error = _friendly(e);
+        chartError = _friendly(e);
       }
     } catch (_) {
       bars = const [];
-      error = 'Cannot reach $baseUrl. Start ./start.sh on this Mac.';
+      indicators = IndicatorPack.empty;
+      chartError = 'Cannot reach $baseUrl. Start ./start.sh on this Mac.';
     } finally {
       loadingChart = false;
       notifyListeners();
@@ -170,6 +228,7 @@ class WhatsNewsState extends ChangeNotifier {
     final sym = (symbol ?? selectedSymbol)?.toUpperCase();
     if (sym == null) return;
     fetching = true;
+    chartError = null;
     error = null;
     throttleMessage = null;
     notifyListeners();
@@ -182,7 +241,7 @@ class WhatsNewsState extends ChangeNotifier {
         throttleMessage =
             e.message.isEmpty ? 'Yahoo is rate-limiting. Try again in a minute.' : e.message;
       } else {
-        error = _friendly(e);
+        chartError = _friendly(e);
       }
     } finally {
       fetching = false;
@@ -206,6 +265,37 @@ class WhatsNewsState extends ChangeNotifier {
       loadingNews = false;
       notifyListeners();
     }
+  }
+
+  Future<void> loadScans() async {
+    loadingScans = true;
+    scanError = null;
+    notifyListeners();
+    try {
+      final results = await Future.wait([
+        api.getTrendScan(desk: true, freq: 'daily'),
+        api.getScanner(universe: false),
+        api.getSetupScan(universe: false),
+        api.getScannerStatus(),
+      ]);
+      trendScan = results[0] as List<TrendScanRow>;
+      metricScan = results[1] as List<ScannerRow>;
+      setupScan = results[2] as List<SetupScanRow>;
+      scannerStatus = results[3] as Map<String, dynamic>;
+    } on ApiException catch (e) {
+      scanError = _friendly(e);
+    } catch (_) {
+      scanError = 'Cannot reach $baseUrl for scans.';
+    } finally {
+      loadingScans = false;
+      notifyListeners();
+    }
+  }
+
+  void setScanMode(String mode) {
+    if (mode != 'trend' && mode != 'metrics' && mode != 'setups') return;
+    scanMode = mode;
+    notifyListeners();
   }
 
   String _friendly(ApiException e) {

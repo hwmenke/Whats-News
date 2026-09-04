@@ -182,12 +182,19 @@ def get_ohlcv(symbol):
     except (TypeError, ValueError):
         return jsonify({"error": "limit must be an integer"}), 400
 
-    if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if freq not in ("daily", "weekly", "monthly"):
+        return jsonify({"error": "freq must be 'daily', 'weekly', or 'monthly'"}), 400
     if limit <= 0:
         return jsonify({"error": "limit must be a positive integer"}), 400
 
-    rows = db.get_ohlcv(symbol.upper(), freq, limit)
+    if freq == "monthly":
+        import data_client as dc
+        daily = db.get_ohlcv(symbol.upper(), "daily", max(limit * 23, 800))
+        rows = dc.monthly_from_daily(daily)
+        if limit and len(rows) > limit:
+            rows = rows[-limit:]
+    else:
+        rows = db.get_ohlcv(symbol.upper(), freq, limit)
     if not rows:
         return jsonify({"error": "No data. Fetch the symbol first."}), 404
     return jsonify(rows)

@@ -146,6 +146,65 @@ void main() {
     }
   });
 
+  test('indicators and trend-scan parse Flask JSON', () async {
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path == '/api/indicators/AAPL') {
+        return http.Response(
+          jsonEncode({
+            'kama_20': [
+              {'date': '2026-01-02', 'value': 104.0},
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (path == '/api/trend-scan') {
+        expect(request.url.queryParameters['desk'], '1');
+        return http.Response(
+          jsonEncode([
+            {
+              'symbol': 'aapl',
+              'price': 211.15,
+              'rsi': 62.4,
+              'kama20_pct': 1.2,
+              'signal': 2,
+            }
+          ]),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (path == '/api/scanner') {
+        expect(request.url.queryParameters['universe'], '0');
+        return http.Response(
+          jsonEncode([
+            {
+              'symbol': 'AAPL',
+              'price': 211.15,
+              'chg': 0.4,
+              'd': {'rsi_14': 55.0, 'atr_pct': 1.8},
+            }
+          ]),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response(jsonEncode({'error': 'nope'}), 404);
+    });
+    final api = WhatsNewsApi(httpClient: client);
+    final pack = await api.getIndicators('AAPL');
+    expect(pack.of('kama_20').single.value, 104.0);
+
+    final trend = await api.getTrendScan();
+    expect(trend.single.symbol, 'AAPL');
+    expect(trend.single.rsi, 62.4);
+
+    final metrics = await api.getScanner();
+    expect(metrics.single.daily.rsi14, 55.0);
+  });
+
   test('missing OHLCV is 404', () async {
     final client = MockClient((request) async {
       return http.Response(

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'data/app_state.dart';
 import 'ui/chart_page.dart';
 import 'ui/news_page.dart';
+import 'ui/scans_page.dart';
 import 'ui/settings_sheet.dart';
 import 'ui/theme.dart';
 import 'ui/watchlist_page.dart';
@@ -82,7 +83,13 @@ class _ShellState extends State<_Shell> {
         backgroundColor: DeskColors.elevated,
         inactiveColor: DeskColors.muted,
         onTap: (i) {
+          if (i == 1 && state.selectedSymbol != null && state.bars.isEmpty) {
+            state.loadChart(state.selectedSymbol!);
+          }
           if (i == 2) {
+            state.loadScans();
+          }
+          if (i == 3) {
             state.loadNews();
           }
         },
@@ -94,6 +101,10 @@ class _ShellState extends State<_Shell> {
           BottomNavigationBarItem(
             icon: Icon(CupertinoIcons.chart_bar_alt_fill),
             label: 'Chart',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.list_dash),
+            label: 'Scans',
           ),
           BottomNavigationBarItem(
             icon: Icon(CupertinoIcons.doc_text),
@@ -115,6 +126,14 @@ class _ShellState extends State<_Shell> {
             );
           case 1:
             page = ChartPage(state: state);
+          case 2:
+            page = ScansPage(
+              state: state,
+              onOpenChart: (sym) {
+                state.selectSymbol(sym);
+                _tabs.index = 1;
+              },
+            );
           default:
             page = NewsPage(state: state);
         }

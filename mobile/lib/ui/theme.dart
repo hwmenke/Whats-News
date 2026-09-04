@@ -14,6 +14,9 @@ class DeskColors {
   static const text = Color(0xFFE6EDF3);
   static const muted = Color(0xFF8B949E);
   static const dim = Color(0xFF4A5568);
+  static const kama10 = Color(0xFF60A5FA);
+  static const kama20 = Color(0xFFF59E0B);
+  static const kama50 = Color(0xFFA78BFA);
 }
 
 CupertinoThemeData deskCupertinoTheme() {

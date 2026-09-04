@@ -359,8 +359,8 @@ def get_ohlcv(symbol):
     except (TypeError, ValueError):
         return jsonify({"error": "limit must be an integer"}), 400
 
-    if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if freq not in ("daily", "weekly", "monthly"):
+        return jsonify({"error": "freq must be 'daily', 'weekly', or 'monthly'"}), 400
     if limit <= 0:
         return jsonify({"error": "limit must be a positive integer"}), 400
 
@@ -381,8 +381,8 @@ def get_ohlcv(symbol):
 @app.route("/api/indicators/<string:symbol>", methods=["GET"])
 def get_indicators(symbol):
     freq = request.args.get("freq", "daily")
-    if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if freq not in ("daily", "weekly", "monthly"):
+        return jsonify({"error": "freq must be 'daily', 'weekly', or 'monthly'"}), 400
 
     kama_param = request.args.get("kama", "10,20,50")
     try:
@@ -510,7 +510,16 @@ def trend_scan():
     freq       = request.args.get("freq",   "daily")
     method     = request.args.get("method", "kama")
     rsi_period = int(request.args.get("rsi_period", 14))
-    symbols    = md.list_symbol_codes()
+    desk = request.args.get("desk", "").lower() in ("1", "true", "yes")
+    try:
+        if desk:
+            symbols = [s["symbol"] for s in md.list_desk_symbols()]
+        else:
+            symbols = md.list_symbol_codes()
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify([])
+        return jsonify({"error": str(exc)}), 500
     if not symbols:
         return jsonify([])
 
@@ -657,6 +666,8 @@ def get_scanner():
         data = scanner.compute_scanner(symbols)
         return jsonify(data)
     except Exception as e:
+        if "no such table" in str(e).lower():
+            return jsonify([])
         return jsonify({"error": str(e)}), 500
 
 
@@ -691,6 +702,14 @@ def setups_scan():
             )
         )
     except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify({
+                "count": 0,
+                "scanned": 0,
+                "results": [],
+                "setup_catalog": setup_scanner.SETUP_IDS,
+                "message": "No symbols in watchlist",
+            })
         return jsonify({"error": str(exc)}), 500
 
 
