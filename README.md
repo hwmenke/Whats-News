@@ -5,6 +5,8 @@ No API keys. Data stays on your computer in `finance.db`.
 
 ## Quick start (easiest)
 
+Caspar Mac daily path: [`RUN.md`](RUN.md) (`/Users/hmenke/Whats-News-pr60`, `./start.sh`, Flutter, seed once).
+
 In a terminal, go into this folder, then run:
 
 ```bash

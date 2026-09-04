@@ -171,6 +171,13 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("TES / Dir", Path("mobile/lib/ui/scans_page.dart").read_text(encoding="utf-8"))
         self.assertIn("r.tesState", Path("mobile/lib/ui/scans_page.dart").read_text(encoding="utf-8"))
         self.assertTrue(Path("docs/YAHOO_SEED.md").is_file())
+        run = Path("RUN.md").read_text(encoding="utf-8")
+        self.assertIn("/Users/hmenke/Whats-News-pr60", run)
+        self.assertIn("./start.sh", run)
+        self.assertIn("flutter run", run)
+        self.assertIn("Seed Core 50", run)
+        self.assertIn("**P&L**", run)
+        self.assertIn("**Risk**", run)
 
     def test_hard_ui_lock_font_c_v41_not_v2_v3(self):
         theme = ""
