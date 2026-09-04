@@ -6,7 +6,8 @@ Watchlist before/after plus Book Upload | P&L | Risk.
 - [watchlist_after.png](watchlist_after.png) — default collapsed + 2–3 peek; 24px rows when open
 - [watchlist_after_open.png](watchlist_after_open.png) — dense open rail
 - [book_upload.png](book_upload.png) — Fidelity CSV import only
-- [book_pnl.png](book_pnl.png) — marks / day / exposure
+- [book_pnl.png](book_pnl.png) — packed P&L: axes from stored daily marks, exposure + day% rows
+- [book_pnl_iphone.png](book_pnl_iphone.png) — same board at 390×844; chart fills leftover, no dead-air strip
 - [book_risk.png](book_risk.png) — Risk hero: ranked %VaR / MVaR / clusters at top
 - [scans_dense.png](scans_dense.png) — help wall collapsed; chip row tight; no Empty universe when stored_n>0
 - [pattern_dw.png](pattern_dw.png) — Pattern D/W Excel boards; empty buckets omitted

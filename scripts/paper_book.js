@@ -67,6 +67,27 @@ function _pnlTickIdx(n) {
     return [...new Set([0, Math.round((n - 1) / 3), Math.round(2 * (n - 1) / 3), n - 1])].sort((a, b) => a - b);
 }
 
+function _pnlYTickIdx(vals) {
+    if (!vals.length) return [];
+    let minI = 0;
+    let maxI = 0;
+    for (let i = 1; i < vals.length; i++) {
+        if (vals[i] < vals[minI]) minI = i;
+        if (vals[i] > vals[maxI]) maxI = i;
+    }
+    const midTarget = (vals[minI] + vals[maxI]) / 2;
+    let midI = 0;
+    let midDist = Math.abs(vals[0] - midTarget);
+    for (let i = 1; i < vals.length; i++) {
+        const d = Math.abs(vals[i] - midTarget);
+        if (d < midDist) {
+            midDist = d;
+            midI = i;
+        }
+    }
+    return [...new Set([maxI, midI, minI])];
+}
+
 function _pnlAxisDate(d) {
     const s = String(d || '');
     const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -78,27 +99,53 @@ function _pnlAxisNav(v) {
     const n = Number(v);
     const abs = Math.abs(n);
     const sign = n < 0 ? '−' : '';
-    if (abs >= 10000) return `${sign}$${(abs / 1000).toFixed(1)}k`;
+    if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(1)}k`;
     return _pnlMoney(n);
 }
 
+function _fitPnlChart() {
+    const canvas = document.getElementById('pnl-curve');
+    const area = document.getElementById('pnl-area');
+    const wrap = document.querySelector('.pnl-curve-wrap');
+    if (!canvas || !area || !wrap) return;
+    const areaBottom = area.getBoundingClientRect().bottom;
+    const wrapTop = wrap.getBoundingClientRect().top;
+    let below = 0;
+    ['pnl-metrics', 'pnl-tape'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const cs = getComputedStyle(el);
+        if (cs.display === 'none') return;
+        below += el.getBoundingClientRect().height;
+    });
+    const label = wrap.querySelector('.pnl-curve-label');
+    const labelH = label ? label.getBoundingClientRect().height + 4 : 0;
+    const h = Math.max(200, Math.floor(areaBottom - wrapTop - below - labelH - 8));
+    const next = `${h}px`;
+    if (canvas.style.height !== next) canvas.style.height = next;
+}
+
 function _drawPnlCurve(points) {
+    window.__lastPnlCurve = points;
     const canvas = document.getElementById('pnl-curve');
     if (!canvas) return;
+    _fitPnlChart();
     const ctx = canvas.getContext('2d');
-    const w = canvas.parentElement ? canvas.parentElement.clientWidth : 360;
+    const wrap = canvas.parentElement;
+    const w = wrap ? wrap.clientWidth : 360;
+    const cssH = canvas.clientHeight || (wrap ? wrap.clientHeight : 200);
     canvas.width = Math.max(280, w);
-    canvas.height = 200;
+    canvas.height = Math.max(200, Math.round(cssH));
     const W = canvas.width;
     const H = canvas.height;
-    const padL = 48;
-    const padR = 8;
+    const padL = 44;
+    const padR = 18;
     const padT = 10;
-    const padB = 20;
+    const padB = 22;
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
-    ctx.font = "10px 'JetBrains Mono', ui-monospace, monospace";
+    ctx.font = "11px 'JetBrains Mono', ui-monospace, monospace";
     if (!points || points.length < 2) {
         ctx.fillStyle = '#666';
         ctx.fillText('No daily mark series — add lines and store Yahoo closes.', padL, H / 2);
@@ -114,19 +161,11 @@ function _drawPnlCurve(points) {
         x: padL + (i / (vals.length - 1)) * plotW,
         y: padT + (1 - (vals[i] - min) / span) * plotH,
     });
-    let minI = 0;
-    let maxI = 0;
-    for (let i = 1; i < vals.length; i++) {
-        if (vals[i] <= vals[minI]) minI = i;
-        if (vals[i] >= vals[maxI]) maxI = i;
-    }
-    const yIdx = new Set([minI, maxI]);
-    if (vals.length >= 3) yIdx.add(Math.floor(vals.length / 2));
     ctx.strokeStyle = '#f3f3f3';
     ctx.lineWidth = 1;
-    ctx.fillStyle = '#666';
+    ctx.fillStyle = '#444';
     ctx.textBaseline = 'middle';
-    yIdx.forEach(i => {
+    _pnlYTickIdx(vals).forEach(i => {
         const p = xy(i);
         ctx.beginPath();
         ctx.moveTo(padL, p.y);
@@ -136,13 +175,14 @@ function _drawPnlCurve(points) {
         ctx.fillText(_pnlAxisNav(vals[i]), padL - 4, p.y);
     });
     ctx.textBaseline = 'top';
-    _pnlTickIdx(points.length).forEach(i => {
+    const xTicks = _pnlTickIdx(points.length);
+    xTicks.forEach((i, t) => {
         const p = xy(i);
         ctx.beginPath();
         ctx.moveTo(p.x, padT);
         ctx.lineTo(p.x, padT + plotH);
         ctx.stroke();
-        ctx.textAlign = 'center';
+        ctx.textAlign = t === 0 ? 'left' : (t === xTicks.length - 1 ? 'right' : 'center');
         ctx.fillText(_pnlAxisDate(points[i].date), p.x, padT + plotH + 4);
     });
     const open = vals[0];
@@ -218,6 +258,9 @@ async function loadPaperPnl() {
         const label = document.getElementById('pnl-curve-label');
         if (label) label.textContent = data.curve_label || '';
         _drawPnlCurve(data.equity_curve || []);
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => _drawPnlCurve(window.__lastPnlCurve || data.equity_curve || []));
+        });
         if (note) note.textContent = data.message || data.note || '';
     } catch (err) {
         if (note) note.textContent = err.message || 'P&L unavailable';
@@ -500,6 +543,12 @@ function bindPaperBook() {
 }
 
 document.addEventListener('DOMContentLoaded', bindPaperBook);
+window.addEventListener('resize', () => {
+    const area = document.getElementById('pnl-area');
+    if (area && area.style.display !== 'none' && window.__lastPnlCurve) {
+        _drawPnlCurve(window.__lastPnlCurve);
+    }
+});
 window.showPnlArea = showPnlArea;
 window.showBookArea = showBookArea;
 window.showRiskArea = showRiskArea;
@@ -507,3 +556,4 @@ window.hideBookAreas = hideBookAreas;
 window.loadPaperPnl = loadPaperPnl;
 window.loadPaperBook = loadPaperBook;
 window.loadPaperRisk = loadPaperRisk;
+window._drawPnlCurve = _drawPnlCurve;

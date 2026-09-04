@@ -98,10 +98,12 @@ class DeskDensityTests(unittest.TestCase):
         js = Path("scripts/paper_book.js").read_text(encoding="utf-8")
         dart = Path("mobile/lib/ui/book_page.dart").read_text(encoding="utf-8")
         self.assertIn("function _pnlTickIdx", js)
+        self.assertIn("function _fitPnlChart", js)
+        self.assertIn("function _pnlYTickIdx", js)
         self.assertIn("_pnlAxisDate", js)
         self.assertIn("_pnlAxisNav", js)
         self.assertIn("points[i].date", js)
-        self.assertIn("canvas.height = 200", js)
+        self.assertIn("canvas.height = Math.max(200", js)
         self.assertIn('th class="num">Day%', js)
         self.assertIn("_PnlCurvePainter", dart)
         self.assertIn("_dateTick", dart)
@@ -188,6 +190,7 @@ class DeskDensityTests(unittest.TestCase):
             "watchlist_after_open.png",
             "book_upload.png",
             "book_pnl.png",
+            "book_pnl_iphone.png",
             "book_risk.png",
             "pattern_dw.png",
             "rsic_counter.png",

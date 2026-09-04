@@ -63,13 +63,13 @@ class BookPage extends StatelessWidget {
         else if (state.bookPane == 'risk')
           ..._riskSlivers(state, pnl)
         else
-          ..._pnlSlivers(state, pnl),
+          ..._pnlSlivers(context, state, pnl),
         SliverToBoxAdapter(child: SizedBox(height: DeskSpace.bottomInset(context))),
       ],
     );
   }
 
-  List<Widget> _pnlSlivers(WhatsNewsState s, BookPnl pnl) {
+  List<Widget> _pnlSlivers(BuildContext context, WhatsNewsState s, BookPnl pnl) {
     Color tone(double? v) {
       if (v == null) return DeskColors.muted;
       if (v > 0) return DeskColors.green;
@@ -95,6 +95,15 @@ class BookPage extends StatelessWidget {
       ('Shorts', pnl.ready ? usd(pnl.shortMv) : '—'),
       ('Net', pnl.ready ? netPct : '—'),
     ];
+    final reserved = DeskSpace.chrome
+        + DeskSpace.headerContent
+        + DeskSpace.row
+        + DeskSpace.section * 3
+        + 12
+        + DeskSpace.row * (exp.length + (pnl.tape.isEmpty ? 1 : pnl.tape.length))
+        + DeskSpace.bottomInset(context)
+        + 56;
+    final chartH = (MediaQuery.sizeOf(context).height - reserved).clamp(208.0, 420.0);
 
     return [
       SliverToBoxAdapter(
@@ -146,7 +155,7 @@ class BookPage extends StatelessWidget {
               ),
               const SizedBox(height: DeskSpace.section),
               SizedBox(
-                height: 208,
+                height: chartH,
                 width: double.infinity,
                 child: CustomPaint(
                   painter: _PnlCurvePainter(pnl.curve),
@@ -662,7 +671,7 @@ class _PnlCurvePainter extends CustomPainter {
   static String _navTick(double v) {
     final abs = v.abs();
     final sign = v < 0 ? '−' : '';
-    if (abs >= 10000) return '$sign\$${(abs / 1000).toStringAsFixed(1)}k';
+    if (abs >= 1000) return '$sign\$${(abs / 1000).toStringAsFixed(1)}k';
     return '$sign\$${abs.toStringAsFixed(2)}';
   }
 
@@ -672,11 +681,32 @@ class _PnlCurvePainter extends CustomPainter {
     return {0, ((n - 1) / 3).round(), (2 * (n - 1) / 3).round(), n - 1}.toList()..sort();
   }
 
+  static List<int> _yTickIdx(List<double> vals) {
+    if (vals.isEmpty) return const [];
+    var minI = 0;
+    var maxI = 0;
+    for (var i = 1; i < vals.length; i++) {
+      if (vals[i] < vals[minI]) minI = i;
+      if (vals[i] > vals[maxI]) maxI = i;
+    }
+    final midTarget = (vals[minI] + vals[maxI]) / 2;
+    var midI = 0;
+    var midDist = (vals[0] - midTarget).abs();
+    for (var i = 1; i < vals.length; i++) {
+      final d = (vals[i] - midTarget).abs();
+      if (d < midDist) {
+        midDist = d;
+        midI = i;
+      }
+    }
+    return {maxI, midI, minI}.toList();
+  }
+
   void _label(Canvas canvas, String text, Offset at, {TextAlign align = TextAlign.left}) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: const TextStyle(color: DeskColors.muted, fontSize: 9, fontFamily: 'Courier', height: 1),
+        style: const TextStyle(color: DeskColors.muted, fontSize: 11, fontFamily: 'Courier', height: 1),
       ),
       textDirection: TextDirection.ltr,
       textAlign: align,
@@ -721,14 +751,7 @@ class _PnlCurvePainter extends CustomPainter {
       ..color = DeskColors.card
       ..strokeWidth = 1;
 
-    var minI = 0;
-    var maxI = 0;
-    for (var i = 1; i < vals.length; i++) {
-      if (vals[i] <= vals[minI]) minI = i;
-      if (vals[i] >= vals[maxI]) maxI = i;
-    }
-    final yIdx = {minI, maxI, if (vals.length >= 3) vals.length ~/ 2};
-    for (final i in yIdx) {
+    for (final i in _yTickIdx(vals)) {
       final p = pt(i);
       canvas.drawLine(Offset(left, p.dy), Offset(left + plotW, p.dy), grid);
       _label(canvas, _navTick(vals[i]), Offset(left - 4, p.dy - 5), align: TextAlign.right);
