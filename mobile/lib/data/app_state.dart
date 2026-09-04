@@ -266,9 +266,13 @@ class WhatsNewsState extends ChangeNotifier {
       edgesBoard = EdgesBoard.empty;
     }
     try {
-      fractalStatus = await api.getFractalStatus();
+      fractalStatus = await api.getFractalScan();
     } on ApiException {
-      fractalStatus = FractalStatus.empty;
+      try {
+        fractalStatus = await api.getFractalStatus();
+      } on ApiException {
+        fractalStatus = FractalStatus.empty;
+      }
     }
     if (selectedSymbol != null) {
       try {
@@ -593,6 +597,11 @@ class WhatsNewsState extends ChangeNotifier {
       metricScan = results[1] as List<ScannerRow>;
       setupScan = results[2] as List<SetupScanRow>;
       scannerStatus = results[3] as Map<String, dynamic>;
+      try {
+        fractalStatus = await api.getFractalScan();
+      } on ApiException {
+        fractalStatus = FractalStatus.empty;
+      }
     } on ApiException catch (e) {
       scanError = _friendly(e);
     } catch (_) {
@@ -608,7 +617,8 @@ class WhatsNewsState extends ChangeNotifier {
         mode != 'edges' &&
         mode != 'trend' &&
         mode != 'metrics' &&
-        mode != 'setups') {
+        mode != 'setups' &&
+        mode != 'fractal') {
       return;
     }
     scanMode = mode;

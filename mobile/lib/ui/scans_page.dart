@@ -42,7 +42,7 @@ class ScansPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Same Python scans as the web desk. No invented win rates. Fractal D is not in this repo.',
+                  'Same Python scans as the web desk. No invented win rates. Fractal loads /api/fractal/scan only.',
                   style: TextStyle(color: DeskColors.muted, fontSize: 12),
                 ),
                 if (!state.fractalStatus.available)
@@ -71,6 +71,7 @@ class ScansPage extends StatelessWidget {
                     for (final e in const [
                       ('qulla', 'Qulla'),
                       ('edges', 'Edges'),
+                      ('fractal', 'Fractal'),
                       ('setups', 'Setups'),
                       ('trend', 'Trend'),
                       ('metrics', 'Metrics'),
@@ -114,7 +115,9 @@ class ScansPage extends StatelessWidget {
             ),
           ),
         ),
-        if (state.scanMode == 'edges')
+        if (state.scanMode == 'fractal')
+          ..._fractalSlivers(state)
+        else if (state.scanMode == 'edges')
           ..._edgesSlivers(state)
         else if (state.loadingScans && _rowsEmpty(state))
           const SliverFillRemaining(
@@ -148,6 +151,65 @@ class ScansPage extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  List<Widget> _fractalSlivers(WhatsNewsState s) {
+    final f = s.fractalStatus;
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                f.available
+                    ? 'Source: ${f.source}'
+                    : (f.reason.isEmpty ? 'Fractal: needs local odds-edge' : f.reason),
+                style: const TextStyle(color: DeskColors.text, fontSize: 13, height: 1.4),
+              ),
+              if (f.expected.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Expected: ${f.expected}',
+                  style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+                ),
+              ],
+              const SizedBox(height: 12),
+              const Text(
+                'Symbol · D 65d · D 130d · move 65d · move 130d · read',
+                style: TextStyle(color: DeskColors.dim, fontSize: 11),
+              ),
+              const SizedBox(height: 8),
+              if (f.rows.isEmpty)
+                const Text(
+                  'No rows. This table stays empty until odds-edge/fractal.py (SPEC 25/27) is on disk. No invented D.',
+                  style: TextStyle(color: DeskColors.muted, fontSize: 13, height: 1.4),
+                )
+              else
+                for (final row in f.rows)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: GestureDetector(
+                      onTap: () => onOpenChart(row.symbol),
+                      child: Text(
+                        [
+                          row.symbol,
+                          row.d65d?.toStringAsFixed(2) ?? '—',
+                          row.d130d?.toStringAsFixed(2) ?? '—',
+                          row.move65d?.toStringAsFixed(1) ?? '—',
+                          row.move130d?.toStringAsFixed(1) ?? '—',
+                          row.read,
+                        ].join(' · '),
+                        style: const TextStyle(color: DeskColors.text, fontSize: 13),
+                      ),
+                    ),
+                  ),
+            ],
+          ),
+        ),
+      ),
+    ];
   }
 
   List<Widget> _edgesSlivers(WhatsNewsState s) {

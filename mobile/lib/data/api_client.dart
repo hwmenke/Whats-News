@@ -311,6 +311,17 @@ class WhatsNewsApi {
     return FractalStatus.empty;
   }
 
+  Future<FractalStatus> getFractalScan() async {
+    try {
+      final raw = await _get('/api/fractal/scan');
+      if (raw is Map<String, dynamic>) return FractalStatus.fromJson(raw);
+      if (raw is Map) return FractalStatus.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException {
+      return FractalStatus.empty;
+    }
+    return FractalStatus.empty;
+  }
+
   Future<Map<String, dynamic>> seedCore50() async {
     final raw = await _send('POST', '/api/universe/core50');
     if (raw is Map<String, dynamic>) return raw;

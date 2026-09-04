@@ -370,7 +370,5 @@ def build_edges_board() -> dict:
 
 
 def fractal_status() -> dict:
-    return {
-        "available": False,
-        "reason": FRACTAL_NOTE,
-    }
+    import fractal_scan
+    return fractal_scan.status()

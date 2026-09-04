@@ -742,20 +742,78 @@ class EdgesBoard {
   }
 }
 
+class FractalRow {
+  const FractalRow({
+    required this.symbol,
+    this.d65d,
+    this.d130d,
+    this.move65d,
+    this.move130d,
+    this.read = '',
+  });
+
+  final String symbol;
+  final double? d65d;
+  final double? d130d;
+  final double? move65d;
+  final double? move130d;
+  final String read;
+
+  factory FractalRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return FractalRow(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      d65d: n(json['d_65d']),
+      d130d: n(json['d_130d']),
+      move65d: n(json['move_65d']),
+      move130d: n(json['move_130d']),
+      read: '${json['read'] ?? ''}',
+    );
+  }
+}
+
 class FractalStatus {
-  const FractalStatus({this.available = false, this.reason = ''});
+  const FractalStatus({
+    this.available = false,
+    this.reason = '',
+    this.source = '',
+    this.expected = '',
+    this.rows = const [],
+    this.columns = const [],
+  });
 
   final bool available;
   final String reason;
+  final String source;
+  final String expected;
+  final List<FractalRow> rows;
+  final List<String> columns;
 
   static const empty = FractalStatus(
     reason: 'Fractal: needs local odds-edge',
+    expected: 'odds-edge/fractal.py (SPEC 25/27)',
   );
 
   factory FractalStatus.fromJson(Map<String, dynamic> json) {
     return FractalStatus(
       available: json['available'] == true,
-      reason: '${json['reason'] ?? 'Fractal: needs local odds-edge'}',
+      reason: '${json['reason'] ?? json['message'] ?? 'Fractal: needs local odds-edge'}',
+      source: '${json['source'] ?? ''}',
+      expected: '${json['expected'] ?? ''}',
+      columns: [
+        if (json['columns'] is List)
+          for (final c in json['columns'])
+            if (c != null) '$c',
+      ],
+      rows: [
+        if (json['rows'] is List)
+          for (final item in json['rows'])
+            if (item is Map) FractalRow.fromJson(Map<String, dynamic>.from(item)),
+      ],
     );
   }
 }

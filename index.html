@@ -858,6 +858,33 @@
     <!-- ── Scanner Area ── -->
     <div id="scanner-area" class="scanner-container" style="display:none;">
 
+      <div id="fractal-scan-panel" class="setup-scanner-panel fractal-scan-panel">
+        <div class="setup-scanner-header">
+          <strong>Fractal</strong>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-fractal-scan">Load /api/fractal/scan</button>
+          <span id="fractal-scan-meta" class="scanner-ts"></span>
+        </div>
+        <p id="fractal-scan-note" class="macro-blurb">Waiting on /api/fractal/scan — no invented D.</p>
+        <div class="scanner-table-wrap">
+          <table id="fractal-scan-table" class="scanner-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>D 65d</th>
+                <th>D 130d</th>
+                <th>move 65d</th>
+                <th>move 130d</th>
+                <th>read</th>
+              </tr>
+            </thead>
+            <tbody id="fractal-scan-tbody"></tbody>
+          </table>
+        </div>
+        <div id="fractal-scan-empty" class="scanner-empty">
+          <p>Fractal table loads from <code>/api/fractal/scan</code> once <code>odds-edge/fractal.py</code> (SPEC 25/27) is on disk. This app will not invent Hurst or D.</p>
+        </div>
+      </div>
+
       <!-- Setup scanner (EP, Darvas, breakout queue, …) -->
       <div class="setup-scanner-panel">
         <div class="setup-scanner-header">
@@ -965,7 +992,7 @@
       <div id="macro-sleeve-grid" class="macro-sleeve-grid"></div>
       <p id="macro-board-note" class="macro-board-note"></p>
       <div id="edges-board" class="edges-board"></div>
-      <p id="fractal-stub" class="fractal-stub">Fractal: needs local odds-edge</p>
+      <p id="fractal-stub" class="fractal-stub">Fractal: waiting on /api/fractal/status — needs local odds-edge/fractal.py (SPEC 25/27). No invented D.</p>
     </div>
 
     <!-- ── Data Manager Area ── -->

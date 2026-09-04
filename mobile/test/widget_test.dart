@@ -81,8 +81,14 @@ void main() {
           'note': 'No screenshot win rates.',
         });
       }
-      if (path == '/api/fractal/status') {
-        return _json({'available': false, 'reason': 'Will not invent D estimates.'});
+      if (path == '/api/fractal/status' || path == '/api/fractal/scan') {
+        return _json({
+          'available': false,
+          'reason': 'Will not invent D estimates.',
+          'expected': 'odds-edge/fractal.py (SPEC 25/27)',
+          'columns': ['symbol', 'd_65d', 'd_130d', 'move_65d', 'move_130d', 'read'],
+          'rows': [],
+        });
       }
       if (path.startsWith('/api/pm-desk/') || path.startsWith('/api/spy-rs/')) {
         return _json({'ready': false});

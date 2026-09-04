@@ -183,9 +183,16 @@ def edges_board_api():
 
 @app.route("/api/fractal/status", methods=["GET"])
 def fractal_status_api():
-    """Honest stub — this repo has no D65 / Hurst pipeline."""
-    import macro_board as mb
-    return jsonify(mb.fractal_status())
+    """Probe for odds-edge/fractal.py (SPEC 25/27). Never invent D."""
+    import fractal_scan
+    return jsonify(fractal_scan.status())
+
+
+@app.route("/api/fractal/scan", methods=["GET"])
+def fractal_scan_api():
+    """Placeholder table until Caspar's fractal.py is on disk."""
+    import fractal_scan
+    return jsonify(fractal_scan.scan())
 
 
 @app.route("/api/universe/core50", methods=["POST"])

@@ -3,6 +3,7 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -121,7 +122,36 @@ class MacroBoardTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         body = res.get_json()
         self.assertFalse(body["available"])
+        self.assertIsNone(body.get("source"))
         self.assertIn("invent", body["reason"].lower())
+        self.assertIn("odds-edge", (body.get("expected") or "").lower())
+
+        scan = self.client.get("/api/fractal/scan")
+        self.assertEqual(scan.status_code, 200)
+        payload = scan.get_json()
+        self.assertFalse(payload["available"])
+        self.assertEqual(payload["rows"], [])
+        self.assertIn("d_65d", payload["columns"])
+        self.assertNotIn("hurst", str(payload).lower())
+
+    def test_fractal_detects_dropped_file_without_inventing_rows(self):
+        dest = Path("odds-edge") / "fractal.py"
+        dest.parent.mkdir(exist_ok=True)
+        try:
+            dest.write_text("# test sentinel — not Caspar's estimator\n")
+            body = self.client.get("/api/fractal/status").get_json()
+            self.assertTrue(body["available"])
+            self.assertEqual(body["source"], "odds-edge/fractal.py")
+            scan = self.client.get("/api/fractal/scan").get_json()
+            self.assertEqual(scan["rows"], [])
+            self.assertIn("invent", (scan.get("reason") or "").lower())
+            self.assertNotIn("hurst", str(scan).lower())
+        finally:
+            dest.unlink(missing_ok=True)
+            try:
+                dest.parent.rmdir()
+            except OSError:
+                pass
 
     def test_core50_seed_tags_library_groups(self):
         res = self.client.post("/api/universe/core50")
@@ -140,11 +170,21 @@ class MacroBoardTests(unittest.TestCase):
         self.assertIn('id="tab-macro"', html)
         self.assertIn('id="macro-area"', html)
         self.assertIn("scripts/macro_desk.js", html)
+        self.assertIn('id="fractal-scan-panel"', html)
+        self.assertIn("/api/fractal/scan", html)
+        self.assertIn("odds-edge/fractal.py", html)
         with open("scripts/macro_desk.js", encoding="utf-8") as fh:
             js = fh.read()
         self.assertIn("/api/macro/board", js)
         self.assertIn("/api/edges/board", js)
+        self.assertIn("/api/fractal/scan", js)
+        self.assertIn("loadFractalScan", js)
         self.assertNotIn("70%", js)
+        with open("fractal_scan.py", encoding="utf-8") as fh:
+            probe = fh.read().lower()
+        self.assertNotIn("hurst =", probe)
+        self.assertNotIn("def hurst", probe)
+        self.assertNotIn("rs_analysis", probe)
 
     def test_move_stats_needs_two_closes(self):
         empty = mb.move_stats(pd.Series(dtype=float))

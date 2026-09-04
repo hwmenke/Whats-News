@@ -33,7 +33,8 @@ function _chgClass(v) {
 }
 
 async function initMacroDesk() {
-    await Promise.all([loadMacroBoard(), loadEdgesBoard(), loadFractalNote()]);
+    await Promise.all([loadMacroBoard(), loadEdgesBoard(), loadFractalScan()]);
+    bindFractalScan();
     renderMacroSeedBar();
 }
 
@@ -72,12 +73,62 @@ async function loadFractalNote() {
     if (!el) return;
     try {
         const data = await apiFetch(`${API}/fractal/status`);
-        el.textContent = data.available
-            ? 'Fractal D is available.'
+        const text = data.available
+            ? `Fractal source: ${data.source || 'found'}`
             : (data.reason || 'Fractal: needs local odds-edge');
+        el.textContent = text;
     } catch {
         el.textContent = 'Fractal: needs local odds-edge';
     }
+}
+
+async function loadFractalScan() {
+    const meta = document.getElementById('fractal-scan-meta');
+    const note = document.getElementById('fractal-scan-note');
+    const tbody = document.getElementById('fractal-scan-tbody');
+    const empty = document.getElementById('fractal-scan-empty');
+    if (!tbody) {
+        await loadFractalNote();
+        return;
+    }
+    if (meta) meta.textContent = 'GET /api/fractal/scan…';
+    try {
+        const data = await apiFetch(`${API}/fractal/scan`);
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        if (meta) {
+            meta.textContent = data.available
+                ? (data.source || 'wired')
+                : 'placeholder';
+        }
+        if (note) {
+            note.textContent = data.message || data.reason || data.expected || '';
+        }
+        tbody.innerHTML = '';
+        rows.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${_esc(row.symbol || '')}</td>
+                <td>${_esc(row.d_65d ?? '—')}</td>
+                <td>${_esc(row.d_130d ?? '—')}</td>
+                <td>${_esc(row.move_65d ?? '—')}</td>
+                <td>${_esc(row.move_130d ?? '—')}</td>
+                <td>${_esc(row.read || '')}</td>`;
+            tbody.appendChild(tr);
+        });
+        if (empty) empty.style.display = rows.length ? 'none' : 'block';
+        await loadFractalNote();
+    } catch (err) {
+        if (meta) meta.textContent = 'error';
+        if (note) note.textContent = err.message || 'Fractal endpoint unavailable';
+        if (empty) empty.style.display = 'block';
+    }
+}
+
+function bindFractalScan() {
+    const btn = document.getElementById('btn-fractal-scan');
+    if (!btn || btn._bound) return;
+    btn._bound = true;
+    btn.addEventListener('click', () => loadFractalScan());
 }
 
 function renderDeskRegime(regime) {
@@ -315,3 +366,4 @@ window.loadMacroBoard = loadMacroBoard;
 window.seedCore50 = seedCore50;
 window.seedAndFetchSleeve = seedAndFetchSleeve;
 window.renderDeskRegime = renderDeskRegime;
+window.loadFractalScan = loadFractalScan;

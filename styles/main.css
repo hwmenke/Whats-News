@@ -3777,6 +3777,11 @@ body.focus-mode.workspace-review #alert-log {
 }
 .macro-skipped { color: #eab308; }
 .fractal-stub { border-top: 1px solid var(--border); padding-top: 10px; }
+.fractal-scan-panel {
+  margin-bottom: 14px;
+  border-style: dashed;
+}
+.fractal-scan-panel .scanner-empty { display: block; padding: 10px 8px; }
 .macro-mini {
   width: 100%;
   border-collapse: collapse;

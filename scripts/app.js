@@ -2333,6 +2333,7 @@ function setWorkspace(id, opts = {}) {
         showScanSplit();
         if (typeof initSetupScanner === 'function') initSetupScanner();
         loadSetupScan({ allowStaleRows: true });
+        if (typeof loadFractalScan === 'function') loadFractalScan();
         if (!opts.skipChart && state.activeSymbol) loadChartData(state.activeSymbol);
         requestAnimationFrame(() => window.resizeAllCharts?.());
         return next;
