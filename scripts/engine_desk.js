@@ -171,14 +171,18 @@ function _engFractalTdTable(points) {
 function _engTesDirTable(rows) {
     const list = (rows || []).filter(r => r && r.symbol);
     if (!list.length) return '';
+    const hasTes = list.some(r => r.tes_state);
+    const hasDir = list.some(r => r.dir5 != null);
+    const hasTag = list.some(r => r.gray_tag);
     const body = list.map(r => `<tr class="wn-row" data-sym="${_engEsc(r.symbol)}">
         <td class="wn-sym">${_engEsc(r.symbol)}</td>
-        <td>${_engEsc(r.tes_state || '—')}</td>
-        <td class="engine-dir">${r.dir5 == null ? '—' : r.dir5}</td>
-        <td class="wn-note">${_engEsc(r.gray_tag || '—')}</td></tr>`).join('');
+        ${hasTes ? `<td>${_engEsc(r.tes_state || '')}</td>` : ''}
+        ${hasDir ? `<td class="engine-dir">${r.dir5 == null ? '' : r.dir5}</td>` : ''}
+        ${hasTag ? `<td class="wn-note">${_engEsc(r.gray_tag || '')}</td>` : ''}
+    </tr>`).join('');
     return `<section class="wn-card">
         <h3>TES / Dir <span class="wn-n">${list.length}</span></h3>
-        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>TES</th><th>Dir</th><th>Tag</th></tr></thead>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th>${hasTes ? '<th>TES</th>' : ''}${hasDir ? '<th>Dir</th>' : ''}${hasTag ? '<th>Tag</th>' : ''}</tr></thead>
         <tbody>${body}</tbody></table>
     </section>`;
 }
@@ -418,15 +422,18 @@ function _engBucketTable(title, rows, extra) {
     const list = rows || [];
     if (!list.length) return '';
     const head = extra || 'Align';
+    const hasState = list.some(r => r.state);
+    const hasAvg = list.some(r => r.avg_rsi != null);
+    const hasAlign = list.some(r => r.align != null);
     const body = list.map(r => `<tr data-symbol="${_engEsc(r.symbol)}">
         <td class="wn-sym">${_engEsc(r.symbol)}</td>
-        <td>${_engEsc(r.state || '—')}</td>
-        <td>${r.avg_rsi == null ? '—' : _engNum(r.avg_rsi)}</td>
-        <td>${r.align == null ? '—' : _engNum(r.align, 2)}</td>
+        ${hasState ? `<td>${_engEsc(r.state || '')}</td>` : ''}
+        ${hasAvg ? `<td>${r.avg_rsi == null ? '' : _engNum(r.avg_rsi)}</td>` : ''}
+        ${hasAlign ? `<td>${r.align == null ? '' : _engNum(r.align, 2)}</td>` : ''}
     </tr>`).join('');
     return `<section class="wn-card">
         <h3>${_engEsc(title)} <span class="wn-n">${list.length}</span></h3>
-        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>State</th><th>Avg</th><th>${_engEsc(head)}</th></tr></thead>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th>${hasState ? '<th>State</th>' : ''}${hasAvg ? '<th>Avg</th>' : ''}${hasAlign ? `<th>${_engEsc(head)}</th>` : ''}</tr></thead>
         <tbody>${body}</tbody></table>
     </section>`;
 }
@@ -505,16 +512,15 @@ function _engStretchCol(title, items, metric) {
 function _engPtsTable(title, points, xh, yh, tagFn) {
     const list = points || [];
     if (!list.length) return '';
-    const rows = list.map(p => {
-        const tag = typeof tagFn === 'function' ? (tagFn(p) || '') : (p.gray_tag || p.coil_state || p.zone || '');
-        return `<tr class="wn-row"><td class="wn-sym" data-sym="${_engEsc(p.symbol)}">${_engEsc(p.symbol)}</td>
-            <td>${p.x == null ? '—' : _engNum(p.x, 2)}</td>
-            <td>${p.y == null ? '—' : _engNum(p.y, 2)}</td>
-            <td class="wn-note">${_engEsc(tag || '—')}</td></tr>`;
-    }).join('');
+    const tags = list.map(p => (typeof tagFn === 'function' ? (tagFn(p) || '') : (p.coil_state || p.zone || '')));
+    const hasTag = tags.some(Boolean);
+    const rows = list.map((p, i) => `<tr class="wn-row"><td class="wn-sym" data-sym="${_engEsc(p.symbol)}">${_engEsc(p.symbol)}</td>
+            <td>${p.x == null ? '' : _engNum(p.x, 2)}</td>
+            <td>${p.y == null ? '' : _engNum(p.y, 2)}</td>
+            ${hasTag ? `<td class="wn-note">${_engEsc(tags[i])}</td>` : ''}</tr>`).join('');
     return `<section class="wn-card">
         <h3>${_engEsc(title)} <span class="wn-n">${list.length}</span></h3>
-        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>${_engEsc(xh)}</th><th>${_engEsc(yh)}</th><th>Tag</th></tr></thead>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>${_engEsc(xh)}</th><th>${_engEsc(yh)}</th>${hasTag ? '<th>Tag</th>' : ''}</tr></thead>
         <tbody>${rows}</tbody></table>
     </section>`;
 }
@@ -705,7 +711,7 @@ function renderEngineMaps(data, view) {
         el.innerHTML = `
             <div class="warnings-grid">
                 ${_engScatter(coil.points || [], { xLabel: coil.x_label, yLabel: coil.y_label, xmin: 0, xmax: 1.2, ymin: -20, ymax: 120, band: [0, 0.65], guides: [{ v: 0.45, color: '#111111' }, { v: 0.65, color: '#111111' }, { h: 0 }, { h: 100 }] })}
-                ${_engPtsTable('Coil', coil.points, 'coil_12', '13w %', p => p.coil_state || p.gray_tag)}
+                ${_engPtsTable('Coil', coil.points, 'coil_12', '13w %', p => p.coil_state)}
             </div>
             <details class="scan-help"><summary>HOW TO READ — COIL</summary>
                 <p class="scan-breadth-note">${_engEsc(coil.howto || '')}</p>

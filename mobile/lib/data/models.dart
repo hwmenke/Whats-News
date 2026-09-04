@@ -2577,7 +2577,7 @@ class MapPoint {
       x: n(json['x']),
       y: n(json['y']),
       assetClass: '${json['asset_class'] ?? 'Stock'}',
-      tag: '${json['gray_tag'] ?? json['coil_state'] ?? json['zone'] ?? ''}',
+      tag: '${json['coil_state'] ?? json['zone'] ?? ''}',
       marker: '${json['marker'] ?? 'solid'}',
       arrow: '${json['arrow'] ?? ''}',
       fractalRead: '${json['fractal_read'] ?? ''}',
@@ -2597,6 +2597,8 @@ class EngineMaps {
     this.tmsWeekly = const [],
     this.tmsDaily = const [],
     this.spyLabel = '',
+    this.spyNote = '',
+    this.tmsZones = const {},
     this.top12m = const [],
     this.bottom12m = const [],
     this.howto = '',
@@ -2615,6 +2617,8 @@ class EngineMaps {
   final List<MapPoint> tmsWeekly;
   final List<MapPoint> tmsDaily;
   final String spyLabel;
+  final String spyNote;
+  final Map<String, List<String>> tmsZones;
   final List<EngineNamed> top12m;
   final List<EngineNamed> bottom12m;
   final String howto;
@@ -2653,15 +2657,30 @@ class EngineMaps {
       tmsWeekly: tm is Map ? _pts(tm['weekly']) : const [],
       tmsDaily: tm is Map ? _pts(tm['daily']) : const [],
       spyLabel: spy is Map ? '${spy['label'] ?? ''}' : '',
+      spyNote: spy is Map ? '${spy['note'] ?? ''}' : '',
+      tmsZones: {
+        if (tm is Map && tm['by_zone'] is Map)
+          for (final e in (tm['by_zone'] as Map).entries)
+            if (e.value is List && (e.value as List).isNotEmpty)
+              '${e.key}': [for (final s in e.value as List) '$s'],
+      },
       top12m: [
         if (ex is Map && ex['top_12m'] is List)
           for (final r in ex['top_12m'])
-            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+            if (r is Map)
+              EngineNamed.fromJson({
+                ...Map<String, dynamic>.from(r),
+                if (r['ret_12m'] is num) 'note': '${(r['ret_12m'] as num).toStringAsFixed(1)}%',
+              }),
       ],
       bottom12m: [
         if (ex is Map && ex['bottom_12m'] is List)
           for (final r in ex['bottom_12m'])
-            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+            if (r is Map)
+              EngineNamed.fromJson({
+                ...Map<String, dynamic>.from(r),
+                if (r['ret_12m'] is num) 'note': '${(r['ret_12m'] as num).toStringAsFixed(1)}%',
+              }),
       ],
       howto: [
         if (rot is Map) '${rot['howto'] ?? ''}',

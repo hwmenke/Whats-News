@@ -1017,10 +1017,16 @@ class ScansPage extends StatelessWidget {
             for (final p in rows)
               _nameChip(
                 p.symbol,
-                [p.assetClass, if (p.tag.isNotEmpty) p.tag, if (p.arrow.isNotEmpty) p.arrow].where((e) => e.isNotEmpty).join(' · '),
-                metric: (p.x == null || p.y == null)
+                [
+                  if (p.tag.isNotEmpty) p.tag else if (p.assetClass.isNotEmpty) p.assetClass,
+                  if (p.arrow.isNotEmpty) p.arrow,
+                ].where((e) => e.isNotEmpty).join(' · '),
+                metric: (p.x == null && p.y == null)
                     ? null
-                    : '${p.x!.toStringAsFixed(2)}, ${p.y!.toStringAsFixed(1)}',
+                    : [
+                        if (p.x != null) p.x!.toStringAsFixed(2),
+                        if (p.y != null) p.y!.toStringAsFixed(1),
+                      ].join(', '),
               ),
           ],
         ),
@@ -1059,6 +1065,28 @@ class ScansPage extends StatelessWidget {
                 ),
               pts('TMS-W solid', m.tmsWeekly),
               pts('TMS-D hollow', m.tmsDaily),
+              if (m.spyLabel.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: DeskSpace.section),
+                  child: Text(
+                    'SPY strip: ${m.spyLabel}${m.spyNote.isEmpty ? '' : ' — ${m.spyNote}'}',
+                    style: const TextStyle(color: DeskColors.muted, fontSize: 11, height: 1.35),
+                  ),
+                ),
+              for (final e in m.tmsZones.entries)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: DeskSpace.section),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Zone ${e.key} (${e.value.length})',
+                        style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
+                      ),
+                      for (final sym in e.value) _nameChip(sym, e.key),
+                    ],
+                  ),
+                ),
               if (m.fractalTd.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: DeskSpace.section),

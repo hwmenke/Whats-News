@@ -216,6 +216,8 @@ class FlaskMapsTests(unittest.TestCase):
         self.assertIn("HOW TO READ — TES / DIR", blob)
         self.assertIn("_engPtsTable('Rotation'", blob)
         self.assertIn("Never invent D", blob)
+        self.assertIn("p => p.coil_state", blob)
+        self.assertIn("hasTag", blob)
         self.assertIn("if (!list.length) return '';", blob)
         self.assertIn("wn-table", blob)
         self.assertNotIn('<li class="engine-dim">none</li>', blob)
