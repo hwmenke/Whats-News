@@ -206,6 +206,13 @@ class PaperBookTests(unittest.TestCase):
         blob = html + js + dart
         self.assertIn("TODAY'S P&amp;L", html)
         self.assertIn("id=\"pnl-area\"", html)
+        self.assertIn("id=\"pnl-curve\" height=\"200\"", html)
+        self.assertIn("_drawPnlCurve", js)
+        self.assertIn("_pnlTickIdx", js)
+        self.assertIn("points[i].date", js)
+        self.assertIn("_PnlCurvePainter", dart)
+        self.assertIn("stored daily marks", dart)
+        self.assertNotIn("10.95B", blob)
         self.assertIn("id=\"book-area\"", html)
         self.assertIn("id=\"risk-area\"", html)
         self.assertIn("id=\"tab-risk\"", html)

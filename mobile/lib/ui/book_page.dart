@@ -84,94 +84,121 @@ class BookPage extends StatelessWidget {
       return '${v < 0 ? '−' : ''}\$$abs';
     }
 
-    final mid = (pnl.tape.length / 2).ceil();
-    final tapeA = mid == 0 ? const <BookPosition>[] : pnl.tape.take(mid).toList();
-    final tapeB = mid == 0 ? const <BookPosition>[] : pnl.tape.skip(mid).toList();
     final netPct = pnl.gross == 0 ? '—' : '${(pnl.net / pnl.gross * 100).toStringAsFixed(0)}%';
+    final curveLabel = pnl.curveLabel.isEmpty
+        ? 'daily mark series from stored closes — no intraday bars'
+        : pnl.curveLabel;
+    final exp = <(String, String)>[
+      ('NAV', pnl.nav == null ? '—' : usd(pnl.nav)),
+      ('Equities', pnl.ready ? usd(pnl.gross) : '—'),
+      ('Longs', pnl.ready ? usd(pnl.longMv) : '—'),
+      ('Shorts', pnl.ready ? usd(pnl.shortMv) : '—'),
+      ('Net', pnl.ready ? netPct : '—'),
+    ];
 
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.headerContent, DeskSpace.inset, 0),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                pct(pnl.todayPnlPct),
-                style: TextStyle(color: tone(pnl.todayPnlPct), fontSize: 64, fontWeight: FontWeight.w800, height: 0.95, letterSpacing: -1.5),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'TODAY\'S P&L',
-                style: TextStyle(color: DeskColors.text, fontSize: 13, letterSpacing: 2.4, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 4),
-              Text(usd(pnl.todayPnl), style: TextStyle(color: tone(pnl.todayPnl), fontSize: 26, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 10),
-              Text(
-                pnl.curveLabel.isEmpty ? 'daily mark series from stored closes — no intraday bars' : pnl.curveLabel,
-                style: const TextStyle(color: DeskColors.dim, fontSize: 10),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 6),
               SizedBox(
-                height: 168,
-                width: double.infinity,
-                child: CustomPaint(painter: _CurvePainter(pnl.curve.map((e) => e.$2).toList())),
+                height: DeskSpace.row,
+                child: Row(
+                  children: [
+                    const Text(
+                      'TODAY\'S P&L',
+                      style: TextStyle(
+                        color: DeskColors.muted,
+                        fontSize: 11,
+                        letterSpacing: 0.4,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      pct(pnl.todayPnlPct),
+                      style: TextStyle(
+                        color: tone(pnl.todayPnlPct),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Courier',
+                      ),
+                    ),
+                    const SizedBox(width: DeskSpace.cellX),
+                    Text(
+                      usd(pnl.todayPnl),
+                      style: TextStyle(
+                        color: tone(pnl.todayPnl),
+                        fontSize: 13,
+                        fontFamily: 'Courier',
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
-              _ExpRow('Equities', pnl.ready ? usd(pnl.gross) : '—'),
-              _ExpRow('Longs', pnl.ready ? usd(pnl.longMv) : '—'),
-              _ExpRow('Shorts', pnl.ready ? usd(pnl.shortMv) : '—'),
-              _ExpRow('Net Exposure', pnl.ready ? netPct : '—'),
-              const SizedBox(height: 14),
-              if (tapeA.isNotEmpty)
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (final t in tapeA)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 16),
-                          child: GestureDetector(
-                            onTap: () => onOpenChart(t.symbol),
-                            child: Text.rich(TextSpan(children: [
-                              TextSpan(text: '${t.symbol} ', style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700)),
-                              TextSpan(text: t.ready ? pct(t.dayPct) : '—', style: TextStyle(color: tone(t.dayPct), fontWeight: FontWeight.w600)),
-                            ])),
-                          ),
-                        ),
-                    ],
-                  ),
+              const SizedBox(height: DeskSpace.section),
+              Text(
+                curveLabel,
+                style: const TextStyle(color: DeskColors.dim, fontSize: 10),
+              ),
+              const SizedBox(height: DeskSpace.section),
+              SizedBox(
+                height: 208,
+                width: double.infinity,
+                child: CustomPaint(
+                  painter: _PnlCurvePainter(pnl.curve),
+                  child: const SizedBox.expand(),
                 ),
-              if (tapeB.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (final t in tapeB)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 16),
-                          child: GestureDetector(
-                            onTap: () => onOpenChart(t.symbol),
-                            child: Text.rich(TextSpan(children: [
-                              TextSpan(text: '${t.symbol} ', style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700)),
-                              TextSpan(text: t.ready ? pct(t.dayPct) : '—', style: TextStyle(color: tone(t.dayPct), fontWeight: FontWeight.w600)),
-                            ])),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-              if (pnl.message.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Text(pnl.message, style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35)),
-              ],
+              ),
+              const SizedBox(height: DeskSpace.section),
+              for (var i = 0; i < exp.length; i++)
+                _PnlMarkRow(exp[i].$1, exp[i].$2, zebra: i.isOdd),
             ],
           ),
         ),
       ),
+      if (pnl.tape.isEmpty)
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
+            child: SizedBox(
+              height: DeskSpace.row,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('No tape — empty book.', style: TextStyle(color: DeskColors.muted, fontSize: 12)),
+              ),
+            ),
+          ),
+        )
+      else
+        SliverPadding(
+          padding: DeskSpace.pageX,
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) {
+                final t = pnl.tape[i];
+                return _PnlMarkRow(
+                  t.symbol,
+                  t.ready ? pct(t.dayPct) : '—',
+                  zebra: i.isOdd,
+                  valueColor: t.ready ? tone(t.dayPct) : DeskColors.muted,
+                  onTap: () => onOpenChart(t.symbol),
+                );
+              },
+              childCount: pnl.tape.length,
+            ),
+          ),
+        ),
+      if (pnl.message.isNotEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
+            child: Text(pnl.message, style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35)),
+          ),
+        ),
     ];
   }
 
@@ -571,64 +598,158 @@ class _CsvPasteState extends State<_CsvPaste> {
   }
 }
 
-class _ExpRow extends StatelessWidget {
-  const _ExpRow(this.k, this.v);
+class _PnlMarkRow extends StatelessWidget {
+  const _PnlMarkRow(this.k, this.v, {this.zebra = false, this.valueColor, this.onTap});
   final String k;
   final String v;
+  final bool zebra;
+  final Color? valueColor;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 11),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFF2A3140))),
-      ),
-      child: Row(
-        children: [
-          Text(k, style: const TextStyle(color: DeskColors.text, fontSize: 16)),
-          const Spacer(),
-          Text(v, style: const TextStyle(color: DeskColors.text, fontSize: 16, fontWeight: FontWeight.w500)),
-        ],
+    final row = ColoredBox(
+      color: zebra ? DeskColors.card : DeskColors.bg,
+      child: SizedBox(
+        height: DeskSpace.row,
+        width: double.infinity,
+        child: Padding(
+          padding: DeskSpace.cellPad,
+          child: Row(
+            children: [
+              Expanded(
+                child: ClipRect(
+                  child: Text(
+                    k,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.clip,
+                    style: const TextStyle(color: DeskColors.text, fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+              Text(
+                v,
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  color: valueColor ?? DeskColors.text,
+                  fontSize: 12,
+                  fontFamily: 'Courier',
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
+    if (onTap == null) return row;
+    return GestureDetector(onTap: onTap, child: row);
   }
 }
 
-class _CurvePainter extends CustomPainter {
-  _CurvePainter(this.values);
-  final List<double> values;
+/// Axis ticks come from stored daily marks only — no invented NAV or dates.
+class _PnlCurvePainter extends CustomPainter {
+  _PnlCurvePainter(this.marks);
+  final List<(String, double)> marks;
+
+  static String _dateTick(String raw) {
+    final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(raw);
+    if (m != null) return '${m.group(2)}/${m.group(3)}';
+    return raw.isEmpty ? '—' : raw;
+  }
+
+  static String _navTick(double v) {
+    final abs = v.abs();
+    final sign = v < 0 ? '−' : '';
+    if (abs >= 10000) return '$sign\$${(abs / 1000).toStringAsFixed(1)}k';
+    return '$sign\$${abs.toStringAsFixed(2)}';
+  }
+
+  static List<int> _tickIdx(int n) {
+    if (n <= 0) return const [];
+    if (n <= 4) return [for (var i = 0; i < n; i++) i];
+    return {0, ((n - 1) / 3).round(), (2 * (n - 1) / 3).round(), n - 1}.toList()..sort();
+  }
+
+  void _label(Canvas canvas, String text, Offset at, {TextAlign align = TextAlign.left}) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: const TextStyle(color: DeskColors.muted, fontSize: 9, fontFamily: 'Courier', height: 1),
+      ),
+      textDirection: TextDirection.ltr,
+      textAlign: align,
+      maxLines: 1,
+    )..layout();
+    var dx = at.dx;
+    if (align == TextAlign.right) {
+      dx -= tp.width;
+    } else if (align == TextAlign.center) {
+      dx -= tp.width / 2;
+    }
+    tp.paint(canvas, Offset(dx, at.dy));
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
-    final grid = Paint()
-      ..color = const Color(0xFF2A3140)
-      ..strokeWidth = 1;
-    for (var i = 1; i < 5; i++) {
-      final y = size.height * i / 5;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
-      final x = size.width * i / 5;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
-    }
-    if (values.length < 2) {
+    const left = 46.0;
+    const right = 8.0;
+    const top = 10.0;
+    const bottom = 18.0;
+    final plotW = size.width - left - right;
+    final plotH = size.height - top - bottom;
+    if (plotW <= 0 || plotH <= 0) return;
+
+    if (marks.length < 2) {
+      _label(canvas, 'No daily mark series — add lines and store Yahoo closes.', Offset(left, size.height / 2 - 5));
       return;
     }
-    final min = values.reduce((a, b) => a < b ? a : b);
-    final max = values.reduce((a, b) => a > b ? a : b);
-    final span = (max - min).abs() < 1e-9 ? 1.0 : max - min;
-    final open = values.first;
-    Offset pt(int i) => Offset(
-          size.width * i / (values.length - 1),
-          size.height - ((values[i] - min) / span) * size.height,
-        );
-    for (var i = 1; i < values.length; i++) {
+
+    final vals = [for (final m in marks) m.$2];
+    final minV = vals.reduce((a, b) => a < b ? a : b);
+    final maxV = vals.reduce((a, b) => a > b ? a : b);
+    final span = (maxV - minV).abs() < 1e-9 ? 1.0 : maxV - minV;
+
+    Offset pt(int i) {
+      final x = left + plotW * i / (vals.length - 1);
+      final y = top + (1 - (vals[i] - minV) / span) * plotH;
+      return Offset(x, y);
+    }
+
+    final grid = Paint()
+      ..color = DeskColors.card
+      ..strokeWidth = 1;
+
+    var minI = 0;
+    var maxI = 0;
+    for (var i = 1; i < vals.length; i++) {
+      if (vals[i] <= vals[minI]) minI = i;
+      if (vals[i] >= vals[maxI]) maxI = i;
+    }
+    final yIdx = {minI, maxI, if (vals.length >= 3) vals.length ~/ 2};
+    for (final i in yIdx) {
+      final p = pt(i);
+      canvas.drawLine(Offset(left, p.dy), Offset(left + plotW, p.dy), grid);
+      _label(canvas, _navTick(vals[i]), Offset(left - 4, p.dy - 5), align: TextAlign.right);
+    }
+
+    for (final i in _tickIdx(marks.length)) {
+      final p = pt(i);
+      canvas.drawLine(Offset(p.dx, top), Offset(p.dx, top + plotH), grid);
+      _label(canvas, _dateTick(marks[i].$1), Offset(p.dx, top + plotH + 3), align: TextAlign.center);
+    }
+
+    final open = vals.first;
+    for (var i = 1; i < vals.length; i++) {
       final paint = Paint()
-        ..color = values[i] >= open ? DeskColors.green : DeskColors.red
-        ..strokeWidth = 2.2
+        ..color = vals[i] >= open ? DeskColors.green : DeskColors.red
+        ..strokeWidth = 1.6
         ..style = PaintingStyle.stroke;
       canvas.drawLine(pt(i - 1), pt(i), paint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _CurvePainter old) => old.values != values;
+  bool shouldRepaint(covariant _PnlCurvePainter old) => old.marks != marks;
 }

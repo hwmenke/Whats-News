@@ -61,41 +61,89 @@ function showRiskArea() {
     loadPaperRisk();
 }
 
+function _pnlTickIdx(n) {
+    if (n <= 0) return [];
+    if (n <= 4) return [...Array(n).keys()];
+    return [...new Set([0, Math.round((n - 1) / 3), Math.round(2 * (n - 1) / 3), n - 1])].sort((a, b) => a - b);
+}
+
+function _pnlAxisDate(d) {
+    const s = String(d || '');
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[2]}/${m[3]}` : (s || '—');
+}
+
+function _pnlAxisNav(v) {
+    if (v == null || Number.isNaN(Number(v))) return '—';
+    const n = Number(v);
+    const abs = Math.abs(n);
+    const sign = n < 0 ? '−' : '';
+    if (abs >= 10000) return `${sign}$${(abs / 1000).toFixed(1)}k`;
+    return _pnlMoney(n);
+}
+
 function _drawPnlCurve(points) {
     const canvas = document.getElementById('pnl-curve');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const w = canvas.parentElement ? canvas.parentElement.clientWidth : 360;
     canvas.width = Math.max(280, w);
-    canvas.height = 120;
+    canvas.height = 200;
     const W = canvas.width;
     const H = canvas.height;
+    const padL = 48;
+    const padR = 8;
+    const padT = 10;
+    const padB = 20;
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = '#f3f3f3';
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 5; i++) {
-        const y = (H / 5) * i;
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(W, y);
-        ctx.stroke();
-    }
+    ctx.font = "10px 'JetBrains Mono', ui-monospace, monospace";
     if (!points || points.length < 2) {
         ctx.fillStyle = '#666';
-        ctx.font = '12px Inter, sans-serif';
-        ctx.fillText('No daily mark series — add lines and store Yahoo closes.', 10, H / 2);
+        ctx.fillText('No daily mark series — add lines and store Yahoo closes.', padL, H / 2);
         return;
     }
     const vals = points.map(p => Number(p.nav));
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     const span = max - min || 1;
-    const pad = 6;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
     const xy = i => ({
-        x: pad + (i / (vals.length - 1)) * (W - pad * 2),
-        y: pad + (1 - (vals[i] - min) / span) * (H - pad * 2),
+        x: padL + (i / (vals.length - 1)) * plotW,
+        y: padT + (1 - (vals[i] - min) / span) * plotH,
+    });
+    let minI = 0;
+    let maxI = 0;
+    for (let i = 1; i < vals.length; i++) {
+        if (vals[i] <= vals[minI]) minI = i;
+        if (vals[i] >= vals[maxI]) maxI = i;
+    }
+    const yIdx = new Set([minI, maxI]);
+    if (vals.length >= 3) yIdx.add(Math.floor(vals.length / 2));
+    ctx.strokeStyle = '#f3f3f3';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#666';
+    ctx.textBaseline = 'middle';
+    yIdx.forEach(i => {
+        const p = xy(i);
+        ctx.beginPath();
+        ctx.moveTo(padL, p.y);
+        ctx.lineTo(padL + plotW, p.y);
+        ctx.stroke();
+        ctx.textAlign = 'right';
+        ctx.fillText(_pnlAxisNav(vals[i]), padL - 4, p.y);
+    });
+    ctx.textBaseline = 'top';
+    _pnlTickIdx(points.length).forEach(i => {
+        const p = xy(i);
+        ctx.beginPath();
+        ctx.moveTo(p.x, padT);
+        ctx.lineTo(p.x, padT + plotH);
+        ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillText(_pnlAxisDate(points[i].date), p.x, padT + plotH + 4);
     });
     const open = vals[0];
     for (let i = 1; i < vals.length; i++) {
@@ -105,7 +153,7 @@ function _drawPnlCurve(points) {
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.strokeStyle = vals[i] >= open ? '#22c55e' : '#ef4444';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.6;
         ctx.stroke();
     }
 }
@@ -150,20 +198,20 @@ async function loadPaperPnl() {
         if (tape) {
             const rows = data.tape || [];
             if (!rows.length) {
-                tape.innerHTML = '<div class="pnl-tape-row"><span class="macro-blurb">No tape — empty book.</span></div>';
+                tape.innerHTML = '<p class="wn-empty">No tape — empty book.</p>';
             } else {
-                const mid = Math.ceil(rows.length / 2) || 1;
-                const chunk = (part) => part.map(t => `
-                    <button type="button" class="pnl-tape-item ${_pnlTone(t.day_pct)}" data-symbol="${_pnlEsc(t.symbol)}">
-                        <span class="pnl-tape-sym">${_pnlEsc(t.symbol)}</span>
-                        <span>${t.ready ? _pnlEsc(_pnlPct(t.day_pct)) : '—'}</span>
-                    </button>`).join('');
-                tape.innerHTML = `<div class="pnl-tape-row">${chunk(rows.slice(0, mid))}</div>
-                    <div class="pnl-tape-row">${chunk(rows.slice(mid))}</div>`;
+                tape.innerHTML = `<table class="wn-table" aria-label="Per-name day percent">
+                    <thead><tr><th>Sym</th><th class="num">Day%</th></tr></thead>
+                    <tbody>${rows.map(t => `
+                        <tr data-symbol="${_pnlEsc(t.symbol)}">
+                            <td class="wn-sym">${_pnlEsc(t.symbol)}</td>
+                            <td class="num ${_pnlTone(t.day_pct)}">${t.ready ? _pnlEsc(_pnlPct(t.day_pct)) : '—'}</td>
+                        </tr>`).join('')}</tbody>
+                </table>`;
             }
-            tape.querySelectorAll('[data-symbol]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    if (typeof selectSymbol === 'function') selectSymbol(btn.dataset.symbol);
+            tape.querySelectorAll('[data-symbol]').forEach(row => {
+                row.addEventListener('click', () => {
+                    if (typeof selectSymbol === 'function') selectSymbol(row.dataset.symbol);
                 });
             });
         }
