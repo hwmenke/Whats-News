@@ -56,15 +56,17 @@ function applyScanLens(lens) {
     const id = lens || 'trend';
     writeDeskPrefs({ scanLens: id });
     const trend = document.getElementById('desk-trend-scan');
+    const pack = document.getElementById('scan-pack-panel');
     const fractal = document.getElementById('fractal-scan-panel');
     const finviz = document.getElementById('finviz-scan-panel');
     const hmm = document.getElementById('hmm-scan-panel');
     const combo = document.getElementById('combo-scan-panel');
-    const setup = document.querySelector('#scanner-area .setup-scanner-panel:not(.fractal-scan-panel):not(.desk-trend-scan):not(.finviz-scan-panel):not(.hmm-scan-panel):not(.combo-scan-panel)');
+    const setup = document.querySelector('#scanner-area .setup-scanner-panel:not(.fractal-scan-panel):not(.desk-trend-scan):not(.finviz-scan-panel):not(.hmm-scan-panel):not(.combo-scan-panel):not(.scan-pack-panel)');
     const metrics = document.getElementById('scanner-table');
     const metricsWrap = metrics && metrics.closest('.scanner-table-wrap');
     const metricsControls = document.querySelector('#scanner-area .scanner-controls');
     const showTrend = id === 'trend';
+    const showPack = id === 'ma' || id === 'rsi' || id === 'breakout' || id === 'oneil' || id === 'vcp';
     const showQullaOrSetups = id === 'qulla' || id === 'setups';
     const showMetrics = id === 'metrics';
     const showFractal = id === 'fractal';
@@ -72,6 +74,7 @@ function applyScanLens(lens) {
     const showHmm = id === 'hmm';
     const showCombo = id === 'combo';
     if (trend) trend.style.display = showTrend ? '' : 'none';
+    if (pack) pack.style.display = showPack ? '' : 'none';
     if (fractal) fractal.style.display = showFractal ? '' : 'none';
     if (finviz) finviz.style.display = showFinviz ? '' : 'none';
     if (hmm) hmm.style.display = showHmm ? '' : 'none';
@@ -82,6 +85,8 @@ function applyScanLens(lens) {
     document.querySelectorAll('#scan-lens-bar .scan-lens-btn').forEach(btn => {
         btn.classList.toggle('on', btn.dataset.lens === id);
     });
+    if (typeof loadScanBreadth === 'function') loadScanBreadth();
+    if (showPack && typeof loadScanPack === 'function') loadScanPack(id);
     if (id === 'trend' && typeof loadDeskTrendScan === 'function') loadDeskTrendScan();
     if (id === 'fractal' && typeof loadFractalScan === 'function') loadFractalScan();
     if (id === 'finviz' && typeof loadFinvizScreener === 'function') {
@@ -169,6 +174,7 @@ function bindDeskPrefs() {
         btn.addEventListener('click', () => applyScanLens(btn.dataset.lens));
     });
     document.getElementById('btn-desk-trend-scan')?.addEventListener('click', () => loadDeskTrendScan());
+    if (typeof bindScanPack === 'function') bindScanPack();
     if (typeof bindFinvizDesk === 'function') bindFinvizDesk();
     if (typeof bindHmmScan === 'function') bindHmmScan();
     document.querySelectorAll('#news-scope .news-scope-btn').forEach(btn => {

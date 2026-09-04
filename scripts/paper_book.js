@@ -125,16 +125,38 @@ async function loadPaperPnl() {
             usd.textContent = _pnlMoney(data.today_pnl);
             usd.className = `pnl-today-usd ${_pnlTone(data.today_pnl)}`;
         }
+        const chips = document.getElementById('pnl-alert-chips');
+        if (chips) {
+            const conc = data.concentration || {};
+            const dd = data.drawdown || {};
+            const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+            const bits = [];
+            if (conc.ready) {
+                bits.push(`<span class="pnl-chip">${_pnlEsc(`Top ${conc.top_symbol || ''} ${conc.top_weight_pct ?? '—'}% · HHI ${conc.hhi ?? '—'}`)}</span>`);
+            }
+            if (dd.ready && dd.max_dd_pct != null) {
+                bits.push(`<span class="pnl-chip">${_pnlEsc(`Max DD ${Number(dd.max_dd_pct).toFixed(1)}%`)}</span>`);
+            }
+            alerts.forEach(a => {
+                bits.push(`<span class="pnl-chip is-alert">${_pnlEsc(a.label || a.id)}</span>`);
+            });
+            chips.innerHTML = bits.join('');
+        }
         const exp = data.exposure || {};
         const metrics = document.getElementById('pnl-metrics');
         if (metrics) {
             const netPct = exp.net_pct == null ? '—' : `${Number(exp.net_pct).toFixed(0)}%`;
+            const conc = data.concentration || {};
+            const dd = data.drawdown || {};
             const rows = [
                 ['Equities', data.ready ? _pnlMoney(exp.gross) : '—'],
                 ['Longs', data.ready ? _pnlMoney(exp.long) : '—'],
                 ['Shorts', data.ready ? _pnlMoney(exp.short) : '—'],
                 ['Net Exposure', data.ready ? netPct : '—'],
                 ['Beta', data.beta_spy == null ? '—' : Number(data.beta_spy).toFixed(2)],
+                ['Top weight', conc.top_weight_pct == null ? '—' : `${Number(conc.top_weight_pct).toFixed(1)}%`],
+                ['HHI', conc.hhi == null ? '—' : String(conc.hhi)],
+                ['Max DD', dd.max_dd_pct == null ? '—' : `${Number(dd.max_dd_pct).toFixed(1)}%`],
             ];
             metrics.innerHTML = rows.map(([k, v]) => `
                 <div class="pnl-exp-row">
@@ -225,6 +247,11 @@ async function loadPaperBook() {
                 <td>${row.avg_cost == null ? '—' : row.avg_cost}</td>
                 <td>${row.price == null ? '—' : row.price}</td>
                 <td>${_pnlEsc(_pnlMoney(row.market_value))}</td>
+                <td class="${_pnlTone(row.day_pct)}">${row.day_pct == null ? '—' : _pnlEsc(_pnlPct(row.day_pct))}</td>
+                <td>${row.vs_sma50 == null ? '—' : _pnlEsc(_pnlPct(row.vs_sma50))}</td>
+                <td>${row.rsi14 == null ? '—' : Number(row.rsi14).toFixed(1)}</td>
+                <td>${_pnlEsc(row.fractal_read || '—')}</td>
+                <td>${_pnlEsc(row.hmm_label || '—')}</td>
                 <td class="${_pnlTone(row.day_pnl)}">${_pnlEsc(_pnlMoney(row.day_pnl))}</td>
                 <td class="${_pnlTone(row.unrealized)}">${_pnlEsc(_pnlMoney(row.unrealized))}</td>
                 <td><button type="button" class="btn btn-ghost btn-sm book-del" data-id="${row.id}">✕</button></td>`;

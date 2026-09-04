@@ -61,6 +61,8 @@ class WhatsNewsState extends ChangeNotifier {
   String finvizPreset = 'qulla_momentum';
   HmmRegime hmmRegime = HmmRegime.empty;
   ComboScan comboScan = ComboScan.empty;
+  ScanPack scanPack = ScanPack.empty;
+  ScanBreadth scanBreadth = ScanBreadth.empty;
   int hmmStates = 2;
   String hmmStateFilter = '';
   String hmmView = 'all';
@@ -795,6 +797,10 @@ class WhatsNewsState extends ChangeNotifier {
       if (scanMode == 'combo') {
         await loadCombo();
       }
+      await loadScanBreadth();
+      if (_isPackMode(scanMode)) {
+        await loadScanPack();
+      }
     } on ApiException catch (e) {
       scanError = _friendly(e);
     } catch (_) {
@@ -861,6 +867,28 @@ class WhatsNewsState extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _isPackMode(String mode) =>
+      mode == 'ma' || mode == 'rsi' || mode == 'breakout' || mode == 'oneil' || mode == 'vcp';
+
+  Future<void> loadScanPack() async {
+    try {
+      scanPack = await api.getScanPack(lens: _isPackMode(scanMode) ? scanMode : 'all');
+      scanBreadth = scanPack.breadth;
+    } on ApiException {
+      scanPack = ScanPack.empty;
+    }
+    notifyListeners();
+  }
+
+  Future<void> loadScanBreadth() async {
+    try {
+      scanBreadth = await api.getScanBreadth();
+    } on ApiException {
+      scanBreadth = ScanBreadth.empty;
+    }
+    notifyListeners();
+  }
+
   Future<void> loadCombo() async {
     try {
       comboScan = await api.getHmmCombo(states: hmmStates, state: hmmStateFilter);
@@ -897,7 +925,8 @@ class WhatsNewsState extends ChangeNotifier {
         mode != 'fractal' &&
         mode != 'finviz' &&
         mode != 'hmm' &&
-        mode != 'combo') {
+        mode != 'combo' &&
+        !_isPackMode(mode)) {
       return;
     }
     scanMode = mode;
@@ -906,6 +935,7 @@ class WhatsNewsState extends ChangeNotifier {
     if (mode == 'finviz') loadFinviz();
     if (mode == 'hmm') loadHmm();
     if (mode == 'combo') loadCombo();
+    if (_isPackMode(mode)) loadScanPack();
   }
 
   String _friendly(ApiException e) {

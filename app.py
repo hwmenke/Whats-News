@@ -427,6 +427,41 @@ def hmm_scan_api():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/scans/breadth", methods=["GET"])
+def scans_breadth_api():
+    """Stockbee-style breadth idea from OUR Yahoo/SQLite universe — never scraped."""
+    import scan_pack
+    ensure_local_schema()
+    desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+    try:
+        symbols = [s["symbol"] for s in md.list_desk_symbols()] if desk else None
+        if desk and not symbols:
+            return jsonify(scan_pack.empty_breadth())
+        return jsonify(scan_pack.breadth(symbols=symbols))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(scan_pack.empty_breadth())
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/scans/pack", methods=["GET"])
+def scans_pack_api():
+    """MA / RSI / Breakout + style tags from stored daily bars. Empty is honest."""
+    import scan_pack
+    ensure_local_schema()
+    desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+    lens = request.args.get("lens") or "all"
+    try:
+        symbols = [s["symbol"] for s in md.list_desk_symbols()] if desk else None
+        if desk and not symbols:
+            return jsonify(scan_pack.scan(symbols=[], lens=lens))
+        return jsonify(scan_pack.scan(symbols=symbols, lens=lens))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(scan_pack.scan(symbols=[], lens=lens))
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/hmm/combo", methods=["GET"])
 def hmm_combo_api():
     """AND of real Fractal FRAGILE + inherited SPY HMM + setup tags. No invented hits."""

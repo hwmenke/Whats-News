@@ -141,6 +141,55 @@ class PaperBookTests(unittest.TestCase):
         self.assertAlmostEqual(pnl["exposure"]["long"], 0.0)
         self.assertLess(pnl["nav"], 0)
 
+    def test_concentration_and_drawdown_omit_when_thin(self):
+        px = np.linspace(100, 101, 6)
+        self._put_closes("THIN", px)
+        pb.upsert_position(symbol="THIN", qty=1, side="long", avg_cost=100)
+        pnl = pb.book_pnl()
+        self.assertTrue(pnl["ready"])
+        self.assertTrue(pnl["concentration"]["ready"])
+        self.assertEqual(pnl["concentration"]["top_weight_pct"], 100.0)
+        self.assertFalse(pnl["drawdown"]["ready"])
+        self.assertIsNone(pnl["drawdown"]["max_dd_pct"])
+        self.assertIn("CONCENTRATED", [a["id"] for a in pnl["alerts"]])
+        self.assertNotIn("DD_WARNING", [a["id"] for a in pnl["alerts"]])
+
+    def test_drawdown_warning_on_marked_nav(self):
+        # Rise then drop ~15% so peak-to-trough crosses DD_WARNING (-10).
+        up = np.linspace(100, 130, 20)
+        down = np.linspace(130, 110, 16)
+        self._put_closes("DD1", np.concatenate([up, down]))
+        pb.upsert_position(symbol="DD1", qty=10, side="long", avg_cost=100)
+        pnl = pb.book_pnl()
+        self.assertTrue(pnl["drawdown"]["ready"])
+        self.assertLessEqual(pnl["drawdown"]["max_dd_pct"], -10.0)
+        self.assertIn("DD_WARNING", [a["id"] for a in pnl["alerts"]])
+
+    def test_diversified_book_skips_concentrated_chip(self):
+        for i, sym in enumerate(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]):
+            self._put_closes(sym, np.full(40, 10.0 + i * 0.01))
+            pb.upsert_position(symbol=sym, qty=1, side="long", avg_cost=10)
+        pnl = pb.book_pnl()
+        self.assertTrue(pnl["concentration"]["ready"])
+        self.assertLess(pnl["concentration"]["top_weight_pct"], 25.0)
+        self.assertLess(pnl["concentration"]["hhi"], 2500.0)
+        self.assertNotIn("CONCENTRATED", [a["id"] for a in pnl["alerts"]])
+
+    def test_holdings_opinion_real_or_blank(self):
+        self._put_closes("OPN", np.linspace(80, 120, 80))
+        pb.upsert_position(symbol="OPN", qty=2, side="long", avg_cost=90)
+        pnl = pb.book_pnl()
+        row = pnl["positions"][0]
+        self.assertIsNotNone(row["day_pct"])
+        self.assertIsNotNone(row["vs_sma50"])
+        self.assertIsNotNone(row["rsi14"])
+        self.assertGreater(row["rsi14"], 50)
+        # fractal / HMM may be blank if windows fail — never invented strings
+        if row.get("fractal_read") is not None:
+            self.assertIsInstance(row["fractal_read"], str)
+        if row.get("hmm_label") is not None:
+            self.assertIsInstance(row["hmm_label"], str)
+
     def test_surfaces_use_axe_layout_not_demo_billions(self):
         with open("index.html", encoding="utf-8") as fh:
             html = fh.read()
@@ -154,6 +203,9 @@ class PaperBookTests(unittest.TestCase):
         self.assertIn("Net Exposure", js)
         self.assertIn("id=\"pnl-area\"", html)
         self.assertIn("id=\"book-area\"", html)
+        self.assertIn("id=\"pnl-alert-chips\"", html)
+        self.assertIn("Max DD", js)
+        self.assertIn("_RiskChip", dart)
         self.assertIn("Fidelity", html)
         self.assertIn("_CsvPaste", dart)
         self.assertNotIn("10.95B", blob)

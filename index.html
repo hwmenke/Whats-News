@@ -872,13 +872,59 @@
 
       <div id="scan-lens-bar" class="scan-lens-bar" role="group" aria-label="Scan lens">
         <button type="button" class="ind-pill scan-lens-btn on" data-lens="trend">Trend</button>
+        <button type="button" class="ind-pill scan-lens-btn" data-lens="ma">MA</button>
+        <button type="button" class="ind-pill scan-lens-btn" data-lens="rsi">RSI</button>
+        <button type="button" class="ind-pill scan-lens-btn" data-lens="breakout">Breakout</button>
         <button type="button" class="ind-pill scan-lens-btn" data-lens="qulla">Qulla</button>
+        <button type="button" class="ind-pill scan-lens-btn" data-lens="oneil">O'Neil</button>
+        <button type="button" class="ind-pill scan-lens-btn" data-lens="vcp">VCP</button>
         <button type="button" class="ind-pill scan-lens-btn" data-lens="setups">Setups</button>
         <button type="button" class="ind-pill scan-lens-btn" data-lens="metrics">Metrics</button>
         <button type="button" class="ind-pill scan-lens-btn" data-lens="fractal">Fractal</button>
         <button type="button" class="ind-pill scan-lens-btn" data-lens="finviz">Finviz</button>
         <button type="button" class="ind-pill scan-lens-btn" data-lens="hmm">HMM</button>
         <button type="button" class="ind-pill scan-lens-btn" data-lens="combo">Combo</button>
+      </div>
+      <div id="scan-breadth" class="scan-breadth is-empty" aria-label="Desk breadth from our Yahoo/SQLite universe">
+        <div class="scan-breadth-cell"><span class="scan-breadth-k">% &gt;SMA50</span><span class="scan-breadth-v">—</span></div>
+        <div class="scan-breadth-cell"><span class="scan-breadth-k">% &gt;SMA200</span><span class="scan-breadth-v">—</span></div>
+        <div class="scan-breadth-cell"><span class="scan-breadth-k">A/D 1d</span><span class="scan-breadth-v">—</span></div>
+        <div class="scan-breadth-cell"><span class="scan-breadth-k">A/D 5d</span><span class="scan-breadth-v">—</span></div>
+        <p class="scan-breadth-note">Stockbee-style breadth idea from our stored bars — empty until the desk has Yahoo closes.</p>
+      </div>
+      <div id="scan-pack-panel" class="setup-scanner-panel scan-pack-panel" style="display:none;">
+        <div class="setup-scanner-header">
+          <strong>Scanner pack</strong>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-scan-pack">Load /api/scans/pack</button>
+          <span id="scan-pack-meta" class="scanner-ts"></span>
+        </div>
+        <div id="scan-pack-styles" class="setup-filter-pills" role="group" aria-label="Style chips">
+          <button type="button" class="ind-pill scan-style-chip" data-lens="qulla">Qulla / EP</button>
+          <button type="button" class="ind-pill scan-style-chip" data-lens="oneil">O'Neil / RS</button>
+          <button type="button" class="ind-pill scan-style-chip" data-lens="vcp">VCP proxy</button>
+        </div>
+        <p id="scan-pack-note" class="macro-blurb">MA / RSI / Breakout from stored daily OHLCV. Style chips are filters on real metrics — O'Neil is price/RS only (no fundamentals). VCP is an honest proxy, not certified VCP.</p>
+        <div class="scanner-table-wrap">
+          <table id="scan-pack-table" class="scanner-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Chg%</th>
+                <th>vs20</th>
+                <th>vs50</th>
+                <th>vs200</th>
+                <th>RSI14</th>
+                <th>52w</th>
+                <th>Vol×</th>
+                <th>Tags</th>
+              </tr>
+            </thead>
+            <tbody id="scan-pack-tbody"></tbody>
+          </table>
+        </div>
+        <div id="scan-pack-empty" class="scanner-empty">
+          <p>No pack hits. Seed a sleeve / Core 50 and Fetch Yahoo. Empty is missing bars — not a fake print.</p>
+        </div>
       </div>
       <div id="desk-trend-scan" class="setup-scanner-panel desk-trend-scan">
         <div class="setup-scanner-header">
@@ -1150,6 +1196,7 @@
           <button type="button" class="btn btn-ghost btn-sm" id="btn-pnl-refresh">Reload</button>
         </div>
         <p class="pnl-blurb">Alpaca paper — not live P&amp;L. Marks are stored Yahoo closes.</p>
+        <div id="pnl-alert-chips" class="pnl-alert-chips" aria-label="Risk chips"></div>
         <div class="pnl-hero">
           <div id="pnl-today-pct" class="pnl-today-pct">—</div>
           <div class="pnl-hero-label">TODAY'S P&amp;L</div>
@@ -1206,7 +1253,8 @@
           <thead>
             <tr>
               <th>Symbol</th><th>Side</th><th>Qty</th><th>Source</th><th>Avg cost</th>
-              <th>Mark</th><th>MV</th><th>Day $</th><th>Unrl</th><th></th>
+              <th>Mark</th><th>MV</th><th>Day%</th><th>vs50</th><th>RSI</th><th>Fractal</th><th>HMM</th>
+              <th>Day $</th><th>Unrl</th><th></th>
             </tr>
           </thead>
           <tbody id="book-tbody"></tbody>
@@ -1295,7 +1343,12 @@
             <label class="dm-label" for="desk-scan-default">Scan workspace default</label>
             <select id="desk-scan-default" class="dm-select">
               <option value="trend" selected>Trend</option>
+              <option value="ma">MA</option>
+              <option value="rsi">RSI</option>
+              <option value="breakout">Breakout</option>
               <option value="qulla">Qulla</option>
+              <option value="oneil">O'Neil</option>
+              <option value="vcp">VCP</option>
               <option value="setups">Setups</option>
               <option value="metrics">Metrics</option>
               <option value="fractal">Fractal</option>
@@ -1488,6 +1541,7 @@
 <script src="scripts/paper_book.js"></script>
 <script src="scripts/finviz_desk.js"></script>
 <script src="scripts/hmm_desk.js"></script>
+<script src="scripts/scan_pack.js"></script>
 <script src="scripts/desk_prefs.js"></script>
 <script src="scripts/desk_palette.js"></script>
 <script src="scripts/app.js"></script>

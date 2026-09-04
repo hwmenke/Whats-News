@@ -1073,6 +1073,11 @@ class BookPosition {
     this.dayPct,
     this.ready = false,
     this.source = 'manual',
+    this.vsSma50,
+    this.rsi14,
+    this.fractalRead,
+    this.hmmLabel,
+    this.weightPct,
   });
 
   final int? id;
@@ -1087,6 +1092,11 @@ class BookPosition {
   final double? dayPct;
   final bool ready;
   final String source;
+  final double? vsSma50;
+  final double? rsi14;
+  final String? fractalRead;
+  final String? hmmLabel;
+  final double? weightPct;
 
   factory BookPosition.fromJson(Map<String, dynamic> json) {
     double? n(Object? v) {
@@ -1107,6 +1117,11 @@ class BookPosition {
       dayPct: n(json['day_pct']),
       ready: json['ready'] == true,
       source: '${json['source'] ?? 'manual'}',
+      vsSma50: n(json['vs_sma50']),
+      rsi14: n(json['rsi14']),
+      fractalRead: json['fractal_read'] == null ? null : '${json['fractal_read']}',
+      hmmLabel: json['hmm_label'] == null ? null : '${json['hmm_label']}',
+      weightPct: n(json['weight_pct']),
     );
   }
 }
@@ -1136,6 +1151,11 @@ class BookPnl {
     this.curveLabel = '',
     this.positions = const [],
     this.tape = const [],
+    this.topWeightPct,
+    this.topSymbol = '',
+    this.hhi,
+    this.maxDdPct,
+    this.alerts = const [],
   });
 
   final bool ready;
@@ -1161,6 +1181,11 @@ class BookPnl {
   final String curveLabel;
   final List<BookPosition> positions;
   final List<BookPosition> tape;
+  final double? topWeightPct;
+  final String topSymbol;
+  final double? hhi;
+  final double? maxDdPct;
+  final List<String> alerts;
 
   static const empty = BookPnl(
     message: 'Empty paper book. Import a Fidelity CSV or add a line.',
@@ -1176,6 +1201,8 @@ class BookPnl {
     final exp = json['exposure'] is Map ? Map<String, dynamic>.from(json['exposure'] as Map) : const <String, dynamic>{};
     final vr = json['var'] is Map ? Map<String, dynamic>.from(json['var'] as Map) : const <String, dynamic>{};
     final dist = json['distribution'] is Map ? Map<String, dynamic>.from(json['distribution'] as Map) : const <String, dynamic>{};
+    final conc = json['concentration'] is Map ? Map<String, dynamic>.from(json['concentration'] as Map) : const <String, dynamic>{};
+    final dd = json['drawdown'] is Map ? Map<String, dynamic>.from(json['drawdown'] as Map) : const <String, dynamic>{};
     Map<String, dynamic> pack(Object? raw) => raw is Map ? Map<String, dynamic>.from(raw) : const {};
 
     return BookPnl(
@@ -1214,6 +1241,172 @@ class BookPnl {
           for (final p in json['tape'])
             if (p is Map) BookPosition.fromJson(Map<String, dynamic>.from(p)),
       ],
+      topWeightPct: n(conc['top_weight_pct']),
+      topSymbol: '${conc['top_symbol'] ?? ''}',
+      hhi: n(conc['hhi']),
+      maxDdPct: n(dd['max_dd_pct']),
+      alerts: [
+        if (json['alerts'] is List)
+          for (final a in json['alerts'])
+            if (a is Map) '${a['id'] ?? a['label'] ?? ''}'
+            else if (a != null) '$a',
+      ].where((e) => e.isNotEmpty).toList(),
+    );
+  }
+}
+
+class ScanBreadth {
+  const ScanBreadth({
+    this.ready = false,
+    this.n = 0,
+    this.pctAboveSma50,
+    this.pctAboveSma200,
+    this.adv1d,
+    this.dec1d,
+    this.adv5d,
+    this.dec5d,
+    this.message = '',
+    this.note = '',
+  });
+
+  final bool ready;
+  final int n;
+  final double? pctAboveSma50;
+  final double? pctAboveSma200;
+  final int? adv1d;
+  final int? dec1d;
+  final int? adv5d;
+  final int? dec5d;
+  final String message;
+  final String note;
+
+  static const empty = ScanBreadth(message: 'Empty universe — no stored bars to score.');
+
+  factory ScanBreadth.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    int? i(Object? v) {
+      if (v is num) return v.toInt();
+      return int.tryParse('$v');
+    }
+
+    return ScanBreadth(
+      ready: json['ready'] == true,
+      n: i(json['n']) ?? 0,
+      pctAboveSma50: n(json['pct_above_sma50']),
+      pctAboveSma200: n(json['pct_above_sma200']),
+      adv1d: i(json['adv_1d']),
+      dec1d: i(json['dec_1d']),
+      adv5d: i(json['adv_5d']),
+      dec5d: i(json['dec_5d']),
+      message: '${json['message'] ?? ''}',
+      note: '${json['note'] ?? ''}',
+    );
+  }
+}
+
+class ScanPackRow {
+  const ScanPackRow({
+    required this.symbol,
+    this.ready = false,
+    this.price,
+    this.dayPct,
+    this.vs20,
+    this.vs50,
+    this.vs200,
+    this.rsi14,
+    this.dist52w,
+    this.volRatio,
+    this.tags = const [],
+    this.rsSpy63d,
+    this.vcpProxy = false,
+  });
+
+  final String symbol;
+  final bool ready;
+  final double? price;
+  final double? dayPct;
+  final double? vs20;
+  final double? vs50;
+  final double? vs200;
+  final double? rsi14;
+  final double? dist52w;
+  final double? volRatio;
+  final List<String> tags;
+  final double? rsSpy63d;
+  final bool vcpProxy;
+
+  factory ScanPackRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return ScanPackRow(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      ready: json['ready'] == true,
+      price: n(json['price']),
+      dayPct: n(json['day_pct']),
+      vs20: n(json['vs20']),
+      vs50: n(json['vs50']),
+      vs200: n(json['vs200']),
+      rsi14: n(json['rsi14']),
+      dist52w: n(json['dist_52w_pct']),
+      volRatio: n(json['vol_ratio']),
+      tags: [
+        if (json['tags'] is List) for (final t in json['tags']) '$t',
+      ],
+      rsSpy63d: n(json['rs_spy_63d']),
+      vcpProxy: json['vcp_proxy'] == true,
+    );
+  }
+}
+
+class ScanPack {
+  const ScanPack({
+    this.lens = 'all',
+    this.count = 0,
+    this.scanned = 0,
+    this.rows = const [],
+    this.breadth = ScanBreadth.empty,
+    this.note = '',
+    this.message = '',
+    this.oneilNote = 'price/RS only — no fundamentals feed',
+    this.vcpNote = 'honest proxy, not certified VCP',
+  });
+
+  final String lens;
+  final int count;
+  final int scanned;
+  final List<ScanPackRow> rows;
+  final ScanBreadth breadth;
+  final String note;
+  final String message;
+  final String oneilNote;
+  final String vcpNote;
+
+  static const empty = ScanPack();
+
+  factory ScanPack.fromJson(Map<String, dynamic> json) {
+    return ScanPack(
+      lens: '${json['lens'] ?? 'all'}',
+      count: json['count'] is num ? (json['count'] as num).toInt() : 0,
+      scanned: json['scanned'] is num ? (json['scanned'] as num).toInt() : 0,
+      rows: [
+        if (json['rows'] is List)
+          for (final r in json['rows'])
+            if (r is Map) ScanPackRow.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      breadth: json['breadth'] is Map
+          ? ScanBreadth.fromJson(Map<String, dynamic>.from(json['breadth'] as Map))
+          : ScanBreadth.empty,
+      note: '${json['note'] ?? ''}',
+      message: '${json['message'] ?? ''}',
+      oneilNote: '${json['oneil_note'] ?? 'price/RS only — no fundamentals feed'}',
+      vcpNote: '${json['vcp_note'] ?? 'honest proxy, not certified VCP'}',
     );
   }
 }

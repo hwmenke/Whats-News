@@ -35,7 +35,27 @@ CASH_SKIP = {
 Z95 = 1.6448536269514722
 Z99 = 2.3263478740408408
 MIN_RET = 20
+MIN_DD = 10
+# Concentration chips — documented thresholds, no fake alerts.
+# top_weight_pct = max(|MV_i| / gross) * 100
+# top5_share = sum of the five largest |MV| / gross * 100
+# HHI = sum(w_i^2) * 10000  (standard 0–10000; 2500 = moderately concentrated)
+CONCENTRATED_TOP_WEIGHT = 25.0
+CONCENTRATED_TOP5_SHARE = 80.0
+CONCENTRATED_HHI = 2500.0
+# Peak-to-trough on marked NAV: (nav - running_peak) / abs(peak) * 100.
+# DD_WARNING when max_dd_pct <= -10. Omitted if equity_curve has fewer than MIN_DD points.
+DD_WARNING_PCT = -10.0
 DESK_DEFAULT = "Whats-News"
+CONCENTRATION_NOTE = (
+    f"CONCENTRATED if top weight ≥{CONCENTRATED_TOP_WEIGHT:.0f}%, "
+    f"top-5 share ≥{CONCENTRATED_TOP5_SHARE:.0f}%, or HHI ≥{CONCENTRATED_HHI:.0f}. "
+    "Weights are |MV| / gross from stored marks."
+)
+DRAWDOWN_NOTE = (
+    f"Peak-to-trough on marked NAV. Omitted under {MIN_DD} NAV points. "
+    f"DD_WARNING if max DD ≤ {DD_WARNING_PCT:.0f}%."
+)
 
 
 def _now() -> str:
@@ -455,6 +475,196 @@ def _beta_vs_spy(curve: list[dict]) -> float | None:
     return round(beta, 3)
 
 
+def _concentration(ready: list[dict]) -> dict:
+    """HHI / top weight / top-5 share from |MV| / gross. Omit when gross is 0."""
+    weights = []
+    for m in ready:
+        mv = _finite(m.get("market_value"))
+        if mv is None:
+            continue
+        weights.append((m.get("symbol") or "", abs(mv)))
+    gross = sum(w for _, w in weights)
+    if gross <= 1e-9 or not weights:
+        return {
+            "ready": False,
+            "top_weight_pct": None,
+            "top_symbol": None,
+            "top5_share": None,
+            "hhi": None,
+            "n": 0,
+            "note": CONCENTRATION_NOTE,
+        }
+    shares = sorted(((sym, w / gross) for sym, w in weights), key=lambda x: -x[1])
+    top_sym, top_w = shares[0]
+    top5 = sum(w for _, w in shares[:5])
+    hhi = sum(w * w for _, w in shares) * 10000.0
+    return {
+        "ready": True,
+        "top_weight_pct": _round(top_w * 100.0, 2),
+        "top_symbol": top_sym,
+        "top5_share": _round(top5 * 100.0, 2),
+        "hhi": _round(hhi, 1),
+        "n": len(shares),
+        "note": CONCENTRATION_NOTE,
+    }
+
+
+def _max_drawdown(curve: list[dict]) -> dict:
+    """Peak-to-trough on marked NAV. Omit when the series is too short."""
+    empty = {
+        "ready": False,
+        "max_dd_pct": None,
+        "peak_date": None,
+        "trough_date": None,
+        "n": len(curve or []),
+        "note": DRAWDOWN_NOTE,
+    }
+    if not curve or len(curve) < MIN_DD:
+        return empty
+    peak = None
+    peak_date = None
+    worst = 0.0
+    worst_peak = None
+    worst_trough = None
+    for pt in curve:
+        nav = _finite(pt.get("nav"))
+        date = pt.get("date")
+        if nav is None:
+            continue
+        if peak is None or nav > peak:
+            peak = nav
+            peak_date = date
+        if peak is None or abs(peak) <= 1e-9:
+            continue
+        dd = (nav - peak) / abs(peak) * 100.0
+        if dd < worst:
+            worst = dd
+            worst_peak = peak_date
+            worst_trough = date
+    if worst >= 0:
+        return {
+            "ready": True,
+            "max_dd_pct": 0.0,
+            "peak_date": peak_date,
+            "trough_date": peak_date,
+            "n": len(curve),
+            "note": DRAWDOWN_NOTE,
+        }
+    return {
+        "ready": True,
+        "max_dd_pct": _round(worst, 2),
+        "peak_date": worst_peak,
+        "trough_date": worst_trough,
+        "n": len(curve),
+        "note": DRAWDOWN_NOTE,
+    }
+
+
+def _risk_alerts(concentration: dict, drawdown: dict) -> list[dict]:
+    """Only fire when a documented threshold is actually crossed."""
+    alerts = []
+    if concentration.get("ready"):
+        top = concentration.get("top_weight_pct")
+        top5 = concentration.get("top5_share")
+        hhi = concentration.get("hhi")
+        hit = (
+            (top is not None and top >= CONCENTRATED_TOP_WEIGHT)
+            or (top5 is not None and top5 >= CONCENTRATED_TOP5_SHARE)
+            or (hhi is not None and hhi >= CONCENTRATED_HHI)
+        )
+        if hit:
+            alerts.append({
+                "id": "CONCENTRATED",
+                "label": "CONCENTRATED",
+                "reason": (
+                    f"top {concentration.get('top_symbol') or '?'} "
+                    f"{top}% · top5 {top5}% · HHI {hhi}"
+                ),
+            })
+    if drawdown.get("ready") and drawdown.get("max_dd_pct") is not None:
+        if drawdown["max_dd_pct"] <= DD_WARNING_PCT:
+            alerts.append({
+                "id": "DD_WARNING",
+                "label": "DD_WARNING",
+                "reason": (
+                    f"max DD {drawdown['max_dd_pct']}% "
+                    f"({drawdown.get('peak_date') or '?'} → {drawdown.get('trough_date') or '?'})"
+                ),
+            })
+    return alerts
+
+
+def _closes_to_series(closes: list):
+    if not closes:
+        return None
+    try:
+        import pandas as pd
+        vals = [c[1] for c in closes if c and _finite(c[1]) is not None]
+        if len(vals) < 2:
+            return None
+        return pd.Series(vals, dtype=float)
+    except Exception:
+        return None
+
+
+def _holding_opinion(marked: dict, *, hmm_label=None, fractal_read=None) -> dict:
+    """day% / vs SMA50 / RSI14 / fractal / inherited SPY HMM — real or blank."""
+    closes = marked.get("_closes") or []
+    series = _closes_to_series(closes)
+    vs50 = None
+    rsi14 = None
+    if series is not None:
+        sma50 = None
+        try:
+            import portfolio as port
+            sma50 = port.last_sma(series, 50)
+            rsi_s = port._rsi(series, 14).dropna()
+            if len(rsi_s):
+                rsi14 = _round(float(rsi_s.iloc[-1]), 2)
+            else:
+                delta = series.diff().dropna()
+                if len(delta) >= 14 and (delta >= 0).all():
+                    rsi14 = 100.0
+                elif len(delta) >= 14 and (delta <= 0).all():
+                    rsi14 = 0.0
+        except Exception:
+            sma50 = None
+        last = _finite(series.iloc[-1]) if len(series) else None
+        if last and sma50 and sma50 > 0:
+            vs50 = _round((last / sma50 - 1.0) * 100.0, 2)
+    return {
+        "vs_sma50": vs50,
+        "rsi14": rsi14,
+        "fractal_read": fractal_read,
+        "hmm_label": hmm_label,
+    }
+
+
+def _spy_hmm_label():
+    try:
+        import hmm_regime
+        spy = hmm_regime.fit_spy(n_states=2)
+        if not spy or not spy.get("available"):
+            return None
+        label = spy.get("current_read") or spy.get("current_label")
+        return str(label) if label else None
+    except Exception:
+        return None
+
+
+def _fractal_read(symbol: str, closes: list):
+    try:
+        import fractal_scan
+        px = [c[1] for c in closes if c and _finite(c[1]) is not None]
+        row = fractal_scan.measure_symbol(symbol, closes=px)
+        if not row:
+            return None
+        read = row.get("read")
+        return str(read) if read else None
+    except Exception:
+        return None
+
+
 def empty_pnl() -> dict:
     return {
         "ready": False,
@@ -485,6 +695,24 @@ def empty_pnl() -> dict:
         "curve_label": "daily mark series from stored closes — no intraday bars",
         "positions": [],
         "tape": [],
+        "concentration": {
+            "ready": False,
+            "top_weight_pct": None,
+            "top_symbol": None,
+            "top5_share": None,
+            "hhi": None,
+            "n": 0,
+            "note": CONCENTRATION_NOTE,
+        },
+        "drawdown": {
+            "ready": False,
+            "max_dd_pct": None,
+            "peak_date": None,
+            "trough_date": None,
+            "n": 0,
+            "note": DRAWDOWN_NOTE,
+        },
+        "alerts": [],
     }
 
 
@@ -574,7 +802,15 @@ def book_pnl() -> dict:
         "n": int(len(rets)),
         "bins": _histogram(rets),
     }
+    concentration = _concentration(ready)
+    drawdown = _max_drawdown(curve)
+    alerts = _risk_alerts(concentration, drawdown)
+    hmm_label = _spy_hmm_label() if ready else None
     for m in marked:
+        mv = _finite(m.get("market_value"))
+        m["weight_pct"] = _round(abs(mv) / gross * 100.0, 2) if mv is not None and gross > 0 else None
+        frac = _fractal_read(m.get("symbol") or "", m.get("_closes") or []) if m.get("ready") else None
+        m.update(_holding_opinion(m, hmm_label=hmm_label, fractal_read=frac))
         m.pop("_closes", None)
     tape = [
         {
@@ -582,6 +818,11 @@ def book_pnl() -> dict:
             "day_pct": m["day_pct"],
             "day_pnl": m["day_pnl"],
             "ready": m["ready"],
+            "vs_sma50": m.get("vs_sma50"),
+            "rsi14": m.get("rsi14"),
+            "fractal_read": m.get("fractal_read"),
+            "hmm_label": m.get("hmm_label"),
+            "weight_pct": m.get("weight_pct"),
         }
         for m in marked
     ]
@@ -622,4 +863,7 @@ def book_pnl() -> dict:
         "tape": tape,
         "sources": sorted({normalize_source(m.get("source")) for m in marked}),
         "unmarked_count": len(unmarked),
+        "concentration": concentration,
+        "drawdown": drawdown,
+        "alerts": alerts,
     }

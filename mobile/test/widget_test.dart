@@ -116,6 +116,22 @@ void main() {
       if (path == '/api/finviz/screener' || path.startsWith('/api/finviz/quote/')) {
         return _json({'ready': false, 'rows': [], 'news': [], 'reason': 'fixture'});
       }
+      if (path == '/api/scans/pack' || path == '/api/scans/breadth') {
+        return _json({
+          'ready': false,
+          'lens': 'all',
+          'count': 0,
+          'scanned': 0,
+          'rows': [],
+          'n': 0,
+          'pct_above_sma50': null,
+          'pct_above_sma200': null,
+          'message': 'Empty universe — no stored bars to score.',
+          'note': 'Stockbee-style breadth idea from our Yahoo/SQLite universe.',
+          'oneil_note': 'price/RS only — no fundamentals feed',
+          'vcp_note': 'honest proxy, not certified VCP',
+        });
+      }
       if (path == '/api/hmm/status' || path == '/api/hmm/regime' || path == '/api/hmm/scan' || path == '/api/hmm/combo') {
         return _json({
           'available': false,

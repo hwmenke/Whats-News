@@ -118,6 +118,21 @@ class BookPage extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(usd(pnl.todayPnl), style: TextStyle(color: tone(pnl.todayPnl), fontSize: 26, fontWeight: FontWeight.w600)),
+              if (pnl.alerts.isNotEmpty || pnl.topWeightPct != null || pnl.maxDdPct != null) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    if (pnl.topWeightPct != null)
+                      _RiskChip('Top ${pnl.topSymbol.isEmpty ? '' : '${pnl.topSymbol} '}${pnl.topWeightPct!.toStringAsFixed(0)}%'),
+                    if (pnl.hhi != null) _RiskChip('HHI ${pnl.hhi!.toStringAsFixed(0)}'),
+                    if (pnl.maxDdPct != null) _RiskChip('Max DD ${pnl.maxDdPct!.toStringAsFixed(1)}%'),
+                    for (final a in pnl.alerts) _RiskChip(a, alert: true),
+                  ],
+                ),
+              ],
               const SizedBox(height: 10),
               Text(
                 pnl.curveLabel.isEmpty ? 'daily mark series from stored closes — no intraday bars' : pnl.curveLabel,
@@ -136,6 +151,9 @@ class BookPage extends StatelessWidget {
               _ExpRow('Shorts', pnl.ready ? usd(pnl.shortMv) : '—'),
               _ExpRow('Net Exposure', pnl.ready ? netPct : '—'),
               _ExpRow('Beta', pnl.betaSpy?.toStringAsFixed(2) ?? '—'),
+              _ExpRow('Top weight', pnl.topWeightPct == null ? '—' : '${pnl.topWeightPct!.toStringAsFixed(1)}%'),
+              _ExpRow('HHI', pnl.hhi?.toStringAsFixed(0) ?? '—'),
+              _ExpRow('Max DD', pnl.maxDdPct == null ? '—' : '${pnl.maxDdPct!.toStringAsFixed(1)}%'),
               const SizedBox(height: 14),
               if (tapeA.isNotEmpty)
                 SingleChildScrollView(
@@ -237,19 +255,35 @@ class BookPage extends StatelessWidget {
                 onTap: () => onOpenChart(r.symbol),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                  child: Text(
-                    [
-                      r.symbol,
-                      r.side,
-                      r.source,
-                      r.qty?.toString() ?? '—',
-                      r.ready ? (r.price?.toStringAsFixed(2) ?? '—') : 'no bars',
-                      r.dayPnl == null ? '' : r.dayPnl!.toStringAsFixed(2),
-                    ].where((e) => e.isNotEmpty).join(' · '),
-                    style: TextStyle(
-                      color: r.ready ? DeskColors.text : DeskColors.dim,
-                      fontSize: 14,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        [
+                          r.symbol,
+                          r.side,
+                          r.source,
+                          r.qty?.toString() ?? '—',
+                          r.ready ? (r.price?.toStringAsFixed(2) ?? '—') : 'no bars',
+                          r.dayPnl == null ? '' : r.dayPnl!.toStringAsFixed(2),
+                        ].where((e) => e.isNotEmpty).join(' · '),
+                        style: TextStyle(
+                          color: r.ready ? DeskColors.text : DeskColors.dim,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (r.ready)
+                        Text(
+                          [
+                            if (r.dayPct != null) 'day ${r.dayPct!.toStringAsFixed(2)}%',
+                            if (r.vsSma50 != null) 'vs50 ${r.vsSma50!.toStringAsFixed(1)}%',
+                            if (r.rsi14 != null) 'RSI ${r.rsi14!.toStringAsFixed(1)}',
+                            if (r.fractalRead != null && r.fractalRead!.isNotEmpty) r.fractalRead!,
+                            if (r.hmmLabel != null && r.hmmLabel!.isNotEmpty) 'HMM ${r.hmmLabel!}',
+                          ].join(' · '),
+                          style: const TextStyle(color: DeskColors.muted, fontSize: 11),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -322,6 +356,32 @@ class _AddLineState extends State<_AddLine> {
             child: const Text('Add', style: TextStyle(fontSize: 13)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _RiskChip extends StatelessWidget {
+  const _RiskChip(this.label, {this.alert = false});
+  final String label;
+  final bool alert;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: alert ? const Color(0x33EF4444) : DeskColors.card,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: alert ? DeskColors.red : DeskColors.border),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: alert ? DeskColors.red : DeskColors.muted,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

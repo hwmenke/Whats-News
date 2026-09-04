@@ -42,9 +42,11 @@ class ScansPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Same Python scans as the web desk. Fractal is SPEC 25/27. HMM is a research label, not edge — SPY Gaussian, desk inherits. Finviz is public HTML only.',
+                  'Same Python scans as the web desk. Fractal is SPEC 25/27. HMM is a research label, not edge — SPY Gaussian, desk inherits. Finviz is public HTML only. Breadth is our Yahoo/SQLite universe — not a scraped Market Monitor.',
                   style: TextStyle(color: DeskColors.muted, fontSize: 12),
                 ),
+                const SizedBox(height: 8),
+                _BreadthStrip(breadth: state.scanBreadth),
                 if (running)
                   const Padding(
                     padding: EdgeInsets.only(top: 6),
@@ -59,7 +61,12 @@ class ScansPage extends StatelessWidget {
                   runSpacing: 6,
                   children: [
                     for (final e in const [
+                      ('ma', 'MA'),
+                      ('rsi', 'RSI'),
+                      ('breakout', 'Breakout'),
                       ('qulla', 'Qulla'),
+                      ('oneil', "O'Neil"),
+                      ('vcp', 'VCP'),
                       ('edges', 'Edges'),
                       ('fractal', 'Fractal'),
                       ('finviz', 'Finviz'),
@@ -131,6 +138,12 @@ class ScansPage extends StatelessWidget {
           ..._hmmSlivers(state)
         else if (state.scanMode == 'combo')
           ..._comboSlivers(state)
+        else if (state.scanMode == 'ma' ||
+            state.scanMode == 'rsi' ||
+            state.scanMode == 'breakout' ||
+            state.scanMode == 'oneil' ||
+            state.scanMode == 'vcp')
+          ..._packSlivers(state)
         else if (state.scanMode == 'edges')
           ..._edgesSlivers(state)
         else if (state.loadingScans && _rowsEmpty(state))
@@ -529,6 +542,52 @@ class ScansPage extends StatelessWidget {
     ];
   }
 
+  List<Widget> _packSlivers(WhatsNewsState s) {
+    final pack = s.scanPack;
+    final note = s.scanMode == 'oneil'
+        ? pack.oneilNote
+        : s.scanMode == 'vcp'
+            ? pack.vcpNote
+            : pack.note;
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            note.isEmpty
+                ? 'MA / RSI / Breakout from stored daily bars. Style chips are filters — O\'Neil is price/RS only. VCP is an honest proxy, not certified VCP.'
+                : note,
+            style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
+          ),
+        ),
+      ),
+      if (pack.rows.isEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            child: Text(
+              pack.message.isEmpty
+                  ? 'No pack hits from stored bars. Empty is honest — not a fake print.'
+                  : pack.message,
+              style: const TextStyle(color: DeskColors.muted, height: 1.4),
+            ),
+          ),
+        )
+      else
+        SliverPadding(
+          padding: const EdgeInsets.only(bottom: 24),
+          sliver: SliverList.separated(
+            itemCount: pack.rows.length,
+            separatorBuilder: (_, _) => const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: ColoredBox(color: DeskColors.border, child: SizedBox(height: 0.5)),
+            ),
+            itemBuilder: (context, i) => _PackTile(row: pack.rows[i], onOpen: onOpenChart),
+          ),
+        ),
+    ];
+  }
+
   bool _rowsEmpty(WhatsNewsState s) {
     switch (s.scanMode) {
       case 'metrics':
@@ -537,6 +596,12 @@ class ScansPage extends StatelessWidget {
         return s.setupScan.isEmpty;
       case 'qulla':
         return s.qullaRows.isEmpty;
+      case 'ma':
+      case 'rsi':
+      case 'breakout':
+      case 'oneil':
+      case 'vcp':
+        return s.scanPack.rows.isEmpty;
       default:
         return s.trendScan.isEmpty;
     }
@@ -841,6 +906,105 @@ class _SetupTile extends StatelessWidget {
                 ].join(' · '),
                 style: const TextStyle(color: DeskColors.muted, fontSize: 12),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BreadthStrip extends StatelessWidget {
+  const _BreadthStrip({required this.breadth});
+  final ScanBreadth breadth;
+
+  @override
+  Widget build(BuildContext context) {
+    String pct(double? v) => v == null ? '—' : '${v.toStringAsFixed(1)}%';
+    String ad(int? a, int? d) => (a == null && d == null) ? '—' : '${a ?? 0}/${d ?? 0}';
+    Widget cell(String k, String v) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(k, style: const TextStyle(color: DeskColors.dim, fontSize: 10, letterSpacing: 0.4)),
+              const SizedBox(height: 2),
+              Text(v, style: const TextStyle(color: DeskColors.text, fontSize: 14, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      decoration: BoxDecoration(
+        color: DeskColors.card,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: DeskColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              cell('% >SMA50', pct(breadth.pctAboveSma50)),
+              cell('% >SMA200', pct(breadth.pctAboveSma200)),
+              cell('A/D 1d', ad(breadth.adv1d, breadth.dec1d)),
+              cell('A/D 5d', ad(breadth.adv5d, breadth.dec5d)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            breadth.ready
+                ? (breadth.note.isEmpty ? 'Our Yahoo/SQLite universe — not a scraped Market Monitor.' : breadth.note)
+                : (breadth.message.isEmpty ? 'Empty universe — no stored bars to score.' : breadth.message),
+            style: const TextStyle(color: DeskColors.muted, fontSize: 10, height: 1.3),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PackTile extends StatelessWidget {
+  const _PackTile({required this.row, required this.onOpen});
+  final ScanPackRow row;
+  final ValueChanged<String> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => onOpen(row.symbol),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  row.symbol,
+                  style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 16),
+                ),
+                const Spacer(),
+                if (row.dayPct != null)
+                  Text(
+                    '${row.dayPct! >= 0 ? '+' : ''}${row.dayPct!.toStringAsFixed(1)}%',
+                    style: TextStyle(
+                      color: row.dayPct! >= 0 ? DeskColors.green : DeskColors.red,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              [
+                if (row.vs50 != null) 'vs50 ${row.vs50!.toStringAsFixed(1)}%',
+                if (row.rsi14 != null) 'RSI ${row.rsi14!.toStringAsFixed(1)}',
+                if (row.dist52w != null) '52w ${row.dist52w!.toStringAsFixed(1)}%',
+                if (row.volRatio != null) 'vol ${row.volRatio!.toStringAsFixed(2)}×',
+                if (row.tags.isNotEmpty) row.tags.join(' '),
+              ].join(' · '),
+              style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+            ),
           ],
         ),
       ),

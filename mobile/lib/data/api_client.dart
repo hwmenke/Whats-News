@@ -433,6 +433,28 @@ class WhatsNewsApi {
     return ComboScan.empty;
   }
 
+  Future<ScanPack> getScanPack({String lens = 'all'}) async {
+    try {
+      final raw = await _get('/api/scans/pack', {'desk': '1', 'lens': lens});
+      if (raw is Map<String, dynamic>) return ScanPack.fromJson(raw);
+      if (raw is Map) return ScanPack.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException {
+      return ScanPack.empty;
+    }
+    return ScanPack.empty;
+  }
+
+  Future<ScanBreadth> getScanBreadth() async {
+    try {
+      final raw = await _get('/api/scans/breadth', const {'desk': '1'});
+      if (raw is Map<String, dynamic>) return ScanBreadth.fromJson(raw);
+      if (raw is Map) return ScanBreadth.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException {
+      return ScanBreadth.empty;
+    }
+    return ScanBreadth.empty;
+  }
+
   Future<Map<String, dynamic>> getAlpacaStatus() async {
     try {
       final raw = await _get('/api/alpaca/status');
