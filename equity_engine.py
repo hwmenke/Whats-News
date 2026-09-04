@@ -65,14 +65,11 @@ TAKEAWAY
     LEAN SHORT ≤−0.5, else NEUTRAL. Bias sums documented VCP / RSI-C /
     TMS / 3M-break points. Not a win rate.
 
-TMAC* (interim — awaiting Quant SPEC)
-    0–99 heat from stored OHLCV only. Column header stays TMAC* — never
-    brand as formal TMAC until Quant Excel SPEC lands.
-    TMAC* = clip(round(0.40·ma_stack + 0.30·RSI14 + 0.30·range_pct63), 0, 99).
-    ma_stack = 100 × share of votes: C>SMA20, C>SMA50, C>SMA200 (if n≥200),
-    SMA20>SMA50. range_pct63 = 100·(C−L63)/(H63−L63) clipped.
-    Blank if <63 daily bars. Not a win rate.
-    TODO: replace this interim when Quant Excel TMAC SPEC lands.
+TMAC* heat proxy (never branded TMAC until Excel TMAC formula)
+    TMAC* = clip(round(0.50·range_pct + 0.35·RSI14 + 0.15·vol_heat), 0, 99).
+    range_pct = 100·(C−L63)/(H63−L63) clipped. vol_heat = ATR14/SMA20 tanh map
+    (2% ATR → ~50). Column TMAC* / heat_proxy. Blank if <63 daily bars.
+    Not a win rate.
 """
 
 from __future__ import annotations
@@ -94,7 +91,7 @@ NOTE = (
 )
 VCP_NOTE = "honest proxy, not certified VCP"
 FRACTAL_NOTE = "SPEC 25/27 only — null D is a failed window, not invented."
-TMAC_NOTE = "TMAC interim — awaiting Quant SPEC"
+TMAC_NOTE = "TMAC* heat proxy — never branded TMAC"
 TD_NOTE = "TD Sequential honest approx — not certified DeMark. Never invented TD13 stars."
 TES_NOTE = "TES state is an honest proxy from D65 + RSI-C + VCP. Not the Excel TES box."
 
@@ -142,12 +139,11 @@ FORMULAS = {
     "takeaway": "SENTIMENT — VCP — RSI-C — TMS (Impulse) — Pattern W. Bias is a point sum, not a win rate.",
     "adma_stretch": "ADMA(er=20,fast=2,slow=60); stretch%=(close/ADMA-1)*100; desk percentile if n≥3.",
     "tmac_star": (
-        "TMAC interim — awaiting Quant SPEC. TMAC* 0–99 (never branded TMAC): "
-        "clip(round(0.40*ma_stack + 0.30*rsi14 + 0.30*range_pct63), 0, 99). "
-        "ma_stack = 100 × share of votes: C>SMA20, C>SMA50, C>SMA200 (if n≥200), "
-        "SMA20>SMA50. range_pct63=100*(C−L63)/(H63−L63) clipped. "
-        "Blank if <63 daily bars. TODO: replace when Quant Excel TMAC SPEC lands. "
-        "Not a win rate."
+        "TMAC* heat proxy (never branded TMAC): "
+        "clip(round(0.50*range_pct + 0.35*rsi14 + 0.15*vol_heat), 0, 99). "
+        "range_pct=100*(C−L63)/(H63−L63) clipped. "
+        "vol_heat=50+50*tanh((ATR14/SMA20*100−2)/2). "
+        "Column TMAC* / heat_proxy. Blank if <63 daily bars. Not a win rate."
     ),
     "tes": (
         "TES state (honest proxy, not the Excel TES box). Needs SPEC 25/27 D65. "
@@ -163,8 +159,8 @@ FORMULAS = {
         "Flags 9B/9S/13B/13S only when the count actually hits. Never invented TD13 stars."
     ),
     "coil": (
-        "Weekly coil_12=σ12/σ26 of weekly returns; coil_13=σ13/σ26. "
-        "COMPRESSED≤0.45 COILING≤0.65 EXPANDING≥0.90. "
+        "Weekly coil_12=r12/r26, coil_13=r13/r26 where rN = sample σ of last N "
+        "weekly returns (ddof=1). COMPRESSED≤0.45 COILING≤0.65 EXPANDING≥0.90. "
         "Coil map: x=coil_12 (tighter←), y=13w range position %."
     ),
 }
@@ -529,19 +525,17 @@ def ma_stack_score(close: pd.Series) -> Optional[float]:
 
 
 def tmac_star(high: pd.Series, low: pd.Series, close: pd.Series) -> Optional[int]:
-    """TMAC* 0–99 interim heat from stored OHLCV.
+    """TMAC* heat proxy 0–99. Never brand as bare TMAC.
 
-    Composite of trend/MA stack + RSI(14) + 63d near-high (range_pct63).
-    TODO: replace this interim when Quant Excel TMAC SPEC lands.
-    Do not invent a win rate. Never brand as bare TMAC.
+    TMAC* = clip(round(0.50*range_pct + 0.35*rsi14 + 0.15*vol_heat), 0, 99).
+    Not a win rate.
     """
     rp = range_pct_63(high, low, close)
     rsi = last_rsi(close, 14)
-    stack = ma_stack_score(close)
-    if rp is None or rsi is None or stack is None:
+    vh = vol_heat(high, low, close)
+    if rp is None or rsi is None or vh is None:
         return None
-    raw = 0.40 * stack + 0.30 * rsi + 0.30 * rp
-    return int(min(99, max(0, round(raw))))
+    return int(min(99, max(0, round(0.50 * rp + 0.35 * rsi + 0.15 * vh))))
 
 
 def pos_range(high: pd.Series, low: pd.Series, close: pd.Series, bars: int) -> Optional[float]:
@@ -999,6 +993,7 @@ def measure(
         "pullback_in_uptrend": pb_note,
         "gray_tag": " · ".join(x for x in (rsi_d.get("state"), vcp.get("phase")) if x),
         "tmac_star": tmac,
+        "heat_proxy": tmac,
         "tmac_note": TMAC_NOTE,
         "range_pct_63": range_pct_63(high, low, close),
         "d65": frac.get("d65"),
@@ -1320,4 +1315,5 @@ def catalog() -> dict:
         "note": NOTE,
         "vcp_note": VCP_NOTE,
         "fractal_note": FRACTAL_NOTE,
+        "tmac_note": TMAC_NOTE,
     }

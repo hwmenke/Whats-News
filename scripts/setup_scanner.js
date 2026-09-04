@@ -281,7 +281,7 @@ function renderSetupScanTable(results) {
             <td>${dist}</td>
             <td>${vol}</td>
             <td>${row.regime || '—'}</td>
-            <td class="engine-tmac" style="${setupTmacHeat(row.tmac_star)}" title="${row.tmac_note || 'TMAC interim — awaiting Quant SPEC'}">${row.tmac_star == null ? '—' : row.tmac_star}</td>
+            <td class="engine-tmac" style="${setupTmacHeat(row.tmac_star != null ? row.tmac_star : row.heat_proxy)}" title="${row.tmac_note || 'TMAC* heat proxy — never branded TMAC'}">${(row.tmac_star != null ? row.tmac_star : row.heat_proxy) == null ? '—' : (row.tmac_star != null ? row.tmac_star : row.heat_proxy)}</td>
             <td class="setup-actions">
                 <button type="button" class="btn btn-ghost btn-sm setup-open" data-symbol="${row.symbol}">Chart</button>
                 <button type="button" class="btn btn-ghost btn-sm setup-promote" data-symbol="${row.symbol}">+ Desk</button>

@@ -977,7 +977,7 @@ class ScansPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                m.tmacNote.isEmpty ? 'TMAC interim — awaiting Quant SPEC' : m.tmacNote,
+                m.tmacNote.isEmpty ? 'TMAC* heat proxy — never branded TMAC' : m.tmacNote,
                 style: const TextStyle(color: DeskColors.muted, fontSize: 12),
               ),
               if (m.spyLabel.isNotEmpty)

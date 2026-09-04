@@ -28,7 +28,7 @@ SETUP_IDS = {
 
 # Last N daily bars for ADR% — legend uses 20 valid (H,L,C>0) bars, min 5.
 SCAN_ADR_BARS = 30
-# TMAC* column: TMAC interim — awaiting Quant SPEC (equity_engine.tmac_star).
+# TMAC* / heat_proxy column: SPEC heat proxy (never branded TMAC).
 # Same daily window as equity_engine.measure (400) so SMA200 can vote when stored.
 SCAN_TMAC_BARS = 400
 
@@ -116,6 +116,7 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             "vol_ratio_5_20": snap.get("vol_ratio_5_20"),
             "adr_pct": scan_adr_pct(daily_rows),
             "tmac_star": tmac,
+            "heat_proxy": tmac,
             "tmac_note": ee.TMAC_NOTE,
             "gap_pct": snap.get("gap_pct"),
             "regime": snap.get("regime"),

@@ -47,16 +47,21 @@ class TmacStarTests(unittest.TestCase):
     def test_measure_exposes_tmac_star_not_bare_tmac(self):
         row = ee.measure("AAA", daily=_frame(np.linspace(80, 150, 90)))
         self.assertIn("tmac_star", row)
+        self.assertEqual(row["heat_proxy"], row["tmac_star"])
         self.assertNotIn("tmac", [k for k in row if k == "tmac"])
-        self.assertEqual(row["tmac_note"], "TMAC interim — awaiting Quant SPEC")
-        self.assertIn("TODO: replace this interim when Quant Excel TMAC SPEC lands", ee.tmac_star.__doc__)
+        self.assertEqual(row["tmac_note"], "TMAC* heat proxy — never branded TMAC")
+        self.assertIn("0.50*range_pct", ee.tmac_star.__doc__)
+        self.assertIn("never brand as bare tmac", ee.tmac_star.__doc__.lower())
 
-    def test_ma_stack_uptrend_vs_downtrend(self):
-        up = pd.Series(np.linspace(80, 150, 90))
-        dn = pd.Series(np.linspace(150, 40, 90))
-        self.assertGreaterEqual(ee.ma_stack_score(up), 99)
-        self.assertLessEqual(ee.ma_stack_score(dn), 1)
-        self.assertIsNone(ee.ma_stack_score(pd.Series(np.linspace(1, 2, 20))))
+    def test_tmac_star_uses_spec_weights(self):
+        close = pd.Series(np.linspace(80, 150, 90))
+        high = close + 0.3
+        low = close - 0.3
+        rp = ee.range_pct_63(high, low, close)
+        rsi = ee.last_rsi(close, 14)
+        vh = ee.vol_heat(high, low, close)
+        expected = int(min(99, max(0, round(0.50 * rp + 0.35 * rsi + 0.15 * vh))))
+        self.assertEqual(ee.tmac_star(high, low, close), expected)
 
     def test_tmac_star_low_in_downtrend(self):
         close = np.linspace(150, 40, 90)
@@ -129,6 +134,11 @@ class MapsBoardTests(unittest.TestCase):
         self.assertTrue(out["rotation"]["points"] or out["scanner"]["rows"])
         self.assertIn("RSI(14)", out["rotation"]["howto"])
         self.assertIn("tighter", out["coil"]["howto"].lower())
+        self.assertIn("r12/r26", out["coil"]["howto"])
+        self.assertIn("by_zone", out["tms_regime"])
+        spy = out["tms_regime"]["spy_strip"]
+        if spy.get("label"):
+            self.assertIn(spy["label"], ("RISK-ON", "MIXED", "RISK-OFF"))
         self.assertIn("±13", out["fractal_td"]["howto"])
         self.assertNotIn("★", str(out))
         for row in out["scanner"]["rows"]:
@@ -141,10 +151,13 @@ class MapsBoardTests(unittest.TestCase):
     def test_formulas_include_tmac_tes_coil(self):
         cat = ee.catalog()
         self.assertIn("tmac_star", cat["formulas"])
-        self.assertIn("TMAC interim — awaiting Quant SPEC", cat["formulas"]["tmac_star"])
-        self.assertIn("TODO: replace when Quant Excel TMAC SPEC lands", cat["formulas"]["tmac_star"])
-        self.assertIn("Not a win rate", cat["formulas"]["tmac_star"])
-        self.assertIn("ma_stack", cat["formulas"]["tmac_star"])
+        self.assertIn("0.50*range_pct", cat["formulas"]["tmac_star"])
+        self.assertIn("0.35*rsi14", cat["formulas"]["tmac_star"])
+        self.assertIn("0.15*vol_heat", cat["formulas"]["tmac_star"])
+        self.assertIn("heat_proxy", cat["formulas"]["tmac_star"])
+        self.assertIn("never branded TMAC", cat["formulas"]["tmac_star"])
+        self.assertIn("r12/r26", cat["formulas"]["coil"])
+        self.assertIn("COMPRESSED≤0.45", cat["formulas"]["coil"])
         self.assertIn("tes", cat["formulas"])
         self.assertIn("coil", cat["formulas"])
 
@@ -183,11 +196,15 @@ class FlaskMapsTests(unittest.TestCase):
             with open(path, encoding="utf-8") as fh:
                 blob += fh.read()
         self.assertIn("TMAC*", blob)
-        self.assertIn("TMAC interim — awaiting Quant SPEC", blob)
+        self.assertIn("heat_proxy", blob)
+        self.assertIn("0.50*range_pct", blob)
+        self.assertIn("never branded TMAC", blob)
         self.assertIn("function setupTmacHeat", blob)
         self.assertIn("tmac_star", blob)
         self.assertIn("/api/engine/maps", blob)
         self.assertIn("HOW TO READ", blob)
+        self.assertIn("r12/r26", blob)
+        self.assertIn("RISK-ON", blob)
         self.assertNotIn("bloomberg", blob.lower())
         self.assertNotIn("stockbee.blogspot", blob.lower())
         self.assertNotIn("★ TD13", blob)

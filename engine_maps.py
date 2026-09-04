@@ -178,6 +178,7 @@ def maps_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = Non
             "gray_tag": r.get("gray_tag"),
             "dir5": r.get("dir5"),
             "tmac_star": r.get("tmac_star"),
+            "heat_proxy": r.get("heat_proxy") if r.get("heat_proxy") is not None else r.get("tmac_star"),
             "td_count": r.get("td_count"),
             "td_flag": r.get("td_flag"),
             "takeaway": r.get("takeaway"),
@@ -195,14 +196,19 @@ def maps_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = Non
                 frac_td.append(fpt)
         w_arrow = _arrow(r.get("tms_w_score"), r.get("tms_w_impulse_y"))
         d_arrow = _arrow(r.get("tms_score"), r.get("tms_impulse_y"))
-        wpt = _pt(r, "tms_w_score", "tms_w_impulse_y", extra={"marker": "solid", "arrow": w_arrow})
+        wpt = _pt(r, "tms_w_score", "tms_w_impulse_y", extra={"marker": "solid", "arrow": w_arrow, "zone": r.get("tms_w_zone")})
         if wpt:
             tms_w_pts.append(wpt)
-        dpt = _pt(r, "tms_score", "tms_impulse_y", extra={"marker": "hollow", "arrow": d_arrow})
+        dpt = _pt(r, "tms_score", "tms_impulse_y", extra={"marker": "hollow", "arrow": d_arrow, "zone": r.get("tms_zone")})
         if dpt:
             tms_d_pts.append(dpt)
 
     empty = not ready
+    by_zone: dict[str, list[str]] = {}
+    for r in ready:
+        zone = r.get("tms_w_zone") or r.get("tms_zone")
+        if zone:
+            by_zone.setdefault(zone, []).append(r["symbol"])
     return {
         "ready": not empty,
         "count": len(ready),
@@ -212,7 +218,7 @@ def maps_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = Non
             "howto": (
                 "Scanner: Str −5…+5, Stretch% / %ile bar, ΔD 1m and D65 from SPEC 25/27, "
                 "TMS-D signed (TMS−50)/5, 52w position bar, Vol30, TES state (see formulas.tes), "
-                "gray RSI-C · VCP tag, Dir ±5 heat, TMAC* 0–99 (TMAC interim — awaiting Quant SPEC). "
+                "gray RSI-C · VCP tag, Dir ±5 heat, TMAC* heat proxy 0–99 (never branded TMAC). "
                 "Scatter X=Dir Y=RSI14, color by class. Not a win rate."
             ),
         },
@@ -224,12 +230,12 @@ def maps_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = Non
         },
         "coil": {
             "points": coil,
-            "x_label": "weekly coil_12 = σ12/σ26 (tighter ←)",
+            "x_label": "weekly coil_12 = r12/r26 (tighter ←)",
             "y_label": "13w range position %",
             "bands": {"compressed": 0.45, "coiling": 0.65, "expanding": 0.90},
             "howto": (
-                "COIL MAP — weekly contraction (12w/26w vol ratio, tighter←) vs 13w range %. "
-                "COMPRESSED≤0.45 COILING≤0.65 EXPANDING≥0.90. Cyan band = coiling zone."
+                "COIL MAP — weekly coil_12=r12/r26, coil_13=r13/r26 (rN = weekly-return σ). "
+                "tighter← vs 13w range %. COMPRESSED≤0.45 COILING≤0.65 EXPANDING≥0.90."
             ),
         },
         "fractal_td": {
@@ -248,11 +254,12 @@ def maps_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = Non
             "x_label": "TMS score (−100…+100)",
             "y_label": "Impulse (Δ TMS)",
             "spy_strip": _spy_strip(ready),
+            "by_zone": by_zone,
             "extremes": _extremes(ready),
             "howto": (
-                "TMS REGIME MAP — Score (x) vs Impulse (y). Solid = weekly TMS-W, hollow = daily TMS-D. "
-                "Arrows when |Δ|≥3 and score/impulse agree (strengthen) or oppose (weaken). "
-                "SPY strip is a research label, not edge."
+                "TMS REGIME MAP — by TMS zone. Score (x) vs Impulse (y). "
+                "Solid = weekly TMS-W, hollow = daily TMS-D. "
+                "SPY strip is RISK-ON / MIXED / RISK-OFF only — research label, not edge."
             ),
         },
         "classes": CLASS_COLORS,

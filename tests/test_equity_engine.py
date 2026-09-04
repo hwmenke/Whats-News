@@ -54,6 +54,14 @@ class FormulaCatalogTests(unittest.TestCase):
         self.assertEqual(cat["controls"]["lookbacks"], list(range(2, 22)))
         self.assertEqual(cat["controls"]["rsi_n"], 14)
         self.assertEqual(cat["controls"]["lag"], 5)
+        self.assertIn("Extreme≥90%", cat["formulas"]["rsi_c"])
+        self.assertIn("Lean≥70%", cat["formulas"]["rsi_c"])
+        self.assertIn("Tilt≥55%", cat["formulas"]["rsi_c"])
+        self.assertIn("0.5*RSI14", cat["formulas"]["tms"])
+        self.assertIn("[-5,+5]", cat["formulas"]["str"])
+        self.assertIn("Daily 3M=63", cat["formulas"]["pattern"])
+        self.assertIn("Weekly 1Y=52", cat["formulas"]["pattern"])
+        self.assertIn("0.50*range_pct", cat["formulas"]["tmac_star"])
 
 
 class EmptyHonestyTests(unittest.TestCase):

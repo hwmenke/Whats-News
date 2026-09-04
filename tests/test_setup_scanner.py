@@ -79,8 +79,8 @@ class SetupScannerTests(unittest.TestCase):
         self.assertIn("vol_ratio_5_20", row)
         self.assertIsNotNone(row["vol_ratio_5_20"])
         self.assertIn("tmac_star", row)
-        self.assertIsNone(row["tmac_star"])  # TEST1 has 60 daily bars; interim needs 63
-        self.assertEqual(out["tmac_note"], "TMAC interim — awaiting Quant SPEC")
+        self.assertIsNone(row["tmac_star"])  # TEST1 has 60 daily bars; TMAC* needs 63
+        self.assertEqual(out["tmac_note"], "TMAC* heat proxy — never branded TMAC")
         self.assertNotIn("tmac", [k for k in row if k == "tmac"])
 
     def test_scan_adr_pct_matches_legend_math(self):
@@ -113,8 +113,9 @@ class SetupScannerTests(unittest.TestCase):
         self.assertIsInstance(row["tmac_star"], int)
         self.assertGreaterEqual(row["tmac_star"], 70)
         self.assertLessEqual(row["tmac_star"], 99)
-        self.assertEqual(row["tmac_note"], "TMAC interim — awaiting Quant SPEC")
-        self.assertEqual(out["tmac_note"], "TMAC interim — awaiting Quant SPEC")
+        self.assertEqual(row["heat_proxy"], row["tmac_star"])
+        self.assertEqual(row["tmac_note"], "TMAC* heat proxy — never branded TMAC")
+        self.assertEqual(out["tmac_note"], "TMAC* heat proxy — never branded TMAC")
         self.assertNotIn("win rate", str(row["tmac_star"]))
 
     def test_setup_tmac_matches_engine_measure_window(self):
@@ -153,17 +154,18 @@ class SetupScanTmacColumnTests(unittest.TestCase):
 
         self.assertIn("function setupTmacHeat", setup)
         self.assertIn("row.tmac_star", setup)
-        self.assertIn("TMAC interim — awaiting Quant SPEC", setup)
-        self.assertIn("setupTmacHeat(row.tmac_star)", setup)
+        self.assertIn("TMAC* heat proxy — never branded TMAC", setup)
+        self.assertIn("setupTmacHeat", setup)
         self.assertIn("rgba(34,197,94", setup)
         self.assertIn("rgba(239,68,68", setup)
 
-        self.assertIn("TMAC interim — awaiting Quant SPEC", html)
+        self.assertIn("TMAC* heat proxy — never branded TMAC", html)
         self.assertIn(">TMAC*</th>", html)
         self.assertIn('id="setup-scan-table"', html)
 
         self.assertIn("tmac_star", py)
-        self.assertIn("TMAC interim — awaiting Quant SPEC", py)
+        self.assertIn("heat_proxy", py)
+        self.assertIn("never branded TMAC", py)
         self.assertIn("SCAN_TMAC_BARS = 400", py)
         self.assertNotIn('"tmac":', py)
 
