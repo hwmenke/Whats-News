@@ -29,8 +29,8 @@ SETUP_IDS = {
 # Last N daily bars for ADR% — legend uses 20 valid (H,L,C>0) bars, min 5.
 SCAN_ADR_BARS = 30
 # TMAC* column: TMAC interim — awaiting Quant SPEC (equity_engine.tmac_star).
-# Needs ≥63 daily bars (range_pct63 + SMA50). Extra headroom for SMA.
-SCAN_TMAC_BARS = 90
+# Same daily window as equity_engine.measure (400) so SMA200 can vote when stored.
+SCAN_TMAC_BARS = 400
 
 
 def scan_adr_pct(rows: Optional[list] = None) -> Optional[float]:

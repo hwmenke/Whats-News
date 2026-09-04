@@ -117,6 +117,28 @@ class SetupScannerTests(unittest.TestCase):
         self.assertEqual(out["tmac_note"], "TMAC interim — awaiting Quant SPEC")
         self.assertNotIn("win rate", str(row["tmac_star"]))
 
+    def test_setup_tmac_matches_engine_measure_window(self):
+        idx = pd.date_range("2023-01-01", periods=220, freq="D")
+        close = np.linspace(80, 160, 220)
+        frame = pd.DataFrame(
+            {
+                "open": close,
+                "high": close + 1.0,
+                "low": close - 1.0,
+                "close": close,
+                "volume": np.full(220, 1_500_000.0),
+            },
+            index=idx,
+        )
+        db.add_symbol("LONG2")
+        db.upsert_ohlcv("LONG2", "daily", frame)
+        with patch("setup_scanner.md.list_symbols_with_ohlcv", return_value=["LONG2"]):
+            out = setup_scanner.scan_setups(symbols=["LONG2"], limit=5)
+        row = [r for r in out["results"] if r.get("symbol") == "LONG2"][0]
+        measured = __import__("equity_engine").measure("LONG2", daily=frame)
+        self.assertEqual(row["tmac_star"], measured["tmac_star"])
+        self.assertGreaterEqual(setup_scanner.SCAN_TMAC_BARS, 200)
+
 
 class SetupScanTmacColumnTests(unittest.TestCase):
     """TMAC* 0–99 heat on the setup scanner table — interim until Quant SPEC."""
@@ -142,7 +164,7 @@ class SetupScanTmacColumnTests(unittest.TestCase):
 
         self.assertIn("tmac_star", py)
         self.assertIn("TMAC interim — awaiting Quant SPEC", py)
-        self.assertIn("SCAN_TMAC_BARS", py)
+        self.assertIn("SCAN_TMAC_BARS = 400", py)
         self.assertNotIn('"tmac":', py)
 
         start = setup.index("function setupTmacHeat")
