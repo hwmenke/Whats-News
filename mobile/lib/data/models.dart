@@ -602,6 +602,112 @@ class MacroSleeveBlock {
   }
 }
 
+/// Market Moves board from GET /api/market-moves (QUANT-locked z).
+class MarketMovesBoard {
+  const MarketMovesBoard({
+    this.asof,
+    this.asofEt = '',
+    this.groups = const [],
+    this.legend = '',
+    this.source = '',
+    this.note = '',
+  });
+
+  final String? asof;
+  final String asofEt;
+  final List<MarketMovesGroup> groups;
+  final String legend;
+  final String source;
+  final String note;
+
+  static const empty = MarketMovesBoard();
+
+  factory MarketMovesBoard.fromJson(Map<String, dynamic> json) {
+    return MarketMovesBoard(
+      asof: json['asof'] as String?,
+      asofEt: '${json['asof_et'] ?? ''}',
+      groups: [
+        if (json['groups'] is List)
+          for (final item in json['groups'])
+            if (item is Map) MarketMovesGroup.fromJson(Map<String, dynamic>.from(item)),
+      ],
+      legend: '${json['legend'] ?? ''}',
+      source: '${json['source'] ?? ''}',
+      note: '${json['note'] ?? ''}',
+    );
+  }
+}
+
+class MarketMovesGroup {
+  const MarketMovesGroup({
+    required this.id,
+    required this.label,
+    this.kind = 'price',
+    this.col = 0,
+    this.rows = const [],
+  });
+
+  final String id;
+  final String label;
+  final String kind;
+  final int col;
+  final List<MarketMovesRow> rows;
+
+  factory MarketMovesGroup.fromJson(Map<String, dynamic> json) {
+    return MarketMovesGroup(
+      id: '${json['id'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+      kind: '${json['kind'] ?? 'price'}',
+      col: json['col'] is num ? (json['col'] as num).toInt() : 0,
+      rows: [
+        if (json['rows'] is List)
+          for (final item in json['rows'])
+            if (item is Map) MarketMovesRow.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
+  }
+}
+
+class MarketMovesRow {
+  const MarketMovesRow({
+    required this.symbol,
+    required this.name,
+    this.px,
+    this.dayPct,
+    this.z,
+    this.z14,
+    this.extreme = false,
+    this.ready = false,
+  });
+
+  final String symbol;
+  final String name;
+  final double? px;
+  final double? dayPct;
+  final double? z;
+  final double? z14;
+  final bool extreme;
+  final bool ready;
+
+  factory MarketMovesRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return MarketMovesRow(
+      symbol: '${json['symbol'] ?? ''}',
+      name: '${json['name'] ?? ''}',
+      px: n(json['px']),
+      dayPct: n(json['day_pct']),
+      z: n(json['z']),
+      z14: n(json['z14']),
+      extreme: json['extreme'] == true,
+      ready: json['ready'] == true,
+    );
+  }
+}
+
 class MacroBoard {
   const MacroBoard({
     this.regime = VolRegime.empty,

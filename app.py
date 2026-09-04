@@ -169,6 +169,50 @@ def macro_board_api():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/market-moves", methods=["GET"])
+def market_moves_api():
+    """Dense Market Moves grid — QUANT-locked z from stored Yahoo closes."""
+    import market_moves as mm
+    try:
+        return jsonify(mm.build_board())
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(mm.empty_board())
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/market-moves/seed", methods=["POST"])
+def market_moves_seed():
+    """Add Market Moves Yahoo names to the desk. Bars arrive only via Fetch."""
+    import market_moves as mm
+    body = request.get_json(force=True, silent=True) or {}
+    groups = body.get("groups")
+    if groups is not None and not isinstance(groups, list):
+        return jsonify({"error": "groups must be a list"}), 400
+    ensure_local_schema()
+    try:
+        return jsonify(mm.seed_symbols(groups)), 201
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/market-moves/fetch-core", methods=["POST"])
+def market_moves_fetch_core():
+    """Seed + Fetch Yahoo for Indexes, Big Tech, and Sectors."""
+    import market_moves as mm
+    body = request.get_json(force=True, silent=True) or {}
+    try:
+        delay = float(body.get("delay", 1.2))
+    except (TypeError, ValueError):
+        delay = 1.2
+    period = str(body.get("period") or "1y")
+    ensure_local_schema()
+    try:
+        return jsonify(mm.fetch_core(delay=delay, period=period))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/edges/board", methods=["GET"])
 def edges_board_api():
     """Which-edge-is-online surface — real indicators, no screenshot win rates."""

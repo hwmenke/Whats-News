@@ -48,6 +48,10 @@ function applyDeskIa(id) {
     document.querySelectorAll('#desk-ia-bar .desk-ia-btn').forEach(btn => {
         btn.classList.toggle('on', btn.dataset.ia === next);
     });
+    if (next === 'moves') {
+        if (typeof switchTab === 'function') switchTab('moves');
+        return;
+    }
     if (next === 'macro') {
         if (typeof switchTab === 'function') switchTab('macro');
         return;

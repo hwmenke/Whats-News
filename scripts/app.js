@@ -2444,6 +2444,7 @@ async function switchTab(tabId, opts = {}) {
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     hideMacroArea();
+    if (typeof hideMovesArea === 'function') hideMovesArea();
     if (typeof hideEngineArea === 'function') hideEngineArea();
     if (typeof hideBookAreas === 'function') hideBookAreas();
 
@@ -2474,6 +2475,9 @@ async function switchTab(tabId, opts = {}) {
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
+    } else if (tabId === 'moves') {
+        if (typeof hideEngineArea === 'function') hideEngineArea();
+        if (typeof showMovesArea === 'function') showMovesArea();
     } else if (tabId === 'macro') {
         showMacroArea();
         if (typeof initMacroDesk === 'function') initMacroDesk();
@@ -2503,6 +2507,7 @@ function showEngineDesk(ia) {
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     hideMacroArea();
+    if (typeof hideMovesArea === 'function') hideMovesArea();
     if (typeof hideBookAreas === 'function') hideBookAreas();
     if (typeof showEngineArea === 'function') showEngineArea();
     const panel = ia || (typeof readDeskPrefs === 'function' ? (readDeskPrefs().deskIa || 'command') : 'command');
@@ -2523,6 +2528,7 @@ function showMacroArea() {
     document.getElementById('data-manager-area').style.display = 'none';
     const macro = document.getElementById('macro-area');
     if (macro) macro.style.display = 'flex';
+    if (typeof hideMovesArea === 'function') hideMovesArea();
     if (typeof hideEngineArea === 'function') hideEngineArea();
 }
 

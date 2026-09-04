@@ -254,7 +254,8 @@
       <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">Trend</button>
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
       <button id="tab-engine" class="tab-btn" onclick="switchTab('engine')" title="Equity ENGINE board — Setup / Pattern / RSI-C / Sigma from stored Yahoo bars">ENGINE</button>
-      <button id="tab-macro" class="tab-btn" onclick="switchTab('macro')" title="Market Moves sleeves + edges from stored Yahoo bars">Macro</button>
+      <button id="tab-moves" class="tab-btn" onclick="switchTab('moves')" title="Market Moves — QUANT-locked z from stored Yahoo OHLCV">Market Moves</button>
+      <button id="tab-macro" class="tab-btn" onclick="switchTab('macro')" title="Macro sleeves + edges from stored Yahoo bars">Macro</button>
       <button id="tab-pnl" class="tab-btn" onclick="switchTab('pnl')" title="Paper book P&amp;L from stored marks — not a live broker">P&amp;L</button>
       <button id="tab-book" class="tab-btn" onclick="switchTab('book')" title="Paper positions — Fidelity CSV or manual">Book</button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">Data</button>
@@ -264,6 +265,7 @@
       <button type="button" class="desk-ia-btn" data-ia="setup">Setup</button>
       <button type="button" class="desk-ia-btn" data-ia="pattern">Pattern</button>
       <button type="button" class="desk-ia-btn" data-ia="rsic">RSI-C</button>
+      <button type="button" class="desk-ia-btn" data-ia="moves">Market Moves</button>
       <button type="button" class="desk-ia-btn" data-ia="macro">Macro</button>
       <button type="button" class="desk-ia-btn" data-ia="sigma">Sigma</button>
       <button type="button" class="desk-ia-btn" data-ia="maps">Maps</button>
@@ -1322,6 +1324,27 @@
       </div>
     </div><!-- #engine-area -->
 
+    <!-- ── Market Moves (QUANT-locked z, Yahoo/SQLite only) ── -->
+    <div id="moves-area" class="moves-container" style="display:none;">
+      <header class="mm-head">
+        <div>
+          <h2>MARKET MOVES</h2>
+          <p id="moves-meta" class="mm-meta">INTRADAY</p>
+          <p id="moves-legend" class="mm-legend">shade=|z| intensity · • = |z|≥2 · daily z vs ~30d stdev · 14D: 14-day move in 14-day sigmas</p>
+          <p id="moves-source" class="mm-source">Yahoo/stored OHLCV — not CNBC/Finviz as source of truth.</p>
+        </div>
+        <div class="mm-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-moves-reload">Reload</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-moves-fetch">Fetch Indexes + Big Tech + Sectors</button>
+          <span id="moves-fetch-meta" class="scanner-ts"></span>
+        </div>
+      </header>
+      <div id="moves-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span> Reading stored Yahoo closes…
+      </div>
+      <div id="moves-grid" class="mm-grid"></div>
+    </div>
+
     <!-- ── Macro / Edges desk (shared APIs with iPhone) ── -->
     <div id="macro-area" class="macro-container" style="display:none;">
       <div id="macro-regime" class="macro-regime is-missing">
@@ -1696,6 +1719,7 @@
 <script src="scripts/setup_scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/macro_desk.js"></script>
+<script src="scripts/market_moves.js"></script>
 <script src="scripts/paper_book.js"></script>
 <script src="scripts/finviz_desk.js"></script>
 <script src="scripts/hmm_desk.js"></script>

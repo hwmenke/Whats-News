@@ -286,6 +286,13 @@ class WhatsNewsApi {
     return const {};
   }
 
+  Future<MarketMovesBoard> getMarketMoves() async {
+    final raw = await _get('/api/market-moves');
+    if (raw is Map<String, dynamic>) return MarketMovesBoard.fromJson(raw);
+    if (raw is Map) return MarketMovesBoard.fromJson(Map<String, dynamic>.from(raw));
+    return MarketMovesBoard.empty;
+  }
+
   Future<MacroBoard> getMacroBoard() async {
     final raw = await _get('/api/macro/board');
     if (raw is Map<String, dynamic>) return MacroBoard.fromJson(raw);

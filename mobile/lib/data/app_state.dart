@@ -52,6 +52,7 @@ class WhatsNewsState extends ChangeNotifier {
   SpyRs spyRs = SpyRs.empty;
   List<Sleeve> sleeves = const [];
   MacroBoard macroBoard = MacroBoard.empty;
+  MarketMovesBoard marketMoves = MarketMovesBoard.empty;
   EdgesBoard edgesBoard = EdgesBoard.empty;
   FractalStatus fractalStatus = FractalStatus.empty;
   FinvizScreener finvizScreener = FinvizScreener.empty;
@@ -811,6 +812,9 @@ class WhatsNewsState extends ChangeNotifier {
       if (_isEngineMode(scanMode)) {
         await loadEngine();
       }
+      if (scanMode == 'moves') {
+        await loadMarketMoves();
+      }
     } on ApiException catch (e) {
       scanError = _friendly(e);
     } catch (_) {
@@ -975,7 +979,8 @@ class WhatsNewsState extends ChangeNotifier {
         mode != 'hmm' &&
         mode != 'combo' &&
         !_isPackMode(mode) &&
-        !_isEngineMode(mode)) {
+        !_isEngineMode(mode) &&
+        mode != 'moves') {
       return;
     }
     scanMode = mode;
@@ -986,6 +991,16 @@ class WhatsNewsState extends ChangeNotifier {
     if (mode == 'combo') loadCombo();
     if (_isPackMode(mode)) loadScanPack();
     if (_isEngineMode(mode)) loadEngine();
+    if (mode == 'moves') loadMarketMoves();
+  }
+
+  Future<void> loadMarketMoves() async {
+    try {
+      marketMoves = await api.getMarketMoves();
+    } on ApiException {
+      marketMoves = MarketMovesBoard.empty;
+    }
+    notifyListeners();
   }
 
   String _friendly(ApiException e) {

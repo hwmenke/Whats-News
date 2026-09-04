@@ -42,7 +42,7 @@ class ScansPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Same Python scans as the web desk. Command / Setup / Pattern / RSI-C / Sigma are the ENGINE boards. Fractal is SPEC 25/27. HMM is a research label, not edge. Finviz is public HTML only. Breadth is our Yahoo/SQLite universe — not a scraped Market Monitor.',
+                  'Same Python scans as the web desk. Market Moves is GET /api/market-moves (QUANT-locked z). Command / Setup / Pattern / RSI-C / Sigma are the ENGINE boards. Fractal is SPEC 25/27. HMM is a research label, not edge. Finviz is public HTML only. Breadth is our Yahoo/SQLite universe — not a scraped Market Monitor.',
                   style: TextStyle(color: DeskColors.muted, fontSize: 12),
                 ),
                 const SizedBox(height: 8),
@@ -68,6 +68,7 @@ class ScansPage extends StatelessWidget {
                       ('stretch', 'Stretch'),
                       ('sigma', 'Sigma'),
                       ('maps', 'Maps'),
+                      ('moves', 'Market Moves'),
                     ])
                       _ModeChip(
                         label: e.$2,
@@ -173,6 +174,8 @@ class ScansPage extends StatelessWidget {
           ..._sigmaSlivers(state)
         else if (state.scanMode == 'maps')
           ..._mapsSlivers(state)
+        else if (state.scanMode == 'moves')
+          ..._movesSlivers(state)
         else if (state.scanMode == 'ma' ||
             state.scanMode == 'rsi' ||
             state.scanMode == 'breakout' ||
@@ -1001,6 +1004,99 @@ class ScansPage extends StatelessWidget {
         ),
       ),
       ..._howto('${m.howto}\n${m.tdNote}'.trim()),
+    ];
+  }
+
+  /// Flutter path for Market Moves: same GET /api/market-moves as the web grid.
+  List<Widget> _movesSlivers(WhatsNewsState s) {
+    final b = s.marketMoves;
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            [
+              if (b.asofEt.isNotEmpty) b.asofEt,
+              if (b.asof != null) 'session ${b.asof}',
+              b.legend.isEmpty
+                  ? 'shade=|z| intensity · • = |z|≥2 · daily z vs ~30d stdev · 14D: 14-day move in 14-day sigmas'
+                  : b.legend,
+              b.source.isEmpty ? 'Yahoo/stored OHLCV — not CNBC/Finviz as SoT.' : b.source,
+            ].join('\n'),
+            style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
+          ),
+        ),
+      ),
+      for (final g in b.groups)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(g.label, style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 13)),
+                const SizedBox(height: 4),
+                for (final r in g.rows)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 72,
+                          child: Text(r.name, style: const TextStyle(color: DeskColors.text, fontSize: 12, fontWeight: FontWeight.w600)),
+                        ),
+                        Expanded(
+                          child: Text(
+                            r.ready && r.px != null ? r.px!.toStringAsFixed(2) : '—',
+                            style: const TextStyle(color: DeskColors.muted, fontSize: 12, fontFeatures: []),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            r.dayPct == null
+                                ? '—'
+                                : '${r.dayPct! >= 0 ? '+' : ''}${r.dayPct!.toStringAsFixed(1)}',
+                            style: TextStyle(
+                              color: r.dayPct == null
+                                  ? DeskColors.muted
+                                  : (r.dayPct! >= 0 ? DeskColors.green : DeskColors.red),
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            r.z == null ? '—' : '${r.extreme ? '• ' : ''}${r.z! >= 0 ? '+' : ''}${r.z!.toStringAsFixed(1)}',
+                            style: TextStyle(
+                              color: r.z == null
+                                  ? DeskColors.muted
+                                  : (r.z! >= 0 ? DeskColors.green : DeskColors.red),
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            r.z14 == null ? '—' : '${r.z14! >= 0 ? '+' : ''}${r.z14!.toStringAsFixed(1)}',
+                            style: TextStyle(
+                              color: r.z14 == null
+                                  ? DeskColors.muted
+                                  : (r.z14! >= 0 ? DeskColors.green : DeskColors.red),
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
     ];
   }
 
