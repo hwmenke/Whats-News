@@ -49,6 +49,22 @@ class BookPage extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Alpaca paper — not live P&L',
+                  style: TextStyle(color: DeskColors.muted, fontSize: 12),
+                ),
+                if (state.alpacaMessage != null && state.alpacaMessage!.isNotEmpty)
+                  Text(
+                    state.alpacaMessage!,
+                    style: const TextStyle(color: DeskColors.dim, fontSize: 11),
+                    textAlign: TextAlign.center,
+                  ),
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  onPressed: state.loadingBook ? null : state.syncAlpacaPaper,
+                  child: const Text('Sync Alpaca paper', style: TextStyle(fontSize: 13)),
+                ),
                 if (state.bookError != null) ...[
                   const SizedBox(height: 8),
                   Text(state.bookError!, style: const TextStyle(color: DeskColors.red, fontSize: 13)),
@@ -225,6 +241,7 @@ class BookPage extends StatelessWidget {
                     [
                       r.symbol,
                       r.side,
+                      r.source,
                       r.qty?.toString() ?? '—',
                       r.ready ? (r.price?.toStringAsFixed(2) ?? '—') : 'no bars',
                       r.dayPnl == null ? '' : r.dayPnl!.toStringAsFixed(2),

@@ -306,6 +306,28 @@ def book_pnl_api():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/alpaca/status", methods=["GET"])
+def alpaca_status_api():
+    """Alpaca paper keys present? Never echoes secrets. Live URL refused."""
+    import alpaca_paper
+    return jsonify(alpaca_paper.status())
+
+
+@app.route("/api/alpaca/sync", methods=["POST"])
+def alpaca_sync_api():
+    """Read-only GET account + positions. paper=true hard-coded. No orders."""
+    import alpaca_paper
+    ensure_local_schema()
+    try:
+        return jsonify(alpaca_paper.sync())
+    except alpaca_paper.AlpacaDenied as exc:
+        return jsonify(alpaca_paper.empty_sync(str(exc), paper=True)), 200
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(alpaca_paper.empty_sync(str(exc), paper=True))
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/finviz/settings", methods=["GET"])
 def finviz_settings_get():
     import finviz_client

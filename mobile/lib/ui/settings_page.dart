@@ -222,6 +222,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 8),
                 ],
                 const SizedBox(height: 16),
+                const _SectionTitle('Alpaca paper'),
+                const Text(
+                  'Read-only sync uses APCA_API_KEY_ID / APCA_API_SECRET_KEY on the Mac running ./start.sh. '
+                  'Live api.alpaca.markets is refused. Alpaca paper — not live P&L. No keys in the app.',
+                  style: TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
+                ),
+                const SizedBox(height: 22),
                 const _SectionTitle('About'),
                 Text(
                   'Paper / local only — no live trading. No API keys. '

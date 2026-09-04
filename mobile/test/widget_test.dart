@@ -81,6 +81,16 @@ void main() {
           'note': 'No screenshot win rates.',
         });
       }
+      if (path == '/api/alpaca/status' || path == '/api/alpaca/sync') {
+        return _json({
+          'configured': false,
+          'paper': true,
+          'note': 'Alpaca paper — not live P&L',
+          'reason': 'Missing APCA_API_KEY_ID / APCA_API_SECRET_KEY. Env only — Alpaca paper, not live P&L.',
+          'ok': false,
+          'positions': [],
+        });
+      }
       if (path == '/api/book/pnl' || path == '/api/book/positions') {
         return _json({
           'ready': false,

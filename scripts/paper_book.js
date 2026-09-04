@@ -221,6 +221,7 @@ async function loadPaperBook() {
                 <td class="macro-sym">${_pnlEsc(row.symbol)}</td>
                 <td>${_pnlEsc(row.side)}</td>
                 <td>${row.qty == null ? '—' : row.qty}</td>
+                <td>${_pnlEsc(row.source || '')}</td>
                 <td>${row.avg_cost == null ? '—' : row.avg_cost}</td>
                 <td>${row.price == null ? '—' : row.price}</td>
                 <td>${_pnlEsc(_pnlMoney(row.market_value))}</td>
@@ -249,6 +250,22 @@ async function loadPaperBook() {
 function bindPaperBook() {
     document.getElementById('btn-pnl-refresh')?.addEventListener('click', () => loadPaperPnl());
     document.getElementById('btn-book-reload')?.addEventListener('click', () => loadPaperBook());
+    document.getElementById('btn-alpaca-sync')?.addEventListener('click', async () => {
+        const msg = document.getElementById('alpaca-sync-msg');
+        if (msg) msg.textContent = 'POST /api/alpaca/sync…';
+        try {
+            const data = await apiFetch(`${API}/alpaca/sync`, { method: 'POST' });
+            if (msg) {
+                msg.textContent = data.ok
+                    ? `Alpaca paper — not live P&L. Imported ${data.imported || 0} ${data.source || 'alpaca_paper'} lines.`
+                    : (data.reason || data.note || 'Alpaca paper unavailable');
+            }
+            await loadPaperBook();
+            await loadPaperPnl();
+        } catch (err) {
+            if (msg) msg.textContent = err.message || 'Alpaca paper sync failed';
+        }
+    });
     document.getElementById('btn-book-import')?.addEventListener('click', async () => {
         const csv = document.getElementById('book-csv')?.value || '';
         const replace = !!document.getElementById('book-replace')?.checked;

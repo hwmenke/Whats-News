@@ -20,8 +20,14 @@ import market_data as md
 NOTE = (
     "Paper / local only. Marks and VaR use stored Yahoo daily closes. "
     "Empty book is zeros — not a demo P&L. Import a Fidelity Positions CSV "
-    "(Symbol + Quantity; Average Cost Basis optional) or add a line."
+    "(Symbol + Quantity; Average Cost Basis optional), sync Alpaca paper, or add a line. "
+    "Alpaca paper — not live P&L."
 )
+KNOWN_SOURCES = ("manual", "fidelity_csv", "alpaca_paper")
+SOURCE_MANUAL = "manual"
+SOURCE_FIDELITY = "fidelity_csv"
+SOURCE_ALPACA = "alpaca_paper"
+SOURCE_UNMARKED = "unmarked"
 CASH_SKIP = {
     "CASH", "USD", "SPAXX", "SPAXX**", "FDRXX", "FZFXX", "SPRXX",
     "PENDING ACTIVITY", "CORE",
@@ -140,6 +146,24 @@ def parse_fidelity_csv(text: str) -> list[dict]:
     return out
 
 
+def normalize_source(raw, *, default: str = SOURCE_MANUAL) -> str:
+    s = (raw or "").strip().lower()
+    if s in KNOWN_SOURCES:
+        return s
+    if not s:
+        return default
+    return SOURCE_UNMARKED
+
+
+def clear_source(source: str) -> int:
+    tag = normalize_source(source, default="")
+    if tag not in KNOWN_SOURCES:
+        return 0
+    with db.connection() as conn:
+        cur = conn.execute("DELETE FROM paper_positions WHERE source=?", (tag,))
+        return cur.rowcount
+
+
 def get_desk_name() -> str:
     with db.connection() as conn:
         row = conn.execute(
@@ -182,6 +206,7 @@ def upsert_position(*, symbol, qty, side=None, avg_cost=None, note="", source="m
         raise ValueError("Need symbol and non-zero quantity")
     sym = str(symbol).strip().upper()
     cost = _finite(avg_cost)
+    source = normalize_source(source)
     now = _now()
     with db.connection() as conn:
         existing = conn.execute(
@@ -237,7 +262,7 @@ def clear_positions() -> int:
 def import_csv(text: str, *, replace: bool = False) -> dict:
     parsed = parse_fidelity_csv(text)
     if replace:
-        clear_positions()
+        clear_source(SOURCE_FIDELITY)
     imported = []
     for row in parsed:
         imported.append(upsert_position(**row))
@@ -281,7 +306,7 @@ def _mark_position(pos: dict) -> dict:
         "side": pos.get("side") or ("short" if qty < 0 else "long"),
         "avg_cost": _round(cost, 4),
         "note": pos.get("note") or "",
-        "source": pos.get("source") or "manual",
+        "source": normalize_source(pos.get("source")),
         "ready": px is not None,
         "price": _round(px, 4),
         "prev_price": _round(px1, 4),
@@ -435,7 +460,9 @@ def empty_pnl() -> dict:
         "ready": False,
         "desk_name": get_desk_name() if _table_ready() else DESK_DEFAULT,
         "note": NOTE,
-        "message": "Empty paper book. Import a Fidelity Positions CSV or add a line. No invented P&L.",
+        "message": "Empty paper book. Import a Fidelity Positions CSV, sync Alpaca paper, or add a line. No invented P&L.",
+        "sources": [],
+        "unmarked_count": 0,
         "count": 0,
         "marked_count": 0,
         "today_pnl": None,
@@ -474,7 +501,28 @@ def book_pnl() -> dict:
     raw = list_positions()
     if not raw:
         return empty_pnl()
-    marked = [_mark_position(p) for p in raw]
+    tagged = []
+    unmarked = []
+    for p in raw:
+        src = normalize_source(p.get("source"))
+        p = {**p, "source": src}
+        if src == SOURCE_UNMARKED:
+            unmarked.append(p)
+        else:
+            tagged.append(p)
+    if not tagged:
+        empty = empty_pnl()
+        empty["count"] = len(unmarked)
+        empty["unmarked_count"] = len(unmarked)
+        empty["positions"] = [_mark_position(p) | {"omitted_from_pnl": True} for p in unmarked]
+        for m in empty["positions"]:
+            m.pop("_closes", None)
+        empty["message"] = (
+            "Unmarked lines omitted from P&L. Tag source as manual, fidelity_csv, or alpaca_paper. "
+            "No invented P&L."
+        )
+        return empty
+    marked = [_mark_position(p) for p in tagged]
     ready = [m for m in marked if m["ready"] and m["market_value"] is not None]
     long_mv = sum(m["market_value"] for m in ready if (m["qty"] or 0) > 0)
     short_mv = sum(abs(m["market_value"]) for m in ready if (m["qty"] or 0) < 0)
@@ -567,6 +615,11 @@ def book_pnl() -> dict:
         "distribution": dist,
         "equity_curve": curve[-260:],
         "curve_label": "daily mark series from stored closes — no intraday bars",
-        "positions": marked,
+        "positions": marked + [
+            {k: v for k, v in {**_mark_position(p), "omitted_from_pnl": True}.items() if k != "_closes"}
+            for p in unmarked
+        ],
         "tape": tape,
+        "sources": sorted({normalize_source(m.get("source")) for m in marked}),
+        "unmarked_count": len(unmarked),
     }

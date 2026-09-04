@@ -68,6 +68,8 @@ class WhatsNewsState extends ChangeNotifier {
   bool loadingBook = false;
   String bookPane = 'pnl';
   String? bookError;
+  Map<String, dynamic> alpacaStatus = const {};
+  String? alpacaMessage;
   bool macroOpen = true;
   String familyFilter = '';
   bool seedingUniverse = false;
@@ -308,6 +310,12 @@ class WhatsNewsState extends ChangeNotifier {
     notifyListeners();
     try {
       bookPnl = await api.getBookPnl();
+      try {
+        alpacaStatus = await api.getAlpacaStatus();
+        alpacaMessage = '${alpacaStatus['reason'] ?? alpacaStatus['note'] ?? ''}';
+      } on ApiException {
+        alpacaStatus = const {};
+      }
     } on ApiException catch (e) {
       bookError = _friendly(e);
       bookPnl = BookPnl.empty;
@@ -328,6 +336,23 @@ class WhatsNewsState extends ChangeNotifier {
   Future<void> removeBookLine(int id) async {
     await api.deleteBookPosition(id);
     await loadBook();
+  }
+
+  Future<String> syncAlpacaPaper() async {
+    try {
+      final raw = await api.syncAlpacaPaper();
+      if (raw['ok'] == true) {
+        alpacaMessage = 'Alpaca paper — not live P&L. Imported ${raw['imported'] ?? 0} lines.';
+      } else {
+        alpacaMessage = '${raw['reason'] ?? raw['note'] ?? 'Alpaca paper unavailable'}';
+      }
+      await loadBook();
+      return alpacaMessage ?? '';
+    } on ApiException catch (e) {
+      alpacaMessage = _friendly(e);
+      notifyListeners();
+      return alpacaMessage ?? '';
+    }
   }
 
   Future<String> importBookCsv(String csv, {bool replace = false}) async {

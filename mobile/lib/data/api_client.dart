@@ -433,6 +433,24 @@ class WhatsNewsApi {
     return ComboScan.empty;
   }
 
+  Future<Map<String, dynamic>> getAlpacaStatus() async {
+    try {
+      final raw = await _get('/api/alpaca/status');
+      if (raw is Map<String, dynamic>) return raw;
+      if (raw is Map) return Map<String, dynamic>.from(raw);
+    } on ApiException {
+      return const {};
+    }
+    return const {};
+  }
+
+  Future<Map<String, dynamic>> syncAlpacaPaper() async {
+    final raw = await _send('POST', '/api/alpaca/sync');
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return const {};
+  }
+
   Future<BookPnl> getBookPnl() async {
     try {
       final raw = await _get('/api/book/pnl');

@@ -1072,6 +1072,7 @@ class BookPosition {
     this.unrealized,
     this.dayPct,
     this.ready = false,
+    this.source = 'manual',
   });
 
   final int? id;
@@ -1085,6 +1086,7 @@ class BookPosition {
   final double? unrealized;
   final double? dayPct;
   final bool ready;
+  final String source;
 
   factory BookPosition.fromJson(Map<String, dynamic> json) {
     double? n(Object? v) {
@@ -1104,6 +1106,7 @@ class BookPosition {
       unrealized: n(json['unrealized']),
       dayPct: n(json['day_pct']),
       ready: json['ready'] == true,
+      source: '${json['source'] ?? 'manual'}',
     );
   }
 }

@@ -1149,6 +1149,7 @@
           <input id="pnl-desk-name" class="pnl-desk-name" value="WHATS-NEWS" maxlength="80" aria-label="Desk name" />
           <button type="button" class="btn btn-ghost btn-sm" id="btn-pnl-refresh">Reload</button>
         </div>
+        <p class="pnl-blurb">Alpaca paper — not live P&amp;L. Marks are stored Yahoo closes.</p>
         <div class="pnl-hero">
           <div id="pnl-today-pct" class="pnl-today-pct">—</div>
           <div class="pnl-hero-label">TODAY'S P&amp;L</div>
@@ -1175,6 +1176,13 @@
         </div>
         <button type="button" class="btn btn-ghost btn-sm" id="btn-book-reload">Reload</button>
       </div>
+      <div class="book-alpaca">
+        <p class="pnl-blurb">Alpaca paper — not live P&amp;L. Sync is GET /v2/account + /v2/positions only. Keys via env (<code>APCA_API_KEY_ID</code>). Live <code>api.alpaca.markets</code> is refused.</p>
+        <div class="book-import-row">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-alpaca-sync">Sync Alpaca paper</button>
+          <span id="alpaca-sync-msg" class="scanner-ts"></span>
+        </div>
+      </div>
       <div class="book-import">
         <textarea id="book-csv" class="book-csv" rows="6" placeholder="Paste Fidelity Positions CSV here…"></textarea>
         <div class="book-import-row">
@@ -1197,7 +1205,7 @@
         <table class="scanner-table" id="book-table">
           <thead>
             <tr>
-              <th>Symbol</th><th>Side</th><th>Qty</th><th>Avg cost</th>
+              <th>Symbol</th><th>Side</th><th>Qty</th><th>Source</th><th>Avg cost</th>
               <th>Mark</th><th>MV</th><th>Day $</th><th>Unrl</th><th></th>
             </tr>
           </thead>
