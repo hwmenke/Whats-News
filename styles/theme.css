@@ -1,7 +1,11 @@
 /* ============================================================
-   Font C + v4.1 tokens — ONE theme file for faces + heat.
-   Public Sans (titles) · Inter (UI) · JetBrains Mono (numbers).
-   Soft R/G heat. No board borders. MM density.
+   Face + heat TOKENS only — not a final Visual UX pack.
+   HOLD: Caspar rejected the dark-desk neon Command/Setup/Macro
+   comps. Do not treat this file as that neon system. Do not
+   match those comps. Dedicated polish waits on a revised
+   Ex Ante × 538 VISUAL_SYSTEM via CoS.
+   Faces live here so a later swap is one file (title/body/mono).
+   Boards stay functional on the existing desk for now.
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Public+Sans:wght@500;600;700&display=swap');

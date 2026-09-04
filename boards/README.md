@@ -25,6 +25,13 @@ does not compute PX, z, D, or TMAC*.
 Dash: Customize on Market Moves + ENGINE Setup / Sigma / Maps.
 Prefs: `localStorage['whats-news-desk-prefs'].boardColumns`.
 
+## Visual HOLD
+
+Neon Command/Setup/Macro comps are **rejected** — not the final desk.
+`styles/theme.css` is a face/heat token hook only. Dedicated UI polish
+waits on a revised Ex Ante × 538 VISUAL_SYSTEM via CoS. ENGINE math
+and this registry stay.
+
 ## Flutter path
 
 1. `WhatsNewsApi.getBoardRegistry()` → `GET /api/boards/registry`
