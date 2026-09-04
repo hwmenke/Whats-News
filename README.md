@@ -68,6 +68,9 @@ Need Python 3? Check with `python3 --version`.
 - Watchlist-wide news page with source + time on every story
 - Scanner / stats / backtest tabs for deeper analysis
 - PM Desk: book tape, RS ranks, regime heatmap, ATR sizing
+- Paper **P&L** / **Book** tabs: Fidelity Positions CSV (or manual lines), marked from stored Yahoo closes. VaR / ES only when the daily NAV series is long enough. Empty book is zeros — never a demo P&L.
+
+Fidelity export that works: **Positions → download CSV** with `Symbol` + `Quantity`. `Cost Basis Average` / `Average Cost Basis` is optional for unrealized. Money-market rows like SPAXX are skipped. No Fidelity login and no orders.
 
 ### Scaling the watchlist
 
@@ -114,6 +117,8 @@ python3 scripts/bulk_archive.py --refresh --overlap-days 5 --delay 0.8
 | `mobile/` | iPhone-first Flutter client (shared `lib/data` HTTP layer) |
 | `index_universe.py` / `scripts/bulk_archive.py` | US index lists + bulk archive CLI |
 | `setup_scanner.py` | Setup tags (EP, Darvas, breakout queue) |
+| `paper_book.py` | Paper positions, Fidelity CSV, P&L / VaR from stored closes |
+| `fractal_scan.py` | Independent SPEC 25/27 Fractal D estimator |
 | `index.html` / `news.html` | UI |
 | `scripts/` | Frontend JS |
 | `tests/` | Unit tests (no live network) |

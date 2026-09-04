@@ -81,6 +81,20 @@ void main() {
           'note': 'No screenshot win rates.',
         });
       }
+      if (path == '/api/book/pnl' || path == '/api/book/positions') {
+        return _json({
+          'ready': false,
+          'desk_name': 'Whats-News',
+          'today_pnl': null,
+          'today_pnl_pct': null,
+          'nav': null,
+          'exposure': {'gross': 0, 'long': 0, 'short': 0, 'net': 0},
+          'positions': [],
+          'tape': [],
+          'equity_curve': [],
+          'message': 'Empty paper book. Import a Fidelity Positions CSV or add a line.',
+        });
+      }
       if (path == '/api/fractal/status' || path == '/api/fractal/scan') {
         return _json({
           'available': true,

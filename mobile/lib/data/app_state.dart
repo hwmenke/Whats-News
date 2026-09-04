@@ -54,6 +54,10 @@ class WhatsNewsState extends ChangeNotifier {
   MacroBoard macroBoard = MacroBoard.empty;
   EdgesBoard edgesBoard = EdgesBoard.empty;
   FractalStatus fractalStatus = FractalStatus.empty;
+  BookPnl bookPnl = BookPnl.empty;
+  bool loadingBook = false;
+  String bookPane = 'pnl';
+  String? bookError;
   bool macroOpen = true;
   String familyFilter = '';
   bool seedingUniverse = false;
@@ -280,6 +284,47 @@ class WhatsNewsState extends ChangeNotifier {
     notifyListeners();
     _persist();
     loadNews(symbol: newsScope == 'symbol' ? selectedSymbol : null);
+  }
+
+  void setBookPane(String pane) {
+    bookPane = pane == 'positions' ? 'positions' : 'pnl';
+    notifyListeners();
+    loadBook();
+  }
+
+  Future<void> loadBook() async {
+    loadingBook = true;
+    bookError = null;
+    notifyListeners();
+    try {
+      bookPnl = await api.getBookPnl();
+    } on ApiException catch (e) {
+      bookError = _friendly(e);
+      bookPnl = BookPnl.empty;
+    } catch (_) {
+      bookError = 'Cannot reach $baseUrl for the paper book.';
+      bookPnl = BookPnl.empty;
+    } finally {
+      loadingBook = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> addBookLine(String symbol, double qty, {String side = 'long', double? avgCost}) async {
+    await api.addBookPosition(symbol: symbol, qty: qty, side: side, avgCost: avgCost);
+    await loadBook();
+  }
+
+  Future<void> removeBookLine(int id) async {
+    await api.deleteBookPosition(id);
+    await loadBook();
+  }
+
+  Future<String> importBookCsv(String csv, {bool replace = false}) async {
+    final raw = await api.importBookCsv(csv, replace: replace);
+    await loadBook();
+    if (raw['error'] != null) return '${raw['error']}';
+    return 'Imported ${raw['imported'] ?? 0} lines.';
   }
 
   void setEdgeTag(String tag) {

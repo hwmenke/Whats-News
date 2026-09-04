@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
 import 'data/app_state.dart';
+import 'ui/book_page.dart';
 import 'ui/chart_page.dart';
 import 'ui/news_page.dart';
 import 'ui/scans_page.dart';
@@ -92,6 +93,9 @@ class _ShellState extends State<_Shell> {
           if (i == 3) {
             state.loadNews();
           }
+          if (i == 4) {
+            state.loadBook();
+          }
         },
         items: const [
           BottomNavigationBarItem(
@@ -109,6 +113,10 @@ class _ShellState extends State<_Shell> {
           BottomNavigationBarItem(
             icon: Icon(CupertinoIcons.doc_text),
             label: 'News',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.money_dollar),
+            label: 'P&L',
           ),
         ],
       ),
@@ -134,8 +142,16 @@ class _ShellState extends State<_Shell> {
                 _tabs.index = 1;
               },
             );
-          default:
+          case 3:
             page = NewsPage(state: state);
+          default:
+            page = BookPage(
+              state: state,
+              onOpenChart: (sym) {
+                state.selectSymbol(sym);
+                _tabs.index = 1;
+              },
+            );
         }
         return ColoredBox(color: DeskColors.bg, child: page);
       },

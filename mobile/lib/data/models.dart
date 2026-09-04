@@ -1058,3 +1058,159 @@ class SpyRs {
     );
   }
 }
+
+class BookPosition {
+  const BookPosition({
+    required this.symbol,
+    this.id,
+    this.qty,
+    this.side = 'long',
+    this.avgCost,
+    this.price,
+    this.marketValue,
+    this.dayPnl,
+    this.unrealized,
+    this.dayPct,
+    this.ready = false,
+  });
+
+  final int? id;
+  final String symbol;
+  final double? qty;
+  final String side;
+  final double? avgCost;
+  final double? price;
+  final double? marketValue;
+  final double? dayPnl;
+  final double? unrealized;
+  final double? dayPct;
+  final bool ready;
+
+  factory BookPosition.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return BookPosition(
+      id: json['id'] is num ? (json['id'] as num).toInt() : int.tryParse('${json['id']}'),
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      qty: n(json['qty']),
+      side: '${json['side'] ?? 'long'}',
+      avgCost: n(json['avg_cost']),
+      price: n(json['price']),
+      marketValue: n(json['market_value']),
+      dayPnl: n(json['day_pnl']),
+      unrealized: n(json['unrealized']),
+      dayPct: n(json['day_pct']),
+      ready: json['ready'] == true,
+    );
+  }
+}
+
+class BookPnl {
+  const BookPnl({
+    this.ready = false,
+    this.deskName = 'Whats-News',
+    this.note = '',
+    this.message = '',
+    this.todayPnl,
+    this.todayPnlPct,
+    this.nav,
+    this.gross = 0,
+    this.longMv = 0,
+    this.shortMv = 0,
+    this.net = 0,
+    this.betaSpy,
+    this.varNote = '',
+    this.hist95Pct,
+    this.param95Pct,
+    this.es95Pct,
+    this.distMean,
+    this.distStdev,
+    this.distN = 0,
+    this.curve = const [],
+    this.curveLabel = '',
+    this.positions = const [],
+    this.tape = const [],
+  });
+
+  final bool ready;
+  final String deskName;
+  final String note;
+  final String message;
+  final double? todayPnl;
+  final double? todayPnlPct;
+  final double? nav;
+  final double gross;
+  final double longMv;
+  final double shortMv;
+  final double net;
+  final double? betaSpy;
+  final String varNote;
+  final double? hist95Pct;
+  final double? param95Pct;
+  final double? es95Pct;
+  final double? distMean;
+  final double? distStdev;
+  final int distN;
+  final List<(String, double)> curve;
+  final String curveLabel;
+  final List<BookPosition> positions;
+  final List<BookPosition> tape;
+
+  static const empty = BookPnl(
+    message: 'Empty paper book. Import a Fidelity CSV or add a line.',
+    note: 'Paper / local only. No invented P&L.',
+  );
+
+  factory BookPnl.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    final exp = json['exposure'] is Map ? Map<String, dynamic>.from(json['exposure'] as Map) : const <String, dynamic>{};
+    final vr = json['var'] is Map ? Map<String, dynamic>.from(json['var'] as Map) : const <String, dynamic>{};
+    final dist = json['distribution'] is Map ? Map<String, dynamic>.from(json['distribution'] as Map) : const <String, dynamic>{};
+    Map<String, dynamic> pack(Object? raw) => raw is Map ? Map<String, dynamic>.from(raw) : const {};
+
+    return BookPnl(
+      ready: json['ready'] == true,
+      deskName: '${json['desk_name'] ?? 'Whats-News'}',
+      note: '${json['note'] ?? ''}',
+      message: '${json['message'] ?? ''}',
+      todayPnl: n(json['today_pnl']),
+      todayPnlPct: n(json['today_pnl_pct']),
+      nav: n(json['nav']),
+      gross: n(exp['gross']) ?? 0,
+      longMv: n(exp['long']) ?? 0,
+      shortMv: n(exp['short']) ?? 0,
+      net: n(exp['net']) ?? 0,
+      betaSpy: n(json['beta_spy']),
+      varNote: '${vr['note'] ?? ''}',
+      hist95Pct: n(pack(vr['hist_95'])['pct']),
+      param95Pct: n(pack(vr['param_95'])['pct']),
+      es95Pct: n(pack(vr['es_95'])['pct']),
+      distMean: n(dist['mean']),
+      distStdev: n(dist['stdev']),
+      distN: n(dist['n'])?.toInt() ?? 0,
+      curve: [
+        if (json['equity_curve'] is List)
+          for (final p in json['equity_curve'])
+            if (p is Map && n(p['nav']) != null) ('${p['date'] ?? ''}', n(p['nav'])!),
+      ],
+      curveLabel: '${json['curve_label'] ?? ''}',
+      positions: [
+        if (json['positions'] is List)
+          for (final p in json['positions'])
+            if (p is Map) BookPosition.fromJson(Map<String, dynamic>.from(p)),
+      ],
+      tape: [
+        if (json['tape'] is List)
+          for (final p in json['tape'])
+            if (p is Map) BookPosition.fromJson(Map<String, dynamic>.from(p)),
+      ],
+    );
+  }
+}

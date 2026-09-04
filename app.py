@@ -201,6 +201,111 @@ def fractal_scan_api():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/book/positions", methods=["GET"])
+def book_positions():
+    """Paper book lines. Empty list is honest — not a demo book."""
+    import paper_book
+    ensure_local_schema()
+    try:
+        rows = paper_book.list_positions()
+        return jsonify({
+            "desk_name": paper_book.get_desk_name(),
+            "positions": rows,
+            "count": len(rows),
+            "note": paper_book.NOTE,
+        })
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify({
+                "desk_name": paper_book.DESK_DEFAULT,
+                "positions": [],
+                "count": 0,
+                "note": paper_book.NOTE,
+            })
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/book/positions", methods=["POST"])
+def book_add_position():
+    import paper_book
+    ensure_local_schema()
+    body = request.get_json(silent=True) or {}
+    try:
+        row = paper_book.upsert_position(
+            symbol=body.get("symbol"),
+            qty=body.get("qty"),
+            side=body.get("side"),
+            avg_cost=body.get("avg_cost"),
+            note=body.get("note") or "",
+            source=body.get("source") or "manual",
+        )
+        return jsonify(row), 201
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@app.route("/api/book/positions/<int:pid>", methods=["PUT"])
+def book_update_position(pid):
+    import paper_book
+    ensure_local_schema()
+    body = request.get_json(silent=True) or {}
+    row = paper_book.update_position(pid, **body)
+    if row is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(row)
+
+
+@app.route("/api/book/positions/<int:pid>", methods=["DELETE"])
+def book_delete_position(pid):
+    import paper_book
+    ensure_local_schema()
+    if not paper_book.delete_position(pid):
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"ok": True, "id": pid})
+
+
+@app.route("/api/book/import", methods=["POST"])
+def book_import_csv():
+    """Fidelity Positions CSV (or any Symbol+Quantity CSV). No broker login."""
+    import paper_book
+    ensure_local_schema()
+    body = request.get_json(silent=True) or {}
+    text = body.get("csv") or body.get("text") or ""
+    if not text and request.data:
+        try:
+            text = request.get_data(as_text=True) or ""
+        except Exception:
+            text = ""
+    replace = bool(body.get("replace"))
+    try:
+        return jsonify(paper_book.import_csv(text, replace=replace))
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "imported": 0, "positions": []}), 400
+
+
+@app.route("/api/book/meta", methods=["PUT"])
+def book_meta():
+    import paper_book
+    ensure_local_schema()
+    body = request.get_json(silent=True) or {}
+    name = paper_book.set_desk_name(body.get("desk_name") or "")
+    return jsonify({"desk_name": name})
+
+
+@app.route("/api/book/pnl", methods=["GET"])
+@app.route("/api/pnl/desk", methods=["GET"])
+def book_pnl_api():
+    """Today's P&L, exposure, VaR from paper positions × stored closes."""
+    import paper_book
+    ensure_local_schema()
+    try:
+        return jsonify(paper_book.book_pnl())
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(paper_book.empty_pnl())
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/universe/core50", methods=["POST"])
 def seed_core50():
     """Add a curated ~50-name desk. Does not download Yahoo bars."""

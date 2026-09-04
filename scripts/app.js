@@ -2443,6 +2443,7 @@ async function switchTab(tabId, opts = {}) {
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     hideMacroArea();
+    if (typeof hideBookAreas === 'function') hideBookAreas();
 
     if (tabId === 'charts') {
         showChartArea();
@@ -2474,6 +2475,10 @@ async function switchTab(tabId, opts = {}) {
     } else if (tabId === 'macro') {
         showMacroArea();
         if (typeof initMacroDesk === 'function') initMacroDesk();
+    } else if (tabId === 'pnl') {
+        if (typeof showPnlArea === 'function') showPnlArea();
+    } else if (tabId === 'book') {
+        if (typeof showBookArea === 'function') showBookArea();
     }
 }
 

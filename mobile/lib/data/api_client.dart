@@ -340,6 +340,48 @@ class WhatsNewsApi {
     return const {};
   }
 
+  Future<BookPnl> getBookPnl() async {
+    try {
+      final raw = await _get('/api/book/pnl');
+      if (raw is Map<String, dynamic>) return BookPnl.fromJson(raw);
+      if (raw is Map) return BookPnl.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException {
+      return BookPnl.empty;
+    }
+    return BookPnl.empty;
+  }
+
+  Future<BookPosition> addBookPosition({
+    required String symbol,
+    required double qty,
+    String side = 'long',
+    double? avgCost,
+  }) async {
+    final raw = await _send('POST', '/api/book/positions', body: {
+      'symbol': symbol,
+      'qty': qty,
+      'side': side,
+      if (avgCost != null) 'avg_cost': avgCost,
+    });
+    if (raw is Map<String, dynamic>) return BookPosition.fromJson(raw);
+    if (raw is Map) return BookPosition.fromJson(Map<String, dynamic>.from(raw));
+    return BookPosition(symbol: symbol.toUpperCase(), qty: qty, side: side);
+  }
+
+  Future<void> deleteBookPosition(int id) async {
+    await _send('DELETE', '/api/book/positions/$id');
+  }
+
+  Future<Map<String, dynamic>> importBookCsv(String csv, {bool replace = false}) async {
+    final raw = await _send('POST', '/api/book/import', body: {
+      'csv': csv,
+      'replace': replace,
+    });
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return const {};
+  }
+
   Future<NewsFeed> getNews({String? symbol, bool desk = false}) async {
     if (symbol != null && symbol.trim().isNotEmpty) {
       final raw = await _get('/api/news/${symbol.trim().toUpperCase()}');

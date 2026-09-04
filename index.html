@@ -254,6 +254,8 @@
       <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">Trend</button>
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
       <button id="tab-macro" class="tab-btn" onclick="switchTab('macro')" title="Market Moves sleeves + edges from stored Yahoo bars">Macro</button>
+      <button id="tab-pnl" class="tab-btn" onclick="switchTab('pnl')" title="Paper book P&amp;L from stored marks — not a live broker">P&amp;L</button>
+      <button id="tab-book" class="tab-btn" onclick="switchTab('book')" title="Paper positions — Fidelity CSV or manual">Book</button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">Data</button>
       <div class="tab-spacer"></div>
       <div id="chart-overlays-bar" class="indicator-toggles chart-overlays-bar">
@@ -1033,6 +1035,75 @@
       <p id="fractal-stub" class="fractal-stub">Fractal: SPEC 25/27 in-repo estimator. Load /api/fractal/scan — FRAGILE is D≤1.40 and |move|&gt;5%.</p>
     </div>
 
+    <!-- ── Paper P&L / Risk (marks from stored Yahoo closes) ── -->
+    <div id="pnl-area" class="pnl-container" style="display:none;">
+      <div class="pnl-head">
+        <div>
+          <input id="pnl-desk-name" class="pnl-desk-name" value="Whats-News" maxlength="80" aria-label="Desk name" />
+          <p class="pnl-blurb">Paper book. Today's P&amp;L and VaR from positions × stored Yahoo daily closes. Empty is zeros — not a demo book.</p>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-pnl-refresh">Reload marks</button>
+      </div>
+      <div class="pnl-hero">
+        <div class="pnl-hero-label">TODAY'S P&amp;L</div>
+        <div id="pnl-today-pct" class="pnl-today-pct">—</div>
+        <div id="pnl-today-usd" class="pnl-today-usd">—</div>
+        <div id="pnl-nav" class="pnl-nav"></div>
+      </div>
+      <div class="pnl-curve-wrap">
+        <div class="pnl-curve-label" id="pnl-curve-label">daily mark series from stored closes — no intraday bars</div>
+        <canvas id="pnl-curve" height="120"></canvas>
+      </div>
+      <div id="pnl-metrics" class="pnl-metrics"></div>
+      <div id="pnl-var" class="pnl-var"></div>
+      <div id="pnl-dist" class="pnl-dist"></div>
+      <div id="pnl-tape" class="pnl-tape" aria-label="Position tape"></div>
+      <p id="pnl-note" class="macro-blurb"></p>
+    </div>
+
+    <!-- ── Paper Portfolio / Fidelity import ── -->
+    <div id="book-area" class="book-container" style="display:none;">
+      <div class="book-head">
+        <div>
+          <strong>Paper book</strong>
+          <p class="pnl-blurb">Fidelity: Positions → download CSV. Needs <code>Symbol</code> + <code>Quantity</code>. <code>Cost Basis Average</code> optional. No Fidelity login, no orders.</p>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-book-reload">Reload</button>
+      </div>
+      <div class="book-import">
+        <textarea id="book-csv" class="book-csv" rows="6" placeholder="Paste Fidelity Positions CSV here…"></textarea>
+        <div class="book-import-row">
+          <label class="dm-label-inline"><input type="checkbox" id="book-replace" /> Replace existing book</label>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-book-import">Import CSV</button>
+        </div>
+        <p id="book-import-msg" class="scanner-ts"></p>
+      </div>
+      <form id="book-add-form" class="book-add-form">
+        <input id="book-add-symbol" type="text" placeholder="Symbol" maxlength="12" autocomplete="off" />
+        <input id="book-add-qty" type="number" step="any" placeholder="Qty (+ long / − short)" />
+        <select id="book-add-side">
+          <option value="long">Long</option>
+          <option value="short">Short</option>
+        </select>
+        <input id="book-add-cost" type="number" step="any" placeholder="Avg cost (opt.)" />
+        <button type="submit" class="btn btn-primary btn-sm">Add line</button>
+      </form>
+      <div class="scanner-table-wrap">
+        <table class="scanner-table" id="book-table">
+          <thead>
+            <tr>
+              <th>Symbol</th><th>Side</th><th>Qty</th><th>Avg cost</th>
+              <th>Mark</th><th>MV</th><th>Day $</th><th>Unrl</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="book-tbody"></tbody>
+        </table>
+      </div>
+      <div id="book-empty" class="scanner-empty">
+        <p>Empty paper book. Import a Fidelity CSV or add a line. Marks stay blank until Yahoo bars are stored.</p>
+      </div>
+    </div>
+
     <!-- ── Data Manager Area ── -->
     <div id="data-manager-area" class="dm-container" style="display:none;">
 
@@ -1286,6 +1357,7 @@
 <script src="scripts/setup_scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
 <script src="scripts/macro_desk.js"></script>
+<script src="scripts/paper_book.js"></script>
 <script src="scripts/desk_prefs.js"></script>
 <script src="scripts/desk_palette.js"></script>
 <script src="scripts/app.js"></script>

@@ -129,14 +129,43 @@ def _create_schema(conn):
         CREATE INDEX IF NOT EXISTS idx_symbols_last_fetch
         ON symbols(last_fetch)
     """)
+    _create_paper_book(conn)
+
+
+def _create_paper_book(conn):
+    """Paper book only — positions + desk name. No broker credentials."""
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS paper_positions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol      TEXT    NOT NULL UNIQUE,
+            qty         REAL    NOT NULL,
+            side        TEXT    NOT NULL DEFAULT 'long',
+            avg_cost    REAL,
+            note        TEXT    DEFAULT '',
+            source      TEXT    DEFAULT 'manual',
+            created_at  TEXT    NOT NULL,
+            updated_at  TEXT    NOT NULL
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS paper_book_meta (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
 
 
 def _ensure_schema(conn):
     """If this file has no ``symbols`` table, create the full schema now."""
-    if "symbols" in _schema_tables(conn):
+    tables = _schema_tables(conn)
+    if "symbols" not in tables:
+        _create_schema(conn)
+        conn.commit()
         return
-    _create_schema(conn)
-    conn.commit()
+    if "paper_positions" not in tables:
+        _create_paper_book(conn)
+        conn.commit()
 
 
 def init_db():
