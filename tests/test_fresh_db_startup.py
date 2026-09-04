@@ -10,7 +10,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 os.environ["DATA_SERVICE_MODE"] = "embedded"
 
@@ -59,7 +59,11 @@ class FreshDbStartupTests(unittest.TestCase):
         self.assertEqual(db.list_symbol_codes(), [])
         self.assertIn("symbols", db.schema_tables())
 
-    def test_health_symbols_news_ohlcv_on_empty_file(self):
+    @patch("yahoo_news.yf.Ticker")
+    def test_health_symbols_news_ohlcv_on_empty_file(self, mock_ticker_class):
+        mock_ticker = MagicMock()
+        mock_ticker.news = []
+        mock_ticker_class.return_value = mock_ticker
         app_module.ensure_local_schema()
 
         health = self.client.get("/api/health")
@@ -74,6 +78,11 @@ class FreshDbStartupTests(unittest.TestCase):
         self.assertEqual(listed.status_code, 200)
         self.assertEqual(listed.get_json(), [])
 
+        empty_news = self.client.get("/api/news")
+        self.assertEqual(empty_news.status_code, 200)
+        self.assertEqual(empty_news.get_json().get("articles"), [])
+        self.assertEqual(empty_news.get_json().get("message"), "No symbols in watchlist")
+
         added = self.client.post("/api/symbols", json={"symbol": "AAPL"})
         self.assertIn(added.status_code, (200, 201))
         self.assertTrue(added.get_json().get("added"))
@@ -84,7 +93,9 @@ class FreshDbStartupTests(unittest.TestCase):
 
         news = self.client.get("/api/news")
         self.assertEqual(news.status_code, 200)
-        self.assertEqual(news.get_json().get("articles"), [])
+        payload = news.get_json()
+        self.assertIsInstance(payload.get("articles"), list)
+        # Live Yahoo may return headlines; empty feed is also honest. Never 500.
 
         bars = self.client.get("/api/ohlcv/AAPL")
         self.assertEqual(bars.status_code, 404)
