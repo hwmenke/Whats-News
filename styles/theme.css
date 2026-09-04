@@ -1,9 +1,10 @@
 /* ============================================================
-   VISUAL v4.1 — one face/heat/density file.
+   VISUAL v4.1 + Font C — one face/heat/density file.
    Face tokens LOCKED (swap pairs here only):
-     --font-title / --font-face-title  IBM Plex Sans Condensed
+     --font-title / --font-face-title  Public Sans
      --font-main  / --font-face-body   Inter
-     --font-mono  / --font-face-mono   IBM Plex Mono
+     --font-mono  / --font-face-mono   JetBrains Mono
+   Caspar Font C. Do not restore the Plex condensed title pair.
    Soft R/G heat · coral/teal σ dots · mint ≤1 OPPORTUNITY fill
    No borders — zebra / fills only. Scatter = crosshair only.
    Market Moves keeps utilitarian red/green z heat (do not restyle).
@@ -11,7 +12,7 @@
    Discard neon / cream v2 / v3 mint theater.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Public+Sans:wght@500;600;700&display=swap');
 
 :root {
   --ink:            #111111;
@@ -21,9 +22,9 @@
   --teal-dot:       #0f766e;
   --coral-dot:      #e07a5f;
 
-  --font-title:     'IBM Plex Sans Condensed', 'Inter', sans-serif;
+  --font-title:     'Public Sans', 'Inter', sans-serif;
   --font-main:      'Inter', sans-serif;
-  --font-mono:      'IBM Plex Mono', ui-monospace, monospace;
+  --font-mono:      'JetBrains Mono', ui-monospace, monospace;
   --font-face-title: var(--font-title);
   --font-face-body:  var(--font-main);
   --font-face-mono:  var(--font-mono);

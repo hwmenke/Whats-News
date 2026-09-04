@@ -152,7 +152,7 @@ function baseOpts() {
         layout: {
             background: { color: '#0d1117' },
             textColor: '#8b949e',
-            fontFamily: "'IBM Plex Mono', monospace",
+            fontFamily: "'JetBrains Mono', monospace",
             fontSize: 10,
         },
         grid: {
