@@ -1303,7 +1303,129 @@ def command_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = 
         "message": None if ready else "Empty command — seed a sleeve and Fetch Yahoo.",
         "note": NOTE,
         "formulas": FORMULAS,
-        "nav": ["command", "setup", "pattern", "rsi_c", "macro", "sigma", "maps", "book", "chart"],
+        "nav": ["command", "setup", "pattern", "rsi_c", "warnings", "macro", "sigma", "maps", "book", "chart"],
+    }
+
+
+WARNINGS_NOTE = (
+    "Alert surface only. Reuses ENGINE Pattern (3M/1M daily, 1Y/6M weekly), "
+    "VCP tighten/coil, RSI-C D+W OS/OB/trend, Str / ADMA stretch, and TAKEAWAY. "
+    "Not a second estimator. Empty lists are honest — no invented alerts."
+)
+
+
+def warnings_board(symbols: Optional[list[str]] = None, frames: Optional[dict] = None) -> dict:
+    """Dense alert lists from the same measure() fields as Pattern / VCP / RSI-C."""
+    rows = [r for r in _score_desk(symbols, frames) if r.get("ready")]
+
+    def slim(r, extra=None):
+        out = {
+            "symbol": r.get("symbol"),
+            "vcp": r.get("vcp"),
+            "pattern_d": r.get("pattern_d"),
+            "pattern_w": r.get("pattern_w"),
+            "dw": r.get("dw"),
+            "str": r.get("str"),
+            "stretch_pctile": r.get("stretch_pctile"),
+            "takeaway": r.get("takeaway"),
+            "rsi_c": (r.get("rsi_c") or {}).get("state"),
+            "rsi_c_w": (r.get("rsi_c_w") or {}).get("state"),
+        }
+        if extra:
+            out.update(extra)
+        return out
+
+    breakouts_d = [slim(r) for r in rows if r.get("pattern_d") == "Breakout"]
+    breakdowns_d = [slim(r) for r in rows if r.get("pattern_d") == "Breakdown"]
+    from_bot_d = [slim(r) for r in rows if r.get("pattern_d") == "From Bottom"]
+    from_top_d = [slim(r) for r in rows if r.get("pattern_d") == "From Top"]
+    breakouts_w = [slim(r) for r in rows if r.get("pattern_w") == "Breakout"]
+    breakdowns_w = [slim(r) for r in rows if r.get("pattern_w") == "Breakdown"]
+    from_bot_w = [slim(r) for r in rows if r.get("pattern_w") == "From Bottom"]
+    from_top_w = [slim(r) for r in rows if r.get("pattern_w") == "From Top"]
+
+    tightening = [slim(r) for r in rows if r.get("vcp") == "TIGHTENING"]
+    coiled = [slim(r) for r in rows if r.get("vcp") == "COILED"]
+
+    def rsi_bucket(key, pred):
+        return [slim(r) for r in rows if pred((r.get(key) or {}).get("state") or "")]
+
+    daily_os = rsi_bucket("rsi_c", _os_state)
+    daily_ob = rsi_bucket("rsi_c", lambda st: st.startswith("OB") or st == "OVERBOUGHT")
+    daily_up = rsi_bucket("rsi_c", _trend_up_state)
+    daily_dn = rsi_bucket("rsi_c", _trend_dn_state)
+    weekly_os = rsi_bucket("rsi_c_w", _os_state)
+    weekly_ob = rsi_bucket("rsi_c_w", lambda st: st.startswith("OB") or st == "OVERBOUGHT")
+    weekly_up = rsi_bucket("rsi_c_w", _trend_up_state)
+    weekly_dn = rsi_bucket("rsi_c_w", _trend_dn_state)
+    dw_up = [slim(r) for r in rows if r.get("dw") == "D+W ↑"]
+    dw_dn = [slim(r) for r in rows if r.get("dw") == "D+W ↓"]
+
+    with_str = [r for r in rows if r.get("str") is not None]
+    with_px = [r for r in rows if r.get("stretch_pctile") is not None]
+    strongest = [slim(r) for r in sorted(with_str, key=lambda r: -(r.get("str") or 0)) if (r.get("str") or 0) > 0][:DISPLAY_CAP]
+    stretched = [slim(r) for r in sorted(with_px, key=lambda r: -(r.get("stretch_pctile") or 0))][:DISPLAY_CAP]
+    compressed = [slim(r) for r in sorted(with_px, key=lambda r: (r.get("stretch_pctile") or 0))][:DISPLAY_CAP]
+
+    takeaways = []
+    for r in rows:
+        vcp = r.get("vcp")
+        pat = r.get("pattern_d")
+        if pat == "Breakout" or vcp == "BREAK ↑":
+            takeaways.append(slim(r, {"kind": "breaking_up", "label": "breaking up"}))
+        elif pat == "Breakdown" or vcp == "BREAK ↓":
+            takeaways.append(slim(r, {"kind": "breaking_down", "label": "breaking down"}))
+        elif vcp == "COILED":
+            takeaways.append(slim(r, {"kind": "coiled_about_to_move", "label": "coiled about to move"}))
+
+    def cap(lst):
+        return lst[:DISPLAY_CAP]
+
+    lists = [
+        breakouts_d, breakdowns_d, from_bot_d, from_top_d,
+        breakouts_w, breakdowns_w, from_bot_w, from_top_w,
+        tightening, coiled, takeaways, strongest, stretched, compressed,
+        daily_os, daily_ob, daily_up, daily_dn,
+        weekly_os, weekly_ob, weekly_up, weekly_dn,
+        dw_up, dw_dn,
+    ]
+    ready = any(lists)
+    return {
+        "ready": ready,
+        "source": "equity_engine.measure",
+        "note": WARNINGS_NOTE,
+        "howto": (
+            "Daily Breakout/Breakdown = 3M (63d); From Bottom/Top = 1M (21d). "
+            "Weekly Breakout/Breakdown = 1Y; From Bottom/Top = 6M. "
+            "VCP TIGHTENING / COILED from the honest proxy. RSI-C Extreme/Lean/Tilt. "
+            "TAKEAWAY warnings are labels on those same fields — not a new model."
+        ),
+        "breakouts": {
+            "daily": {"Breakout": cap(breakouts_d), "Breakdown": cap(breakdowns_d),
+                      "From Bottom": cap(from_bot_d), "From Top": cap(from_top_d)},
+            "weekly": {"Breakout": cap(breakouts_w), "Breakdown": cap(breakdowns_w),
+                       "From Bottom": cap(from_bot_w), "From Top": cap(from_top_w)},
+            "counts": {
+                "daily": {"Breakout": len(breakouts_d), "Breakdown": len(breakdowns_d),
+                          "From Bottom": len(from_bot_d), "From Top": len(from_top_d)},
+                "weekly": {"Breakout": len(breakouts_w), "Breakdown": len(breakdowns_w),
+                           "From Bottom": len(from_bot_w), "From Top": len(from_top_w)},
+            },
+        },
+        "vcp": {"tightening": cap(tightening), "coiled": cap(coiled),
+                "counts": {"tightening": len(tightening), "coiled": len(coiled)}},
+        "rsi_c": {
+            "daily": {"oversold": cap(daily_os), "overbought": cap(daily_ob),
+                      "trend_up": cap(daily_up), "trend_dn": cap(daily_dn)},
+            "weekly": {"oversold": cap(weekly_os), "overbought": cap(weekly_ob),
+                       "trend_up": cap(weekly_up), "trend_dn": cap(weekly_dn)},
+            "dw_up": cap(dw_up),
+            "dw_dn": cap(dw_dn),
+        },
+        "stretch": {"strongest": strongest, "stretched": stretched, "compressed": compressed},
+        "takeaways": cap(takeaways),
+        "message": None if ready else "Empty warnings — no Pattern / VCP / RSI-C hits on stored bars.",
+        "formulas": FORMULAS,
     }
 
 

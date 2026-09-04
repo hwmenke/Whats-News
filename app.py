@@ -591,6 +591,13 @@ def engine_patterns_api():
     return _engine_payload(equity_engine.pattern_board)
 
 
+@app.route("/api/engine/warnings", methods=["GET"])
+def engine_warnings_api():
+    """Alert surface from existing Pattern / VCP / RSI-C / Str — no second estimator."""
+    import equity_engine
+    return _engine_payload(equity_engine.warnings_board)
+
+
 @app.route("/api/engine/stretch", methods=["GET"])
 def engine_stretch_api():
     """Str −5…+5 and ADMA stretch/compress top 15."""

@@ -82,6 +82,10 @@ function applyDeskIa(id) {
         if (typeof switchTab === 'function') switchTab('risk');
         return;
     }
+    if (next === 'warnings') {
+        if (typeof switchTab === 'function') switchTab('warnings');
+        return;
+    }
     if (next === 'chart') {
         if (typeof switchTab === 'function') switchTab('charts');
         return;

@@ -259,6 +259,7 @@
       <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">Trend</button>
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
       <button id="tab-engine" class="tab-btn" onclick="switchTab('engine')" title="Equity ENGINE board — Setup / Pattern / RSI-C / Sigma from stored Yahoo bars">ENGINE</button>
+      <button id="tab-warnings" class="tab-btn" onclick="switchTab('warnings')" title="Warnings — Pattern / VCP / RSI-C alerts from stored bars">Warnings</button>
       <button id="tab-moves" class="tab-btn" onclick="switchTab('moves')" title="Market Moves — QUANT-locked z from stored Yahoo OHLCV">Market Moves</button>
       <button id="tab-macro" class="tab-btn" onclick="switchTab('macro')" title="Macro sleeves + edges from stored Yahoo bars">Macro</button>
       <button id="tab-pnl" class="tab-btn" onclick="switchTab('pnl')" title="Paper book P&amp;L from stored marks — not a live broker">P&amp;L</button>
@@ -271,6 +272,7 @@
       <button type="button" class="desk-ia-btn" data-ia="setup">Setup</button>
       <button type="button" class="desk-ia-btn" data-ia="pattern">Pattern</button>
       <button type="button" class="desk-ia-btn" data-ia="rsic">RSI-C</button>
+      <button type="button" class="desk-ia-btn" data-ia="warnings">Warnings</button>
       <button type="button" class="desk-ia-btn" data-ia="moves">Market Moves</button>
       <button type="button" class="desk-ia-btn" data-ia="macro">Macro</button>
       <button type="button" class="desk-ia-btn" data-ia="sigma">Sigma</button>
@@ -914,7 +916,10 @@
         <div class="scan-breadth-cell"><span class="scan-breadth-k">% &gt;SMA200</span><span class="scan-breadth-v">—</span></div>
         <div class="scan-breadth-cell"><span class="scan-breadth-k">A/D 1d</span><span class="scan-breadth-v">—</span></div>
         <div class="scan-breadth-cell"><span class="scan-breadth-k">A/D 5d</span><span class="scan-breadth-v">—</span></div>
-        <p class="scan-breadth-note">Stockbee-style breadth idea from our stored bars — empty until the desk has Yahoo closes.</p>
+        <details class="scan-help">
+          <summary>How scans work</summary>
+          <p class="scan-breadth-note">Stockbee-style breadth idea from our stored bars — empty until the desk has Yahoo closes.</p>
+        </details>
       </div>
       <div id="scan-pack-panel" class="setup-scanner-panel scan-pack-panel" style="display:none;">
         <div class="setup-scanner-header">
@@ -927,7 +932,10 @@
           <button type="button" class="ind-pill scan-style-chip" data-lens="oneil">O'Neil / RS</button>
           <button type="button" class="ind-pill scan-style-chip" data-lens="vcp">VCP proxy</button>
         </div>
-        <p id="scan-pack-note" class="macro-blurb">MA / RSI / Breakout from stored daily OHLCV. Style chips are filters on real metrics — O'Neil is price/RS only (no fundamentals). VCP is an honest proxy, not certified VCP.</p>
+        <details class="scan-help">
+          <summary>Pack notes</summary>
+          <p id="scan-pack-note" class="macro-blurb">MA / RSI / Breakout from stored daily OHLCV. Style chips are filters on real metrics — O'Neil is price/RS only (no fundamentals). VCP is an honest proxy, not certified VCP.</p>
+        </details>
         <div class="scanner-table-wrap">
           <table id="scan-pack-table" class="scanner-table">
             <thead>
@@ -956,7 +964,10 @@
           <button type="button" class="btn btn-ghost btn-sm" id="btn-desk-trend-scan">Load /api/trend-scan</button>
           <span id="desk-trend-meta" class="scanner-ts"></span>
         </div>
-        <p class="macro-blurb">Watchlist trend rows from stored bars. Tap a symbol to open the chart. Empty = no bars.</p>
+        <details class="scan-help">
+          <summary>Trend notes</summary>
+          <p class="macro-blurb">Watchlist trend rows from stored bars. Tap a symbol to open the chart. Empty = no bars.</p>
+        </details>
         <div class="scanner-table-wrap">
           <table class="scanner-table">
             <thead>
@@ -1419,6 +1430,16 @@
       <p class="fractal-stub">HMM: research label, not edge. SPY 2/3-state Gaussian on stored daily log returns — not a Q-trade / quote-FV model. Occupancy is not a win rate.</p>
     </div>
 
+    <!-- ── Warnings — alert surface from ENGINE Pattern / VCP / RSI-C ── -->
+    <div id="warnings-area" class="moves-container warnings-container" style="display:none;">
+      <div class="mm-head">
+        <h2 class="v41-title">WARNINGS</h2>
+        <p class="engine-story-sub">Alert surface only · Pattern / VCP / RSI-C / Str already on the desk. Empty is honest.</p>
+      </div>
+      <div id="warnings-grid" class="warnings-grid"></div>
+      <p id="warnings-note" class="pnl-blurb"></p>
+    </div>
+
     <!-- ── Paper P&L — performance only (marks from stored Yahoo closes) ── -->
     <div id="pnl-area" class="pnl-container" style="display:none;">
       <div class="pnl-phone">
@@ -1519,6 +1540,11 @@
       <div id="risk-empty" class="scanner-empty" style="display:none;">
         <p>No marked names. Import a book and Fetch Yahoo so weight / vol / VaR can compute.</p>
       </div>
+      <section id="risk-spec-pending" class="risk-spec">
+        <h3 class="risk-spec-title">SPEC pending</h3>
+        <p class="pnl-blurb">TODO: fold Quant formulas from /workspace/whats-news-risk-SPEC-2026-09-04.md when that file is readable. Until then every extra cell is — — no invented numbers. Existing hist/param VaR/ES above stays.</p>
+        <div id="risk-spec-grid" class="pnl-exposure" aria-label="Risk SPEC scaffold"></div>
+      </section>
       <p id="risk-note" class="pnl-blurb"></p>
     </div>
 
@@ -1813,6 +1839,7 @@
 <script src="scripts/finviz_desk.js"></script>
 <script src="scripts/hmm_desk.js"></script>
 <script src="scripts/scan_pack.js"></script>
+<script src="scripts/warnings_desk.js"></script>
 <script src="scripts/engine_desk.js"></script>
 <script src="scripts/desk_prefs.js"></script>
 <script src="scripts/desk_palette.js"></script>

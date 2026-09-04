@@ -42,10 +42,10 @@ class ScansPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Same Python scans as the web desk. Market Moves is GET /api/market-moves (QUANT-locked z). Command / Setup / Pattern / RSI-C / Sigma are the ENGINE boards. Column order/visibility: GET /api/boards/registry (JSON; YAML twin on disk). Web Customize writes whats-news-desk-prefs.boardColumns — Flutter should persist the same map and apply it in _movesSlivers / _setupEngineSlivers. Fractal is SPEC 25/27. HMM is a research label, not edge. Finviz is public HTML only. Breadth is our Yahoo/SQLite universe — not a scraped Market Monitor.',
-                  style: TextStyle(color: DeskColors.muted, fontSize: 12),
+                  'Yahoo/SQLite scans · ENGINE + Market Moves. Empty = no bars.',
+                  style: TextStyle(color: DeskColors.muted, fontSize: 11),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 _BreadthStrip(breadth: state.scanBreadth),
                 if (running)
                   const Padding(
@@ -57,8 +57,8 @@ class ScansPage extends StatelessWidget {
                   ),
                 const SizedBox(height: 10),
                 Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
+                  spacing: 4,
+                  runSpacing: 4,
                   children: [
                     for (final e in const [
                       ('command', 'Command'),
@@ -68,6 +68,7 @@ class ScansPage extends StatelessWidget {
                       ('stretch', 'Stretch'),
                       ('sigma', 'Sigma'),
                       ('maps', 'Maps'),
+                      ('warnings', 'Warnings'),
                       ('moves', 'Market Moves'),
                     ])
                       _ModeChip(
@@ -79,8 +80,8 @@ class ScansPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
+                  spacing: 4,
+                  runSpacing: 4,
                   children: [
                     for (final e in const [
                       ('ma', 'MA'),
@@ -174,6 +175,8 @@ class ScansPage extends StatelessWidget {
           ..._sigmaSlivers(state)
         else if (state.scanMode == 'maps')
           ..._mapsSlivers(state)
+        else if (state.scanMode == 'warnings')
+          ..._warningsSlivers(state)
         else if (state.scanMode == 'moves')
           ..._movesSlivers(state)
         else if (state.scanMode == 'ma' ||
@@ -852,6 +855,88 @@ class ScansPage extends StatelessWidget {
     ];
   }
 
+  List<Widget> _warningsSlivers(WhatsNewsState s) {
+    final b = s.warningsBoard;
+    if (!b.ready) {
+      return [
+        ..._emptyNote(
+          b.message.isEmpty
+              ? 'Empty warnings — no Pattern / VCP / RSI-C hits on stored bars.'
+              : b.message,
+        ),
+        ..._howto(b.howto),
+      ];
+    }
+    Widget col(String title, List<WarningHit> rows) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$title (${rows.length})',
+                style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 12),
+              ),
+              if (rows.isEmpty)
+                const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 11))
+              else
+                for (final r in rows)
+                  _nameChip(
+                    r.symbol,
+                    [
+                      if (r.label.isNotEmpty) r.label,
+                      if (r.patternD.isNotEmpty) r.patternD,
+                      if (r.vcp.isNotEmpty) r.vcp,
+                      if (r.rsiC.isNotEmpty) r.rsiC,
+                      if (r.str != null) 'Str ${r.str}',
+                    ].where((e) => e.isNotEmpty).join(' · '),
+                  ),
+            ],
+          ),
+        );
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Alert surface only · same ENGINE Pattern / VCP / RSI-C. Empty is honest.',
+                style: TextStyle(color: DeskColors.muted, fontSize: 11),
+              ),
+              const SizedBox(height: 8),
+              col('Takeaways', b.takeaways),
+              col('Breakouts D 3M', b.dailyBreakout),
+              col('Breakdowns D 3M', b.dailyBreakdown),
+              col('From Bottom D 1M', b.dailyFromBottom),
+              col('From Top D 1M', b.dailyFromTop),
+              col('Breakouts W 1Y', b.weeklyBreakout),
+              col('Breakdowns W 1Y', b.weeklyBreakdown),
+              col('From Bottom W 6M', b.weeklyFromBottom),
+              col('From Top W 6M', b.weeklyFromTop),
+              col('VCP Tightening', b.tightening),
+              col('VCP Coiled', b.coiled),
+              col('RSI-C D OS', b.dailyOs),
+              col('RSI-C D OB', b.dailyOb),
+              col('RSI-C D Trend↑', b.dailyUp),
+              col('RSI-C D Trend↓', b.dailyDn),
+              col('RSI-C W OS', b.weeklyOs),
+              col('RSI-C W OB', b.weeklyOb),
+              col('RSI-C W Trend↑', b.weeklyUp),
+              col('RSI-C W Trend↓', b.weeklyDn),
+              col('D+W ↑', b.dwUp),
+              col('D+W ↓', b.dwDn),
+              col('Strongest breakouts', b.strongest),
+              col('Most stretched', b.stretched),
+              col('Most compressed', b.compressed),
+            ],
+          ),
+        ),
+      ),
+      ..._howto(b.howto),
+    ];
+  }
+
   List<Widget> _stretchSlivers(WhatsNewsState s) {
     final b = s.stretchBoard;
     if (!b.ready) {
@@ -1209,7 +1294,7 @@ class _ModeChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
         decoration: BoxDecoration(
           color: on ? DeskColors.accent.withValues(alpha: 0.2) : DeskColors.card,
           borderRadius: BorderRadius.circular(8),

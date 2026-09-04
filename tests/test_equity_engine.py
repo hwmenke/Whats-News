@@ -254,7 +254,7 @@ class DeterministicLabelTests(unittest.TestCase):
         out = ee.command_board(symbols=[])
         self.assertEqual(
             out["nav"],
-            ["command", "setup", "pattern", "rsi_c", "macro", "sigma", "maps", "book", "chart"],
+            ["command", "setup", "pattern", "rsi_c", "warnings", "macro", "sigma", "maps", "book", "chart"],
         )
 
 
@@ -286,6 +286,7 @@ class FlaskEngineApiTests(unittest.TestCase):
             "/api/engine/patterns?desk=1",
             "/api/engine/stretch?desk=1",
             "/api/engine/sigma?desk=1",
+            "/api/engine/warnings?desk=1",
         ):
             body = self.client.get(path).get_json()
             self.assertFalse(body["ready"], path)

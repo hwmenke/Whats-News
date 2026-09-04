@@ -2466,7 +2466,7 @@ async function switchTab(tabId, opts = {}) {
     }
 
     state.activeTab = tabId;
-    const boardTabs = ['engine', 'moves', 'macro', 'pnl', 'book', 'risk'];
+    const boardTabs = ['engine', 'moves', 'macro', 'pnl', 'book', 'risk', 'warnings'];
     document.body.classList.toggle('board-focus', boardTabs.includes(tabId));
 
     // Update tab buttons
@@ -2489,6 +2489,7 @@ async function switchTab(tabId, opts = {}) {
     if (typeof hideMovesArea === 'function') hideMovesArea();
     if (typeof hideEngineArea === 'function') hideEngineArea();
     if (typeof hideBookAreas === 'function') hideBookAreas();
+    if (typeof hideWarningsArea === 'function') hideWarningsArea();
 
     if (tabId === 'charts') {
         showChartArea();
@@ -2528,6 +2529,9 @@ async function switchTab(tabId, opts = {}) {
         if (typeof initMacroDesk === 'function') initMacroDesk();
     } else if (tabId === 'engine') {
         showEngineDesk(opts.ia);
+    } else if (tabId === 'warnings') {
+        if (typeof showWarningsArea === 'function') showWarningsArea();
+        if (typeof loadWarnings === 'function') loadWarnings();
     } else if (tabId === 'pnl') {
         if (typeof showPnlArea === 'function') showPnlArea();
     } else if (tabId === 'book') {
@@ -2556,6 +2560,7 @@ function showEngineDesk(ia) {
     hideMacroArea();
     if (typeof hideMovesArea === 'function') hideMovesArea();
     if (typeof hideBookAreas === 'function') hideBookAreas();
+    if (typeof hideWarningsArea === 'function') hideWarningsArea();
     if (typeof showEngineArea === 'function') showEngineArea();
     const panel = ia || (typeof readDeskPrefs === 'function' ? (readDeskPrefs().deskIa || 'command') : 'command');
     const engineIa = ['command', 'setup', 'pattern', 'rsic', 'stretch', 'sigma', 'maps'].includes(panel) ? panel : 'command';
@@ -2577,6 +2582,7 @@ function showMacroArea() {
     if (macro) macro.style.display = 'flex';
     if (typeof hideMovesArea === 'function') hideMovesArea();
     if (typeof hideEngineArea === 'function') hideEngineArea();
+    if (typeof hideWarningsArea === 'function') hideWarningsArea();
 }
 
 function showStatsArea() {

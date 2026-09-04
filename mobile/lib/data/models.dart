@@ -2454,3 +2454,166 @@ class EngineMaps {
     );
   }
 }
+
+class WarningHit {
+  const WarningHit({
+    required this.symbol,
+    this.vcp = '',
+    this.patternD = '',
+    this.patternW = '',
+    this.dw = '',
+    this.str,
+    this.stretchPctile,
+    this.takeaway = '',
+    this.rsiC = '',
+    this.rsiCW = '',
+    this.kind = '',
+    this.label = '',
+  });
+
+  final String symbol;
+  final String vcp;
+  final String patternD;
+  final String patternW;
+  final String dw;
+  final int? str;
+  final double? stretchPctile;
+  final String takeaway;
+  final String rsiC;
+  final String rsiCW;
+  final String kind;
+  final String label;
+
+  factory WarningHit.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return WarningHit(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      vcp: '${json['vcp'] ?? ''}',
+      patternD: '${json['pattern_d'] ?? ''}',
+      patternW: '${json['pattern_w'] ?? ''}',
+      dw: '${json['dw'] ?? ''}',
+      str: json['str'] is num ? (json['str'] as num).toInt() : int.tryParse('${json['str'] ?? ''}'),
+      stretchPctile: n(json['stretch_pctile']),
+      takeaway: '${json['takeaway'] ?? ''}',
+      rsiC: '${json['rsi_c'] ?? ''}',
+      rsiCW: '${json['rsi_c_w'] ?? ''}',
+      kind: '${json['kind'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+    );
+  }
+}
+
+class WarningsBoard {
+  const WarningsBoard({
+    this.ready = false,
+    this.note = '',
+    this.howto = '',
+    this.message = '',
+    this.dailyBreakout = const [],
+    this.dailyBreakdown = const [],
+    this.dailyFromBottom = const [],
+    this.dailyFromTop = const [],
+    this.weeklyBreakout = const [],
+    this.weeklyBreakdown = const [],
+    this.weeklyFromBottom = const [],
+    this.weeklyFromTop = const [],
+    this.tightening = const [],
+    this.coiled = const [],
+    this.dailyOs = const [],
+    this.dailyOb = const [],
+    this.dailyUp = const [],
+    this.dailyDn = const [],
+    this.weeklyOs = const [],
+    this.weeklyOb = const [],
+    this.weeklyUp = const [],
+    this.weeklyDn = const [],
+    this.dwUp = const [],
+    this.dwDn = const [],
+    this.strongest = const [],
+    this.stretched = const [],
+    this.compressed = const [],
+    this.takeaways = const [],
+  });
+
+  final bool ready;
+  final String note;
+  final String howto;
+  final String message;
+  final List<WarningHit> dailyBreakout;
+  final List<WarningHit> dailyBreakdown;
+  final List<WarningHit> dailyFromBottom;
+  final List<WarningHit> dailyFromTop;
+  final List<WarningHit> weeklyBreakout;
+  final List<WarningHit> weeklyBreakdown;
+  final List<WarningHit> weeklyFromBottom;
+  final List<WarningHit> weeklyFromTop;
+  final List<WarningHit> tightening;
+  final List<WarningHit> coiled;
+  final List<WarningHit> dailyOs;
+  final List<WarningHit> dailyOb;
+  final List<WarningHit> dailyUp;
+  final List<WarningHit> dailyDn;
+  final List<WarningHit> weeklyOs;
+  final List<WarningHit> weeklyOb;
+  final List<WarningHit> weeklyUp;
+  final List<WarningHit> weeklyDn;
+  final List<WarningHit> dwUp;
+  final List<WarningHit> dwDn;
+  final List<WarningHit> strongest;
+  final List<WarningHit> stretched;
+  final List<WarningHit> compressed;
+  final List<WarningHit> takeaways;
+
+  static const empty = WarningsBoard();
+
+  static List<WarningHit> _hits(Object? raw) => [
+        if (raw is List)
+          for (final r in raw)
+            if (r is Map) WarningHit.fromJson(Map<String, dynamic>.from(r)),
+      ];
+
+  factory WarningsBoard.fromJson(Map<String, dynamic> json) {
+    final bo = json['breakouts'];
+    final daily = bo is Map ? bo['daily'] : null;
+    final weekly = bo is Map ? bo['weekly'] : null;
+    final vcp = json['vcp'];
+    final rsi = json['rsi_c'];
+    final rd = rsi is Map ? rsi['daily'] : null;
+    final rw = rsi is Map ? rsi['weekly'] : null;
+    final stretch = json['stretch'];
+    return WarningsBoard(
+      ready: json['ready'] == true,
+      note: '${json['note'] ?? ''}',
+      howto: '${json['howto'] ?? ''}',
+      message: '${json['message'] ?? ''}',
+      dailyBreakout: daily is Map ? _hits(daily['Breakout']) : const [],
+      dailyBreakdown: daily is Map ? _hits(daily['Breakdown']) : const [],
+      dailyFromBottom: daily is Map ? _hits(daily['From Bottom']) : const [],
+      dailyFromTop: daily is Map ? _hits(daily['From Top']) : const [],
+      weeklyBreakout: weekly is Map ? _hits(weekly['Breakout']) : const [],
+      weeklyBreakdown: weekly is Map ? _hits(weekly['Breakdown']) : const [],
+      weeklyFromBottom: weekly is Map ? _hits(weekly['From Bottom']) : const [],
+      weeklyFromTop: weekly is Map ? _hits(weekly['From Top']) : const [],
+      tightening: vcp is Map ? _hits(vcp['tightening']) : const [],
+      coiled: vcp is Map ? _hits(vcp['coiled']) : const [],
+      dailyOs: rd is Map ? _hits(rd['oversold']) : const [],
+      dailyOb: rd is Map ? _hits(rd['overbought']) : const [],
+      dailyUp: rd is Map ? _hits(rd['trend_up']) : const [],
+      dailyDn: rd is Map ? _hits(rd['trend_dn']) : const [],
+      weeklyOs: rw is Map ? _hits(rw['oversold']) : const [],
+      weeklyOb: rw is Map ? _hits(rw['overbought']) : const [],
+      weeklyUp: rw is Map ? _hits(rw['trend_up']) : const [],
+      weeklyDn: rw is Map ? _hits(rw['trend_dn']) : const [],
+      dwUp: rsi is Map ? _hits(rsi['dw_up']) : const [],
+      dwDn: rsi is Map ? _hits(rsi['dw_dn']) : const [],
+      strongest: stretch is Map ? _hits(stretch['strongest']) : const [],
+      stretched: stretch is Map ? _hits(stretch['stretched']) : const [],
+      compressed: stretch is Map ? _hits(stretch['compressed']) : const [],
+      takeaways: _hits(json['takeaways']),
+    );
+  }
+}

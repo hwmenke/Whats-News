@@ -71,6 +71,7 @@ class WhatsNewsState extends ChangeNotifier {
   StretchBoard stretchBoard = StretchBoard.empty;
   SigmaBoard sigmaBoard = SigmaBoard.empty;
   EngineMaps engineMaps = EngineMaps.empty;
+  WarningsBoard warningsBoard = WarningsBoard.empty;
   int hmmStates = 2;
   String hmmStateFilter = '';
   String hmmView = 'all';
@@ -894,7 +895,8 @@ class WhatsNewsState extends ChangeNotifier {
       mode == 'rsic' ||
       mode == 'stretch' ||
       mode == 'sigma' ||
-      mode == 'maps';
+      mode == 'maps' ||
+      mode == 'warnings';
 
   Future<void> loadEngine() async {
     try {
@@ -912,6 +914,8 @@ class WhatsNewsState extends ChangeNotifier {
         sigmaBoard = await api.getEngineSigma();
       } else if (scanMode == 'maps') {
         engineMaps = await api.getEngineMaps();
+      } else if (scanMode == 'warnings') {
+        warningsBoard = await api.getEngineWarnings();
       }
     } on ApiException {
       if (scanMode == 'command') engineCommand = EngineBoard.empty;
@@ -921,6 +925,7 @@ class WhatsNewsState extends ChangeNotifier {
       if (scanMode == 'stretch') stretchBoard = StretchBoard.empty;
       if (scanMode == 'sigma') sigmaBoard = SigmaBoard.empty;
       if (scanMode == 'maps') engineMaps = EngineMaps.empty;
+      if (scanMode == 'warnings') warningsBoard = WarningsBoard.empty;
     }
     notifyListeners();
   }
