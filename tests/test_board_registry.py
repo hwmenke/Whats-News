@@ -27,11 +27,14 @@ class BoardRegistryTests(unittest.TestCase):
     def test_catalog_api_shape(self):
         body = self.client.get("/api/boards/registry").get_json()
         self.assertEqual(body["version"], 1)
-        self.assertEqual(body["theme"], "font_c_v41")
+        self.assertEqual(body["theme"], "visual_v41")
         self.assertIn("market_moves", body["boards"])
         self.assertIn("engine_setup", body["boards"])
         with open("styles/theme.css", encoding="utf-8") as fh:
-            self.assertIn("Public Sans", fh.read())
+            theme = fh.read()
+        self.assertIn("Barlow Condensed", theme)
+        self.assertIn("#111111", theme)
+        self.assertIn("utilitarian red/green", theme)
         mm = body["boards"]["market_moves"]["columns"]
         self.assertEqual([c["id"] for c in mm], ["name", "px", "day_pct", "z", "z14"])
         z = next(c for c in mm if c["id"] == "z")
@@ -84,8 +87,8 @@ class BoardRegistryTests(unittest.TestCase):
         self.assertIn("data-customize-board=\"engine_setup\"", blob)
         self.assertIn("BoardRegistry", blob)
         self.assertIn("boardColumns", blob)
-        self.assertIn("Public Sans", blob)
-        self.assertIn("JetBrains Mono", blob)
+        self.assertIn("Barlow Condensed", blob)
+        self.assertIn("visual-v41", blob)
         self.assertIn("/api/boards/registry", blob)
         self.assertIn("getBoardRegistry", blob)
         self.assertNotIn("bloomberg", blob.lower())

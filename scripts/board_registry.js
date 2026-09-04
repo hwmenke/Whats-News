@@ -121,10 +121,15 @@
 
     function cellHtml(row, col, extraClass) {
         const raw = cellValue(row, col);
-        const cls = [extraClass || '', toneClass(raw, col), col.id === 'name' ? 'mm-name' : '', col.id === 'symbol' ? 'macro-sym' : '', col.format === 'takeaway' ? 'engine-takeaway' : '', col.id === 'engine' ? 'engine-state' : '', col.format === 'z_1' ? 'mm-z' : ''].filter(Boolean).join(' ');
+        const opp = col.id === 'engine' && (row.engine_primary === 'OPPORTUNITY' || String(raw || '').includes('OPPORTUNITY'));
+        const cls = [extraClass || '', toneClass(raw, col), col.id === 'name' ? 'mm-name' : '', col.id === 'symbol' ? 'macro-sym' : '', col.format === 'takeaway' ? 'engine-takeaway' : '', col.id === 'engine' ? 'engine-state' : '', opp ? 'engine-opp' : '', col.format === 'z_1' ? 'mm-z' : ''].filter(Boolean).join(' ');
         const take = col.format === 'takeaway' ? ((row.sentiment || '').includes('LONG') ? ' is-long' : (row.sentiment || '').includes('SHORT') ? ' is-short' : ' is-neutral') : '';
         const title = col.title ? ` title="${_esc(col.title)}"` : '';
-        return `<td class="${cls}${take}" style="${heatStyle(raw, col)}"${title}>${formatValue(raw, col, row)}</td>`;
+        let body = formatValue(raw, col, row);
+        if ((col.id === 'vs20' || String(col.measure || '').includes('sigma') || col.id.startsWith('sigma')) && raw != null && !Number.isNaN(Number(raw))) {
+            body += `<span class="sigma-dot ${Number(raw) >= 0 ? 'is-up' : 'is-dn'}"></span>`;
+        }
+        return `<td class="${cls}${take}" style="${heatStyle(raw, col)}"${title}>${body}</td>`;
     }
 
     function headerHtml(cols) {

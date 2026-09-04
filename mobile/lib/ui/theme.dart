@@ -1,36 +1,37 @@
 import 'package:flutter/cupertino.dart';
 
-/// Desk palette — functional desk, not a final Visual UX pack.
-/// HOLD: neon, cream v2, and Obsidian/Mint v3 are all rejected.
-/// Do not implement v4 here. Web faces: styles/theme.css.
+/// VISUAL v4.1 — Ink #111, zebra/fills, no borders.
+/// Mint ≤1 OPPORTUNITY fill. Soft R/G heat. Discard neon/cream/v3.
+/// Web faces: Barlow Condensed + Inter + IBM Plex Mono (`styles/theme.css`).
+/// Market Moves stays utilitarian red/green z heat.
 class DeskColors {
-  static const bg = Color(0xFF0D1117);
-  static const elevated = Color(0xFF161B22);
-  static const card = Color(0xFF1C2230);
-  static const hover = Color(0xFF242B3D);
-  static const border = Color(0xFF30363D);
-  static const accent = Color(0xFF3B82F6);
-  static const accentBright = Color(0xFF60A5FA);
+  static const bg = Color(0xFFFFFFFF);
+  static const elevated = Color(0xFFFFFFFF);
+  static const card = Color(0xFFF3F3F3);
+  static const hover = Color(0xFFF3F3F3);
+  static const border = Color(0x00000000);
+  static const accent = Color(0xFF111111);
+  static const accentBright = Color(0xFF111111);
   static const green = Color(0xFF22C55E);
   static const red = Color(0xFFEF4444);
-  static const yellow = Color(0xFFEAB308);
-  static const cyan = Color(0xFF06B6D4);
-  static const orange = Color(0xFFF97316);
-  static const purple = Color(0xFFA855F7);
-  static const text = Color(0xFFE6EDF3);
-  static const muted = Color(0xFF8B949E);
-  static const dim = Color(0xFF4A5568);
-  static const kama10 = Color(0xFF60A5FA);
-  static const kama20 = Color(0xFFF59E0B);
-  static const kama50 = Color(0xFFA78BFA);
-  static const ema10 = Color(0xFF34D399);
-  static const ema20 = Color(0xFFF472B6);
+  static const yellow = Color(0xFF111111);
+  static const cyan = Color(0xFF0F766E);
+  static const orange = Color(0xFFE07A5F);
+  static const purple = Color(0xFF111111);
+  static const text = Color(0xFF111111);
+  static const muted = Color(0xFF666666);
+  static const dim = Color(0xFF999999);
+  static const kama10 = Color(0xFF0F766E);
+  static const kama20 = Color(0xFFE07A5F);
+  static const kama50 = Color(0xFF111111);
+  static const ema10 = Color(0xFF22C55E);
+  static const ema20 = Color(0xFFEF4444);
 }
 
 CupertinoThemeData deskCupertinoTheme() {
   return const CupertinoThemeData(
-    brightness: Brightness.dark,
-    primaryColor: DeskColors.accentBright,
+    brightness: Brightness.light,
+    primaryColor: DeskColors.accent,
     scaffoldBackgroundColor: DeskColors.bg,
     barBackgroundColor: DeskColors.elevated,
     textTheme: CupertinoTextThemeData(

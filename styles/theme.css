@@ -1,22 +1,30 @@
 /* ============================================================
-   Face + heat TOKENS only — not a final Visual UX pack.
-   HOLD: neon rejected. Cream v2 (#F4F2EC) rejected.
-   Obsidian/Paper/Mint v3 rejected (too AI-looking).
-   Do not implement those packs. Dedicated polish waits on
-   Visual UX v4 via CoS. Boards stay functional for now.
+   VISUAL v4.1 ONLY — discard neon / cream v2 / v3 mint theater.
+   Barlow Condensed titles · Inter UI · mono numbers · Ink #111
+   Soft R/G heat · coral/teal σ dots · mint ≤1 OPPORTUNITY fill
+   No borders — zebra / fills only. Scatter = crosshair only.
+   Market Moves keeps utilitarian red/green z heat (do not restyle).
+   Comp example rows are NOT live data.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Public+Sans:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --font-title: 'Public Sans', 'Inter', sans-serif;
-  --font-main:  'Inter', sans-serif;
-  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
+  --ink:            #111111;
+  --paper:          #ffffff;
+  --zebra:          #f3f3f3;
+  --mint:           #90fc95;
+  --teal-dot:       #0f766e;
+  --coral-dot:      #e07a5f;
+
+  --font-title:     'Barlow Condensed', 'Inter', sans-serif;
+  --font-main:      'Inter', sans-serif;
+  --font-mono:      'IBM Plex Mono', ui-monospace, monospace;
 
   --heat-green-rgb: 34, 197, 94;
   --heat-red-rgb:   239, 68, 68;
-  --heat-floor:     0.06;
-  --heat-span:      0.32;
+  --heat-floor:     0.08;
+  --heat-span:      0.28;
 
   --mm-row-h:       22px;
   --engine-row-h:   28px;
@@ -24,23 +32,140 @@
   --board-radius:   0;
 }
 
-.mm-head h2,
-.mm-card h3,
-.engine-container h3,
-.engine-count span,
-.desk-ia-bar,
-.board-customize h3 {
-  font-family: var(--font-title);
-}
-
-.moves-container,
 .engine-container,
-.board-customize {
+.macro-container {
+  background: var(--paper);
+  color: var(--ink);
   font-family: var(--font-main);
+  box-shadow: none;
 }
 
-.mm-table,
+.engine-container *,
+.macro-container * {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.engine-story,
+.macro-story,
+.engine-container h2,
+.macro-container h2,
+.v2-card-kicker,
+.v41-title {
+  font-family: var(--font-title);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
 .engine-heat-table,
-.board-customize-keys {
+.v2-big,
+.v2-pat-cell strong {
   font-family: var(--font-mono);
+}
+
+.engine-heat-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.engine-heat-table th {
+  font-family: var(--font-main);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #666;
+  font-weight: 600;
+}
+.engine-heat-table tbody tr:nth-child(even) { background: var(--zebra); }
+.engine-heat-table td, .engine-heat-table th {
+  border: none !important;
+  height: var(--engine-row-h);
+}
+
+.v2-chip.is-opp {
+  background: var(--mint);
+  color: var(--ink);
+  border: none;
+  padding: 1px 6px;
+}
+.engine-state.is-opp,
+td.engine-opp {
+  background: var(--mint) !important;
+}
+
+.sigma-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.sigma-dot.is-up { background: var(--teal-dot); }
+.sigma-dot.is-dn { background: var(--coral-dot); }
+
+.v41-title { font-size: 42px; margin: 8px 0 2px; line-height: 0.95; }
+.engine-story-sub, .macro-story-sub, .v2-howto {
+  font-family: var(--font-main);
+  font-size: 12px;
+  color: #666;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.v2-split {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: 18px;
+}
+.v2-card {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.v2-three {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.v2-str-row, .v2-stretch-row {
+  display: grid;
+  grid-template-columns: 56px 48px 1fr;
+  gap: 8px;
+  align-items: center;
+  min-height: 30px;
+}
+.v2-three .v2-str-row:nth-child(even),
+.v2-three .v2-stretch-row:nth-child(even) { background: var(--zebra); }
+.v2-bar { position: relative; height: 4px; background: var(--zebra); }
+.v2-bar i { position: absolute; top: 0; height: 100%; background: var(--ink); }
+.v2-bar i.is-up { left: 50%; }
+.v2-bar i.is-dn { right: 50%; }
+.v2-pat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.v2-pat-cell { padding: 8px 4px; text-align: center; background: var(--zebra); }
+.v2-pat-cell strong { display: block; font-size: 22px; color: var(--ink); }
+
+.desk-ia-btn.on {
+  background: transparent !important;
+  color: var(--ink) !important;
+  border: none !important;
+  border-bottom: 3px solid var(--ink) !important;
+  border-radius: 0;
+}
+.tms-on { background: #222; color: #fff; font-weight: 700; }
+
+.engine-scatter { border: none !important; background: transparent; }
+.v3-hero { display: none; } /* v4.1: no mint theater band */
+
+/* Market Moves — keep utilitarian red/green z heat */
+.moves-container { font-family: var(--font-main); }
+.mm-head h2 { font-family: var(--font-title); }
+.mm-table { font-family: var(--font-mono); }
+.mm-table th, .mm-table td { border: none; height: var(--mm-row-h); }
+.mm-up { color: #22c55e; }
+.mm-dn { color: #ef4444; }
+
+@media (max-width: 980px) {
+  .v2-split, .v2-three { grid-template-columns: 1fr; }
 }

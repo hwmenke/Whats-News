@@ -25,11 +25,11 @@ does not compute PX, z, D, or TMAC*.
 Dash: Customize on Market Moves + ENGINE Setup / Sigma / Maps.
 Prefs: `localStorage['whats-news-desk-prefs'].boardColumns`.
 
-## Visual HOLD
+## Visual v4.1
 
-Neon rejected. Cream v2 rejected. Obsidian/Paper/Mint **v3** rejected
-(too AI-looking). Do not implement those packs. Wait for Visual UX v4
-via CoS. Boards stay functional. ENGINE math and this registry stay.
+Barlow Condensed + Inter + mono. Ink `#111`. Soft R/G heat. Mint ≤1
+OPPORTUNITY fill. No borders — zebra/fills only. Neon / cream / v3 mint
+theater discarded. Market Moves stays utilitarian red/green z heat.
 
 ## Flutter path
 
