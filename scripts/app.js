@@ -2366,6 +2366,10 @@ function showScanSplit() {
     document.getElementById('data-manager-area').style.display = 'none';
     hideMacroArea();
     if (typeof hideEngineArea === 'function') hideEngineArea();
+    if (typeof hideMovesArea === 'function') hideMovesArea();
+    if (typeof hideBookAreas === 'function') hideBookAreas();
+    if (typeof hideWarningsArea === 'function') hideWarningsArea();
+    document.body.classList.remove('board-focus');
     document.getElementById('chart-area').style.display        = 'flex';
     document.getElementById('scanner-area').style.display      = 'flex';
     state.activeTab = 'charts';
@@ -2653,6 +2657,7 @@ function showScannerArea() {
     document.getElementById('scanner-area').style.display      = 'flex';
     document.getElementById('data-manager-area').style.display = 'none';
     hideMacroArea();
+    if (typeof hideWarningsArea === 'function') hideWarningsArea();
 }
 
 function showDataManagerArea() {

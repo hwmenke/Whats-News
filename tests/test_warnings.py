@@ -13,7 +13,34 @@ import data_client
 import database as db
 import equity_engine as ee
 
-from test_equity_engine import _crash, _frame, _uptrend
+import numpy as np
+import pandas as pd
+
+
+def _frame(close, high=None, low=None, start="2023-01-02"):
+    close = np.asarray(close, dtype=float)
+    n = len(close)
+    idx = pd.bdate_range(start, periods=n)
+    hi = close + 0.40 if high is None else np.asarray(high, dtype=float)
+    lo = close - 0.40 if low is None else np.asarray(low, dtype=float)
+    return pd.DataFrame(
+        {
+            "open": close,
+            "high": hi,
+            "low": lo,
+            "close": close,
+            "volume": np.full(n, 1_000_000.0),
+        },
+        index=idx,
+    )
+
+
+def _uptrend(n=90, start=80.0, end=150.0):
+    return np.linspace(start, end, n)
+
+
+def _crash(n=80, start=150.0, end=40.0):
+    return np.linspace(start, end, n)
 
 
 class WarningsBoardTests(unittest.TestCase):
@@ -110,6 +137,17 @@ class WarningsSurfaceTests(unittest.TestCase):
         self.assertIn("risk-spec-pending", blob)
         self.assertNotIn("bloomberg", blob.lower())
         self.assertNotIn("gamma strip", blob.lower())
+
+    def test_screenshots_on_disk(self):
+        root = Path("docs/screenshots")
+        for name in (
+            "warnings/warnings_board.png",
+            "warnings/risk_scaffold.png",
+            "density/scans_dense.png",
+        ):
+            path = root / name
+            self.assertTrue(path.is_file(), name)
+            self.assertGreater(path.stat().st_size, 10_000, name)
 
 
 if __name__ == "__main__":

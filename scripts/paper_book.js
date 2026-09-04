@@ -54,10 +54,36 @@ function showBookArea() {
     loadPaperBook();
 }
 
+function renderRiskSpecScaffold() {
+    const spec = document.getElementById('risk-spec-grid');
+    if (!spec) return;
+    const extra = [
+        ['Groups / clusters', '—'],
+        ['Cluster vol regime (20–60d)', '—'],
+        ['Cluster corr (20–60d)', '—'],
+        ['Marginal VaR 95', '—'],
+        ['Component VaR 95', '—'],
+        ['% of port VaR', '—'],
+        ['Est. vol (SPEC)', '—'],
+        ['Perf week', '—'],
+        ['Perf MTD', '—'],
+        ['Perf YTD', '—'],
+        ['Sharpe', '—'],
+        ['Sortino', '—'],
+        ['Per-name β SPY', '—'],
+    ];
+    spec.innerHTML = extra.map(([k, v]) => `
+        <div class="pnl-exp-row">
+            <span>${_pnlEsc(k)}</span>
+            <span>${_pnlEsc(v)}</span>
+        </div>`).join('');
+}
+
 function showRiskArea() {
     hideBookAreas();
     const el = document.getElementById('risk-area');
     if (el) el.style.display = 'flex';
+    renderRiskSpecScaffold();
     loadPaperRisk();
 }
 
@@ -316,32 +342,11 @@ async function loadPaperRisk() {
         }
         if (empty) empty.style.display = rows.length ? 'none' : 'block';
         if (note) note.textContent = data.message || conc.note || data.note || '';
-        const spec = document.getElementById('risk-spec-grid');
-        if (spec) {
-            const extra = [
-                ['Groups / clusters', '—'],
-                ['Cluster vol regime (20–60d)', '—'],
-                ['Cluster corr (20–60d)', '—'],
-                ['Marginal VaR 95', '—'],
-                ['Component VaR 95', '—'],
-                ['% of port VaR', '—'],
-                ['Est. vol (SPEC)', '—'],
-                ['Perf week', '—'],
-                ['Perf MTD', '—'],
-                ['Perf YTD', '—'],
-                ['Sharpe', '—'],
-                ['Sortino', '—'],
-                ['Per-name β SPY', '—'],
-            ];
-            spec.innerHTML = extra.map(([k, v]) => `
-                <div class="pnl-exp-row">
-                    <span>${_pnlEsc(k)}</span>
-                    <span>${_pnlEsc(v)}</span>
-                </div>`).join('');
-        }
+        renderRiskSpecScaffold();
     } catch (err) {
         if (note) note.textContent = err.message || 'Risk unavailable';
         if (empty) empty.style.display = 'block';
+        renderRiskSpecScaffold();
     }
 }
 
@@ -423,3 +428,4 @@ window.hideBookAreas = hideBookAreas;
 window.loadPaperPnl = loadPaperPnl;
 window.loadPaperBook = loadPaperBook;
 window.loadPaperRisk = loadPaperRisk;
+window.renderRiskSpecScaffold = renderRiskSpecScaffold;

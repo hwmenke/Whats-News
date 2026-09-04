@@ -393,7 +393,7 @@ body.board-focus .desk-ia-bar { padding: 2px 8px; }
 .overlay-section-label { font-size: 9px; }
 
 /* Warnings — Market Moves density */
-.warnings-container { display: flex; flex-direction: column; min-height: 0; }
+.warnings-container { flex-direction: column; min-height: 0; }
 .warnings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
