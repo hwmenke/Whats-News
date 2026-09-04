@@ -462,6 +462,90 @@ def scans_pack_api():
         return jsonify({"error": str(exc)}), 500
 
 
+def _engine_desk_symbols():
+    """Desk tickers for ENGINE boards. Empty list is honest — not the full archive."""
+    try:
+        return [s["symbol"] for s in md.list_desk_symbols()]
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return []
+        raise
+
+
+def _engine_payload(builder, **kwargs):
+    import equity_engine
+    ensure_local_schema()
+    desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+    try:
+        symbols = _engine_desk_symbols() if desk else None
+        if desk and not symbols:
+            return jsonify(builder(symbols=[], **kwargs))
+        return jsonify(builder(symbols=symbols, **kwargs))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(builder(symbols=[], **kwargs))
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/engine/catalog", methods=["GET"])
+def engine_catalog_api():
+    """ENGINE / RSI-C / VCP / Str formulas + state machine. No market data."""
+    import equity_engine
+    return jsonify(equity_engine.catalog())
+
+
+@app.route("/api/engine/command", methods=["GET"])
+def engine_command_api():
+    """Command counts: OPPORTUNITY / WATCH / pullbacks. Yahoo/SQLite only."""
+    import equity_engine
+    return _engine_payload(equity_engine.command_board)
+
+
+@app.route("/api/engine/board", methods=["GET"])
+def engine_board_api():
+    """Dense Setup Breakout ENGINE heat board."""
+    import equity_engine
+    return _engine_payload(equity_engine.board)
+
+
+@app.route("/api/engine/rsi-counter", methods=["GET"])
+def engine_rsi_counter_api():
+    """RSI(2)…RSI(21) daily LEFT / weekly RIGHT. Default n=14, Δ lag=5."""
+    import equity_engine
+    try:
+        rsi_n = int(request.args.get("n") or request.args.get("rsi_n") or 14)
+    except (TypeError, ValueError):
+        rsi_n = 14
+    try:
+        lag = int(request.args.get("lag") or 5)
+    except (TypeError, ValueError):
+        lag = 5
+    rsi_n = max(2, min(21, rsi_n))
+    lag = max(1, min(21, lag))
+    return _engine_payload(equity_engine.rsi_counter_board, rsi_n=rsi_n, lag=lag)
+
+
+@app.route("/api/engine/patterns", methods=["GET"])
+def engine_patterns_api():
+    """Daily 3M/1M + weekly 1Y/6M pattern scanner."""
+    import equity_engine
+    return _engine_payload(equity_engine.pattern_board)
+
+
+@app.route("/api/engine/stretch", methods=["GET"])
+def engine_stretch_api():
+    """Str −5…+5 and ADMA stretch/compress top 15."""
+    import equity_engine
+    return _engine_payload(equity_engine.stretch_board)
+
+
+@app.route("/api/engine/sigma", methods=["GET"])
+def engine_sigma_api():
+    """Macro-style return + σ grid from stored Yahoo closes."""
+    import equity_engine
+    return _engine_payload(equity_engine.sigma_board)
+
+
 @app.route("/api/hmm/combo", methods=["GET"])
 def hmm_combo_api():
     """AND of real Fractal FRAGILE + inherited SPY HMM + setup tags. No invented hits."""

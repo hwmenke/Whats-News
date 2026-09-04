@@ -2325,6 +2325,7 @@ function showScanSplit() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     hideMacroArea();
+    if (typeof hideEngineArea === 'function') hideEngineArea();
     document.getElementById('chart-area').style.display        = 'flex';
     document.getElementById('scanner-area').style.display      = 'flex';
     state.activeTab = 'charts';
@@ -2443,6 +2444,7 @@ async function switchTab(tabId, opts = {}) {
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
     hideMacroArea();
+    if (typeof hideEngineArea === 'function') hideEngineArea();
     if (typeof hideBookAreas === 'function') hideBookAreas();
 
     if (tabId === 'charts') {
@@ -2475,6 +2477,8 @@ async function switchTab(tabId, opts = {}) {
     } else if (tabId === 'macro') {
         showMacroArea();
         if (typeof initMacroDesk === 'function') initMacroDesk();
+    } else if (tabId === 'engine') {
+        showEngineDesk(opts.ia);
     } else if (tabId === 'pnl') {
         if (typeof showPnlArea === 'function') showPnlArea();
     } else if (tabId === 'book') {
@@ -2485,6 +2489,25 @@ async function switchTab(tabId, opts = {}) {
 function hideMacroArea() {
     const el = document.getElementById('macro-area');
     if (el) el.style.display = 'none';
+}
+
+function showEngineDesk(ia) {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('news-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('dist-area').style.display         = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
+    if (typeof hideBookAreas === 'function') hideBookAreas();
+    if (typeof showEngineArea === 'function') showEngineArea();
+    const panel = ia || (typeof readDeskPrefs === 'function' ? (readDeskPrefs().deskIa || 'command') : 'command');
+    const engineIa = ['command', 'setup', 'pattern', 'rsic', 'stretch', 'sigma'].includes(panel) ? panel : 'command';
+    if (typeof applyEnginePanel === 'function') applyEnginePanel(engineIa);
 }
 
 function showMacroArea() {
@@ -2500,6 +2523,7 @@ function showMacroArea() {
     document.getElementById('data-manager-area').style.display = 'none';
     const macro = document.getElementById('macro-area');
     if (macro) macro.style.display = 'flex';
+    if (typeof hideEngineArea === 'function') hideEngineArea();
 }
 
 function showStatsArea() {

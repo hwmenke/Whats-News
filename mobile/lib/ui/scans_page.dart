@@ -42,7 +42,7 @@ class ScansPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Same Python scans as the web desk. Fractal is SPEC 25/27. HMM is a research label, not edge — SPY Gaussian, desk inherits. Finviz is public HTML only. Breadth is our Yahoo/SQLite universe — not a scraped Market Monitor.',
+                  'Same Python scans as the web desk. Command / Setup / Pattern / RSI-C / Sigma are the ENGINE boards. Fractal is SPEC 25/27. HMM is a research label, not edge. Finviz is public HTML only. Breadth is our Yahoo/SQLite universe — not a scraped Market Monitor.',
                   style: TextStyle(color: DeskColors.muted, fontSize: 12),
                 ),
                 const SizedBox(height: 8),
@@ -56,6 +56,26 @@ class ScansPage extends StatelessWidget {
                     ),
                   ),
                 const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final e in const [
+                      ('command', 'Command'),
+                      ('setup', 'Setup'),
+                      ('pattern', 'Pattern'),
+                      ('rsic', 'RSI-C'),
+                      ('stretch', 'Stretch'),
+                      ('sigma', 'Sigma'),
+                    ])
+                      _ModeChip(
+                        label: e.$2,
+                        on: state.scanMode == e.$1,
+                        onTap: () => state.setScanMode(e.$1),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
@@ -138,6 +158,18 @@ class ScansPage extends StatelessWidget {
           ..._hmmSlivers(state)
         else if (state.scanMode == 'combo')
           ..._comboSlivers(state)
+        else if (state.scanMode == 'command')
+          ..._commandSlivers(state)
+        else if (state.scanMode == 'setup')
+          ..._setupEngineSlivers(state)
+        else if (state.scanMode == 'pattern')
+          ..._patternSlivers(state)
+        else if (state.scanMode == 'rsic')
+          ..._rsicSlivers(state)
+        else if (state.scanMode == 'stretch')
+          ..._stretchSlivers(state)
+        else if (state.scanMode == 'sigma')
+          ..._sigmaSlivers(state)
         else if (state.scanMode == 'ma' ||
             state.scanMode == 'rsi' ||
             state.scanMode == 'breakout' ||
@@ -537,6 +569,366 @@ class ScansPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: children,
           ),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _emptyNote(String msg) => [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            child: Text(msg, style: const TextStyle(color: DeskColors.muted, height: 1.4)),
+          ),
+        ),
+      ];
+
+  List<Widget> _howto(String text) => [
+        if (text.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Text(
+                'HOW TO READ\n$text',
+                style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
+              ),
+            ),
+          ),
+      ];
+
+  Widget _nameChip(String symbol, String tag, {String? metric}) {
+    return GestureDetector(
+      onTap: () => onOpenChart(symbol),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          children: [
+            Text(symbol, style: const TextStyle(color: DeskColors.accentBright, fontWeight: FontWeight.w700)),
+            if (metric != null && metric.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Text(metric, style: const TextStyle(color: DeskColors.text, fontSize: 12)),
+            ],
+            const Spacer(),
+            if (tag.isNotEmpty)
+              Text(tag, style: const TextStyle(color: DeskColors.dim, fontSize: 11)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _commandSlivers(WhatsNewsState s) {
+    final b = s.engineCommand;
+    if (!b.ready) {
+      return _emptyNote(b.message.isEmpty ? 'Empty command — seed a sleeve and Fetch Yahoo.' : b.message);
+    }
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'OPPORTUNITY ${b.counts['OPPORTUNITY'] ?? 0} · WATCH ${b.counts['WATCH'] ?? 0} · NO TRADE ${b.counts['NO TRADE'] ?? 0}',
+                style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              const Text('Opportunity', style: TextStyle(color: DeskColors.muted, fontSize: 12)),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final n in b.opportunity)
+                    GestureDetector(
+                      onTap: () => onOpenChart(n),
+                      child: Text(n, style: const TextStyle(color: DeskColors.accentBright, fontWeight: FontWeight.w700)),
+                    ),
+                  if (b.opportunity.isEmpty)
+                    const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 12)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text('Pullback-in-uptrend', style: TextStyle(color: DeskColors.muted, fontSize: 12)),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final n in b.pullbacks)
+                    GestureDetector(
+                      onTap: () => onOpenChart(n),
+                      child: Text(n, style: const TextStyle(color: DeskColors.accentBright, fontWeight: FontWeight.w700)),
+                    ),
+                  if (b.pullbacks.isEmpty)
+                    const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 12)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      ..._howto(b.formulas['engine'] ?? b.howto),
+    ];
+  }
+
+  List<Widget> _setupEngineSlivers(WhatsNewsState s) {
+    final b = s.engineBoard;
+    if (b.rows.isEmpty) {
+      return _emptyNote(b.message.isEmpty ? 'Empty ENGINE — no stored daily bars.' : b.message);
+    }
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            b.note.isEmpty
+                ? 'WATCH | FORMING | TRIGGERED | ACCEPTED | OPPORTUNITY | DORMANT | EXTENDED | NO TRADE. D is SPEC 25/27 only.'
+                : b.note,
+            style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
+          ),
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.only(bottom: 8),
+        sliver: SliverList.separated(
+          itemCount: b.rows.length,
+          separatorBuilder: (_, _) => const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: ColoredBox(color: DeskColors.border, child: SizedBox(height: 0.5)),
+          ),
+          itemBuilder: (context, i) {
+            final r = b.rows[i];
+            return GestureDetector(
+              onTap: () => onOpenChart(r.symbol),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(r.symbol, style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 16)),
+                        const Spacer(),
+                        Text(r.engine, style: const TextStyle(color: DeskColors.accentBright, fontSize: 11, fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      r.takeaway.isEmpty ? '—' : r.takeaway,
+                      style: TextStyle(
+                        color: r.sentiment.contains('LONG')
+                            ? DeskColors.green
+                            : r.sentiment.contains('SHORT')
+                                ? DeskColors.red
+                                : DeskColors.muted,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                    Text(
+                      [
+                        if (r.vcp.isNotEmpty) r.vcp,
+                        if (r.tmsZone.isNotEmpty) r.tmsZone,
+                        if (r.impulse.isNotEmpty) r.impulse,
+                        if (r.dw.isNotEmpty) r.dw,
+                        if (r.str != null) 'Str ${r.str}',
+                      ].join(' · '),
+                      style: const TextStyle(color: DeskColors.dim, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+      ..._howto(b.formulas['engine'] ?? ''),
+    ];
+  }
+
+  List<Widget> _patternSlivers(WhatsNewsState s) {
+    final b = s.patternBoard;
+    if (!b.ready) {
+      return [
+        ..._emptyNote(b.message.isEmpty ? 'Empty pattern scanner — no 3M/1Y extremes.' : b.message),
+        ..._howto(b.howto),
+      ];
+    }
+    Widget col(String title, List<EngineNamed> rows) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 13)),
+              if (rows.isEmpty)
+                const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 12))
+              else
+                for (final r in rows) _nameChip(r.symbol, r.tag),
+            ],
+          ),
+        );
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              col('Daily Breakouts (${b.dailyCounts['Breakout'] ?? 0})', b.daily['Breakout'] ?? const []),
+              col('Daily From Bottom (${b.dailyCounts['From Bottom'] ?? 0})', b.daily['From Bottom'] ?? const []),
+              col('Daily Breakdowns (${b.dailyCounts['Breakdown'] ?? 0})', b.daily['Breakdown'] ?? const []),
+              col('Daily From Top (${b.dailyCounts['From Top'] ?? 0})', b.daily['From Top'] ?? const []),
+              col('Weekly Breakouts (${b.weeklyCounts['Breakout'] ?? 0})', b.weekly['Breakout'] ?? const []),
+              col('Weekly From Bottom (${b.weeklyCounts['From Bottom'] ?? 0})', b.weekly['From Bottom'] ?? const []),
+              col('Weekly Breakdowns (${b.weeklyCounts['Breakdown'] ?? 0})', b.weekly['Breakdown'] ?? const []),
+              col('Weekly From Top (${b.weeklyCounts['From Top'] ?? 0})', b.weekly['From Top'] ?? const []),
+            ],
+          ),
+        ),
+      ),
+      ..._howto(b.howto),
+    ];
+  }
+
+  List<Widget> _rsicSlivers(WhatsNewsState s) {
+    final b = s.rsiCounter;
+    if (!b.ready) {
+      return [
+        ..._emptyNote(b.message.isEmpty ? 'Empty RSI-C — need ≥24 stored closes.' : b.message),
+        ..._howto(b.howto),
+      ];
+    }
+    Widget bucket(String title, List<EngineNamed> rows) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 13)),
+              if (rows.isEmpty)
+                const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 12))
+              else
+                for (final r in rows)
+                  _nameChip(
+                    r.symbol,
+                    r.state.isEmpty ? r.tag : r.state,
+                    metric: r.avgRsi == null ? null : 'avg ${r.avgRsi!.toStringAsFixed(1)}',
+                  ),
+            ],
+          ),
+        );
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('CONTROLS RSI n=${b.rsiN}  Δ lag=${b.lag}', style: const TextStyle(color: DeskColors.muted, fontSize: 12)),
+              const SizedBox(height: 8),
+              const Text('Daily LEFT', style: TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700)),
+              bucket('OVERSOLD', b.daily['oversold'] ?? const []),
+              bucket('OVERBOUGHT', b.daily['overbought'] ?? const []),
+              bucket('TRENDING HIGHER', b.daily['trend_up'] ?? const []),
+              bucket('TRENDING LOWER', b.daily['trend_dn'] ?? const []),
+              const Text('Weekly RIGHT', style: TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700)),
+              bucket('OVERSOLD W', b.weekly['oversold'] ?? const []),
+              bucket('OVERBOUGHT W', b.weekly['overbought'] ?? const []),
+              bucket('TRENDING HIGHER W', b.weekly['trend_up'] ?? const []),
+              bucket('TRENDING LOWER W', b.weekly['trend_dn'] ?? const []),
+              bucket('Accelerating', b.accelerating),
+              bucket('Fading', b.fading),
+              bucket('Sector RSI', b.sectors),
+              bucket('Pullback-in-uptrend', b.pullbacks),
+            ],
+          ),
+        ),
+      ),
+      ..._howto(b.howto),
+    ];
+  }
+
+  List<Widget> _stretchSlivers(WhatsNewsState s) {
+    final b = s.stretchBoard;
+    if (!b.ready) {
+      return [
+        ..._emptyNote(b.message.isEmpty ? 'Empty stretch board — need ≥56 daily bars for Str.' : b.message),
+        ..._howto(b.howto),
+      ];
+    }
+    Widget col(String title, List<EngineNamed> rows) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 13)),
+              if (rows.isEmpty)
+                const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 12))
+              else
+                for (final r in rows)
+                  _nameChip(r.symbol, r.tag, metric: r.metric == null ? null : r.metric!.toStringAsFixed(1)),
+            ],
+          ),
+        );
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              col('Strongest breakouts', b.strongest),
+              col('Breakdowns', b.breakdowns),
+              col('Most stretched (ADMA)', b.stretched),
+              col('Most compressed (ADMA)', b.compressed),
+            ],
+          ),
+        ),
+      ),
+      ..._howto(b.howto),
+    ];
+  }
+
+  List<Widget> _sigmaSlivers(WhatsNewsState s) {
+    final b = s.sigmaBoard;
+    if (b.rows.isEmpty) {
+      return _emptyNote(b.message.isEmpty ? 'Empty sigma grid — no stored closes.' : b.message);
+    }
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            b.note.isEmpty ? 'σ = move / (trailing daily σ × √horizon). Yahoo/SQLite only.' : b.note,
+            style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+          ),
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.only(bottom: 24),
+        sliver: SliverList.separated(
+          itemCount: b.rows.length,
+          separatorBuilder: (_, _) => const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: ColoredBox(color: DeskColors.border, child: SizedBox(height: 0.5)),
+          ),
+          itemBuilder: (context, i) {
+            final r = b.rows[i];
+            final sym = '${r['symbol'] ?? ''}'.toUpperCase();
+            return GestureDetector(
+              onTap: () => onOpenChart(sym),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(sym, style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 16)),
+                    Text(
+                      '${r['takeaway'] ?? '—'}',
+                      style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.3),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     ];

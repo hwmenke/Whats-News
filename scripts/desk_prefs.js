@@ -11,6 +11,7 @@ const _deskPrefDefaults = {
     rightFreq: 'weekly',
     refreshSec: 0,
     scanLens: 'trend',
+    deskIa: 'command',
     edgeTag: '',
     qullaLens: 'all',
     finvizPreset: 'qulla_momentum',
@@ -163,6 +164,7 @@ function bindDeskPrefs() {
     if (scanDef) scanDef.value = prefs.scanLens || 'trend';
     applyDeskRefreshInterval(prefs.refreshSec || 0);
     applyScanLens(prefs.scanLens || 'trend');
+    if (typeof bindEngineDesk === 'function') bindEngineDesk();
 
     document.getElementById('desk-refresh-sec')?.addEventListener('change', e => {
         applyDeskRefreshInterval(e.target.value);

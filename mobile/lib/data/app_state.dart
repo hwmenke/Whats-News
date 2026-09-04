@@ -63,6 +63,12 @@ class WhatsNewsState extends ChangeNotifier {
   ComboScan comboScan = ComboScan.empty;
   ScanPack scanPack = ScanPack.empty;
   ScanBreadth scanBreadth = ScanBreadth.empty;
+  EngineBoard engineCommand = EngineBoard.empty;
+  EngineBoard engineBoard = EngineBoard.empty;
+  RsiCounterBoard rsiCounter = RsiCounterBoard.empty;
+  PatternBoard patternBoard = PatternBoard.empty;
+  StretchBoard stretchBoard = StretchBoard.empty;
+  SigmaBoard sigmaBoard = SigmaBoard.empty;
   int hmmStates = 2;
   String hmmStateFilter = '';
   String hmmView = 'all';
@@ -801,6 +807,9 @@ class WhatsNewsState extends ChangeNotifier {
       if (_isPackMode(scanMode)) {
         await loadScanPack();
       }
+      if (_isEngineMode(scanMode)) {
+        await loadEngine();
+      }
     } on ApiException catch (e) {
       scanError = _friendly(e);
     } catch (_) {
@@ -870,6 +879,40 @@ class WhatsNewsState extends ChangeNotifier {
   bool _isPackMode(String mode) =>
       mode == 'ma' || mode == 'rsi' || mode == 'breakout' || mode == 'oneil' || mode == 'vcp';
 
+  bool _isEngineMode(String mode) =>
+      mode == 'command' ||
+      mode == 'setup' ||
+      mode == 'pattern' ||
+      mode == 'rsic' ||
+      mode == 'stretch' ||
+      mode == 'sigma';
+
+  Future<void> loadEngine() async {
+    try {
+      if (scanMode == 'command') {
+        engineCommand = await api.getEngineCommand();
+      } else if (scanMode == 'setup') {
+        engineBoard = await api.getEngineBoard();
+      } else if (scanMode == 'pattern') {
+        patternBoard = await api.getEnginePatterns();
+      } else if (scanMode == 'rsic') {
+        rsiCounter = await api.getRsiCounter();
+      } else if (scanMode == 'stretch') {
+        stretchBoard = await api.getEngineStretch();
+      } else if (scanMode == 'sigma') {
+        sigmaBoard = await api.getEngineSigma();
+      }
+    } on ApiException {
+      if (scanMode == 'command') engineCommand = EngineBoard.empty;
+      if (scanMode == 'setup') engineBoard = EngineBoard.empty;
+      if (scanMode == 'pattern') patternBoard = PatternBoard.empty;
+      if (scanMode == 'rsic') rsiCounter = RsiCounterBoard.empty;
+      if (scanMode == 'stretch') stretchBoard = StretchBoard.empty;
+      if (scanMode == 'sigma') sigmaBoard = SigmaBoard.empty;
+    }
+    notifyListeners();
+  }
+
   Future<void> loadScanPack() async {
     try {
       scanPack = await api.getScanPack(lens: _isPackMode(scanMode) ? scanMode : 'all');
@@ -926,7 +969,8 @@ class WhatsNewsState extends ChangeNotifier {
         mode != 'finviz' &&
         mode != 'hmm' &&
         mode != 'combo' &&
-        !_isPackMode(mode)) {
+        !_isPackMode(mode) &&
+        !_isEngineMode(mode)) {
       return;
     }
     scanMode = mode;
@@ -936,6 +980,7 @@ class WhatsNewsState extends ChangeNotifier {
     if (mode == 'hmm') loadHmm();
     if (mode == 'combo') loadCombo();
     if (_isPackMode(mode)) loadScanPack();
+    if (_isEngineMode(mode)) loadEngine();
   }
 
   String _friendly(ApiException e) {

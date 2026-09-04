@@ -116,6 +116,30 @@ void main() {
       if (path == '/api/finviz/screener' || path.startsWith('/api/finviz/quote/')) {
         return _json({'ready': false, 'rows': [], 'news': [], 'reason': 'fixture'});
       }
+      if (path.startsWith('/api/engine/')) {
+        return _json({
+          'ready': false,
+          'rows': [],
+          'counts': {},
+          'engine_counts': {},
+          'daily': {'counts': {}, 'rows': {}},
+          'weekly': {'counts': {}, 'rows': {}},
+          'strongest': [],
+          'breakdowns': [],
+          'stretched': [],
+          'compressed': [],
+          'accelerating': [],
+          'fading': [],
+          'sectors': [],
+          'pullbacks': [],
+          'opportunity': [],
+          'nav': ['command', 'setup', 'pattern', 'rsi_c', 'macro', 'sigma', 'book', 'chart'],
+          'formulas': {'engine': 'NO TRADE if <55 bars', 'rsi_c': 'Wilder RSI(2)..RSI(21)'},
+          'message': 'Empty ENGINE — no stored daily bars.',
+          'note': 'Yahoo/SQLite OHLCV only.',
+          'howto': 'HOW TO READ — ENGINE state machine',
+        });
+      }
       if (path == '/api/scans/pack' || path == '/api/scans/breadth') {
         return _json({
           'ready': false,

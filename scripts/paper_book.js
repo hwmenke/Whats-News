@@ -34,6 +34,7 @@ function hideBookAreas() {
     const book = document.getElementById('book-area');
     if (pnl) pnl.style.display = 'none';
     if (book) book.style.display = 'none';
+    if (typeof hideEngineArea === 'function') hideEngineArea();
 }
 
 function showPnlArea() {

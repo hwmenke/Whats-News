@@ -1741,3 +1741,383 @@ class HmmScanRow {
     );
   }
 }
+
+class EngineRow {
+  const EngineRow({
+    required this.symbol,
+    this.engine = '',
+    this.takeaway = '',
+    this.vcp = '',
+    this.tmsZone = '',
+    this.impulse = '',
+    this.patternW = '',
+    this.bias,
+    this.dw = '',
+    this.rsiC = '',
+    this.vs20,
+    this.dist52w,
+    this.str,
+    this.grayTag = '',
+    this.sentiment = '',
+  });
+
+  final String symbol;
+  final String engine;
+  final String takeaway;
+  final String vcp;
+  final String tmsZone;
+  final String impulse;
+  final String patternW;
+  final double? bias;
+  final String dw;
+  final String rsiC;
+  final double? vs20;
+  final double? dist52w;
+  final int? str;
+  final String grayTag;
+  final String sentiment;
+
+  factory EngineRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    final rsi = json['rsi_c'];
+    return EngineRow(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      engine: '${json['engine'] ?? ''}',
+      takeaway: '${json['takeaway'] ?? ''}',
+      vcp: '${json['vcp'] ?? ''}',
+      tmsZone: '${json['tms_zone'] ?? ''}',
+      impulse: '${json['impulse'] ?? ''}',
+      patternW: '${json['pattern_w'] ?? ''}',
+      bias: n(json['bias']),
+      dw: '${json['dw'] ?? ''}',
+      rsiC: rsi is Map ? '${rsi['state'] ?? ''}' : '${json['state'] ?? ''}',
+      vs20: n(json['vs20']),
+      dist52w: n(json['dist_52w_pct']),
+      str: json['str'] is num ? (json['str'] as num).toInt() : int.tryParse('${json['str'] ?? ''}'),
+      grayTag: '${json['gray_tag'] ?? ''}',
+      sentiment: '${json['sentiment'] ?? ''}',
+    );
+  }
+}
+
+class EngineBoard {
+  const EngineBoard({
+    this.ready = false,
+    this.count = 0,
+    this.rows = const [],
+    this.counts = const {},
+    this.message = '',
+    this.note = '',
+    this.howto = '',
+    this.formulas = const {},
+    this.opportunity = const [],
+    this.pullbacks = const [],
+    this.nav = const [],
+  });
+
+  final bool ready;
+  final int count;
+  final List<EngineRow> rows;
+  final Map<String, int> counts;
+  final String message;
+  final String note;
+  final String howto;
+  final Map<String, String> formulas;
+  final List<String> opportunity;
+  final List<String> pullbacks;
+  final List<String> nav;
+
+  static const empty = EngineBoard();
+
+  factory EngineBoard.fromJson(Map<String, dynamic> json) {
+    Map<String, int> counts = {};
+    final rawCounts = json['counts'] ?? json['engine_counts'];
+    if (rawCounts is Map) {
+      rawCounts.forEach((k, v) {
+        if (v is num) counts['$k'] = v.toInt();
+      });
+    }
+    Map<String, String> formulas = {};
+    if (json['formulas'] is Map) {
+      (json['formulas'] as Map).forEach((k, v) => formulas['$k'] = '$v');
+    }
+    return EngineBoard(
+      ready: json['ready'] == true,
+      count: json['count'] is num
+          ? (json['count'] as num).toInt()
+          : (json['n'] is num ? (json['n'] as num).toInt() : 0),
+      rows: [
+        if (json['rows'] is List)
+          for (final r in json['rows'])
+            if (r is Map) EngineRow.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      counts: counts,
+      message: '${json['message'] ?? ''}',
+      note: '${json['note'] ?? ''}',
+      howto: '${json['howto'] ?? json['state_machine'] ?? ''}',
+      formulas: formulas,
+      opportunity: [
+        if (json['opportunity'] is List) for (final s in json['opportunity']) '$s',
+      ],
+      pullbacks: [
+        if (json['pullbacks'] is List)
+          for (final s in json['pullbacks'])
+            s is Map ? '${s['symbol'] ?? ''}' : '$s',
+      ],
+      nav: [
+        if (json['nav'] is List) for (final s in json['nav']) '$s',
+      ],
+    );
+  }
+}
+
+class EngineNamed {
+  const EngineNamed({
+    required this.symbol,
+    this.tag = '',
+    this.metric,
+    this.note = '',
+    this.state = '',
+    this.avgRsi,
+    this.align,
+    this.delta,
+  });
+
+  final String symbol;
+  final String tag;
+  final double? metric;
+  final String note;
+  final String state;
+  final double? avgRsi;
+  final double? align;
+  final double? delta;
+
+  factory EngineNamed.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return EngineNamed(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      tag: '${json['gray_tag'] ?? json['state'] ?? ''}',
+      metric: n(json['str'] ?? json['stretch_pctile'] ?? json['stretch_pct']),
+      note: '${json['note'] ?? json['takeaway'] ?? ''}',
+      state: '${json['state'] ?? ''}',
+      avgRsi: n(json['avg_rsi']),
+      align: n(json['align']),
+      delta: n(json['delta']),
+    );
+  }
+}
+
+class RsiCounterBoard {
+  const RsiCounterBoard({
+    this.ready = false,
+    this.rsiN = 14,
+    this.lag = 5,
+    this.daily = const {},
+    this.weekly = const {},
+    this.accelerating = const [],
+    this.fading = const [],
+    this.sectors = const [],
+    this.pullbacks = const [],
+    this.howto = '',
+    this.message = '',
+  });
+
+  final bool ready;
+  final int rsiN;
+  final int lag;
+  final Map<String, List<EngineNamed>> daily;
+  final Map<String, List<EngineNamed>> weekly;
+  final List<EngineNamed> accelerating;
+  final List<EngineNamed> fading;
+  final List<EngineNamed> sectors;
+  final List<EngineNamed> pullbacks;
+  final String howto;
+  final String message;
+
+  static const empty = RsiCounterBoard();
+
+  static Map<String, List<EngineNamed>> _buckets(Object? raw) {
+    final out = <String, List<EngineNamed>>{};
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (v is List) {
+          out['$k'] = [
+            for (final r in v)
+              if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+          ];
+        }
+      });
+    }
+    return out;
+  }
+
+  factory RsiCounterBoard.fromJson(Map<String, dynamic> json) {
+    return RsiCounterBoard(
+      ready: json['ready'] == true,
+      rsiN: json['rsi_n'] is num ? (json['rsi_n'] as num).toInt() : 14,
+      lag: json['lag'] is num ? (json['lag'] as num).toInt() : 5,
+      daily: _buckets(json['daily']),
+      weekly: _buckets(json['weekly']),
+      accelerating: [
+        if (json['accelerating'] is List)
+          for (final r in json['accelerating'])
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      fading: [
+        if (json['fading'] is List)
+          for (final r in json['fading'])
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      sectors: [
+        if (json['sectors'] is List)
+          for (final r in json['sectors'])
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      pullbacks: [
+        if (json['pullbacks'] is List)
+          for (final r in json['pullbacks'])
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      howto: '${json['howto'] ?? ''}',
+      message: '${json['message'] ?? ''}',
+    );
+  }
+}
+
+class PatternBoard {
+  const PatternBoard({
+    this.ready = false,
+    this.daily = const {},
+    this.weekly = const {},
+    this.dailyCounts = const {},
+    this.weeklyCounts = const {},
+    this.howto = '',
+    this.message = '',
+  });
+
+  final bool ready;
+  final Map<String, List<EngineNamed>> daily;
+  final Map<String, List<EngineNamed>> weekly;
+  final Map<String, int> dailyCounts;
+  final Map<String, int> weeklyCounts;
+  final String howto;
+  final String message;
+
+  static const empty = PatternBoard();
+
+  static Map<String, int> _counts(Object? raw) {
+    final out = <String, int>{};
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (v is num) out['$k'] = v.toInt();
+      });
+    }
+    return out;
+  }
+
+  static Map<String, List<EngineNamed>> _rows(Object? raw) {
+    final out = <String, List<EngineNamed>>{};
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (v is List) {
+          out['$k'] = [
+            for (final r in v)
+              if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+          ];
+        }
+      });
+    }
+    return out;
+  }
+
+  factory PatternBoard.fromJson(Map<String, dynamic> json) {
+    final d = json['daily'];
+    final w = json['weekly'];
+    return PatternBoard(
+      ready: json['ready'] == true,
+      daily: d is Map ? _rows(d['rows']) : const {},
+      weekly: w is Map ? _rows(w['rows']) : const {},
+      dailyCounts: d is Map ? _counts(d['counts']) : const {},
+      weeklyCounts: w is Map ? _counts(w['counts']) : const {},
+      howto: '${json['howto'] ?? ''}',
+      message: '${json['message'] ?? ''}',
+    );
+  }
+}
+
+class StretchBoard {
+  const StretchBoard({
+    this.ready = false,
+    this.strongest = const [],
+    this.breakdowns = const [],
+    this.stretched = const [],
+    this.compressed = const [],
+    this.howto = '',
+    this.message = '',
+  });
+
+  final bool ready;
+  final List<EngineNamed> strongest;
+  final List<EngineNamed> breakdowns;
+  final List<EngineNamed> stretched;
+  final List<EngineNamed> compressed;
+  final String howto;
+  final String message;
+
+  static const empty = StretchBoard();
+
+  static List<EngineNamed> _list(Object? raw) => [
+        if (raw is List)
+          for (final r in raw)
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ];
+
+  factory StretchBoard.fromJson(Map<String, dynamic> json) {
+    return StretchBoard(
+      ready: json['ready'] == true,
+      strongest: _list(json['strongest']),
+      breakdowns: _list(json['breakdowns']),
+      stretched: _list(json['stretched']),
+      compressed: _list(json['compressed']),
+      howto: '${json['howto'] ?? ''}',
+      message: '${json['message'] ?? ''}',
+    );
+  }
+}
+
+class SigmaBoard {
+  const SigmaBoard({
+    this.ready = false,
+    this.rows = const [],
+    this.message = '',
+    this.note = '',
+  });
+
+  final bool ready;
+  final List<Map<String, dynamic>> rows;
+  final String message;
+  final String note;
+
+  static const empty = SigmaBoard();
+
+  factory SigmaBoard.fromJson(Map<String, dynamic> json) {
+    return SigmaBoard(
+      ready: json['ready'] == true,
+      rows: [
+        if (json['rows'] is List)
+          for (final r in json['rows'])
+            if (r is Map) Map<String, dynamic>.from(r),
+      ],
+      message: '${json['message'] ?? ''}',
+      note: '${json['note'] ?? ''}',
+    );
+  }
+}

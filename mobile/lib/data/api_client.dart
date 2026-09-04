@@ -444,6 +444,47 @@ class WhatsNewsApi {
     return ScanPack.empty;
   }
 
+  Future<Map<String, dynamic>> _engineGet(String path, [Map<String, String>? q]) async {
+    try {
+      final raw = await _get(path, {'desk': '1', ...?q});
+      if (raw is Map<String, dynamic>) return raw;
+      if (raw is Map) return Map<String, dynamic>.from(raw);
+    } on ApiException {
+      return const {};
+    }
+    return const {};
+  }
+
+  Future<EngineBoard> getEngineCommand() async {
+    final raw = await _engineGet('/api/engine/command');
+    return raw.isEmpty ? EngineBoard.empty : EngineBoard.fromJson(raw);
+  }
+
+  Future<EngineBoard> getEngineBoard() async {
+    final raw = await _engineGet('/api/engine/board');
+    return raw.isEmpty ? EngineBoard.empty : EngineBoard.fromJson(raw);
+  }
+
+  Future<RsiCounterBoard> getRsiCounter({int n = 14, int lag = 5}) async {
+    final raw = await _engineGet('/api/engine/rsi-counter', {'n': '$n', 'lag': '$lag'});
+    return raw.isEmpty ? RsiCounterBoard.empty : RsiCounterBoard.fromJson(raw);
+  }
+
+  Future<PatternBoard> getEnginePatterns() async {
+    final raw = await _engineGet('/api/engine/patterns');
+    return raw.isEmpty ? PatternBoard.empty : PatternBoard.fromJson(raw);
+  }
+
+  Future<StretchBoard> getEngineStretch() async {
+    final raw = await _engineGet('/api/engine/stretch');
+    return raw.isEmpty ? StretchBoard.empty : StretchBoard.fromJson(raw);
+  }
+
+  Future<SigmaBoard> getEngineSigma() async {
+    final raw = await _engineGet('/api/engine/sigma');
+    return raw.isEmpty ? SigmaBoard.empty : SigmaBoard.fromJson(raw);
+  }
+
   Future<ScanBreadth> getScanBreadth() async {
     try {
       final raw = await _get('/api/scans/breadth', const {'desk': '1'});

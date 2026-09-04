@@ -253,10 +253,23 @@
       <button id="tab-backtest" class="tab-btn" onclick="switchTab('backtest')">Backtest</button>
       <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">Trend</button>
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
+      <button id="tab-engine" class="tab-btn" onclick="switchTab('engine')" title="Equity ENGINE board — Setup / Pattern / RSI-C / Sigma from stored Yahoo bars">ENGINE</button>
       <button id="tab-macro" class="tab-btn" onclick="switchTab('macro')" title="Market Moves sleeves + edges from stored Yahoo bars">Macro</button>
       <button id="tab-pnl" class="tab-btn" onclick="switchTab('pnl')" title="Paper book P&amp;L from stored marks — not a live broker">P&amp;L</button>
       <button id="tab-book" class="tab-btn" onclick="switchTab('book')" title="Paper positions — Fidelity CSV or manual">Book</button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">Data</button>
+    </nav>
+    <nav id="desk-ia-bar" class="desk-ia-bar" aria-label="Desk groups">
+      <button type="button" class="desk-ia-btn" data-ia="command">Command</button>
+      <button type="button" class="desk-ia-btn" data-ia="setup">Setup</button>
+      <button type="button" class="desk-ia-btn" data-ia="pattern">Pattern</button>
+      <button type="button" class="desk-ia-btn" data-ia="rsic">RSI-C</button>
+      <button type="button" class="desk-ia-btn" data-ia="macro">Macro</button>
+      <button type="button" class="desk-ia-btn" data-ia="sigma">Sigma</button>
+      <button type="button" class="desk-ia-btn" data-ia="book">Book+P&amp;L</button>
+      <button type="button" class="desk-ia-btn" data-ia="chart">Watchlist · Chart · News</button>
+    </nav>
+    <nav class="main-nav-tabs main-nav-overlays" aria-label="Chart overlays">
       <div class="tab-spacer"></div>
       <div id="chart-overlays-bar" class="indicator-toggles chart-overlays-bar">
         <span class="overlay-section-label">Panes</span>
@@ -1164,6 +1177,130 @@
 
     </div><!-- #scanner-area -->
 
+    <!-- ── Equity ENGINE desk (Setup Breakout / RSI-C / Pattern / Stretch / Sigma) ── -->
+    <div id="engine-area" class="engine-container" style="display:none;">
+      <div id="engine-ia-bar" class="desk-ia-bar engine-ia-bar" role="group" aria-label="ENGINE boards">
+        <button type="button" class="desk-ia-btn on" data-ia="command">Command</button>
+        <button type="button" class="desk-ia-btn" data-ia="setup">Setup</button>
+        <button type="button" class="desk-ia-btn" data-ia="pattern">Pattern</button>
+        <button type="button" class="desk-ia-btn" data-ia="rsic">RSI-C</button>
+        <button type="button" class="desk-ia-btn" data-ia="stretch">Stretch</button>
+        <button type="button" class="desk-ia-btn" data-ia="sigma">Sigma</button>
+      </div>
+
+      <div class="engine-panel" data-panel="command">
+        <div class="setup-scanner-header">
+          <strong>Command</strong>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-engine-command">Load /api/engine/command</button>
+          <span id="engine-command-meta" class="scanner-ts"></span>
+        </div>
+        <p class="macro-blurb">Yahoo/SQLite OHLCV only. ENGINE / TAKEAWAY are research labels — not a win rate. Blank when bars are missing.</p>
+        <div id="engine-command-body"></div>
+      </div>
+
+      <div class="engine-panel" data-panel="setup" style="display:none;">
+        <div class="setup-scanner-header">
+          <strong>Setup ENGINE</strong>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-engine-board">Load /api/engine/board</button>
+          <span id="engine-board-meta" class="scanner-ts"></span>
+        </div>
+        <p class="macro-blurb">WATCH | FORMING | TRIGGERED | ACCEPTED | OPPORTUNITY | DORMANT | EXTENDED | NO TRADE + D1.x + D+W. D is SPEC 25/27 only. VCP is an honest proxy, not certified VCP.</p>
+        <div class="scanner-table-wrap">
+          <table id="engine-board-table" class="scanner-table engine-heat-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>VCP</th>
+                <th>TMS</th>
+                <th>Impulse</th>
+                <th>Pattern W</th>
+                <th>Bias</th>
+                <th>TAKEAWAY</th>
+                <th>D vs W</th>
+                <th>ENGINE</th>
+                <th>RSI-C</th>
+                <th>vs20</th>
+                <th>52w%</th>
+                <th>Str</th>
+              </tr>
+            </thead>
+            <tbody id="engine-board-tbody"></tbody>
+          </table>
+        </div>
+        <div id="engine-board-empty" class="scanner-empty">
+          <p>Empty ENGINE — seed a sleeve / Core 50 and Fetch Yahoo. No stored bars means no labels.</p>
+        </div>
+      </div>
+
+      <div class="engine-panel" data-panel="pattern" style="display:none;">
+        <div class="setup-scanner-header">
+          <strong>Pattern scanner</strong>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-engine-patterns">Load /api/engine/patterns</button>
+          <span id="engine-pattern-meta" class="scanner-ts"></span>
+        </div>
+        <div id="engine-pattern-body"></div>
+      </div>
+
+      <div class="engine-panel" data-panel="rsic" style="display:none;">
+        <div class="setup-scanner-header">
+          <strong>RSI COUNTER RSI(2)…RSI(21)</strong>
+          <label class="engine-ctrl">RSI n
+            <input id="engine-rsic-n" type="number" min="2" max="21" value="14" />
+          </label>
+          <label class="engine-ctrl">Δ lag
+            <input id="engine-rsic-lag" type="number" min="1" max="21" value="5" />
+          </label>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-engine-rsic">Load /api/engine/rsi-counter</button>
+          <span id="engine-rsic-meta" class="scanner-ts"></span>
+        </div>
+        <p class="macro-blurb">CONTROLS: RSI n=14, Δ lag=5. Extreme ≥90% · Lean ≥70% · Tilt ≥55%. Daily LEFT / Weekly RIGHT. Daily OS + Weekly TREND↑ is a pullback-in-uptrend note — not a trade.</p>
+        <div id="engine-rsic-body"></div>
+      </div>
+
+      <div class="engine-panel" data-panel="stretch" style="display:none;">
+        <div class="setup-scanner-header">
+          <strong>Breakout strength &amp; stretch</strong>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-engine-stretch">Load /api/engine/stretch</button>
+          <span id="engine-stretch-meta" class="scanner-ts"></span>
+        </div>
+        <div id="engine-stretch-body"></div>
+      </div>
+
+      <div class="engine-panel" data-panel="sigma" style="display:none;">
+        <div class="setup-scanner-header">
+          <strong>Sigma grid</strong>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-engine-sigma">Load /api/engine/sigma</button>
+          <span id="engine-sigma-meta" class="scanner-ts"></span>
+        </div>
+        <p class="macro-blurb">σ = move / (trailing daily σ × √horizon). Yahoo/SQLite only. TAKEAWAY is a research string, not a trade.</p>
+        <div class="scanner-table-wrap">
+          <table id="engine-sigma-table" class="scanner-table engine-heat-table">
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th>Last</th>
+                <th>1D%</th>
+                <th>1W%</th>
+                <th>1M%</th>
+                <th>3M%</th>
+                <th>6M%</th>
+                <th>12M%</th>
+                <th>σ1D</th>
+                <th>σ1W</th>
+                <th>σ1M</th>
+                <th>RSI</th>
+                <th>TAKEAWAY</th>
+              </tr>
+            </thead>
+            <tbody id="engine-sigma-tbody"></tbody>
+          </table>
+        </div>
+        <div id="engine-sigma-empty" class="scanner-empty">
+          <p>Empty sigma grid — no stored closes.</p>
+        </div>
+      </div>
+    </div><!-- #engine-area -->
+
     <!-- ── Macro / Edges desk (shared APIs with iPhone) ── -->
     <div id="macro-area" class="macro-container" style="display:none;">
       <div id="macro-regime" class="macro-regime is-missing">
@@ -1542,6 +1679,7 @@
 <script src="scripts/finviz_desk.js"></script>
 <script src="scripts/hmm_desk.js"></script>
 <script src="scripts/scan_pack.js"></script>
+<script src="scripts/engine_desk.js"></script>
 <script src="scripts/desk_prefs.js"></script>
 <script src="scripts/desk_palette.js"></script>
 <script src="scripts/app.js"></script>
