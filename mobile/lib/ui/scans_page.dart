@@ -21,127 +21,136 @@ class ScansPage extends StatelessWidget {
     final running = status['running'] == true;
     return CustomScrollView(
       slivers: [
-        CupertinoSliverNavigationBar(
-          backgroundColor: DeskColors.elevated,
-          largeTitle: const Text('Scans'),
-          trailing: CupertinoButton(
-            padding: EdgeInsets.zero,
-            onPressed: state.loadingScans
-                ? null
-                : () {
-                    state.loadScans();
-                    state.loadMacro();
-                  },
-            child: const Icon(CupertinoIcons.refresh),
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 28,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                children: [
+                  const Text(
+                    'SCANS',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.2),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final e in const [
+                            ('warnings', 'Warnings'),
+                            ('command', 'Command'),
+                            ('setup', 'Setup'),
+                            ('pattern', 'Pattern'),
+                            ('rsic', 'RSI-C'),
+                            ('stretch', 'Stretch'),
+                            ('sigma', 'Sigma'),
+                            ('maps', 'Maps'),
+                            ('moves', 'Moves'),
+                            ('ma', 'MA'),
+                            ('rsi', 'RSI'),
+                            ('breakout', 'Breakout'),
+                            ('qulla', 'Qulla'),
+                            ('oneil', "O'Neil"),
+                            ('vcp', 'VCP'),
+                            ('edges', 'Edges'),
+                            ('fractal', 'Fractal'),
+                            ('finviz', 'Finviz'),
+                            ('hmm', 'HMM'),
+                            ('combo', 'Combo'),
+                            ('setups', 'Setups'),
+                            ('trend', 'Trend'),
+                            ('metrics', 'Metrics'),
+                          ])
+                            Padding(
+                              padding: const EdgeInsets.only(right: 4),
+                              child: _ModeChip(
+                                label: e.$2,
+                                on: state.scanMode == e.$1,
+                                onTap: () => state.setScanMode(e.$1),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: state.loadingScans
+                        ? null
+                        : () {
+                            state.loadScans();
+                            state.loadMacro();
+                          },
+                    child: const Icon(CupertinoIcons.refresh, size: 18),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'Yahoo/SQLite scans · ENGINE + Market Moves. Empty = no bars.',
-                  style: TextStyle(color: DeskColors.muted, fontSize: 11),
-                ),
-                const SizedBox(height: 6),
+                // Yahoo/SQLite scans · ENGINE + Market Moves. Empty = no bars.
                 _BreadthStrip(
                   breadth: state.scanBreadth,
                   engineReady: state.warningsBoard.ready,
                 ),
                 if (running)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 6),
-                    child: Text(
-                      'S&P 500 archive fetch is running in the background.',
-                      style: TextStyle(color: Color(0xFFEAB308), fontSize: 12),
+                  const Text(
+                    'S&P 500 archive fetch is running in the background.',
+                    style: TextStyle(color: Color(0xFFEAB308), fontSize: 11),
+                  ),
+                if (state.scanMode == 'qulla')
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final e in const [
+                          ('all', 'All'),
+                          ('ep', 'EP'),
+                          ('breakout', 'Breakout'),
+                          ('vol', 'Vol'),
+                          ('adr', 'ADR≥4'),
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: _ModeChip(
+                              label: e.$2,
+                              on: state.qullaFilter == e.$1,
+                              onTap: () => state.setQullaFilter(e.$1),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                const SizedBox(height: 6),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (final e in const [
-                        ('warnings', 'Warnings'),
-                        ('command', 'Command'),
-                        ('setup', 'Setup'),
-                        ('pattern', 'Pattern'),
-                        ('rsic', 'RSI-C'),
-                        ('stretch', 'Stretch'),
-                        ('sigma', 'Sigma'),
-                        ('maps', 'Maps'),
-                        ('moves', 'Moves'),
-                        ('ma', 'MA'),
-                        ('rsi', 'RSI'),
-                        ('breakout', 'Breakout'),
-                        ('qulla', 'Qulla'),
-                        ('oneil', "O'Neil"),
-                        ('vcp', 'VCP'),
-                        ('edges', 'Edges'),
-                        ('fractal', 'Fractal'),
-                        ('finviz', 'Finviz'),
-                        ('hmm', 'HMM'),
-                        ('combo', 'Combo'),
-                        ('setups', 'Setups'),
-                        ('trend', 'Trend'),
-                        ('metrics', 'Metrics'),
-                      ])
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: _ModeChip(
-                            label: e.$2,
-                            on: state.scanMode == e.$1,
-                            onTap: () => state.setScanMode(e.$1),
+                if (state.scanMode == 'edges' && state.edgeTags.isNotEmpty)
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final tag in state.edgeTags)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: _ModeChip(
+                              label: tag,
+                              on: state.edgeTag == tag,
+                              onTap: () => state.setEdgeTag(tag),
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                if (state.scanMode == 'qulla') ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final e in const [
-                        ('all', 'All'),
-                        ('ep', 'EP'),
-                        ('breakout', 'Breakout'),
-                        ('vol', 'Vol'),
-                        ('adr', 'ADR≥4'),
-                      ])
-                        _ModeChip(
-                          label: e.$2,
-                          on: state.qullaFilter == e.$1,
-                          onTap: () => state.setQullaFilter(e.$1),
-                        ),
-                    ],
-                  ),
-                ],
-                if (state.scanMode == 'edges' && state.edgeTags.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final tag in state.edgeTags)
-                        _ModeChip(
-                          label: tag,
-                          on: state.edgeTag == tag,
-                          onTap: () => state.setEdgeTag(tag),
-                        ),
-                    ],
-                  ),
-                ],
-                if (state.scanError != null) ...[
-                  const SizedBox(height: 8),
+                if (state.scanError != null)
                   Text(
                     state.scanError!,
-                    style: const TextStyle(color: DeskColors.red, fontSize: 13),
+                    style: const TextStyle(color: DeskColors.red, fontSize: 12),
                   ),
-                ],
               ],
             ),
           ),
@@ -188,7 +197,7 @@ class ScansPage extends StatelessWidget {
           const SliverFillRemaining(
             hasScrollBody: false,
             child: Padding(
-              padding: EdgeInsets.all(24),
+              padding: EdgeInsets.fromLTRB(8, 4, 8, 4),
               child: Text(
                 'No scan rows yet.\n\nSeed a Macro sleeve or Core 50, Fetch from Yahoo, then refresh. Empty is missing bars — not a fake print.',
                 style: TextStyle(color: DeskColors.muted, height: 1.4),
@@ -197,7 +206,7 @@ class ScansPage extends StatelessWidget {
           )
         else
           SliverPadding(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(bottom: 4),
             sliver: SliverList.separated(
               itemCount: _count(state),
               separatorBuilder: (_, _) => const Padding(
@@ -579,8 +588,8 @@ class ScansPage extends StatelessWidget {
   List<Widget> _emptyNote(String msg) => [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-            child: Text(msg, style: const TextStyle(color: DeskColors.muted, height: 1.4)),
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+            child: Text(msg, style: const TextStyle(color: DeskColors.muted, height: 1.3, fontSize: 12)),
           ),
         ),
       ];
@@ -589,7 +598,7 @@ class ScansPage extends StatelessWidget {
         if (text.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
               child: Text(
                 'HOW TO READ\n$text',
                 style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
@@ -857,7 +866,6 @@ class ScansPage extends StatelessWidget {
               ? 'Empty warnings — no Pattern / VCP / RSI-C hits on stored bars.'
               : b.message,
         ),
-        ..._howto(b.howto),
       ];
     }
     Widget col(String title, List<WarningHit> rows) {
@@ -889,15 +897,14 @@ class ScansPage extends StatelessWidget {
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
                 'Takeaways · breaking up/down · coiled · stretch. Empty buckets omitted.',
-                style: TextStyle(color: DeskColors.muted, fontSize: 11),
+                style: TextStyle(color: DeskColors.muted, fontSize: 10),
               ),
-              const SizedBox(height: 6),
               col('Takeaways', b.takeaways),
               col('Breaking up D', b.dailyBreakout),
               col('Breaking down D', b.dailyBreakdown),
@@ -918,7 +925,6 @@ class ScansPage extends StatelessWidget {
           ),
         ),
       ),
-      ..._howto(b.howto),
     ];
   }
 
@@ -1279,17 +1285,16 @@ class _ModeChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
         decoration: BoxDecoration(
-          color: on ? DeskColors.accent.withValues(alpha: 0.2) : DeskColors.card,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: on ? DeskColors.accent : DeskColors.border),
+          color: on ? DeskColors.accent.withValues(alpha: 0.2) : const Color(0x00000000),
+          borderRadius: BorderRadius.zero,
         ),
         child: Text(
           label,
           style: TextStyle(
             color: on ? DeskColors.accentBright : DeskColors.muted,
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -1567,13 +1572,15 @@ class _BreadthStrip extends StatelessWidget {
             ],
           ),
         );
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: DeskColors.card,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: DeskColors.border),
-      ),
+    final footnote = breadth.ready
+        ? null
+        : (engineReady
+            ? 'ENGINE has hits from stored bars. Breadth dashes until the desk list is scored.'
+            : (breadth.message.contains('no stored bars')
+                ? 'Breadth not scored yet.'
+                : (breadth.message.isEmpty ? 'Breadth not scored yet.' : breadth.message)));
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1585,17 +1592,11 @@ class _BreadthStrip extends StatelessWidget {
               cell('A/D 5d', ad(breadth.adv5d, breadth.dec5d)),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            breadth.ready
-                ? (breadth.note.isEmpty ? 'Our Yahoo/SQLite universe — not a scraped Market Monitor.' : breadth.note)
-                : (engineReady
-                    ? 'ENGINE has hits from stored bars. Breadth dashes until the desk list is scored.'
-                    : (breadth.message.contains('no stored bars') && engineReady
-                        ? 'ENGINE has hits from stored bars.'
-                        : (breadth.message.isEmpty ? 'Breadth not scored yet.' : breadth.message))),
-            style: const TextStyle(color: DeskColors.muted, fontSize: 10, height: 1.3),
-          ),
+          if (footnote != null)
+            Text(
+              footnote,
+              style: const TextStyle(color: DeskColors.muted, fontSize: 10, height: 1.2),
+            ),
         ],
       ),
     );

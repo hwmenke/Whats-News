@@ -47,7 +47,7 @@ function renderWarnings(data) {
     const grid = document.getElementById('warnings-grid');
     const note = document.getElementById('warnings-note');
     if (!grid) return;
-    if (note) note.textContent = data.note || data.howto || '';
+    if (note) note.textContent = '';
     if (!data.ready) {
         const msg = data.message || 'Empty warnings — no Pattern / VCP / RSI-C hits on stored bars.';
         const honest = /no stored bars/i.test(msg) && data.source

@@ -372,8 +372,8 @@ async function loadPaperRisk() {
         if (empty) empty.style.display = (risk.ready && ranked.length) ? 'none' : 'block';
         if (note) {
             note.textContent = risk.ready
-                ? (risk.note || data.note || '')
-                : (risk.message || data.message || risk.note || '');
+                ? ''
+                : (risk.message || data.message || '');
         }
     } catch (err) {
         if (note) note.textContent = err.message || 'Risk unavailable';

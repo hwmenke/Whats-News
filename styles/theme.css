@@ -485,6 +485,67 @@ body.board-focus .desk-ia-bar { padding: 2px 8px; }
   min-height: 0;
 }
 
+/* HARD spacing — 24px density bar, no 14px gaps, no trailing air */
+body.board-focus .desk-ia-bar,
+body.board-focus .main-nav-tabs.desk-ia-bar {
+  height: 22px;
+  min-height: 22px;
+  padding: 0 8px !important;
+  margin: 0;
+}
+.risk-container,
+.warnings-container,
+.book-container,
+.pnl-container,
+.moves-container {
+  gap: 0 !important;
+  padding: 0 8px 2px !important;
+  margin: 0 !important;
+}
+.risk-hero-head,
+.warnings-container .mm-head,
+.book-head {
+  height: 22px;
+  min-height: 22px;
+  margin: 0 !important;
+  padding: 0 !important;
+  align-items: center;
+}
+.risk-title,
+.book-title,
+.warnings-container .v41-title,
+.warnings-container .mm-head h2 {
+  font-size: 11px !important;
+  line-height: 22px !important;
+  margin: 0 !important;
+  letter-spacing: 0.06em;
+}
+.warnings-container .engine-story-sub,
+#risk-note,
+#warnings-note,
+#risk-empty[style*="display: none"] {
+  display: none !important;
+}
+.risk-spec-title { margin: 0 !important; line-height: 22px; height: 22px; }
+.risk-container .pnl-alert-chips { margin: 0 !important; height: 22px; align-items: center; }
+.risk-container .pnl-var { margin: 0; }
+.risk-container .risk-more { margin: 0 !important; }
+.warnings-grid { gap: 0 !important; }
+.wn-card { margin: 0; }
+.wn-card h3 { margin: 0; line-height: 22px; height: 22px; }
+#scanner-area.scanner-container { padding: 0 !important; gap: 0; }
+.scan-lens-bar { height: 22px; margin: 0 !important; }
+.scan-breadth { margin: 0 !important; }
+body.workspace-scan .symbol-header,
+body.workspace-scan .chart-overlays-bar,
+body.workspace-scan .main-nav-overlays,
+body.workspace-scan .scanner-controls {
+  display: none !important;
+}
+.setup-scanner-header { height: 22px; min-height: 22px; margin: 0; padding: 0; }
+.scanner-empty { padding: 4px 0 !important; margin: 0; }
+.scanner-empty .empty-icon { display: none; }
+
 @media (max-width: 980px) {
   .v2-split, .v2-three { grid-template-columns: 1fr; }
   .warnings-grid { grid-template-columns: 1fr; }

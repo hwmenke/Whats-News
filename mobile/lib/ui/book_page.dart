@@ -13,55 +13,62 @@ class BookPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pnl = state.bookPnl;
+    final pane = state.bookPane == 'risk'
+        ? 'RISK'
+        : (state.bookPane == 'pnl' ? 'P&L' : 'UPLOAD');
     return CustomScrollView(
       slivers: [
-        CupertinoSliverNavigationBar(
-          backgroundColor: const Color(0xFF07090D),
-          border: null,
-          largeTitle: Text(
-            (pnl.deskName.isEmpty ? 'Whats-News' : pnl.deskName).toUpperCase(),
-            style: const TextStyle(letterSpacing: 3, fontSize: 18),
-          ),
-          trailing: CupertinoButton(
-            padding: EdgeInsets.zero,
-            onPressed: state.loadingBook ? null : state.loadBook,
-            child: const Icon(CupertinoIcons.refresh),
-          ),
-        ),
         SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Column(
-              children: [
-                Wrap(
-                  spacing: 6,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    _Chip(
-                      label: 'Upload',
-                      on: state.bookPane == 'upload' || state.bookPane == 'positions',
-                      onTap: () => state.setBookPane('upload'),
+          child: SizedBox(
+            height: 28,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                children: [
+                  Text(
+                    pane,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
                     ),
-                    _Chip(
-                      label: 'P&L',
-                      on: state.bookPane == 'pnl',
-                      onTap: () => state.setBookPane('pnl'),
-                    ),
-                    _Chip(
-                      label: 'Risk',
-                      on: state.bookPane == 'risk',
-                      onTap: () => state.setBookPane('risk'),
-                    ),
-                  ],
-                ),
-                if (state.bookError != null && state.bookPane != 'risk') ...[
-                  const SizedBox(height: 8),
-                  Text(state.bookError!, style: const TextStyle(color: DeskColors.red, fontSize: 13)),
+                  ),
+                  const SizedBox(width: 8),
+                  _Chip(
+                    label: 'Upload',
+                    on: state.bookPane == 'upload' || state.bookPane == 'positions',
+                    onTap: () => state.setBookPane('upload'),
+                  ),
+                  const SizedBox(width: 4),
+                  _Chip(
+                    label: 'P&L',
+                    on: state.bookPane == 'pnl',
+                    onTap: () => state.setBookPane('pnl'),
+                  ),
+                  const SizedBox(width: 4),
+                  _Chip(
+                    label: 'Risk',
+                    on: state.bookPane == 'risk',
+                    onTap: () => state.setBookPane('risk'),
+                  ),
+                  const Spacer(),
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: state.loadingBook ? null : state.loadBook,
+                    child: const Icon(CupertinoIcons.refresh, size: 18),
+                  ),
                 ],
-              ],
+              ),
             ),
           ),
         ),
+        if (state.bookError != null && state.bookPane != 'risk')
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+              child: Text(state.bookError!, style: const TextStyle(color: DeskColors.red, fontSize: 12)),
+            ),
+          ),
         if (state.bookPane == 'upload' || state.bookPane == 'positions')
           ..._positionSlivers(state)
         else if (state.bookPane == 'risk')
@@ -195,7 +202,7 @@ class BookPage extends StatelessWidget {
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -208,10 +215,9 @@ class BookPage extends StatelessWidget {
                 ].join(' · '),
                 style: const TextStyle(color: DeskColors.muted, fontSize: 11),
               ),
-              const SizedBox(height: 6),
               const Text(
                 'Ranked %VaR',
-                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4, fontSize: 13),
+                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4, fontSize: 11, height: 1.8),
               ),
             ],
           ),
@@ -237,7 +243,7 @@ class BookPage extends StatelessWidget {
               child: SizedBox(
                 height: 24,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
@@ -264,7 +270,7 @@ class BookPage extends StatelessWidget {
         ),
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -291,7 +297,6 @@ class BookPage extends StatelessWidget {
                       ),
                     ),
                   ),
-              const SizedBox(height: 6),
               Text(
                 'Hist ${pct(risk.hist95Pct)}/${pct(risk.hist99Pct)} · Param ${pct(risk.param95Pct)}/${pct(risk.param99Pct)} · Sharpe ${risk.sharpe?.toStringAsFixed(2) ?? '—'}',
                 style: const TextStyle(color: DeskColors.muted, fontSize: 11),
@@ -514,17 +519,16 @@ class _Chip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
-          color: on ? DeskColors.accent.withValues(alpha: 0.2) : DeskColors.card,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: on ? DeskColors.accent : DeskColors.border),
+          color: on ? DeskColors.accent.withValues(alpha: 0.2) : const Color(0x00000000),
+          borderRadius: BorderRadius.zero,
         ),
         child: Text(
           label,
           style: TextStyle(
             color: on ? DeskColors.accentBright : DeskColors.muted,
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: FontWeight.w600,
           ),
         ),

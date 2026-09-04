@@ -69,6 +69,8 @@ class DeskDensityTests(unittest.TestCase):
             "ranked %VaR must sit above portfolio chrome",
         )
         self.assertNotIn("btn-alpaca-sync", self.blob[self.blob.find('id="risk-area"'):self.blob.find('id="data-manager-area"')])
+        self.assertIn("gap: 0 !important", self.blob)
+        self.assertIn("HARD spacing", self.blob)
 
     def test_hard_ui_lock_font_c_v41_not_v2_v3(self):
         theme = ""
