@@ -626,7 +626,8 @@ class ScansPage extends StatelessWidget {
         ),
       );
     }
-    final takes = s.engineBoard.rows.where((r) => r.takeaway.isNotEmpty).toList();
+    final takes = s.engineBoard.rows.where((r) =>
+        r.takeaway.isNotEmpty || r.tesState.isNotEmpty || r.dir5 != null).toList();
     return [
       SliverToBoxAdapter(
         child: Padding(
@@ -648,7 +649,18 @@ class ScansPage extends StatelessWidget {
                         'Takeaways (${takes.length})',
                         style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
                       ),
-                      for (final r in takes) _nameChip(r.symbol, r.engine),
+                      for (final r in takes)
+                        _nameChip(
+                          r.symbol,
+                          [
+                            if (r.tesState.isNotEmpty) r.tesState,
+                            if (r.enginePrimary.isNotEmpty)
+                              r.enginePrimary
+                            else if (r.engine.isNotEmpty)
+                              r.engine,
+                          ].join(' · '),
+                          metric: r.dir5 == null ? null : '${r.dir5}',
+                        ),
                     ],
                   ),
                 ),
@@ -678,7 +690,18 @@ class ScansPage extends StatelessWidget {
                 'Setup (${b.rows.length})',
                 style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
               ),
-              for (final r in b.rows) _nameChip(r.symbol, r.engine),
+              for (final r in b.rows)
+                _nameChip(
+                  r.symbol,
+                  [
+                    if (r.tesState.isNotEmpty) r.tesState,
+                    if (r.enginePrimary.isNotEmpty)
+                      r.enginePrimary
+                    else if (r.engine.isNotEmpty)
+                      r.engine,
+                  ].join(' · '),
+                  metric: r.dir5 == null ? null : '${r.dir5}',
+                ),
             ],
           ),
         ),
@@ -1011,14 +1034,32 @@ class ScansPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               pts('Coil 12w/26w vs 13w pos', m.coil),
+              pts('Rotation RSI(14) vs 1w σ', m.rotation),
+              if (m.scanner.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: DeskSpace.section),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'TES / Dir (${m.scanner.length})',
+                        style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
+                      ),
+                      for (final r in m.scanner)
+                        _nameChip(
+                          r.symbol,
+                          [
+                            if (r.tesState.isNotEmpty) r.tesState,
+                            if (r.tag.isNotEmpty) r.tag,
+                          ].join(' · '),
+                          metric: r.dir5 == null ? null : '${r.dir5}',
+                        ),
+                    ],
+                  ),
+                ),
               pts('TMS-W solid', m.tmsWeekly),
               pts('TMS-D hollow', m.tmsDaily),
-              pts('Rotation RSI(14) vs 1w σ', m.rotation),
               pts('Fractal × TD (D only)', m.fractalTd),
-              pts('Scanner', [
-                for (final r in m.scanner)
-                  MapPoint(symbol: r.symbol, tag: r.tag, assetClass: r.state),
-              ]),
               pts('Top 12M', [
                 for (final r in m.top12m) MapPoint(symbol: r.symbol, tag: r.note),
               ]),

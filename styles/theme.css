@@ -723,6 +723,24 @@ body.workspace-scan .desk-ia-bar {
   text-overflow: clip;
   white-space: nowrap;
 }
+#engine-command-body .wn-table th:nth-child(2),
+#engine-command-body .wn-table td:nth-child(2),
+#engine-command-body .wn-table th:nth-child(3),
+#engine-command-body .wn-table td:nth-child(3),
+#engine-command-body .wn-table th:nth-child(4),
+#engine-command-body .wn-table td:nth-child(4),
+#engine-maps-body .wn-table th:nth-child(2),
+#engine-maps-body .wn-table td:nth-child(2),
+#engine-maps-body .wn-table th:nth-child(3),
+#engine-maps-body .wn-table td:nth-child(3) {
+  width: 4.5rem;
+  max-width: 5.5rem;
+}
+#engine-maps-body .warnings-grid {
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: var(--space-section) !important;
+}
 .engine-scatter { max-height: 168px; }
 .macro-container .v41-title,
 .macro-container .macro-story-sub,

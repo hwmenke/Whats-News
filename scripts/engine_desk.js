@@ -1,5 +1,5 @@
 /* Equity ENGINE desk — Setup / Pattern / RSI-C / Stretch / Sigma. Yahoo/SQLite only. */
-/* global API, apiFetch, selectSymbol, switchTab, writeDeskPrefs, readDeskPrefs */
+/* global API, apiFetch, selectSymbol, switchTab, setWorkspace, writeDeskPrefs, readDeskPrefs */
 
 function _engEsc(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({
@@ -128,15 +128,39 @@ function _engEmpty(el, msg) {
     el.innerHTML = `<p class="scanner-empty">${_engEsc(msg || 'Empty — no stored daily bars.')}</p>`;
 }
 
+function _engOpenChart(sym) {
+    if (!sym) return;
+    if (typeof selectSymbol === 'function') selectSymbol(sym);
+    if (typeof setWorkspace === 'function') setWorkspace('chart');
+    else if (typeof switchTab === 'function') switchTab('charts');
+}
+
 function _engTakeawayStrip(rows) {
-    const list = (rows || []).filter(r => r && r.takeaway);
+    const list = (rows || []).filter(r => r && (r.takeaway || r.tes_state || r.dir5 != null));
     if (!list.length) return '';
-    const body = list.map(r => `<tr class="wn-row"><td class="wn-sym" data-sym="${_engEsc(r.symbol)}">${_engEsc(r.symbol)}</td>
-        <td>${_engEsc(r.engine || '—')}</td>
-        <td class="wn-note">${_engEsc(r.takeaway)}</td></tr>`).join('');
+    const body = list.map(r => `<tr class="wn-row" data-sym="${_engEsc(r.symbol)}" title="${_engEsc(r.takeaway || '')}">
+        <td class="wn-sym">${_engEsc(r.symbol)}</td>
+        <td class="engine-dir">${r.dir5 == null ? '—' : r.dir5}</td>
+        <td>${_engEsc(r.tes_state || '—')}</td>
+        <td class="wn-note">${_engEsc(r.engine_primary || r.engine || '—')}</td></tr>`).join('');
     return `<section class="wn-card">
         <h3>Takeaways <span class="wn-n">${list.length}</span></h3>
-        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>ENGINE</th><th>Takeaway</th></tr></thead>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>Dir</th><th>TES</th><th>ENGINE</th></tr></thead>
+        <tbody>${body}</tbody></table>
+    </section>`;
+}
+
+function _engTesDirTable(rows) {
+    const list = (rows || []).filter(r => r && r.symbol);
+    if (!list.length) return '';
+    const body = list.map(r => `<tr class="wn-row" data-sym="${_engEsc(r.symbol)}">
+        <td class="wn-sym">${_engEsc(r.symbol)}</td>
+        <td>${_engEsc(r.tes_state || '—')}</td>
+        <td class="engine-dir">${r.dir5 == null ? '—' : r.dir5}</td>
+        <td class="wn-note">${_engEsc(r.gray_tag || '—')}</td></tr>`).join('');
+    return `<section class="wn-card">
+        <h3>TES / Dir <span class="wn-n">${list.length}</span></h3>
+        <table class="wn-table mm-table"><thead><tr><th>Sym</th><th>TES</th><th>Dir</th><th>Tag</th></tr></thead>
         <tbody>${body}</tbody></table>
     </section>`;
 }
@@ -175,9 +199,7 @@ async function loadEngineCommand() {
                 <p class="scan-breadth-note">${_engEsc((data.formulas && data.formulas.engine) || data.note || '')}</p>
             </details>`;
         el.querySelectorAll('[data-sym]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                if (btn.dataset.sym && typeof selectSymbol === 'function') selectSymbol(btn.dataset.sym);
-            });
+            btn.addEventListener('click', () => _engOpenChart(btn.dataset.sym));
         });
     } catch (err) {
         _engEmpty(el, err.message || 'ENGINE command unavailable');
@@ -231,7 +253,7 @@ async function _engPaintCommandScatter() {
             <p class="v2-howto">How to read: upper-left leans constructive; lower-right is stretched. Points only from stored bars.</p>`;
         el.querySelectorAll('.engine-dot').forEach(node => {
             node.addEventListener('click', () => {
-                if (node.dataset.sym && typeof selectSymbol === 'function') selectSymbol(node.dataset.sym);
+                _engOpenChart(node.dataset.sym);
             });
         });
     } catch (err) {
@@ -282,7 +304,7 @@ async function loadEngineSetupGlance() {
         if (meta) meta.textContent = stretch.ready || patterns.ready ? 'setup glance' : (stretch.message || patterns.message || 'empty');
         document.querySelectorAll('#engine-setup-str [data-sym], #engine-setup-stretch [data-sym]').forEach(btn => {
             btn.addEventListener('click', () => {
-                if (btn.dataset.sym && typeof selectSymbol === 'function') selectSymbol(btn.dataset.sym);
+                _engOpenChart(btn.dataset.sym);
             });
         });
     } catch (err) {
@@ -295,7 +317,7 @@ function _engRowClick(tbody) {
     if (!tbody) return;
     tbody.querySelectorAll('tr[data-symbol]').forEach(tr => {
         tr.addEventListener('click', () => {
-            if (tr.dataset.symbol && typeof selectSymbol === 'function') selectSymbol(tr.dataset.symbol);
+            _engOpenChart(tr.dataset.symbol);
         });
     });
 }
@@ -411,7 +433,7 @@ async function loadEnginePatterns() {
         }
         el.querySelectorAll('[data-sym]').forEach(btn => {
             btn.addEventListener('click', () => {
-                if (btn.dataset.sym && typeof selectSymbol === 'function') selectSymbol(btn.dataset.sym);
+                _engOpenChart(btn.dataset.sym);
             });
         });
     } catch (err) {
@@ -485,7 +507,7 @@ async function loadEngineRsiC() {
         el.querySelectorAll('[data-sym], tr[data-symbol]').forEach(node => {
             node.addEventListener('click', () => {
                 const sym = node.dataset.sym || node.dataset.symbol;
-                if (sym && typeof selectSymbol === 'function') selectSymbol(sym);
+                if (sym) _engOpenChart(sym);
             });
         });
     } catch (err) {
@@ -548,7 +570,7 @@ async function loadEngineStretch() {
         }
         el.querySelectorAll('[data-sym]').forEach(btn => {
             btn.addEventListener('click', () => {
-                if (btn.dataset.sym && typeof selectSymbol === 'function') selectSymbol(btn.dataset.sym);
+                _engOpenChart(btn.dataset.sym);
             });
         });
     } catch (err) {
@@ -675,7 +697,7 @@ function _engLegend(classes) {
 function renderEngineMaps(data, view) {
     const el = document.getElementById('engine-maps-body');
     if (!el) return;
-    const tab = view || 'scanner';
+    const tab = view || 'coil';
     document.querySelectorAll('.engine-map-tabs .desk-ia-btn').forEach(btn => {
         btn.classList.toggle('on', btn.dataset.map === tab);
     });
@@ -686,38 +708,12 @@ function renderEngineMaps(data, view) {
     }
     if (tab === 'scanner') {
         const rows = ((data.scanner || {}).rows) || [];
-        const cols = (window.BoardRegistry && window.BoardRegistry.visibleColumns)
-            ? window.BoardRegistry.visibleColumns('engine_maps')
-            : (data.columns || []);
-        const body = rows.map(r => {
-            if (window.BoardRegistry && cols.length) {
-                return `<tr data-symbol="${_engEsc(r.symbol)}">${cols.map(c => window.BoardRegistry.cellHtml(r, c)).join('')}</tr>`;
-            }
-            return `<tr data-symbol="${_engEsc(r.symbol)}">
-            <td class="macro-sym">${_engEsc(r.symbol)}</td>
-            <td class="${_engTone(r.str)}">${r.str == null ? '—' : r.str}</td>
-            <td>${_engBar(r.stretch_pctile != null ? r.stretch_pctile : (r.stretch_pct == null ? null : 50 + r.stretch_pct))}</td>
-            <td class="${_engTone(r.delta_d_1m)}">${r.delta_d_1m == null ? '—' : _engNum(r.delta_d_1m, 2)}</td>
-            <td>${r.d65 == null ? '—' : _engNum(r.d65, 2)}</td>
-            <td class="${_engTone(r.tms_d)}">${r.tms_d == null ? '—' : r.tms_d}</td>
-            <td>${_engBar(r.pos_52w)}</td>
-            <td>${r.vol30 == null ? '—' : _engNum(r.vol30)}</td>
-            <td>${_engEsc(r.tes_state || '—')}</td>
-            <td><span class="engine-gray">${_engEsc(r.gray_tag || '')}</span></td>
-            <td class="engine-dir" style="${_engHeat(r.dir5, -5, 5)}">${r.dir5 == null ? '—' : r.dir5}</td>
-            <td class="engine-tmac" style="${_engHeat(r.tmac_star, 0, 99)}">${r.tmac_star == null ? '—' : r.tmac_star}</td>
-        </tr>`;
-        }).join('');
-        const head = (window.BoardRegistry && cols.length)
-            ? window.BoardRegistry.headerHtml(cols)
-            : `<tr><th>Asset</th><th>Str</th><th>Stretch</th><th>ΔD 1m</th><th>D65</th><th>TMS-D</th><th>52w pos</th><th>Vol30</th><th>TES</th><th>RSI-C · VCP</th><th>Dir ±5</th><th title="TMAC* heat proxy — never branded TMAC">TMAC*</th></tr>`;
         el.innerHTML = `
-            ${_engScatter((data.scanner || {}).scatter || [], { xLabel: 'Dir ±5', yLabel: 'RSI(14)', xmin: -5, xmax: 5, ymin: 0, ymax: 100, guides: [{ v: 0 }, { h: 25 }, { h: 50 }, { h: 75 }] })}
-            ${body ? `<div class="scanner-table-wrap"><table class="scanner-table engine-heat-table wn-table engine-dense">
-                <thead>${head}</thead>
-                <tbody>${body}</tbody>
-            </table></div>` : ''}
-            <details class="scan-help"><summary>HOW TO READ — SCANNER + TES</summary>
+            <div class="warnings-grid">
+                ${_engTesDirTable(rows)}
+                ${_engScatter((data.scanner || {}).scatter || [], { xLabel: 'Dir ±5', yLabel: 'RSI(14)', xmin: -5, xmax: 5, ymin: 0, ymax: 100, guides: [{ v: 0 }, { h: 25 }, { h: 50 }, { h: 75 }] })}
+            </div>
+            <details class="scan-help"><summary>HOW TO READ — TES / DIR</summary>
                 <p class="scan-breadth-note">${_engEsc((data.scanner || {}).howto || '')}</p>
                 <p class="scan-breadth-note">${_engEsc(data.tes_note || '')}</p>
                 <p class="scan-breadth-note">${_engEsc(data.tmac_note || '')}</p>
@@ -726,8 +722,8 @@ function renderEngineMaps(data, view) {
         const rot = data.rotation || {};
         el.innerHTML = `
             <div class="warnings-grid">
-                ${_engScatter(rot.points || [], { xLabel: rot.x_label, yLabel: rot.y_label, xmin: 0, xmax: 100, guides: [{ v: 50 }, { h: 0 }] })}
                 ${_engPtsTable('Rotation', rot.points, 'RSI(14)', '1w σ', p => p.asset_class || p.gray_tag)}
+                ${_engScatter(rot.points || [], { xLabel: rot.x_label, yLabel: rot.y_label, xmin: 0, xmax: 100, guides: [{ v: 50 }, { h: 0 }] })}
             </div>
             <details class="scan-help"><summary>HOW TO READ — ROTATION</summary>
                 <p class="scan-breadth-note">${_engEsc(rot.howto || '')}</p>
@@ -736,8 +732,8 @@ function renderEngineMaps(data, view) {
         const coil = data.coil || {};
         el.innerHTML = `
             <div class="warnings-grid">
-                ${_engScatter(coil.points || [], { xLabel: coil.x_label, yLabel: coil.y_label, xmin: 0, xmax: 1.2, ymin: -20, ymax: 120, band: [0, 0.65], guides: [{ v: 0.45, color: '#111111' }, { v: 0.65, color: '#111111' }, { h: 0 }, { h: 100 }] })}
                 ${_engPtsTable('Coil', coil.points, 'coil_12', '13w %', p => p.coil_state || p.gray_tag)}
+                ${_engScatter(coil.points || [], { xLabel: coil.x_label, yLabel: coil.y_label, xmin: 0, xmax: 1.2, ymin: -20, ymax: 120, band: [0, 0.65], guides: [{ v: 0.45, color: '#111111' }, { v: 0.65, color: '#111111' }, { h: 0 }, { h: 100 }] })}
             </div>
             <details class="scan-help"><summary>HOW TO READ — COIL</summary>
                 <p class="scan-breadth-note">${_engEsc(coil.howto || '')}</p>
@@ -746,8 +742,8 @@ function renderEngineMaps(data, view) {
         const ft = data.fractal_td || {};
         el.innerHTML = `
             <div class="warnings-grid">
-                ${_engScatter(ft.points || [], { xLabel: ft.x_label, yLabel: ft.y_label, xmin: 1.1, xmax: 2.1, ymin: -15, ymax: 15, guides: [{ v: 1.3 }, { v: 1.5 }, { h: 13, color: '#EF4444' }, { h: -13, color: '#22C55E' }, { h: 0 }], empty: 'No D65 — SPEC 25/27 window failed. No invented markers.' })}
                 ${_engPtsTable('Fractal × TD', ft.points, 'D65', 'TD', p => p.td_flag || p.gray_tag)}
+                ${_engScatter(ft.points || [], { xLabel: ft.x_label, yLabel: ft.y_label, xmin: 1.1, xmax: 2.1, ymin: -15, ymax: 15, guides: [{ v: 1.3 }, { v: 1.5 }, { h: 13, color: '#EF4444' }, { h: -13, color: '#22C55E' }, { h: 0 }], empty: 'No D65 — SPEC 25/27 window failed. No invented markers.' })}
             </div>
             <details class="scan-help"><summary>HOW TO READ — FRACTAL × TD</summary>
                 <p class="scan-breadth-note">${_engEsc(ft.howto || '')}</p>
@@ -763,9 +759,9 @@ function renderEngineMaps(data, view) {
         }));
         el.innerHTML = `
             <div class="warnings-grid">
-                ${_engScatter(pts, { xLabel: tm.x_label, yLabel: tm.y_label, xmin: -100, xmax: 100, ymin: -25, ymax: 25, guides: [{ v: 0 }, { h: 0 }] })}
                 ${_engPtsTable('TMS-W', tm.weekly, 'score', 'impulse', p => p.zone || 'solid')}
                 ${_engPtsTable('TMS-D', tm.daily, 'score', 'impulse', p => p.zone || 'hollow')}
+                ${_engScatter(pts, { xLabel: tm.x_label, yLabel: tm.y_label, xmin: -100, xmax: 100, ymin: -25, ymax: 25, guides: [{ v: 0 }, { h: 0 }] })}
                 ${_engListCol('Zones', zoneRows)}
                 ${_engListCol('TOP 12M %', (ex.top_12m || []).map(x => ({ symbol: x.symbol, takeaway: x.ret_12m == null ? '' : `${_engNum(x.ret_12m)}%` })))}
                 ${_engListCol('BOTTOM 12M %', (ex.bottom_12m || []).map(x => ({ symbol: x.symbol, takeaway: x.ret_12m == null ? '' : `${_engNum(x.ret_12m)}%` })))}
@@ -778,7 +774,7 @@ function renderEngineMaps(data, view) {
     el.querySelectorAll('[data-sym], tr[data-symbol], .engine-dot').forEach(node => {
         node.addEventListener('click', () => {
             const sym = node.dataset.sym || node.dataset.symbol;
-            if (sym && typeof selectSymbol === 'function') selectSymbol(sym);
+            if (sym) _engOpenChart(sym);
         });
     });
 }
@@ -795,7 +791,7 @@ async function loadEngineMaps() {
         const data = await apiFetch(`${API}/engine/maps?desk=1`);
         window._engineMaps = data;
         const on = document.querySelector('.engine-map-tabs .desk-ia-btn.on');
-        renderEngineMaps(data, on ? on.dataset.map : 'scanner');
+        renderEngineMaps(data, on ? on.dataset.map : 'coil');
         if (meta) meta.textContent = data.ready ? `${data.count || 0} names` : (data.message || 'empty');
     } catch (err) {
         el.innerHTML = `<p class="scanner-empty">${_engEsc(err.message || 'Maps unavailable')}</p>`;

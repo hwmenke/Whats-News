@@ -2163,6 +2163,9 @@ class EngineRow {
     this.grayTag = '',
     this.sentiment = '',
     this.tmacStar,
+    this.tesState = '',
+    this.dir5,
+    this.enginePrimary = '',
   });
 
   final String symbol;
@@ -2181,6 +2184,9 @@ class EngineRow {
   final String grayTag;
   final String sentiment;
   final int? tmacStar;
+  final String tesState;
+  final int? dir5;
+  final String enginePrimary;
 
   factory EngineRow.fromJson(Map<String, dynamic> json) {
     double? n(Object? v) {
@@ -2206,6 +2212,9 @@ class EngineRow {
       grayTag: '${json['gray_tag'] ?? ''}',
       sentiment: '${json['sentiment'] ?? ''}',
       tmacStar: json['tmac_star'] is num ? (json['tmac_star'] as num).toInt() : int.tryParse('${json['tmac_star'] ?? ''}'),
+      tesState: '${json['tes_state'] ?? ''}',
+      dir5: json['dir5'] is num ? (json['dir5'] as num).toInt() : int.tryParse('${json['dir5'] ?? ''}'),
+      enginePrimary: '${json['engine_primary'] ?? ''}',
     );
   }
 }
@@ -2291,6 +2300,8 @@ class EngineNamed {
     this.avgRsi,
     this.align,
     this.delta,
+    this.tesState = '',
+    this.dir5,
   });
 
   final String symbol;
@@ -2301,6 +2312,8 @@ class EngineNamed {
   final double? avgRsi;
   final double? align;
   final double? delta;
+  final String tesState;
+  final int? dir5;
 
   factory EngineNamed.fromJson(Map<String, dynamic> json) {
     double? n(Object? v) {
@@ -2317,6 +2330,8 @@ class EngineNamed {
       avgRsi: n(json['avg_rsi']),
       align: n(json['align']),
       delta: n(json['delta']),
+      tesState: '${json['tes_state'] ?? ''}',
+      dir5: json['dir5'] is num ? (json['dir5'] as num).toInt() : int.tryParse('${json['dir5'] ?? ''}'),
     );
   }
 }

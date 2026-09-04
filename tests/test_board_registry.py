@@ -77,6 +77,9 @@ class BoardRegistryTests(unittest.TestCase):
         self.assertEqual(sigma.get("board_id"), "engine_sigma")
         maps = self.client.get("/api/engine/maps?desk=1").get_json()
         self.assertEqual(maps.get("board_id"), "engine_maps")
+        tes = next(c for c in maps["columns"] if c["id"] == "tes")
+        self.assertEqual(tes["key"], "tes_state")
+        self.assertIn("dir5", [c["id"] for c in maps["columns"]])
 
     def test_surfaces_wire_customize_and_theme(self):
         blob = ""

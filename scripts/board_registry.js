@@ -78,6 +78,7 @@
         const key = col.key || col.id;
         let raw = _dig(row, key);
         if (raw == null && col.fallback_key) raw = _dig(row, col.fallback_key);
+        if (raw == null && col.id === 'tes') raw = _dig(row, 'tes_state');
         if (col.format === 'bar' && raw == null && col.fallback_key === 'stretch_pct' && row.stretch_pct != null) {
             raw = 50 + Number(row.stretch_pct);
         }
@@ -152,10 +153,26 @@
         if (typeof writeDeskPrefs === 'function') writeDeskPrefs({ boardColumns: next });
     }
 
+    function _resolveCol(c, registry) {
+        const measures = ((registry || _registry || {}).measures) || {};
+        const meas = measures[c.measure] || {};
+        return {
+            ...c,
+            key: c.key || meas.key || c.id,
+            fallback_key: c.fallback_key || meas.fallback_key,
+            format: c.format || meas.format || 'text',
+            heat: c.heat || meas.heat || 'none',
+            heat_scale: c.heat_scale || meas.heat_scale,
+            formula: c.formula || meas.formula,
+            title: c.title || meas.formula,
+            bullet_from: c.bullet_from || meas.bullet_from,
+        };
+    }
+
     function visibleColumns(boardId, registry) {
         const spec = ((registry || _registry || {}).boards || {})[boardId];
         if (!spec) return [];
-        const cols = (spec.columns || []).map(c => ({ ...c }));
+        const cols = (spec.columns || []).map(c => _resolveCol({ ...c }, registry));
         const byId = Object.fromEntries(cols.map(c => [c.id, c]));
         const layout = readLayout(boardId);
         const order = layout.order.filter(id => byId[id]);
@@ -173,7 +190,7 @@
     function allColumns(boardId, registry) {
         const spec = ((registry || _registry || {}).boards || {})[boardId];
         if (!spec) return [];
-        const cols = (spec.columns || []).map(c => ({ ...c }));
+        const cols = (spec.columns || []).map(c => _resolveCol({ ...c }, registry));
         const byId = Object.fromEntries(cols.map(c => [c.id, c]));
         const layout = readLayout(boardId);
         const order = layout.order.filter(id => byId[id]);
@@ -210,7 +227,7 @@
         if (boardId === 'engine_maps') {
             if (window._engineMaps && typeof renderEngineMaps === 'function') {
                 const on = document.querySelector('.engine-map-tabs .desk-ia-btn.on');
-                renderEngineMaps(window._engineMaps, on ? on.dataset.map : 'scanner');
+                renderEngineMaps(window._engineMaps, on ? on.dataset.map : 'coil');
             } else if (typeof loadEngineMaps === 'function') {
                 loadEngineMaps();
             }
