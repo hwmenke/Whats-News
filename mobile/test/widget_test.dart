@@ -42,6 +42,51 @@ void main() {
       if (path == '/api/setups/scan') {
         return _json({'results': [], 'count': 0});
       }
+      if (path == '/api/portfolio/snapshot') {
+        return _json({
+          'count': 1,
+          'ready_count': 0,
+          'symbols': [],
+          'breakout_queue': [],
+          'heatmap': [],
+          'group_rollup': [],
+        });
+      }
+      if (path == '/api/sleeves') {
+        return _json({
+          'sleeves': [
+            {
+              'id': 'core',
+              'label': 'Core indices',
+              'group_tag': 'sleeve:core',
+              'tickers': ['SPY', 'QQQ', 'IWM'],
+            }
+          ],
+          'note': 'ETF',
+        });
+      }
+      if (path == '/api/macro/board') {
+        return _json({
+          'regime': {'ready': false, 'note': 'No stored ^VIX/VIX bars — regime line omitted (not invented).'},
+          'sleeves': [],
+          'note': 'Yahoo / SQLite only.',
+        });
+      }
+      if (path == '/api/edges/board') {
+        return _json({
+          'regime': {'ready': false},
+          'online': [],
+          'sections': [],
+          'setup_buckets': {},
+          'note': 'No screenshot win rates.',
+        });
+      }
+      if (path == '/api/fractal/status') {
+        return _json({'available': false, 'reason': 'Will not invent D estimates.'});
+      }
+      if (path.startsWith('/api/pm-desk/') || path.startsWith('/api/spy-rs/')) {
+        return _json({'ready': false});
+      }
       if (path.startsWith('/api/ohlcv/')) {
         return _json([
           {

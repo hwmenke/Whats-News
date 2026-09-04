@@ -19,6 +19,28 @@ class WatchSymbol {
 
   bool get isUniverseArchive => groupTag.startsWith('univ:');
 
+  String get filterFamily {
+    final tag = groupTag.toLowerCase();
+    if (tag.contains('countries') || tag.contains('intl')) return 'country';
+    if (tag.contains('sector')) return 'sector';
+    if (tag.contains('theme') ||
+        tag.contains('tech') ||
+        tag.contains('resource') ||
+        tag.contains('crypto') ||
+        tag.contains('bond') ||
+        tag.contains('ags') ||
+        tag.contains('metal') ||
+        tag.contains('fx') ||
+        tag.contains('yield') ||
+        tag.contains('big_tech')) {
+      return 'theme';
+    }
+    if (tag.contains('index') || tag == 'sleeve:core' || tag.contains('broad_etf')) {
+      return 'index';
+    }
+    return '';
+  }
+
   factory WatchSymbol.fromJson(Map<String, dynamic> json) {
     return WatchSymbol(
       symbol: (json['symbol'] as String? ?? '').toUpperCase(),
@@ -341,6 +363,9 @@ class SetupScanRow {
     this.setupScore,
     this.adrPct,
     this.regime,
+    this.dist20dHighPct,
+    this.volRatio,
+    this.gapPct,
     this.error,
   });
 
@@ -352,7 +377,20 @@ class SetupScanRow {
   final double? setupScore;
   final double? adrPct;
   final String? regime;
+  final double? dist20dHighPct;
+  final double? volRatio;
+  final double? gapPct;
   final String? error;
+
+  /// Desk heuristic — high-ADR names (not a published rating).
+  bool get isHighAdr => adrPct != null && adrPct! >= 4.0;
+
+  bool get isEp => setups.contains('EP');
+  bool get isBreakoutQueue => setups.contains('BREAKOUT_QUEUE');
+  bool get isVolSurge => setups.contains('VOL_SURGE');
+
+  bool get isQullaCandidate =>
+      isEp || isBreakoutQueue || isVolSurge || setups.contains('NEAR_HIGH') || isHighAdr;
 
   factory SetupScanRow.fromJson(Map<String, dynamic> json) {
     double? n(Object? v) {
@@ -376,7 +414,564 @@ class SetupScanRow {
       setupScore: n(json['setup_score']),
       adrPct: n(json['adr_pct']),
       regime: json['regime'] as String?,
+      dist20dHighPct: n(json['dist_20d_high_pct']),
+      volRatio: n(json['vol_ratio_5_20']),
+      gapPct: n(json['gap_pct']),
       error: json['error'] as String?,
+    );
+  }
+}
+
+class Sleeve {
+  const Sleeve({
+    required this.id,
+    required this.label,
+    required this.groupTag,
+    this.blurb = '',
+    this.tickers = const [],
+    this.filterKind = '',
+    this.skipped = '',
+  });
+
+  final String id;
+  final String label;
+  final String groupTag;
+  final String blurb;
+  final List<String> tickers;
+  final String filterKind;
+  final String skipped;
+
+  factory Sleeve.fromJson(Map<String, dynamic> json) {
+    final raw = json['tickers'];
+    return Sleeve(
+      id: '${json['id'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+      groupTag: '${json['group_tag'] ?? ''}',
+      blurb: '${json['blurb'] ?? ''}',
+      filterKind: '${json['filter_kind'] ?? ''}',
+      skipped: '${json['skipped'] ?? ''}',
+      tickers: [
+        if (raw is List)
+          for (final t in raw)
+            if (t != null && '$t'.trim().isNotEmpty) '$t'.trim().toUpperCase(),
+      ],
+    );
+  }
+}
+
+class VolRegime {
+  const VolRegime({
+    this.ready = false,
+    this.symbol = '',
+    this.vix,
+    this.percentile1y,
+    this.label = '',
+    this.note = '',
+  });
+
+  final bool ready;
+  final String symbol;
+  final double? vix;
+  final int? percentile1y;
+  final String label;
+  final String note;
+
+  static const empty = VolRegime();
+
+  factory VolRegime.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return empty;
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return VolRegime(
+      ready: json['ready'] == true,
+      symbol: '${json['symbol'] ?? ''}',
+      vix: n(json['vix']),
+      percentile1y: json['percentile_1y'] is num
+          ? (json['percentile_1y'] as num).toInt()
+          : int.tryParse('${json['percentile_1y'] ?? ''}'),
+      label: '${json['label'] ?? ''}',
+      note: '${json['note'] ?? ''}',
+    );
+  }
+}
+
+class MacroMoveRow {
+  const MacroMoveRow({
+    required this.symbol,
+    this.ready = false,
+    this.px,
+    this.dayPct,
+    this.z30,
+    this.z14,
+    this.extreme = false,
+  });
+
+  final String symbol;
+  final bool ready;
+  final double? px;
+  final double? dayPct;
+  final double? z30;
+  final double? z14;
+  final bool extreme;
+
+  factory MacroMoveRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return MacroMoveRow(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      ready: json['ready'] == true,
+      px: n(json['px']),
+      dayPct: n(json['day_pct']),
+      z30: n(json['z30']),
+      z14: n(json['z14']),
+      extreme: json['extreme'] == true,
+    );
+  }
+}
+
+class MacroSleeveBlock {
+  const MacroSleeveBlock({
+    required this.id,
+    required this.label,
+    this.groupTag = '',
+    this.filterKind = '',
+    this.blurb = '',
+    this.skipped = '',
+    this.tickers = const [],
+    this.readyCount = 0,
+    this.rows = const [],
+  });
+
+  final String id;
+  final String label;
+  final String groupTag;
+  final String filterKind;
+  final String blurb;
+  final String skipped;
+  final List<String> tickers;
+  final int readyCount;
+  final List<MacroMoveRow> rows;
+
+  factory MacroSleeveBlock.fromJson(Map<String, dynamic> json) {
+    final rawT = json['tickers'];
+    final rawR = json['rows'];
+    return MacroSleeveBlock(
+      id: '${json['id'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+      groupTag: '${json['group_tag'] ?? ''}',
+      filterKind: '${json['filter_kind'] ?? ''}',
+      blurb: '${json['blurb'] ?? ''}',
+      skipped: '${json['skipped'] ?? ''}',
+      tickers: [
+        if (rawT is List)
+          for (final t in rawT)
+            if (t != null && '$t'.trim().isNotEmpty) '$t'.trim().toUpperCase(),
+      ],
+      readyCount: json['ready_count'] is num ? (json['ready_count'] as num).toInt() : 0,
+      rows: [
+        if (rawR is List)
+          for (final item in rawR)
+            if (item is Map) MacroMoveRow.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
+  }
+}
+
+class MacroBoard {
+  const MacroBoard({
+    this.regime = VolRegime.empty,
+    this.sleeves = const [],
+    this.note = '',
+  });
+
+  final VolRegime regime;
+  final List<MacroSleeveBlock> sleeves;
+  final String note;
+
+  static const empty = MacroBoard();
+
+  factory MacroBoard.fromJson(Map<String, dynamic> json) {
+    return MacroBoard(
+      regime: VolRegime.fromJson(
+        json['regime'] is Map ? Map<String, dynamic>.from(json['regime'] as Map) : null,
+      ),
+      sleeves: [
+        if (json['sleeves'] is List)
+          for (final item in json['sleeves'])
+            if (item is Map)
+              MacroSleeveBlock.fromJson(Map<String, dynamic>.from(item)),
+      ],
+      note: '${json['note'] ?? ''}',
+    );
+  }
+}
+
+class EdgeInstrument {
+  const EdgeInstrument({
+    required this.symbol,
+    this.ready = false,
+    this.px,
+    this.dayPct,
+    this.dRsi14,
+    this.wRsi14,
+    this.vs50d,
+    this.vs200d,
+    this.slope200,
+    this.regime,
+    this.tags = const [],
+  });
+
+  final String symbol;
+  final bool ready;
+  final double? px;
+  final double? dayPct;
+  final double? dRsi14;
+  final double? wRsi14;
+  final double? vs50d;
+  final double? vs200d;
+  final String? slope200;
+  final String? regime;
+  final List<String> tags;
+
+  factory EdgeInstrument.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    final raw = json['tags'];
+    return EdgeInstrument(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      ready: json['ready'] == true,
+      px: n(json['px']),
+      dayPct: n(json['day_pct']),
+      dRsi14: n(json['d_rsi14']),
+      wRsi14: n(json['w_rsi14']),
+      vs50d: n(json['vs50d']),
+      vs200d: n(json['vs200d']),
+      slope200: json['slope200'] as String?,
+      regime: json['regime'] as String?,
+      tags: [
+        if (raw is List)
+          for (final t in raw)
+            if (t != null && '$t'.isNotEmpty) '$t',
+      ],
+    );
+  }
+}
+
+class EdgeSection {
+  const EdgeSection({
+    required this.id,
+    required this.label,
+    this.rows = const [],
+  });
+
+  final String id;
+  final String label;
+  final List<EdgeInstrument> rows;
+
+  factory EdgeSection.fromJson(Map<String, dynamic> json) {
+    final raw = json['rows'];
+    return EdgeSection(
+      id: '${json['id'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+      rows: [
+        if (raw is List)
+          for (final item in raw)
+            if (item is Map)
+              EdgeInstrument.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
+  }
+}
+
+class EdgesBoard {
+  const EdgesBoard({
+    this.regime = VolRegime.empty,
+    this.online = const [],
+    this.sections = const [],
+    this.setupBuckets = const {},
+    this.note = '',
+  });
+
+  final VolRegime regime;
+  final List<String> online;
+  final List<EdgeSection> sections;
+  final Map<String, List<String>> setupBuckets;
+  final String note;
+
+  static const empty = EdgesBoard();
+
+  factory EdgesBoard.fromJson(Map<String, dynamic> json) {
+    final buckets = <String, List<String>>{};
+    final rawB = json['setup_buckets'];
+    if (rawB is Map) {
+      rawB.forEach((key, value) {
+        if (value is List) {
+          buckets['$key'] = [
+            for (final s in value)
+              if (s != null && '$s'.isNotEmpty) '$s'.toUpperCase(),
+          ];
+        }
+      });
+    }
+    return EdgesBoard(
+      regime: VolRegime.fromJson(
+        json['regime'] is Map ? Map<String, dynamic>.from(json['regime'] as Map) : null,
+      ),
+      online: [
+        if (json['online'] is List)
+          for (final t in json['online'])
+            if (t != null && '$t'.isNotEmpty) '$t',
+      ],
+      sections: [
+        if (json['sections'] is List)
+          for (final item in json['sections'])
+            if (item is Map) EdgeSection.fromJson(Map<String, dynamic>.from(item)),
+      ],
+      setupBuckets: buckets,
+      note: '${json['note'] ?? ''}',
+    );
+  }
+}
+
+class FractalStatus {
+  const FractalStatus({this.available = false, this.reason = ''});
+
+  final bool available;
+  final String reason;
+
+  static const empty = FractalStatus(
+    reason: 'Fractal: needs local odds-edge',
+  );
+
+  factory FractalStatus.fromJson(Map<String, dynamic> json) {
+    return FractalStatus(
+      available: json['available'] == true,
+      reason: '${json['reason'] ?? 'Fractal: needs local odds-edge'}',
+    );
+  }
+}
+
+class TapeRow {
+  const TapeRow({
+    required this.symbol,
+    this.price,
+    this.changePct,
+    this.regime,
+    this.ready = false,
+    this.groupTag = '',
+    this.isEp = false,
+    this.isVolSurge = false,
+    this.isNearHigh = false,
+    this.breakoutScore,
+    this.adrPct,
+  });
+
+  final String symbol;
+  final double? price;
+  final double? changePct;
+  final String? regime;
+  final bool ready;
+  final String groupTag;
+  final bool isEp;
+  final bool isVolSurge;
+  final bool isNearHigh;
+  final double? breakoutScore;
+  final double? adrPct;
+
+  factory TapeRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return TapeRow(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      price: n(json['price']),
+      changePct: n(json['change_pct']),
+      regime: json['regime'] as String?,
+      ready: json['ready'] == true,
+      groupTag: '${json['group_tag'] ?? ''}',
+      isEp: json['is_ep'] == true,
+      isVolSurge: json['is_vol_surge'] == true,
+      isNearHigh: json['is_near_high'] == true,
+      breakoutScore: n(json['breakout_score']),
+      adrPct: n(json['adr_pct']),
+    );
+  }
+}
+
+class GroupRollup {
+  const GroupRollup({
+    required this.group,
+    required this.n,
+    this.avgChangePct,
+  });
+
+  final String group;
+  final int n;
+  final double? avgChangePct;
+
+  factory GroupRollup.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return GroupRollup(
+      group: '${json['group'] ?? 'Ungrouped'}',
+      n: json['n'] is num ? (json['n'] as num).toInt() : 0,
+      avgChangePct: n(json['avg_change_pct']),
+    );
+  }
+}
+
+class PortfolioSnapshot {
+  const PortfolioSnapshot({
+    this.count = 0,
+    this.readyCount = 0,
+    this.symbols = const [],
+    this.breakoutQueue = const [],
+    this.heatmap = const [],
+    this.groupRollup = const [],
+    this.message,
+  });
+
+  final int count;
+  final int readyCount;
+  final List<TapeRow> symbols;
+  final List<TapeRow> breakoutQueue;
+  final List<TapeRow> heatmap;
+  final List<GroupRollup> groupRollup;
+  final String? message;
+
+  static const empty = PortfolioSnapshot();
+
+  TapeRow? named(String symbol) {
+    final key = symbol.toUpperCase();
+    for (final s in symbols) {
+      if (s.symbol == key) return s;
+    }
+    return null;
+  }
+
+  /// Desk heuristic from real snapshot fields — not a forecast.
+  String get tapeTemperature {
+    if (readyCount == 0) return 'cold';
+    final up = heatmap.where((r) => r.regime == 'uptrend').length;
+    final down = heatmap.where((r) => r.regime == 'downtrend').length;
+    final bq = breakoutQueue.length;
+    if (bq >= 3 || (up > down && bq >= 1)) return 'hot';
+    if (bq >= 1 || up >= down) return 'warm';
+    return 'cool';
+  }
+
+  factory PortfolioSnapshot.fromJson(Map<String, dynamic> json) {
+    List<TapeRow> rows(Object? raw) {
+      if (raw is! List) return const [];
+      return [
+        for (final item in raw)
+          if (item is Map) TapeRow.fromJson(Map<String, dynamic>.from(item)),
+      ];
+    }
+
+    return PortfolioSnapshot(
+      count: json['count'] is num ? (json['count'] as num).toInt() : 0,
+      readyCount: json['ready_count'] is num ? (json['ready_count'] as num).toInt() : 0,
+      symbols: rows(json['symbols']),
+      breakoutQueue: rows(json['breakout_queue']),
+      heatmap: rows(json['heatmap']),
+      groupRollup: [
+        if (json['group_rollup'] is List)
+          for (final item in json['group_rollup'])
+            if (item is Map) GroupRollup.fromJson(Map<String, dynamic>.from(item)),
+      ],
+      message: json['message'] as String?,
+    );
+  }
+}
+
+class DeskNote {
+  const DeskNote({
+    required this.symbol,
+    this.ready = false,
+    this.regime,
+    this.adrPct,
+    this.dist20dHighPct,
+    this.volRatio,
+    this.isEp = false,
+    this.isVolSurge = false,
+    this.isNearHigh = false,
+    this.breakoutScore,
+    this.changePct,
+    this.error,
+  });
+
+  final String symbol;
+  final bool ready;
+  final String? regime;
+  final double? adrPct;
+  final double? dist20dHighPct;
+  final double? volRatio;
+  final bool isEp;
+  final bool isVolSurge;
+  final bool isNearHigh;
+  final double? breakoutScore;
+  final double? changePct;
+  final String? error;
+
+  static const empty = DeskNote(symbol: '');
+
+  factory DeskNote.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return DeskNote(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      ready: json['ready'] == true,
+      regime: json['regime'] as String?,
+      adrPct: n(json['adr_pct']),
+      dist20dHighPct: n(json['dist_20d_high_pct']),
+      volRatio: n(json['vol_ratio_5_20']),
+      isEp: json['is_ep'] == true,
+      isVolSurge: json['is_vol_surge'] == true,
+      isNearHigh: json['is_near_high'] == true,
+      breakoutScore: n(json['breakout_score']),
+      changePct: n(json['change_pct']),
+      error: json['error'] as String?,
+    );
+  }
+}
+
+class SpyRs {
+  const SpyRs({this.ready = false, this.lastRatio, this.note = ''});
+
+  final bool ready;
+  final double? lastRatio;
+  final String note;
+
+  static const empty = SpyRs();
+
+  factory SpyRs.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return SpyRs(
+      ready: json['ready'] == true,
+      lastRatio: n(json['last_ratio']),
+      note: '${json['note'] ?? ''}',
     );
   }
 }

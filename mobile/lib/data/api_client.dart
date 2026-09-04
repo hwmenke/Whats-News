@@ -63,6 +63,8 @@ class WhatsNewsApi {
     late http.Response res;
     if (method == 'POST') {
       res = await _client.post(uri, headers: headers, body: encoded);
+    } else if (method == 'PUT') {
+      res = await _client.put(uri, headers: headers, body: encoded);
     } else if (method == 'DELETE') {
       res = await _client.delete(uri, headers: headers, body: encoded);
     } else {
@@ -127,6 +129,14 @@ class WhatsNewsApi {
       throw ApiException('symbol is required');
     }
     await _send('POST', '/api/symbols', body: {'symbol': sym});
+  }
+
+  Future<void> setSymbolGroup(String symbol, String groupTag) async {
+    await _send(
+      'PUT',
+      '/api/symbols/${symbol.trim().toUpperCase()}/group',
+      body: {'group_tag': groupTag},
+    );
   }
 
   Future<void> removeSymbol(String symbol) async {
@@ -218,6 +228,102 @@ class WhatsNewsApi {
 
   Future<Map<String, dynamic>> getScannerStatus() async {
     final raw = await _get('/api/scanner/status');
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return const {};
+  }
+
+  Future<PortfolioSnapshot> getPortfolioSnapshot() async {
+    final raw = await _get('/api/portfolio/snapshot');
+    if (raw is Map<String, dynamic>) return PortfolioSnapshot.fromJson(raw);
+    if (raw is Map) {
+      return PortfolioSnapshot.fromJson(Map<String, dynamic>.from(raw));
+    }
+    return PortfolioSnapshot.empty;
+  }
+
+  Future<DeskNote> getPmDesk(String symbol) async {
+    try {
+      final raw = await _get('/api/pm-desk/${symbol.trim().toUpperCase()}');
+      if (raw is Map<String, dynamic>) return DeskNote.fromJson(raw);
+      if (raw is Map) return DeskNote.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException catch (e) {
+      if (e.status == 404) {
+        return DeskNote(symbol: symbol.toUpperCase(), ready: false, error: e.message);
+      }
+      rethrow;
+    }
+    return DeskNote(symbol: symbol.toUpperCase(), ready: false);
+  }
+
+  Future<SpyRs> getSpyRs(String symbol) async {
+    try {
+      final raw = await _get('/api/spy-rs/${symbol.trim().toUpperCase()}');
+      if (raw is Map<String, dynamic>) return SpyRs.fromJson(raw);
+      if (raw is Map) return SpyRs.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException {
+      return SpyRs.empty;
+    }
+    return SpyRs.empty;
+  }
+
+  Future<List<Sleeve>> getSleeves() async {
+    final raw = await _get('/api/sleeves');
+    List<dynamic> rows = const [];
+    if (raw is Map && raw['sleeves'] is List) {
+      rows = raw['sleeves'] as List;
+    }
+    return [
+      for (final item in rows)
+        if (item is Map) Sleeve.fromJson(Map<String, dynamic>.from(item)),
+    ];
+  }
+
+  Future<Map<String, dynamic>> seedSleeve(String id) async {
+    final raw = await _send('POST', '/api/sleeves/${id.trim()}/seed');
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return const {};
+  }
+
+  Future<MacroBoard> getMacroBoard() async {
+    final raw = await _get('/api/macro/board');
+    if (raw is Map<String, dynamic>) return MacroBoard.fromJson(raw);
+    if (raw is Map) return MacroBoard.fromJson(Map<String, dynamic>.from(raw));
+    return MacroBoard.empty;
+  }
+
+  Future<EdgesBoard> getEdgesBoard() async {
+    final raw = await _get('/api/edges/board');
+    if (raw is Map<String, dynamic>) return EdgesBoard.fromJson(raw);
+    if (raw is Map) return EdgesBoard.fromJson(Map<String, dynamic>.from(raw));
+    return EdgesBoard.empty;
+  }
+
+  Future<FractalStatus> getFractalStatus() async {
+    try {
+      final raw = await _get('/api/fractal/status');
+      if (raw is Map<String, dynamic>) return FractalStatus.fromJson(raw);
+      if (raw is Map) return FractalStatus.fromJson(Map<String, dynamic>.from(raw));
+    } on ApiException {
+      return FractalStatus.empty;
+    }
+    return FractalStatus.empty;
+  }
+
+  Future<Map<String, dynamic>> seedCore50() async {
+    final raw = await _send('POST', '/api/universe/core50');
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return const {};
+  }
+
+  Future<Map<String, dynamic>> universeSync({List<String> indices = const ['sp500']}) async {
+    final raw = await _send(
+      'POST',
+      '/api/universe/sync',
+      body: {'indices': indices},
+    );
     if (raw is Map<String, dynamic>) return raw;
     if (raw is Map) return Map<String, dynamic>.from(raw);
     return const {};

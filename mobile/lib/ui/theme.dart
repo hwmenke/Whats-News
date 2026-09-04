@@ -17,6 +17,8 @@ class DeskColors {
   static const kama10 = Color(0xFF60A5FA);
   static const kama20 = Color(0xFFF59E0B);
   static const kama50 = Color(0xFFA78BFA);
+  static const ema10 = Color(0xFF34D399);
+  static const ema20 = Color(0xFFF472B6);
 }
 
 CupertinoThemeData deskCupertinoTheme() {

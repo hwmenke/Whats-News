@@ -5,7 +5,7 @@ import 'data/app_state.dart';
 import 'ui/chart_page.dart';
 import 'ui/news_page.dart';
 import 'ui/scans_page.dart';
-import 'ui/settings_sheet.dart';
+import 'ui/settings_page.dart';
 import 'ui/theme.dart';
 import 'ui/watchlist_page.dart';
 
@@ -122,7 +122,7 @@ class _ShellState extends State<_Shell> {
                 state.selectSymbol(sym);
                 _tabs.index = 1;
               },
-              onOpenSettings: () => showServerSheet(context, state),
+              onOpenSettings: () => openSettings(context, state),
             );
           case 1:
             page = ChartPage(state: state);

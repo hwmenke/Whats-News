@@ -68,6 +68,12 @@
       <input id="watchlist-filter" type="text" class="watchlist-filter"
              placeholder="Filter list…" autocomplete="off" spellcheck="false"
              title="Filter visible tickers (j/k follow this list)" />
+      <div id="desk-family-filters" class="desk-family-filters" role="group" aria-label="Sleeve family">
+        <button type="button" class="family-chip on" data-family="">All</button>
+        <button type="button" class="family-chip" data-family="country">Country</button>
+        <button type="button" class="family-chip" data-family="sector">Sector</button>
+        <button type="button" class="family-chip" data-family="theme">Theme</button>
+      </div>
     </div>
 
     <div id="symbol-list" class="symbol-list">
@@ -89,6 +95,7 @@
     <!-- Portfolio tape — All / Breakout / Alerts share one slim chip row -->
     <div id="portfolio-tape" class="portfolio-tape" style="display:none;" aria-label="Portfolio tape">
       <div class="tape-meta" id="tape-meta">Book tape</div>
+      <span id="desk-regime" class="desk-regime" style="display:none;" title="VIX regime from stored Yahoo bars"></span>
       <div class="tape-mode" role="group" aria-label="Tape filter">
         <button type="button" class="tape-mode-btn active" data-mode="all" aria-pressed="true" title="All names by day %">All</button>
         <button type="button" class="tape-mode-btn" data-mode="breakout" aria-pressed="false" title="Near 20D high and/or volume surge — book-relative breakout queue, not a formal published breakout signal">Breakout</button>
@@ -245,6 +252,7 @@
       <button id="tab-backtest" class="tab-btn" onclick="switchTab('backtest')">Backtest</button>
       <button id="tab-trend" class="tab-btn" onclick="switchTab('trend')">Trend</button>
       <button id="tab-scanner" class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
+      <button id="tab-macro" class="tab-btn" onclick="switchTab('macro')" title="Market Moves sleeves + edges from stored Yahoo bars">Macro</button>
       <button id="tab-data-manager" class="tab-btn" onclick="switchTab('data-manager')">Data</button>
       <div class="tab-spacer"></div>
       <div id="chart-overlays-bar" class="indicator-toggles chart-overlays-bar">
@@ -293,6 +301,7 @@
       <h2>Welcome to Whats-News</h2>
       <p>Your local watchlist for charts, analysis, and real Yahoo Finance headlines.</p>
       <ol class="onboarding-steps">
+        <li>Open <strong>Macro</strong> and seed a sleeve (or <strong>Core 50</strong>) — cards light up after Yahoo fetch</li>
         <li>Type a ticker in the sidebar (try <strong>AAPL</strong>) and press <strong>+</strong></li>
         <li>Press <kbd>/</kbd> to jump without adding · <kbd>⌘K</kbd> for commands · <kbd>j</kbd>/<kbd>k</kbd> walk the list</li>
         <li>Tab <strong>News · this ticker</strong> is the selected symbol · top-bar <a href="/news">Watchlist news</a> is the whole list</li>
@@ -869,6 +878,7 @@
           <span id="setup-scan-meta" class="scanner-ts"></span>
           <span class="setup-scan-hint"><kbd>j</kbd>/<kbd>k</kbd> · <kbd>Enter</kbd> chart</span>
         </div>
+        <div id="setup-qulla-pills" class="setup-filter-pills setup-qulla-pills" role="group" aria-label="Qulla lens"></div>
         <div id="setup-filter-pills" class="setup-filter-pills"></div>
         <div id="setup-scan-loading" class="chart-loading setup-scan-loading" style="display:none;">
           <span class="spinner"></span> Scanning setups…
@@ -880,6 +890,7 @@
                 <th>Symbol</th>
                 <th>Setups</th>
                 <th>Chg%</th>
+                <th>ADR%</th>
                 <th>Book RS</th>
                 <th>20D dist</th>
                 <th>Vol×</th>
@@ -891,7 +902,7 @@
           </table>
         </div>
         <div id="setup-scan-empty" class="scanner-empty" style="display:none;">
-          <p>No setups found — sync universe in <strong>Data</strong>, archive history, then scan again.</p>
+          <p>No setup hits yet. Seed <strong>Core 50</strong> or a Macro sleeve, Fetch from Yahoo so finance.db has bars, then Scan setups. Fractal D is not in this repo.</p>
         </div>
       </div>
 
@@ -928,12 +939,34 @@
       </div>
 
       <!-- Empty state -->
-      <div id="scanner-empty" class="scanner-empty" style="display:none;">
+        <div id="scanner-empty" class="scanner-empty" style="display:none;">
         <div class="empty-icon">📡</div>
-        <p>No symbols in watchlist, or data not yet fetched.<br>Add tickers, then click <strong>⟳ Scan All</strong>.</p>
+        <p>No stored bars to scan.<br>Use <strong>Macro</strong> to seed sleeves / Core 50, Fetch from Yahoo, then <strong>⟳ Scan All</strong>. Empty cells are missing data — not invented prints.</p>
       </div>
 
     </div><!-- #scanner-area -->
+
+    <!-- ── Macro / Edges desk (shared APIs with iPhone) ── -->
+    <div id="macro-area" class="macro-container" style="display:none;">
+      <div id="macro-regime" class="macro-regime is-missing">
+        <strong>Regime</strong>
+        <span>Loading stored VIX…</span>
+      </div>
+      <div class="macro-toolbar">
+        <div>
+          <strong>Market Moves</strong>
+          <span class="macro-blurb">Yahoo ETF proxies. Day % and z from stored daily closes. |z|≥2 marked. No fake PX.</span>
+        </div>
+        <div id="macro-seed-bar" class="macro-seed-bar"></div>
+      </div>
+      <div id="macro-loading" class="chart-loading" style="display:none;">
+        <span class="spinner"></span> Lighting sleeves from finance.db…
+      </div>
+      <div id="macro-sleeve-grid" class="macro-sleeve-grid"></div>
+      <p id="macro-board-note" class="macro-board-note"></p>
+      <div id="edges-board" class="edges-board"></div>
+      <p id="fractal-stub" class="fractal-stub">Fractal: needs local odds-edge</p>
+    </div>
 
     <!-- ── Data Manager Area ── -->
     <div id="data-manager-area" class="dm-container" style="display:none;">
@@ -986,11 +1019,13 @@
             <div id="universe-stats" class="universe-stats"></div>
           </div>
           <div class="dm-actions dm-universe-actions">
+            <button id="btn-core50" type="button" class="btn btn-primary" title="Add ~50 liquid names to the desk (no Yahoo download)">Seed Core 50</button>
             <button id="btn-universe-sync" type="button" class="btn btn-ghost">Sync indices</button>
             <button id="btn-universe-archive" type="button" class="btn btn-primary">Archive history</button>
             <button id="btn-universe-refresh" type="button" class="btn btn-ghost">Daily refresh</button>
             <button id="btn-universe-abort" type="button" class="btn btn-danger" style="display:none;">Abort</button>
           </div>
+          <p class="dm-hint">Core 50 = desk names with library group tags. Sync indices registers S&amp;P-ish <code>univ:*</code> archive (hidden from desk). Archive fetch is optional and slow.</p>
         </div>
 
         <div class="dm-section-rule" aria-hidden="true"></div>
@@ -1160,6 +1195,7 @@
 <script src="scripts/scanner.js"></script>
 <script src="scripts/setup_scanner.js"></script>
 <script src="scripts/data_manager.js"></script>
+<script src="scripts/macro_desk.js"></script>
 <script src="scripts/desk_palette.js"></script>
 <script src="scripts/app.js"></script>
 

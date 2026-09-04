@@ -119,8 +119,21 @@ class ChartPage extends StatelessWidget {
                     on: state.showBollinger,
                     onTap: () => state.toggleOverlay('bb'),
                   ),
+                  _OverlayPill(
+                    label: 'EMA 10',
+                    color: DeskColors.ema10,
+                    on: state.showEma10,
+                    onTap: () => state.toggleOverlay('ema10'),
+                  ),
+                  _OverlayPill(
+                    label: 'EMA 20',
+                    color: DeskColors.ema20,
+                    on: state.showEma20,
+                    onTap: () => state.toggleOverlay('ema20'),
+                  ),
                 ],
               ),
+              _DeskStrip(state: state),
             ],
           ),
         ),
@@ -144,6 +157,8 @@ class ChartPage extends StatelessWidget {
                         showKama20: state.showKama20,
                         showKama50: state.showKama50,
                         showBollinger: state.showBollinger,
+                        showEma10: state.showEma10,
+                        showEma20: state.showEma20,
                         onScrub: state.setScrubBar,
                       ),
               ),
@@ -189,6 +204,43 @@ class ChartPage extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _DeskStrip extends StatelessWidget {
+  const _DeskStrip({required this.state});
+  final WhatsNewsState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final note = state.deskNote;
+    final setup = state.selectedSymbol == null
+        ? null
+        : state.setupFor(state.selectedSymbol!);
+    final tags = <String>[
+      if (note.isEp || setup?.isEp == true) 'EP',
+      if (note.isVolSurge || setup?.isVolSurge == true) 'VOL',
+      if (note.isNearHigh || setup?.setups.contains('NEAR_HIGH') == true) 'NEAR_HIGH',
+      if (setup?.isBreakoutQueue == true) 'BREAKOUT_QUEUE',
+      if (note.regime != null && note.regime!.isNotEmpty) note.regime!,
+    ];
+    if (tags.isEmpty && note.adrPct == null && note.dist20dHighPct == null) {
+      return const SizedBox(height: 4);
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        [
+          ...tags,
+          if (note.adrPct != null) 'ADR ${note.adrPct!.toStringAsFixed(1)}%',
+          if (note.dist20dHighPct != null)
+            '20d hi ${note.dist20dHighPct!.toStringAsFixed(1)}%',
+          if (state.spyRs.ready && state.spyRs.lastRatio != null)
+            'vs SPY ${state.spyRs.lastRatio!.toStringAsFixed(2)}',
+        ].join(' · '),
+        style: const TextStyle(color: DeskColors.muted, fontSize: 11),
+      ),
     );
   }
 }

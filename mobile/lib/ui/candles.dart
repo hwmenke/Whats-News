@@ -16,6 +16,8 @@ class CandleChart extends StatefulWidget {
     this.showKama20 = true,
     this.showKama50 = false,
     this.showBollinger = false,
+    this.showEma10 = false,
+    this.showEma20 = false,
     this.onScrub,
   });
 
@@ -25,6 +27,8 @@ class CandleChart extends StatefulWidget {
   final bool showKama20;
   final bool showKama50;
   final bool showBollinger;
+  final bool showEma10;
+  final bool showEma20;
   final ValueChanged<OhlcvBar?>? onScrub;
 
   @override
@@ -127,6 +131,8 @@ class _CandleChartState extends State<CandleChart> {
           showKama20: widget.showKama20,
           showKama50: widget.showKama50,
           showBollinger: widget.showBollinger,
+          showEma10: widget.showEma10,
+          showEma20: widget.showEma20,
           scrub: _scrub,
         ),
         child: const SizedBox.expand(),
@@ -144,6 +150,8 @@ class _CandlePainter extends CustomPainter {
     required this.showKama20,
     required this.showKama50,
     required this.showBollinger,
+    required this.showEma10,
+    required this.showEma20,
     required this.scrub,
   });
 
@@ -154,6 +162,8 @@ class _CandlePainter extends CustomPainter {
   final bool showKama20;
   final bool showKama50;
   final bool showBollinger;
+  final bool showEma10;
+  final bool showEma20;
   final int? scrub;
 
   static const labelGutter = 46.0;
@@ -186,6 +196,8 @@ class _CandlePainter extends CustomPainter {
     if (showKama10) includeSeries(indicators.of('kama_10'));
     if (showKama20) includeSeries(indicators.of('kama_20'));
     if (showKama50) includeSeries(indicators.of('kama_50'));
+    if (showEma10) includeSeries(indicators.of('ema_10'));
+    if (showEma20) includeSeries(indicators.of('ema_20'));
     if (showBollinger) {
       includeSeries(indicators.of('bb_upper'));
       includeSeries(indicators.of('bb_lower'));
@@ -237,6 +249,14 @@ class _CandlePainter extends CustomPainter {
     if (showKama10) {
       _polyline(canvas, indicators.of('kama_10'), bars, minP, range, priceH, plotW,
           DeskColors.kama10);
+    }
+    if (showEma10) {
+      _polyline(canvas, indicators.of('ema_10'), bars, minP, range, priceH, plotW,
+          DeskColors.ema10);
+    }
+    if (showEma20) {
+      _polyline(canvas, indicators.of('ema_20'), bars, minP, range, priceH, plotW,
+          DeskColors.ema20);
     }
 
     for (var i = 0; i < bars.length; i++) {
@@ -387,5 +407,7 @@ class _CandlePainter extends CustomPainter {
       oldDelegate.showKama20 != showKama20 ||
       oldDelegate.showKama50 != showKama50 ||
       oldDelegate.showBollinger != showBollinger ||
+      oldDelegate.showEma10 != showEma10 ||
+      oldDelegate.showEma20 != showEma20 ||
       !identical(oldDelegate.indicators, indicators);
 }

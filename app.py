@@ -103,6 +103,110 @@ def portfolio_snapshot():
     try:
         return jsonify(portfolio.portfolio_snapshot())
     except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify({
+                "count": 0,
+                "ready_count": 0,
+                "symbols": [],
+                "tape": [],
+                "heatmap": [],
+                "breakout_queue": [],
+                "group_rollup": [],
+                "message": "No symbols in watchlist",
+            })
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/sleeves", methods=["GET"])
+def list_sleeves():
+    """Curated Yahoo ETF sleeves for the iPhone Macro board."""
+    import ticker_lists as tl
+    return jsonify({
+        "sleeves": getattr(tl, "MACRO_SLEEVES", []),
+        "note": "Liquid ETF proxies from Yahoo — not GDP, not a published rating.",
+    })
+
+
+@app.route("/api/sleeves/<string:sleeve_id>/seed", methods=["POST"])
+def seed_sleeve(sleeve_id):
+    """Add a sleeve's tickers to the desk and tag group_tag."""
+    import ticker_lists as tl
+    sleeve = tl.get_sleeve(sleeve_id) if hasattr(tl, "get_sleeve") else None
+    if not sleeve:
+        return jsonify({"error": "unknown sleeve"}), 404
+    ensure_local_schema()
+    try:
+        tickers = sleeve.get("tickers") or []
+        tag = sleeve.get("group_tag") or ""
+        result = md.add_symbols(tickers)
+        tagged = []
+        for raw in tickers:
+            sym = str(raw).strip().upper()
+            if not sym:
+                continue
+            md.set_symbol_group(sym, tag)
+            tagged.append(sym)
+        return jsonify({
+            "id": sleeve["id"],
+            "group_tag": tag,
+            "tagged": tagged,
+            **result,
+        }), 201 if result.get("added") else 200
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/macro/board", methods=["GET"])
+def macro_board_api():
+    """MARKET MOVES-style sleeve grid from stored daily bars only."""
+    import macro_board as mb
+    try:
+        return jsonify(mb.build_macro_board())
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(mb.empty_macro_board())
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/edges/board", methods=["GET"])
+def edges_board_api():
+    """Which-edge-is-online surface — real indicators, no screenshot win rates."""
+    import macro_board as mb
+    try:
+        return jsonify(mb.build_edges_board())
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(mb.empty_edges_board())
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/fractal/status", methods=["GET"])
+def fractal_status_api():
+    """Honest stub — this repo has no D65 / Hurst pipeline."""
+    import macro_board as mb
+    return jsonify(mb.fractal_status())
+
+
+@app.route("/api/universe/core50", methods=["POST"])
+def seed_core50():
+    """Add a curated ~50-name desk. Does not download Yahoo bars."""
+    import ticker_lists as tl
+    ensure_local_schema()
+    try:
+        tickers = tl.core50_tickers()
+        result = md.add_symbols(tickers)
+        tagged = []
+        for raw in tickers:
+            tag = tl.library_group_tag(raw)
+            md.set_symbol_group(raw, tag)
+            tagged.append({"symbol": raw, "group_tag": tag})
+        return jsonify({
+            "count": len(tickers),
+            "tagged": tagged,
+            "note": "Core 50 added to the desk. Fetch Yahoo per name — not a bulk archive.",
+            **result,
+        }), 201 if result.get("added") else 200
+    except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
 

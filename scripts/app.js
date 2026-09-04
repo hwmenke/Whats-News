@@ -24,6 +24,7 @@ let state = {
     stopMode: 'atr',   // 'atr' | 'box' | 'user'
     riskBox: null,     // last-applied { entry, stop, target } for the active symbol
     workspace: 'chart', // 'chart' | 'scan' | 'review'
+    familyFilter: '',  // '' | country | sector | theme
 };
 
 const JOURNAL_KEY = 'whats-news-journal';
@@ -1114,6 +1115,20 @@ function matchesWatchlistFilter(symbol, groupTag, q) {
     return code.includes(q) || tag.includes(q);
 }
 
+function filterKindForTag(tag) {
+    const t = String(tag || '').toLowerCase();
+    if (t.includes('countries') || t.includes('intl')) return 'country';
+    if (t.includes('sector')) return 'sector';
+    if (/theme|tech|resource|crypto|bond|ags|metal|fx|yield|big_tech/.test(t)) return 'theme';
+    if (t.includes('index') || t === 'sleeve:core' || t.includes('broad_etf')) return 'index';
+    return '';
+}
+
+function matchesDeskFamily(groupTag) {
+    if (!state.familyFilter) return true;
+    return filterKindForTag(groupTag) === state.familyFilter;
+}
+
 function filterByWatchlistQuery(rows) {
     const q = watchlistFilterQuery();
     if (!q) return rows || [];
@@ -1150,6 +1165,9 @@ function renderSymbolList() {
         item.className = 'symbol-item' + (state.activeSymbol === sym.symbol ? ' active' : '');
         item.dataset.symbol = sym.symbol;
         if (!matchesWatchlistFilter(sym.symbol, tag, q)) {
+            item.hidden = true;
+        }
+        if (!matchesDeskFamily(tag)) {
             item.hidden = true;
         }
 
@@ -1204,6 +1222,23 @@ function renderSymbolList() {
             al.textContent = snap.alert;
             al.title = snap.alert === 'RSI_OB' ? 'RSI overbought' : 'RSI oversold';
             item.appendChild(al);
+        }
+        if (snap?.is_ep) {
+            const b = document.createElement('span');
+            b.className = 'sym-qulla';
+            b.textContent = 'EP';
+            b.title = 'Episodic pivot path (gap + volume) — scanner tag, not a published rating';
+            item.appendChild(b);
+        } else if (snap?.is_vol_surge) {
+            const b = document.createElement('span');
+            b.className = 'sym-qulla';
+            b.textContent = 'VOL';
+            item.appendChild(b);
+        } else if (snap?.is_near_high) {
+            const b = document.createElement('span');
+            b.className = 'sym-qulla';
+            b.textContent = 'HI';
+            item.appendChild(b);
         }
 
         // Group tag badge (click to edit inline)
@@ -2171,6 +2206,7 @@ function showEmptyState() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
     const pm = document.getElementById('pm-desk');
     if (pm) pm.style.display = 'none';
 
@@ -2239,6 +2275,7 @@ function showScanSplit() {
     document.getElementById('backtest-area').style.display     = 'none';
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
     document.getElementById('chart-area').style.display        = 'flex';
     document.getElementById('scanner-area').style.display      = 'flex';
     state.activeTab = 'charts';
@@ -2351,6 +2388,7 @@ async function switchTab(tabId, opts = {}) {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
 
     if (tabId === 'charts') {
         showChartArea();
@@ -2379,7 +2417,30 @@ async function switchTab(tabId, opts = {}) {
     } else if (tabId === 'data-manager') {
         showDataManagerArea();
         initDataManager();
+    } else if (tabId === 'macro') {
+        showMacroArea();
+        if (typeof initMacroDesk === 'function') initMacroDesk();
     }
+}
+
+function hideMacroArea() {
+    const el = document.getElementById('macro-area');
+    if (el) el.style.display = 'none';
+}
+
+function showMacroArea() {
+    document.getElementById('empty-state').style.display       = 'none';
+    document.getElementById('chart-area').style.display        = 'none';
+    document.getElementById('news-area').style.display         = 'none';
+    document.getElementById('stats-area').style.display        = 'none';
+    document.getElementById('dist-area').style.display         = 'none';
+    document.getElementById('knn-area').style.display          = 'none';
+    document.getElementById('backtest-area').style.display     = 'none';
+    document.getElementById('trend-area').style.display        = 'none';
+    document.getElementById('scanner-area').style.display      = 'none';
+    document.getElementById('data-manager-area').style.display = 'none';
+    const macro = document.getElementById('macro-area');
+    if (macro) macro.style.display = 'flex';
 }
 
 function showStatsArea() {
@@ -2392,6 +2453,7 @@ function showStatsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
 }
 
 function showDistArea() {
@@ -2405,6 +2467,7 @@ function showDistArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
     if (!document.querySelector('#dist-conditions .dist-row')) {
         addConditionRow({ left: 'RSI(14)', op: '<', right: 30 });
     }
@@ -2421,6 +2484,7 @@ function showChartArea() {
     document.getElementById('scanner-area').style.display      =
         state.workspace === 'scan' ? 'flex' : 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
 }
 
 function showTrendArea() {
@@ -2433,6 +2497,7 @@ function showTrendArea() {
     document.getElementById('trend-area').style.display        = 'flex';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
 }
 
 function showScannerArea() {
@@ -2445,6 +2510,7 @@ function showScannerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'flex';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
 }
 
 function showDataManagerArea() {
@@ -2457,6 +2523,7 @@ function showDataManagerArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'flex';
+    hideMacroArea();
 }
 
 function showNewsArea() {
@@ -2469,6 +2536,7 @@ function showNewsArea() {
     document.getElementById('trend-area').style.display        = 'none';
     document.getElementById('scanner-area').style.display      = 'none';
     document.getElementById('data-manager-area').style.display = 'none';
+    hideMacroArea();
 }
 
 // ── Stats Rendering ───────────────────────────────────────────
@@ -3618,6 +3686,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderSymbolList();
         if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
     });
+    document.querySelectorAll('#desk-family-filters .family-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+            state.familyFilter = btn.dataset.family || '';
+            document.querySelectorAll('#desk-family-filters .family-chip').forEach(b => {
+                b.classList.toggle('on', b === btn);
+            });
+            renderSymbolList();
+            if (state.portfolioMeta) renderPortfolioTape(state.portfolioMeta);
+        });
+    });
     document.getElementById('new-symbol-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') addSymbol();
     });
@@ -3710,6 +3788,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadSymbols();
     restoreWatchlistFilter();
+    apiFetch(`${API}/macro/board`).then(data => {
+        if (typeof renderDeskRegime === 'function') renderDeskRegime(data.regime);
+    }).catch(() => {});
 
     const codes = (state.symbols || []).map(s => s.symbol).filter(Boolean);
     if (!codes.length) {

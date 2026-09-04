@@ -26,7 +26,12 @@ class ScansPage extends StatelessWidget {
           largeTitle: const Text('Scans'),
           trailing: CupertinoButton(
             padding: EdgeInsets.zero,
-            onPressed: state.loadingScans ? null : state.loadScans,
+            onPressed: state.loadingScans
+                ? null
+                : () {
+                    state.loadScans();
+                    state.loadMacro();
+                  },
             child: const Icon(CupertinoIcons.refresh),
           ),
         ),
@@ -37,9 +42,19 @@ class ScansPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Watchlist only — same Python scans as Dash. No S&P 500 bulk fetch required.',
+                  'Same Python scans as the web desk. No invented win rates. Fractal D is not in this repo.',
                   style: TextStyle(color: DeskColors.muted, fontSize: 12),
                 ),
+                if (!state.fractalStatus.available)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      state.fractalStatus.reason.isEmpty
+                          ? 'Fractal: needs local odds-edge'
+                          : state.fractalStatus.reason,
+                      style: const TextStyle(color: DeskColors.dim, fontSize: 11),
+                    ),
+                  ),
                 if (running)
                   const Padding(
                     padding: EdgeInsets.only(top: 6),
@@ -49,26 +64,45 @@ class ScansPage extends StatelessWidget {
                     ),
                   ),
                 const SizedBox(height: 10),
-                CupertinoSlidingSegmentedControl<String>(
-                  groupValue: state.scanMode,
-                  children: const {
-                    'trend': Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                      child: Text('Trend', style: TextStyle(fontSize: 13)),
-                    ),
-                    'metrics': Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                      child: Text('Metrics', style: TextStyle(fontSize: 13)),
-                    ),
-                    'setups': Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                      child: Text('Setups', style: TextStyle(fontSize: 13)),
-                    ),
-                  },
-                  onValueChanged: (v) {
-                    if (v != null) state.setScanMode(v);
-                  },
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final e in const [
+                      ('qulla', 'Qulla'),
+                      ('edges', 'Edges'),
+                      ('setups', 'Setups'),
+                      ('trend', 'Trend'),
+                      ('metrics', 'Metrics'),
+                    ])
+                      _ModeChip(
+                        label: e.$2,
+                        on: state.scanMode == e.$1,
+                        onTap: () => state.setScanMode(e.$1),
+                      ),
+                  ],
                 ),
+                if (state.scanMode == 'qulla') ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final e in const [
+                        ('all', 'All'),
+                        ('ep', 'EP'),
+                        ('breakout', 'Breakout'),
+                        ('vol', 'Vol'),
+                        ('adr', 'ADR≥4'),
+                      ])
+                        _ModeChip(
+                          label: e.$2,
+                          on: state.qullaFilter == e.$1,
+                          onTap: () => state.setQullaFilter(e.$1),
+                        ),
+                    ],
+                  ),
+                ],
                 if (state.scanError != null) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -80,7 +114,9 @@ class ScansPage extends StatelessWidget {
             ),
           ),
         ),
-        if (state.loadingScans && _rowsEmpty(state))
+        if (state.scanMode == 'edges')
+          ..._edgesSlivers(state)
+        else if (state.loadingScans && _rowsEmpty(state))
           const SliverFillRemaining(
             child: Center(child: CupertinoActivityIndicator()),
           )
@@ -90,7 +126,7 @@ class ScansPage extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.all(24),
               child: Text(
-                'No scan rows yet.\n\nAdd tickers on Watchlist and Fetch from Yahoo so finance.db has bars. Then refresh here.',
+                'No scan rows yet.\n\nSeed a Macro sleeve or Core 50, Fetch from Yahoo, then refresh. Empty is missing bars — not a fake print.',
                 style: TextStyle(color: DeskColors.muted, height: 1.4),
               ),
             ),
@@ -114,12 +150,88 @@ class ScansPage extends StatelessWidget {
     );
   }
 
+  List<Widget> _edgesSlivers(WhatsNewsState s) {
+    final board = s.edgesBoard;
+    final children = <Widget>[
+      if (board.regime.ready)
+        Text(
+          '${board.regime.label} · VIX ${board.regime.vix?.toStringAsFixed(1) ?? '—'}',
+          style: const TextStyle(color: DeskColors.accentBright, fontSize: 13, fontWeight: FontWeight.w700),
+        )
+      else
+        Text(
+          board.regime.note.isEmpty ? 'VIX regime omitted — no stored bars.' : board.regime.note,
+          style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+        ),
+      const SizedBox(height: 8),
+      Text(
+        board.online.isEmpty
+            ? 'No live tags yet — fetch sleeve bars.'
+            : 'Online: ${board.online.join(' · ')}',
+        style: const TextStyle(color: DeskColors.text, fontSize: 13),
+      ),
+      const SizedBox(height: 4),
+      Text(board.note, style: const TextStyle(color: DeskColors.dim, fontSize: 11)),
+      const SizedBox(height: 10),
+    ];
+    for (final sec in board.sections) {
+      children.add(Text(
+        sec.label,
+        style: const TextStyle(color: DeskColors.muted, fontSize: 12, fontWeight: FontWeight.w700),
+      ));
+      children.add(const SizedBox(height: 4));
+      for (final row in sec.rows) {
+        children.add(_EdgeTile(row: row, onOpen: onOpenChart));
+      }
+      children.add(const SizedBox(height: 10));
+    }
+    if (board.setupBuckets.isNotEmpty) {
+      children.add(const Text(
+        'Stock-level setups (desk)',
+        style: TextStyle(color: DeskColors.muted, fontSize: 12, fontWeight: FontWeight.w700),
+      ));
+      board.setupBuckets.forEach((id, names) {
+        children.add(Padding(
+          padding: const EdgeInsets.only(top: 6, bottom: 2),
+          child: Text(id, style: const TextStyle(color: DeskColors.dim, fontSize: 11)),
+        ));
+        children.add(Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            if (names.isEmpty)
+              const Text('none', style: TextStyle(color: DeskColors.dim, fontSize: 12))
+            else
+              for (final n in names)
+                GestureDetector(
+                  onTap: () => onOpenChart(n),
+                  child: Text(n, style: const TextStyle(color: DeskColors.accentBright, fontSize: 13, fontWeight: FontWeight.w600)),
+                ),
+          ],
+        ));
+      });
+    }
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: children,
+          ),
+        ),
+      ),
+    ];
+  }
+
   bool _rowsEmpty(WhatsNewsState s) {
     switch (s.scanMode) {
       case 'metrics':
         return s.metricScan.isEmpty;
       case 'setups':
         return s.setupScan.isEmpty;
+      case 'qulla':
+        return s.qullaRows.isEmpty;
       default:
         return s.trendScan.isEmpty;
     }
@@ -131,6 +243,8 @@ class ScansPage extends StatelessWidget {
         return s.metricScan.length;
       case 'setups':
         return s.setupScan.length;
+      case 'qulla':
+        return s.qullaRows.length;
       default:
         return s.trendScan.length;
     }
@@ -142,9 +256,96 @@ class ScansPage extends StatelessWidget {
         return _MetricTile(row: s.metricScan[i], onOpen: onOpenChart);
       case 'setups':
         return _SetupTile(row: s.setupScan[i], onOpen: onOpenChart);
+      case 'qulla':
+        return _SetupTile(row: s.qullaRows[i], onOpen: onOpenChart);
       default:
         return _TrendTile(row: s.trendScan[i], onOpen: onOpenChart);
     }
+  }
+}
+
+class _ModeChip extends StatelessWidget {
+  const _ModeChip({required this.label, required this.on, required this.onTap});
+  final String label;
+  final bool on;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: on ? DeskColors.accent.withValues(alpha: 0.2) : DeskColors.card,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: on ? DeskColors.accent : DeskColors.border),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: on ? DeskColors.accentBright : DeskColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EdgeTile extends StatelessWidget {
+  const _EdgeTile({required this.row, required this.onOpen});
+  final EdgeInstrument row;
+  final ValueChanged<String> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: row.ready ? () => onOpen(row.symbol) : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  row.symbol,
+                  style: TextStyle(
+                    color: row.ready ? DeskColors.text : DeskColors.dim,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+                const Spacer(),
+                if (row.ready && row.dayPct != null)
+                  Text(
+                    '${row.dayPct! >= 0 ? '+' : ''}${row.dayPct!.toStringAsFixed(1)}%',
+                    style: TextStyle(
+                      color: row.dayPct! >= 0 ? DeskColors.green : DeskColors.red,
+                      fontSize: 12,
+                    ),
+                  ),
+              ],
+            ),
+            Text(
+              row.ready
+                  ? [
+                      if (row.dRsi14 != null) 'dRSI ${row.dRsi14!.toStringAsFixed(0)}',
+                      if (row.wRsi14 != null) 'wRSI ${row.wRsi14!.toStringAsFixed(0)}',
+                      if (row.vs50d != null) 'vs50 ${row.vs50d!.toStringAsFixed(1)}%',
+                      if (row.vs200d != null) 'vs200 ${row.vs200d!.toStringAsFixed(1)}%',
+                      if (row.slope200 != null) row.slope200!,
+                      ...row.tags,
+                    ].join(' · ')
+                  : 'no bars',
+              style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
