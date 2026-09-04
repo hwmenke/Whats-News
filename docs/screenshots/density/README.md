@@ -7,5 +7,5 @@ Watchlist before/after plus Book Upload | P&L | Risk.
 - [watchlist_after_open.png](watchlist_after_open.png) — dense open rail
 - [book_upload.png](book_upload.png) — Fidelity CSV import only
 - [book_pnl.png](book_pnl.png) — marks / day / exposure
-- [book_risk.png](book_risk.png) — portfolio VaR/ES + per-name weight/vol/contribution
+- [book_risk.png](book_risk.png) — SPEC live: portfolio + hist/param VaR + MVaR ranked + clusters
 - [scans_dense.png](scans_dense.png) — help wall collapsed; chip row tight

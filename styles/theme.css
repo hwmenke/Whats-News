@@ -414,7 +414,7 @@ body.board-focus .desk-ia-bar { padding: 2px 8px; }
 .wn-sym { cursor: pointer; font-weight: 600; }
 .wn-note { color: #666; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Risk SPEC scaffold — dashes only until Quant file lands */
+/* Risk SPEC 2026-09-04 — ink on paper, 24px Market Moves density */
 .risk-spec { margin-top: 8px; }
 .risk-spec-title {
   font-family: var(--font-face-title);
@@ -422,8 +422,21 @@ body.board-focus .desk-ia-bar { padding: 2px 8px; }
   margin: 4px 0 2px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  color: var(--ink);
 }
-.risk-spec .pnl-exp-row { height: 24px; }
+.risk-container .pnl-exp-row {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  height: var(--mm-row-h);
+  padding: 0 2px;
+  border-bottom: none;
+}
+.risk-container .pnl-var-title,
+.risk-container .macro-blurb,
+.risk-container .pnl-blurb {
+  color: #666;
+}
 
 @media (max-width: 980px) {
   .v2-split, .v2-three { grid-template-columns: 1fr; }
