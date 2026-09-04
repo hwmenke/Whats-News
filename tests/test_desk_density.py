@@ -73,6 +73,7 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("HARD spacing", self.blob)
         self.assertIn("body.board-focus #empty-state", self.blob)
         self.assertIn("body.workspace-scan #chart-area", self.blob)
+        self.assertIn("flex-flow: column nowrap !important", self.blob)
         self.assertIn('class="risk-title visually-hidden"', self.blob)
         self.assertIn('class="mm-head visually-hidden"', self.blob)
 

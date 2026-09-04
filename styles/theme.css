@@ -491,6 +491,9 @@ body.workspace-scan .main {
   padding: 0 !important;
   gap: 0 !important;
   margin: 0 !important;
+  flex-flow: column nowrap !important;
+  align-content: flex-start !important;
+  align-items: stretch !important;
 }
 body.board-focus .desk-ia-bar,
 body.board-focus .main-nav-tabs.desk-ia-bar,
@@ -572,6 +575,12 @@ body.workspace-scan #chart-area {
   border: none !important;
   border-radius: 0;
   font-size: 10px;
+  background: transparent !important;
+  color: var(--ink) !important;
+}
+.risk-container .pnl-chip.is-alert {
+  background: transparent !important;
+  color: #b91c1c !important;
 }
 .risk-spec-title {
   margin: 0 !important;
@@ -596,7 +605,7 @@ body.workspace-scan #chart-area {
 }
 body.workspace-scan #scanner-area {
   display: flex !important;
-  flex: 1 1 100% !important;
+  flex: 1 1 auto !important;
   width: 100% !important;
   max-width: none !important;
   min-height: 0 !important;
@@ -606,6 +615,10 @@ body.workspace-scan #scanner-area {
   margin: 0 !important;
   background: var(--paper) !important;
   color: var(--ink) !important;
+}
+body.workspace-scan .desk-ia-bar {
+  width: 100% !important;
+  flex: 0 0 22px !important;
 }
 .scan-lens-bar { height: 22px; margin: 0 !important; padding: 0 !important; }
 .scan-breadth { margin: 0 !important; padding: 0 !important; }
