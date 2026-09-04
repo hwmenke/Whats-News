@@ -189,114 +189,89 @@ class BookPage extends StatelessWidget {
       ...pnl.alerts,
       for (final r in rows) ...r.flags,
     };
+    Widget rowLine(String text, {Color color = DeskColors.text}) {
+      return SizedBox(
+        height: DeskSpace.row,
+        width: double.infinity,
+        child: Padding(
+          padding: DeskSpace.cellPad,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              text,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: color, fontSize: 12),
+            ),
+          ),
+        ),
+      );
+    }
+
     return [
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.headerContent, DeskSpace.inset, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
-                height: DeskSpace.chrome,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    [
-                      if (risk.ready) '${risk.nNames} names · ${risk.overlapDays}d',
-                      if (risk.vol60 != null) 'σ60 ${risk.vol60!.toStringAsFixed(1)}%',
-                      if (pnl.topWeightPct != null) 'top ${pnl.topWeightPct!.toStringAsFixed(0)}%',
-                      ...flags,
-                    ].join(' · '),
-                    style: const TextStyle(color: DeskColors.muted, fontSize: 11),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-              const Offstage(child: Text('Ranked %VaR')),
-            ],
-          ),
-        ),
-      ),
-      if (rows.isEmpty)
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
-            child: Text(
-              'Thin or unmarked. Need ≥3 names, ≥60 overlapping daily closes, non-singular 60d Σ.',
-              style: TextStyle(color: DeskColors.muted, height: 1.4, fontSize: 12),
-            ),
-          ),
-        )
-      else
-        SliverList.builder(
-          itemCount: rows.length,
-          itemBuilder: (context, i) {
-            final r = rows[i];
-            return GestureDetector(
-              onTap: () => onOpenChart(r.symbol),
-              child: ColoredBox(
-                color: i.isOdd ? DeskColors.card : DeskColors.bg,
-                child: SizedBox(
-                  height: DeskSpace.row,
-                  child: Padding(
-                    padding: DeskSpace.cellPad,
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
+              if (rows.isEmpty)
+                const Text(
+                  'Thin or unmarked. Need ≥3 names, ≥60 overlapping daily closes, non-singular 60d Σ.',
+                  style: TextStyle(color: DeskColors.muted, height: 1.4, fontSize: 12),
+                )
+              else ...[
+                for (var i = 0; i < rows.length; i++)
+                  GestureDetector(
+                    onTap: () => onOpenChart(rows[i].symbol),
+                    child: ColoredBox(
+                      color: i.isOdd ? DeskColors.card : DeskColors.bg,
+                      child: rowLine(
                         [
-                          r.symbol,
-                          r.weightPct == null ? 'w —' : 'w ${r.weightPct!.toStringAsFixed(1)}%',
-                          r.vol20 == null ? 'σ20 —' : 'σ20 ${r.vol20!.toStringAsFixed(0)}',
-                          r.vol60 == null ? 'σ60 —' : 'σ60 ${r.vol60!.toStringAsFixed(0)}',
-                          r.betaSpy60 == null ? 'β —' : 'β ${r.betaSpy60!.toStringAsFixed(2)}',
-                          r.mvar95 == null ? 'MVaR —' : 'MVaR ${usd(r.mvar95)}',
-                          r.cvar95 == null ? 'CVaR —' : 'CVaR ${usd(r.cvar95)}',
-                          r.pctVar == null ? '%VaR —' : '%VaR ${r.pctVar!.toStringAsFixed(1)}',
-                          if (r.flags.isNotEmpty) r.flags.join(' '),
+                          rows[i].symbol,
+                          rows[i].weightPct == null ? 'w —' : 'w ${rows[i].weightPct!.toStringAsFixed(1)}%',
+                          rows[i].vol20 == null ? 'σ20 —' : 'σ20 ${rows[i].vol20!.toStringAsFixed(0)}',
+                          rows[i].vol60 == null ? 'σ60 —' : 'σ60 ${rows[i].vol60!.toStringAsFixed(0)}',
+                          rows[i].betaSpy60 == null ? 'β —' : 'β ${rows[i].betaSpy60!.toStringAsFixed(2)}',
+                          rows[i].mvar95 == null ? 'MVaR —' : 'MVaR ${usd(rows[i].mvar95)}',
+                          rows[i].cvar95 == null ? 'CVaR —' : 'CVaR ${usd(rows[i].cvar95)}',
+                          rows[i].pctVar == null ? '%VaR —' : '%VaR ${rows[i].pctVar!.toStringAsFixed(1)}',
+                          if (rows[i].flags.isNotEmpty) rows[i].flags.join(' '),
                         ].join(' · '),
-                        style: const TextStyle(color: DeskColors.text, fontSize: 12),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ),
-                ),
-              ),
-            );
-          },
-        ),
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Clusters',
-                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4, fontSize: 11, height: 2),
-              ),
-              if (risk.clusters.isEmpty)
-                const Text('—', style: TextStyle(color: DeskColors.dim, fontSize: 12))
-              else
-                for (final c in risk.clusters)
-                  SizedBox(
-                    height: DeskSpace.row,
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        [
-                          'C${c.id}',
-                          c.members.join(' '),
-                          c.regime.isEmpty ? '—' : c.regime,
-                          c.pctVar == null ? '%VaR —' : '%VaR ${c.pctVar!.toStringAsFixed(1)}',
-                        ].join(' · '),
-                        style: const TextStyle(color: DeskColors.text, fontSize: 12),
-                      ),
-                    ),
+                if (risk.clusters.isNotEmpty) ...[
+                  const Text(
+                    'Clusters',
+                    style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4, fontSize: 11, height: 1),
                   ),
+                  for (final c in risk.clusters)
+                    rowLine(
+                      [
+                        'C${c.id}',
+                        c.members.join(' '),
+                        c.regime.isEmpty ? '—' : c.regime,
+                        c.pctVar == null ? '%VaR —' : '%VaR ${c.pctVar!.toStringAsFixed(1)}',
+                      ].join(' · '),
+                    ),
+                ],
+              ],
               Text(
-                'Hist ${pct(risk.hist95Pct)}/${pct(risk.hist99Pct)} · Param ${pct(risk.param95Pct)}/${pct(risk.param99Pct)} · Sharpe ${risk.sharpe?.toStringAsFixed(2) ?? '—'}',
+                [
+                  if (risk.ready) '${risk.nNames} names · ${risk.overlapDays}d',
+                  if (risk.vol60 != null) 'σ60 ${risk.vol60!.toStringAsFixed(1)}%',
+                  if (pnl.topWeightPct != null) 'top ${pnl.topWeightPct!.toStringAsFixed(0)}%',
+                  ...flags,
+                  'Hist ${pct(risk.hist95Pct)}/${pct(risk.hist99Pct)}',
+                  'Param ${pct(risk.param95Pct)}/${pct(risk.param99Pct)}',
+                  'Sharpe ${risk.sharpe?.toStringAsFixed(2) ?? '—'}',
+                ].join(' · '),
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: DeskColors.muted, fontSize: 11),
               ),
               if (!risk.ready)
@@ -304,6 +279,7 @@ class BookPage extends StatelessWidget {
                   risk.message.isEmpty ? 'Thin book — Risk stack blank.' : risk.message,
                   style: const TextStyle(color: DeskColors.muted, fontSize: 11, height: 1.35),
                 ),
+              const Offstage(child: Text('Ranked %VaR')),
             ],
           ),
         ),

@@ -139,6 +139,8 @@ class WarningsSurfaceTests(unittest.TestCase):
         self.assertIn("Empty buckets omitted", blob)
         self.assertIn("Takeaways", blob)
         self.assertIn("if (rows.isEmpty) return const SizedBox.shrink();", blob)
+        self.assertIn("Flexible(", Path("mobile/lib/ui/scans_page.dart").read_text(encoding="utf-8"))
+        self.assertIn("TextOverflow.ellipsis", Path("mobile/lib/ui/scans_page.dart").read_text(encoding="utf-8"))
         self.assertIn("storedN", Path("mobile/lib/data/models.dart").read_text(encoding="utf-8"))
         self.assertIn("seedFetchDesk", Path("mobile/lib/data/app_state.dart").read_text(encoding="utf-8"))
         self.assertIn("bookPane == 'upload'", Path("mobile/lib/data/app_state.dart").read_text(encoding="utf-8"))

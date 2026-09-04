@@ -95,6 +95,10 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("static const double row = 30", self.blob)
         self.assertIn("static const double inset = 12", self.blob)
         self.assertIn("max(8, safeArea.bottom)", self.blob)
+        book = Path("mobile/lib/ui/book_page.dart").read_text(encoding="utf-8")
+        self.assertIn("mainAxisSize: MainAxisSize.min", book)
+        self.assertIn("DeskSpace.headerContent", book)
+        self.assertNotIn("height: DeskSpace.chrome", book[book.find("_riskSlivers"):book.find("_positionSlivers")])
         self.assertIn("if (!list.length) return '';", self.blob)
         self.assertIn("HOW TO READ — PATTERN SCANNER", self.blob)
         self.assertIn("HOW TO READ — RSI COUNTER", self.blob)
@@ -126,6 +130,8 @@ class DeskDensityTests(unittest.TestCase):
             "book_upload.png",
             "book_pnl.png",
             "book_risk.png",
+            "pattern_dw.png",
+            "rsic_counter.png",
         ):
             path = root / name
             self.assertTrue(path.is_file(), name)

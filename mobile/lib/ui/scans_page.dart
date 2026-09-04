@@ -598,6 +598,7 @@ class ScansPage extends StatelessWidget {
       onTap: () => onOpenChart(symbol),
       child: SizedBox(
         height: DeskSpace.row,
+        width: double.infinity,
         child: Padding(
           padding: DeskSpace.cellPad,
           child: Row(
@@ -607,9 +608,19 @@ class ScansPage extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(metric, style: const TextStyle(color: DeskColors.text, fontSize: 12)),
               ],
-              const Spacer(),
-              if (tag.isNotEmpty)
-                Text(tag, style: const TextStyle(color: DeskColors.dim, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+              if (tag.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    tag,
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: DeskColors.dim, fontSize: 11),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

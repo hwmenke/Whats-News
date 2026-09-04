@@ -7,7 +7,10 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:whats_news/data/api_client.dart';
 import 'package:whats_news/data/app_state.dart';
+import 'package:whats_news/data/models.dart';
 import 'package:whats_news/main.dart';
+import 'package:whats_news/ui/book_page.dart';
+import 'package:whats_news/ui/scans_page.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -243,6 +246,93 @@ void main() {
 
     expect(find.text('Apple hits new high'), findsOneWidget);
     expect(find.text('Test News'), findsOneWidget);
+  });
+
+  testWidgets('warnings takeaways ellipsize on a 320pt phone', (tester) async {
+    tester.view.physicalSize = const Size(960, 2070);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final state = WhatsNewsState(
+      api: WhatsNewsApi(baseUrl: 'http://127.0.0.1:8050', httpClient: MockClient((_) async {
+        return _json({'error': 'unused'}, 404);
+      })),
+    );
+    state.scanMode = 'warnings';
+    state.warningsBoard = const WarningsBoard(
+      ready: true,
+      takeaways: [
+        WarningHit(
+          symbol: 'NVDA',
+          label: 'breaking up',
+          patternD: 'Breakout',
+          vcp: 'BREAK ↑',
+          rsiC: 'TREND ↑ STRONG',
+          takeaway: 'LONG — VCP BREAK ↑ — RSI-C TREND ↑ — TMS SOLID + (ACCEL +)',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(CupertinoApp(
+      home: SizedBox(
+        width: 320,
+        height: 690,
+        child: ScansPage(state: state, onOpenChart: (_) {}),
+      ),
+    ));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('NVDA'), findsWidgets);
+    expect(find.text('Takeaways (1)'), findsOneWidget);
+  });
+
+  testWidgets('risk ranked rows sit tight under the pane chips', (tester) async {
+    tester.view.physicalSize = const Size(960, 2070);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final state = WhatsNewsState(
+      api: WhatsNewsApi(baseUrl: 'http://127.0.0.1:8050', httpClient: MockClient((_) async {
+        return _json({'error': 'unused'}, 404);
+      })),
+    );
+    state.bookPane = 'risk';
+    state.bookPnl = const BookPnl(
+      ready: true,
+      risk: RiskPack(
+        ready: true,
+        thin: false,
+        nNames: 3,
+        overlapDays: 60,
+        vol60: 18.2,
+        names: [
+          RiskName(symbol: 'AAPL', weightPct: 40, vol20: 20, vol60: 22, pctVar: 41.2),
+          RiskName(symbol: 'MSFT', weightPct: 35, vol20: 18, vol60: 19, pctVar: 33.1),
+          RiskName(symbol: 'NVDA', weightPct: 25, vol20: 40, vol60: 38, pctVar: 25.7),
+        ],
+        clusters: [
+          RiskCluster(id: 1, members: ['AAPL', 'MSFT'], regime: 'COLD', pctVar: 74.3),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(CupertinoApp(
+      home: SizedBox(
+        width: 320,
+        height: 690,
+        child: BookPage(state: state, onOpenChart: (_) {}),
+      ),
+    ));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('AAPL'), findsWidgets);
+    expect(find.textContaining('C1'), findsOneWidget);
+    final chipBottom = tester.getBottomLeft(find.text('Risk')).dy;
+    final rowTop = tester.getTopLeft(find.textContaining('%VaR 41.2')).dy;
+    expect(rowTop - chipBottom, lessThan(16));
+    expect(rowTop - chipBottom, greaterThanOrEqualTo(8));
   });
 
   test('watchlist maps no-such-table to a restart hint', () async {
