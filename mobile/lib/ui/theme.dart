@@ -2,7 +2,7 @@ import 'package:flutter/cupertino.dart';
 
 /// VISUAL v4.1 — Ink #111, zebra/fills, no borders.
 /// Mint ≤1 OPPORTUNITY fill. Soft R/G heat. Discard neon/cream/v3.
-/// Web faces: Font C — Public Sans + Inter + JetBrains Mono (`styles/theme.css`).
+/// Web faces: IBM Plex Sans Condensed + Inter + IBM Plex Mono (`styles/theme.css`).
 /// Market Moves stays utilitarian red/green z heat.
 class DeskColors {
   static const bg = Color(0xFFFFFFFF);

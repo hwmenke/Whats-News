@@ -28,7 +28,7 @@ Prefs: `localStorage['whats-news-desk-prefs'].boardColumns`.
 
 ## Visual v4.1
 
-Barlow Condensed + Inter + mono. Ink `#111`. Soft R/G heat. Mint ≤1
+IBM Plex Sans Condensed + Inter + IBM Plex Mono. Ink `#111`. Soft R/G heat. Mint ≤1
 OPPORTUNITY fill. No borders — zebra/fills only. Neon / cream / v3 mint
 theater discarded. Market Moves stays utilitarian red/green z heat.
 

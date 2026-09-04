@@ -36,8 +36,9 @@ class DeskDensityTests(unittest.TestCase):
         self.assertIn("--font-face-title", self.blob)
         self.assertIn("--font-face-body", self.blob)
         self.assertIn("--font-face-mono", self.blob)
-        self.assertIn("Public Sans", self.blob)
-        self.assertIn("JetBrains Mono", self.blob)
+        self.assertIn("IBM Plex Sans Condensed", self.blob)
+        self.assertIn("IBM Plex Mono", self.blob)
+        self.assertIn("'Inter'", self.blob)
         self.assertNotIn("Barlow Condensed", self.blob)
 
     def test_book_surfaces_split(self):

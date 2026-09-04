@@ -131,7 +131,7 @@ function _trendBaseOpts() {
         layout: {
             background:  { color: '#0d1117' },
             textColor:   '#8b949e',
-            fontFamily:  "'JetBrains Mono', monospace",
+            fontFamily:  "'IBM Plex Mono', monospace",
             fontSize:    10,
         },
         grid: {
