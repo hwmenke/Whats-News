@@ -30,7 +30,8 @@ class BoardRegistryTests(unittest.TestCase):
         self.assertEqual(body["theme"], "font_c_v41")
         self.assertIn("market_moves", body["boards"])
         self.assertIn("engine_setup", body["boards"])
-        self.assertIn("Public Sans", open("styles/theme.css", encoding="utf-8").read())
+        with open("styles/theme.css", encoding="utf-8") as fh:
+            self.assertIn("Public Sans", fh.read())
         mm = body["boards"]["market_moves"]["columns"]
         self.assertEqual([c["id"] for c in mm], ["name", "px", "day_pct", "z", "z14"])
         z = next(c for c in mm if c["id"] == "z")
