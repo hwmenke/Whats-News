@@ -485,13 +485,48 @@ body.board-focus .desk-ia-bar { padding: 2px 8px; }
   min-height: 0;
 }
 
-/* HARD spacing — 24px density bar, no 14px gaps, no trailing air */
+/* HARD spacing — IA bar → chips/table. No title band. No trailing air. */
+body.board-focus .main,
+body.workspace-scan .main {
+  padding: 0 !important;
+  gap: 0 !important;
+  margin: 0 !important;
+}
 body.board-focus .desk-ia-bar,
-body.board-focus .main-nav-tabs.desk-ia-bar {
+body.board-focus .main-nav-tabs.desk-ia-bar,
+body.workspace-scan .desk-ia-bar {
   height: 22px;
   min-height: 22px;
+  max-height: 22px;
   padding: 0 8px !important;
-  margin: 0;
+  margin: 0 !important;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: none !important;
+}
+body.board-focus .symbol-header,
+body.board-focus .main-nav-overlays,
+body.board-focus #portfolio-tape,
+body.board-focus .main-nav-tabs:not(.desk-ia-bar),
+body.board-focus #empty-state,
+body.board-focus #legacy-tab-bar,
+body.board-focus #pm-tools-popover,
+body.workspace-scan .symbol-header,
+body.workspace-scan .chart-overlays-bar,
+body.workspace-scan .main-nav-overlays,
+body.workspace-scan .main-nav-tabs:not(.desk-ia-bar),
+body.workspace-scan #portfolio-tape,
+body.workspace-scan #empty-state,
+body.workspace-scan #legacy-tab-bar,
+body.workspace-scan .scanner-controls,
+body.workspace-scan #chart-area {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
 }
 .risk-container,
 .warnings-container,
@@ -499,52 +534,89 @@ body.board-focus .main-nav-tabs.desk-ia-bar {
 .pnl-container,
 .moves-container {
   gap: 0 !important;
-  padding: 0 8px 2px !important;
+  padding: 0 8px 0 !important;
   margin: 0 !important;
+  justify-content: flex-start !important;
 }
-.risk-hero-head,
-.warnings-container .mm-head,
-.book-head {
+.risk-hero-head {
+  display: flex;
   height: 22px;
   min-height: 22px;
+  max-height: 22px;
   margin: 0 !important;
   padding: 0 !important;
   align-items: center;
+  gap: 6px;
 }
-.risk-title,
-.book-title,
+.risk-hero-head .risk-title,
+.warnings-container .mm-head,
 .warnings-container .v41-title,
-.warnings-container .mm-head h2 {
-  font-size: 11px !important;
-  line-height: 22px !important;
-  margin: 0 !important;
-  letter-spacing: 0.06em;
-}
 .warnings-container .engine-story-sub,
+.risk-spec-title.visually-hidden,
 #risk-note,
-#warnings-note,
-#risk-empty[style*="display: none"] {
+#warnings-note {
   display: none !important;
 }
-.risk-spec-title { margin: 0 !important; line-height: 22px; height: 22px; }
-.risk-container .pnl-alert-chips { margin: 0 !important; height: 22px; align-items: center; }
-.risk-container .pnl-var { margin: 0; }
-.risk-container .risk-more { margin: 0 !important; }
+.risk-container .pnl-alert-chips {
+  flex: 1 1 auto;
+  margin: 0 !important;
+  height: 22px;
+  align-items: center;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+}
+.risk-container .pnl-chip {
+  height: 20px;
+  line-height: 20px;
+  padding: 0 6px !important;
+  border: none !important;
+  border-radius: 0;
+  font-size: 10px;
+}
+.risk-spec-title {
+  margin: 0 !important;
+  line-height: 22px;
+  height: 22px;
+  font-size: 11px;
+}
+.risk-container .pnl-var { margin: 0; padding: 0; }
+.risk-container .risk-more { margin: 0 !important; padding: 0; }
+.risk-container .scanner-table-wrap,
+.warnings-container .warnings-grid {
+  margin: 0 !important;
+  padding: 0 !important;
+}
 .warnings-grid { gap: 0 !important; }
-.wn-card { margin: 0; }
+.wn-card { margin: 0; padding: 0; }
 .wn-card h3 { margin: 0; line-height: 22px; height: 22px; }
-#scanner-area.scanner-container { padding: 0 !important; gap: 0; }
-.scan-lens-bar { height: 22px; margin: 0 !important; }
-.scan-breadth { margin: 0 !important; }
-body.workspace-scan .symbol-header,
-body.workspace-scan .chart-overlays-bar,
-body.workspace-scan .main-nav-overlays,
-body.workspace-scan .scanner-controls {
-  display: none !important;
+#scanner-area.scanner-container {
+  padding: 0 8px 0 !important;
+  gap: 0 !important;
+  margin: 0 !important;
 }
+body.workspace-scan #scanner-area {
+  display: flex !important;
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  border: none !important;
+  padding: 0 8px 0 !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+}
+.scan-lens-bar { height: 22px; margin: 0 !important; padding: 0 !important; }
+.scan-breadth { margin: 0 !important; padding: 0 !important; }
 .setup-scanner-header { height: 22px; min-height: 22px; margin: 0; padding: 0; }
-.scanner-empty { padding: 4px 0 !important; margin: 0; }
+.scanner-empty { padding: 0 !important; margin: 0; }
 .scanner-empty .empty-icon { display: none; }
+.risk-container > :last-child,
+.warnings-container > :last-child,
+#scanner-area > :last-child {
+  margin-bottom: 0 !important;
+}
 
 @media (max-width: 980px) {
   .v2-split, .v2-three { grid-template-columns: 1fr; }

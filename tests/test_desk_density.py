@@ -71,6 +71,10 @@ class DeskDensityTests(unittest.TestCase):
         self.assertNotIn("btn-alpaca-sync", self.blob[self.blob.find('id="risk-area"'):self.blob.find('id="data-manager-area"')])
         self.assertIn("gap: 0 !important", self.blob)
         self.assertIn("HARD spacing", self.blob)
+        self.assertIn("body.board-focus #empty-state", self.blob)
+        self.assertIn("body.workspace-scan #chart-area", self.blob)
+        self.assertIn('class="risk-title visually-hidden"', self.blob)
+        self.assertIn('class="mm-head visually-hidden"', self.blob)
 
     def test_hard_ui_lock_font_c_v41_not_v2_v3(self):
         theme = ""

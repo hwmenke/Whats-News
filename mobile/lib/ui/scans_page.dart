@@ -23,16 +23,11 @@ class ScansPage extends StatelessWidget {
       slivers: [
         SliverToBoxAdapter(
           child: SizedBox(
-            height: 28,
+            height: 22,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Row(
                 children: [
-                  const Text(
-                    'SCANS',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.2),
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -77,13 +72,14 @@ class ScansPage extends StatelessWidget {
                   ),
                   CupertinoButton(
                     padding: EdgeInsets.zero,
+                    minSize: 22,
                     onPressed: state.loadingScans
                         ? null
                         : () {
                             state.loadScans();
                             state.loadMacro();
                           },
-                    child: const Icon(CupertinoIcons.refresh, size: 18),
+                    child: const Icon(CupertinoIcons.refresh, size: 16),
                   ),
                 ],
               ),
@@ -206,7 +202,7 @@ class ScansPage extends StatelessWidget {
           )
         else
           SliverPadding(
-            padding: const EdgeInsets.only(bottom: 4),
+            padding: const EdgeInsets.only(bottom: 0),
             sliver: SliverList.separated(
               itemCount: _count(state),
               separatorBuilder: (_, _) => const Padding(
@@ -588,7 +584,7 @@ class ScansPage extends StatelessWidget {
   List<Widget> _emptyNote(String msg) => [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+            padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
             child: Text(msg, style: const TextStyle(color: DeskColors.muted, height: 1.3, fontSize: 12)),
           ),
         ),
@@ -710,7 +706,7 @@ class ScansPage extends StatelessWidget {
             return GestureDetector(
               onTap: () => onOpenChart(r.symbol),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -871,13 +867,13 @@ class ScansPage extends StatelessWidget {
     Widget col(String title, List<WarningHit> rows) {
       if (rows.isEmpty) return const SizedBox.shrink();
       return Padding(
-        padding: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.only(bottom: 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               '$title (${rows.length})',
-              style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11),
+              style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 11, height: 2),
             ),
             for (final r in rows)
               _nameChip(
@@ -897,14 +893,10 @@ class ScansPage extends StatelessWidget {
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Takeaways · breaking up/down · coiled · stretch. Empty buckets omitted.',
-                style: TextStyle(color: DeskColors.muted, fontSize: 10),
-              ),
               col('Takeaways', b.takeaways),
               col('Breaking up D', b.dailyBreakout),
               col('Breaking down D', b.dailyBreakdown),
@@ -998,7 +990,7 @@ class ScansPage extends StatelessWidget {
             return GestureDetector(
               onTap: () => onOpenChart(sym),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1370,7 +1362,7 @@ class _TrendTile extends StatelessWidget {
     return GestureDetector(
       onTap: () => onOpen(row.symbol),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1437,7 +1429,7 @@ class _MetricTile extends StatelessWidget {
     return GestureDetector(
       onTap: () => onOpen(row.symbol),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1502,7 +1494,7 @@ class _SetupTile extends StatelessWidget {
     return GestureDetector(
       onTap: () => onOpen(row.symbol),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1580,7 +1572,7 @@ class _BreadthStrip extends StatelessWidget {
                 ? 'Breadth not scored yet.'
                 : (breadth.message.isEmpty ? 'Breadth not scored yet.' : breadth.message)));
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1613,7 +1605,7 @@ class _PackTile extends StatelessWidget {
     return GestureDetector(
       onTap: () => onOpen(row.symbol),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1621,7 +1613,7 @@ class _PackTile extends StatelessWidget {
               children: [
                 Text(
                   row.symbol,
-                  style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 16),
+                  style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700, fontSize: 13),
                 ),
                 const Spacer(),
                 if (row.dayPct != null)

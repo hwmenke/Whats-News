@@ -13,27 +13,15 @@ class BookPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pnl = state.bookPnl;
-    final pane = state.bookPane == 'risk'
-        ? 'RISK'
-        : (state.bookPane == 'pnl' ? 'P&L' : 'UPLOAD');
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
           child: SizedBox(
-            height: 28,
+            height: 22,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Row(
                 children: [
-                  Text(
-                    pane,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   _Chip(
                     label: 'Upload',
                     on: state.bookPane == 'upload' || state.bookPane == 'positions',
@@ -54,8 +42,9 @@ class BookPage extends StatelessWidget {
                   const Spacer(),
                   CupertinoButton(
                     padding: EdgeInsets.zero,
+                    minSize: 22,
                     onPressed: state.loadingBook ? null : state.loadBook,
-                    child: const Icon(CupertinoIcons.refresh, size: 18),
+                    child: const Icon(CupertinoIcons.refresh, size: 16),
                   ),
                 ],
               ),
@@ -206,19 +195,24 @@ class BookPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                [
-                  if (risk.ready) '${risk.nNames} names · ${risk.overlapDays}d',
-                  if (risk.vol60 != null) 'σ60 ${risk.vol60!.toStringAsFixed(1)}%',
-                  if (pnl.topWeightPct != null) 'top ${pnl.topWeightPct!.toStringAsFixed(0)}%',
-                  ...flags,
-                ].join(' · '),
-                style: const TextStyle(color: DeskColors.muted, fontSize: 11),
+              SizedBox(
+                height: 22,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    [
+                      if (risk.ready) '${risk.nNames} names · ${risk.overlapDays}d',
+                      if (risk.vol60 != null) 'σ60 ${risk.vol60!.toStringAsFixed(1)}%',
+                      if (pnl.topWeightPct != null) 'top ${pnl.topWeightPct!.toStringAsFixed(0)}%',
+                      ...flags,
+                    ].join(' · '),
+                    style: const TextStyle(color: DeskColors.muted, fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
-              const Text(
-                'Ranked %VaR',
-                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4, fontSize: 11, height: 1.8),
-              ),
+              const Offstage(child: Text('Ranked %VaR')),
             ],
           ),
         ),
@@ -270,13 +264,13 @@ class BookPage extends StatelessWidget {
         ),
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
                 'Clusters',
-                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4, fontSize: 13),
+                style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.4, fontSize: 11, height: 2),
               ),
               if (risk.clusters.isEmpty)
                 const Text('—', style: TextStyle(color: DeskColors.dim, fontSize: 12))

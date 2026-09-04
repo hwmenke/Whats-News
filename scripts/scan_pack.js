@@ -24,11 +24,17 @@ function renderScanBreadth(strip) {
             <span class="scan-breadth-v">${_packEsc(v)}</span>
         </div>`;
     const stored = Number(data.stored_n || 0);
-    const emptyMsg = stored > 0
-        ? (data.message || `Desk list empty — ${stored} names have stored bars.`)
+    const wnHits = !!(document.getElementById('warnings-grid')?.querySelector('table, .wn-sym'));
+    const hasBars = stored > 0 || wnHits || window.__wnHasHits === true;
+    const emptyMsg = hasBars
+        ? (data.message && !/empty universe/i.test(data.message)
+            ? data.message
+            : (stored > 0
+                ? `Desk list empty — ${stored} names have stored bars.`
+                : 'ENGINE has hits from stored bars. Breadth dashes until the desk list is scored.'))
         : (data.message || 'Empty universe — no stored bars to score.');
     const help = empty
-        ? (stored > 0
+        ? (hasBars
             ? emptyMsg
             : 'Stockbee-style breadth from stored Yahoo closes. Dashes until the desk list has bars.')
         : (data.note || 'Stockbee-style breadth idea from our Yahoo/SQLite universe.');

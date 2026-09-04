@@ -49,6 +49,7 @@ function renderWarnings(data) {
     if (!grid) return;
     if (note) note.textContent = '';
     if (!data.ready) {
+        window.__wnHasHits = false;
         const msg = data.message || 'Empty warnings — no Pattern / VCP / RSI-C hits on stored bars.';
         const honest = /no stored bars/i.test(msg) && data.source
             ? 'Empty warnings — no Pattern / VCP / RSI-C hits on stored bars.'
@@ -56,6 +57,7 @@ function renderWarnings(data) {
         grid.innerHTML = `<p class="scanner-empty">${_wnEsc(honest)}</p>`;
         return;
     }
+    window.__wnHasHits = Array.isArray(data.takeaways) && data.takeaways.length > 0;
     const bo = data.breakouts || {};
     const d = bo.daily || {};
     const w = bo.weekly || {};

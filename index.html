@@ -6,7 +6,7 @@
   <title>Whats-News – Watchlist Dashboard</title>
   <meta name="description" content="Whats-News: local watchlist dashboard with Yahoo Finance charts, analysis, and real headlines." />
   <link rel="stylesheet" href="styles/main.css" />
-  <link rel="stylesheet" href="styles/theme.css" />
+  <link rel="stylesheet" href="styles/theme.css?v=42" />
   <!-- TradingView Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <!-- Chart.js for statistics -->
@@ -1434,7 +1434,7 @@
 
     <!-- ── Warnings — dense Excel-style takeaways from ENGINE ── -->
     <div id="warnings-area" class="moves-container warnings-container" style="display:none;">
-      <div class="mm-head">
+      <div class="mm-head visually-hidden">
         <h2 class="v41-title">WARNINGS</h2>
         <p class="engine-story-sub">Takeaways · breaking up/down · coiled · stretch. Same ENGINE. Empty buckets omitted.</p>
       </div>
@@ -1518,11 +1518,11 @@
     <!-- ── Risk — SPEC hero: ranked %VaR / MVaR / CVaR / clusters ── -->
     <div id="risk-area" class="risk-container" style="display:none;">
       <div class="book-head risk-hero-head">
-        <strong class="risk-title">Risk</strong>
+        <strong class="risk-title visually-hidden">Risk</strong>
+        <div id="risk-alert-chips" class="pnl-alert-chips" aria-label="Risk chips"></div>
         <button type="button" class="btn btn-ghost btn-sm" id="btn-risk-refresh">Reload</button>
       </div>
-      <div id="risk-alert-chips" class="pnl-alert-chips" aria-label="Risk chips"></div>
-      <h3 class="risk-spec-title">Ranked %VaR</h3>
+      <h3 class="risk-spec-title visually-hidden">Ranked %VaR</h3>
       <div class="scanner-table-wrap">
         <table class="scanner-table risk-table" id="risk-table">
           <thead>
