@@ -723,12 +723,26 @@ body.workspace-scan .desk-ia-bar {
   text-overflow: clip;
   white-space: nowrap;
 }
+#engine-command-body .wn-table {
+  width: max-content;
+  max-width: 100%;
+}
+#engine-command-body .wn-table th:nth-child(1),
+#engine-command-body .wn-table td:nth-child(1) {
+  width: 4.5rem;
+}
 #engine-command-body .wn-table th:nth-child(2),
 #engine-command-body .wn-table td:nth-child(2),
 #engine-command-body .wn-table th:nth-child(3),
-#engine-command-body .wn-table td:nth-child(3),
+#engine-command-body .wn-table td:nth-child(3) {
+  width: 4.5rem;
+  max-width: 5.5rem;
+}
 #engine-command-body .wn-table th:nth-child(4),
-#engine-command-body .wn-table td:nth-child(4),
+#engine-command-body .wn-table td:nth-child(4) {
+  width: 8rem;
+  max-width: 9rem;
+}
 #engine-maps-body .wn-table th:nth-child(2),
 #engine-maps-body .wn-table td:nth-child(2),
 #engine-maps-body .wn-table th:nth-child(3),

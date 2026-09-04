@@ -710,8 +710,8 @@ function renderEngineMaps(data, view) {
         const rows = ((data.scanner || {}).rows) || [];
         el.innerHTML = `
             <div class="warnings-grid">
-                ${_engTesDirTable(rows)}
                 ${_engScatter((data.scanner || {}).scatter || [], { xLabel: 'Dir ±5', yLabel: 'RSI(14)', xmin: -5, xmax: 5, ymin: 0, ymax: 100, guides: [{ v: 0 }, { h: 25 }, { h: 50 }, { h: 75 }] })}
+                ${_engTesDirTable(rows)}
             </div>
             <details class="scan-help"><summary>HOW TO READ — TES / DIR</summary>
                 <p class="scan-breadth-note">${_engEsc((data.scanner || {}).howto || '')}</p>
@@ -722,8 +722,8 @@ function renderEngineMaps(data, view) {
         const rot = data.rotation || {};
         el.innerHTML = `
             <div class="warnings-grid">
-                ${_engPtsTable('Rotation', rot.points, 'RSI(14)', '1w σ', p => p.asset_class || p.gray_tag)}
                 ${_engScatter(rot.points || [], { xLabel: rot.x_label, yLabel: rot.y_label, xmin: 0, xmax: 100, guides: [{ v: 50 }, { h: 0 }] })}
+                ${_engPtsTable('Rotation', rot.points, 'RSI(14)', '1w σ', p => p.asset_class || p.gray_tag)}
             </div>
             <details class="scan-help"><summary>HOW TO READ — ROTATION</summary>
                 <p class="scan-breadth-note">${_engEsc(rot.howto || '')}</p>
@@ -732,8 +732,8 @@ function renderEngineMaps(data, view) {
         const coil = data.coil || {};
         el.innerHTML = `
             <div class="warnings-grid">
-                ${_engPtsTable('Coil', coil.points, 'coil_12', '13w %', p => p.coil_state || p.gray_tag)}
                 ${_engScatter(coil.points || [], { xLabel: coil.x_label, yLabel: coil.y_label, xmin: 0, xmax: 1.2, ymin: -20, ymax: 120, band: [0, 0.65], guides: [{ v: 0.45, color: '#111111' }, { v: 0.65, color: '#111111' }, { h: 0 }, { h: 100 }] })}
+                ${_engPtsTable('Coil', coil.points, 'coil_12', '13w %', p => p.coil_state || p.gray_tag)}
             </div>
             <details class="scan-help"><summary>HOW TO READ — COIL</summary>
                 <p class="scan-breadth-note">${_engEsc(coil.howto || '')}</p>
@@ -742,8 +742,8 @@ function renderEngineMaps(data, view) {
         const ft = data.fractal_td || {};
         el.innerHTML = `
             <div class="warnings-grid">
-                ${_engPtsTable('Fractal × TD', ft.points, 'D65', 'TD', p => p.td_flag || p.gray_tag)}
                 ${_engScatter(ft.points || [], { xLabel: ft.x_label, yLabel: ft.y_label, xmin: 1.1, xmax: 2.1, ymin: -15, ymax: 15, guides: [{ v: 1.3 }, { v: 1.5 }, { h: 13, color: '#EF4444' }, { h: -13, color: '#22C55E' }, { h: 0 }], empty: 'No D65 — SPEC 25/27 window failed. No invented markers.' })}
+                ${_engPtsTable('Fractal × TD', ft.points, 'D65', 'TD', p => p.td_flag || p.gray_tag)}
             </div>
             <details class="scan-help"><summary>HOW TO READ — FRACTAL × TD</summary>
                 <p class="scan-breadth-note">${_engEsc(ft.howto || '')}</p>
@@ -759,9 +759,9 @@ function renderEngineMaps(data, view) {
         }));
         el.innerHTML = `
             <div class="warnings-grid">
+                ${_engScatter(pts, { xLabel: tm.x_label, yLabel: tm.y_label, xmin: -100, xmax: 100, ymin: -25, ymax: 25, guides: [{ v: 0 }, { h: 0 }] })}
                 ${_engPtsTable('TMS-W', tm.weekly, 'score', 'impulse', p => p.zone || 'solid')}
                 ${_engPtsTable('TMS-D', tm.daily, 'score', 'impulse', p => p.zone || 'hollow')}
-                ${_engScatter(pts, { xLabel: tm.x_label, yLabel: tm.y_label, xmin: -100, xmax: 100, ymin: -25, ymax: 25, guides: [{ v: 0 }, { h: 0 }] })}
                 ${_engListCol('Zones', zoneRows)}
                 ${_engListCol('TOP 12M %', (ex.top_12m || []).map(x => ({ symbol: x.symbol, takeaway: x.ret_12m == null ? '' : `${_engNum(x.ret_12m)}%` })))}
                 ${_engListCol('BOTTOM 12M %', (ex.bottom_12m || []).map(x => ({ symbol: x.symbol, takeaway: x.ret_12m == null ? '' : `${_engNum(x.ret_12m)}%` })))}
