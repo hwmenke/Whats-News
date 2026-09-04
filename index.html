@@ -1037,28 +1037,26 @@
 
     <!-- ── Paper P&L / Risk (marks from stored Yahoo closes) ── -->
     <div id="pnl-area" class="pnl-container" style="display:none;">
-      <div class="pnl-head">
-        <div>
-          <input id="pnl-desk-name" class="pnl-desk-name" value="Whats-News" maxlength="80" aria-label="Desk name" />
-          <p class="pnl-blurb">Paper book. Today's P&amp;L and VaR from positions × stored Yahoo daily closes. Empty is zeros — not a demo book.</p>
+      <div class="pnl-phone">
+        <div class="pnl-head">
+          <input id="pnl-desk-name" class="pnl-desk-name" value="WHATS-NEWS" maxlength="80" aria-label="Desk name" />
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-pnl-refresh">Reload</button>
         </div>
-        <button type="button" class="btn btn-ghost btn-sm" id="btn-pnl-refresh">Reload marks</button>
+        <div class="pnl-hero">
+          <div id="pnl-today-pct" class="pnl-today-pct">—</div>
+          <div class="pnl-hero-label">TODAY'S P&amp;L</div>
+          <div id="pnl-today-usd" class="pnl-today-usd">—</div>
+        </div>
+        <div class="pnl-curve-wrap">
+          <div class="pnl-curve-label" id="pnl-curve-label">daily mark series from stored closes — no intraday bars</div>
+          <canvas id="pnl-curve" height="160"></canvas>
+        </div>
+        <div id="pnl-metrics" class="pnl-exposure" role="table" aria-label="Exposure"></div>
+        <div id="pnl-tape" class="pnl-tape" aria-label="Position tape"></div>
+        <div id="pnl-var" class="pnl-var"></div>
+        <div id="pnl-dist" class="pnl-dist"></div>
+        <p id="pnl-note" class="pnl-blurb"></p>
       </div>
-      <div class="pnl-hero">
-        <div class="pnl-hero-label">TODAY'S P&amp;L</div>
-        <div id="pnl-today-pct" class="pnl-today-pct">—</div>
-        <div id="pnl-today-usd" class="pnl-today-usd">—</div>
-        <div id="pnl-nav" class="pnl-nav"></div>
-      </div>
-      <div class="pnl-curve-wrap">
-        <div class="pnl-curve-label" id="pnl-curve-label">daily mark series from stored closes — no intraday bars</div>
-        <canvas id="pnl-curve" height="120"></canvas>
-      </div>
-      <div id="pnl-metrics" class="pnl-metrics"></div>
-      <div id="pnl-var" class="pnl-var"></div>
-      <div id="pnl-dist" class="pnl-dist"></div>
-      <div id="pnl-tape" class="pnl-tape" aria-label="Position tape"></div>
-      <p id="pnl-note" class="macro-blurb"></p>
     </div>
 
     <!-- ── Paper Portfolio / Fidelity import ── -->

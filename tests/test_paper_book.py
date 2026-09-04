@@ -141,6 +141,25 @@ class PaperBookTests(unittest.TestCase):
         self.assertAlmostEqual(pnl["exposure"]["long"], 0.0)
         self.assertLess(pnl["nav"], 0)
 
+    def test_surfaces_use_axe_layout_not_demo_billions(self):
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("scripts/paper_book.js", encoding="utf-8") as fh:
+            js = fh.read()
+        with open("mobile/lib/ui/book_page.dart", encoding="utf-8") as fh:
+            dart = fh.read()
+        blob = html + js + dart
+        self.assertIn("TODAY'S P&amp;L", html)
+        self.assertIn("Equities", js)
+        self.assertIn("Net Exposure", js)
+        self.assertIn("id=\"pnl-area\"", html)
+        self.assertIn("id=\"book-area\"", html)
+        self.assertIn("Fidelity", html)
+        self.assertIn("_CsvPaste", dart)
+        self.assertNotIn("10.95B", blob)
+        self.assertNotIn("468.2", blob)
+        self.assertNotIn("AXE CAPITAL", blob)
+
 
 if __name__ == "__main__":
     unittest.main()

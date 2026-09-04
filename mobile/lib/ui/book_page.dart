@@ -16,8 +16,12 @@ class BookPage extends StatelessWidget {
     return CustomScrollView(
       slivers: [
         CupertinoSliverNavigationBar(
-          backgroundColor: DeskColors.elevated,
-          largeTitle: Text(pnl.deskName.isEmpty ? 'Whats-News' : pnl.deskName),
+          backgroundColor: const Color(0xFF07090D),
+          border: null,
+          largeTitle: Text(
+            (pnl.deskName.isEmpty ? 'Whats-News' : pnl.deskName).toUpperCase(),
+            style: const TextStyle(letterSpacing: 3, fontSize: 18),
+          ),
           trailing: CupertinoButton(
             padding: EdgeInsets.zero,
             onPressed: state.loadingBook ? null : state.loadBook,
@@ -26,17 +30,12 @@ class BookPage extends StatelessWidget {
         ),
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Paper book. Marks and VaR from stored Yahoo daily closes. Empty is zeros — not a demo P&L.',
-                  style: TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
-                ),
-                const SizedBox(height: 10),
                 Wrap(
                   spacing: 6,
+                  alignment: WrapAlignment.center,
                   children: [
                     _Chip(
                       label: 'P&L',
@@ -81,76 +80,98 @@ class BookPage extends StatelessWidget {
       return '${v < 0 ? '−' : ''}\$$abs';
     }
 
+    final mid = (pnl.tape.length / 2).ceil();
+    final tapeA = mid == 0 ? const <BookPosition>[] : pnl.tape.take(mid).toList();
+    final tapeB = mid == 0 ? const <BookPosition>[] : pnl.tape.skip(mid).toList();
+    final netPct = pnl.gross == 0 ? '—' : '${(pnl.net / pnl.gross * 100).toStringAsFixed(0)}%';
+
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('TODAY\'S P&L', style: TextStyle(color: DeskColors.dim, fontSize: 11, fontWeight: FontWeight.w700)),
               Text(
                 pct(pnl.todayPnlPct),
-                style: TextStyle(color: tone(pnl.todayPnlPct), fontSize: 48, fontWeight: FontWeight.w800, height: 1.05),
+                style: TextStyle(color: tone(pnl.todayPnlPct), fontSize: 64, fontWeight: FontWeight.w800, height: 0.95, letterSpacing: -1.5),
               ),
-              Text(usd(pnl.todayPnl), style: TextStyle(color: tone(pnl.todayPnl), fontSize: 20, fontWeight: FontWeight.w600)),
               const SizedBox(height: 4),
-              Text(
-                pnl.nav == null ? 'NAV —' : 'NAV ${usd(pnl.nav)}',
-                style: const TextStyle(color: DeskColors.muted, fontSize: 12),
+              const Text(
+                'TODAY\'S P&L',
+                style: TextStyle(color: DeskColors.text, fontSize: 13, letterSpacing: 2.4, fontWeight: FontWeight.w600),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
+              Text(usd(pnl.todayPnl), style: TextStyle(color: tone(pnl.todayPnl), fontSize: 26, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 10),
               Text(
-                pnl.curveLabel.isEmpty ? 'daily mark series from stored closes' : pnl.curveLabel,
-                style: const TextStyle(color: DeskColors.dim, fontSize: 11),
+                pnl.curveLabel.isEmpty ? 'daily mark series from stored closes — no intraday bars' : pnl.curveLabel,
+                style: const TextStyle(color: DeskColors.dim, fontSize: 10),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 6),
               SizedBox(
-                height: 88,
+                height: 168,
                 width: double.infinity,
                 child: CustomPaint(painter: _CurvePainter(pnl.curve.map((e) => e.$2).toList())),
               ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _Metric('Gross', usd(pnl.gross)),
-                  _Metric('Longs', usd(pnl.longMv)),
-                  _Metric('Shorts', usd(pnl.shortMv)),
-                  _Metric('Net', usd(pnl.net)),
-                  _Metric('Beta vs SPY', pnl.betaSpy?.toStringAsFixed(2) ?? '—'),
-                  _Metric('VaR 95% hist', pnl.hist95Pct == null ? '—' : '${pnl.hist95Pct!.toStringAsFixed(2)}%'),
-                  _Metric('VaR 95% param', pnl.param95Pct == null ? '—' : '${pnl.param95Pct!.toStringAsFixed(2)}%'),
-                  _Metric('ES 95%', pnl.es95Pct == null ? '—' : '${pnl.es95Pct!.toStringAsFixed(2)}%'),
-                ],
-              ),
-              if (pnl.varNote.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(pnl.varNote, style: const TextStyle(color: DeskColors.dim, fontSize: 11)),
-              ],
               const SizedBox(height: 8),
-              Text(
-                'Return dist n=${pnl.distN} · mean ${pnl.distMean?.toStringAsFixed(3) ?? '—'}% · σ ${pnl.distStdev?.toStringAsFixed(3) ?? '—'}%',
-                style: const TextStyle(color: DeskColors.muted, fontSize: 11),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  for (final t in pnl.tape)
-                    GestureDetector(
-                      onTap: () => onOpenChart(t.symbol),
-                      child: Text(
-                        '${t.symbol} ${t.ready ? pct(t.dayPct) : 'no bars'}',
-                        style: TextStyle(color: tone(t.dayPct), fontSize: 13, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                ],
+              _ExpRow('Equities', pnl.ready ? usd(pnl.gross) : '—'),
+              _ExpRow('Longs', pnl.ready ? usd(pnl.longMv) : '—'),
+              _ExpRow('Shorts', pnl.ready ? usd(pnl.shortMv) : '—'),
+              _ExpRow('Net Exposure', pnl.ready ? netPct : '—'),
+              _ExpRow('Beta', pnl.betaSpy?.toStringAsFixed(2) ?? '—'),
+              const SizedBox(height: 14),
+              if (tapeA.isNotEmpty)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final t in tapeA)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 16),
+                          child: GestureDetector(
+                            onTap: () => onOpenChart(t.symbol),
+                            child: Text.rich(TextSpan(children: [
+                              TextSpan(text: '${t.symbol} ', style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700)),
+                              TextSpan(text: t.ready ? pct(t.dayPct) : '—', style: TextStyle(color: tone(t.dayPct), fontWeight: FontWeight.w600)),
+                            ])),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              if (tapeB.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final t in tapeB)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 16),
+                          child: GestureDetector(
+                            onTap: () => onOpenChart(t.symbol),
+                            child: Text.rich(TextSpan(children: [
+                              TextSpan(text: '${t.symbol} ', style: const TextStyle(color: DeskColors.text, fontWeight: FontWeight.w700)),
+                              TextSpan(text: t.ready ? pct(t.dayPct) : '—', style: TextStyle(color: tone(t.dayPct), fontWeight: FontWeight.w600)),
+                            ])),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'VaR hist 95% ${pnl.hist95Pct?.toStringAsFixed(2) ?? '—'}% · param ${pnl.param95Pct?.toStringAsFixed(2) ?? '—'}% · ES ${pnl.es95Pct?.toStringAsFixed(2) ?? '—'}%\n'
+                  'Dist n=${pnl.distN} · mean ${pnl.distMean?.toStringAsFixed(3) ?? '—'}% · σ ${pnl.distStdev?.toStringAsFixed(3) ?? '—'}%',
+                  style: const TextStyle(color: DeskColors.dim, fontSize: 11, height: 1.4),
+                ),
               ),
               if (pnl.message.isNotEmpty) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Text(pnl.message, style: const TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35)),
               ],
             ],
@@ -172,13 +193,14 @@ class BookPage extends StatelessWidget {
           ),
         ),
       ),
+      SliverToBoxAdapter(child: _CsvPaste(state: s)),
       SliverToBoxAdapter(child: _AddLine(state: s)),
       if (rows.isEmpty)
         const SliverToBoxAdapter(
           child: Padding(
             padding: EdgeInsets.all(24),
             child: Text(
-              'Empty paper book. Import a Fidelity CSV on the web Book tab, or add a line here.',
+              'Empty paper book. Paste a Fidelity CSV or add a line. Marks stay blank until Yahoo bars are stored.',
               style: TextStyle(color: DeskColors.muted, height: 1.4),
             ),
           ),
@@ -318,27 +340,83 @@ class _Chip extends StatelessWidget {
   }
 }
 
-class _Metric extends StatelessWidget {
-  const _Metric(this.k, this.v);
+class _CsvPaste extends StatefulWidget {
+  const _CsvPaste({required this.state});
+  final WhatsNewsState state;
+
+  @override
+  State<_CsvPaste> createState() => _CsvPasteState();
+}
+
+class _CsvPasteState extends State<_CsvPaste> {
+  final _csv = TextEditingController();
+  String? _msg;
+  bool _replace = false;
+
+  @override
+  void dispose() {
+    _csv.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          CupertinoTextField(
+            controller: _csv,
+            placeholder: 'Paste Fidelity Positions CSV…',
+            maxLines: 4,
+            style: const TextStyle(color: DeskColors.text, fontSize: 12),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: () => setState(() => _replace = !_replace),
+                child: Text(_replace ? 'Replace on' : 'Replace off', style: const TextStyle(fontSize: 12)),
+              ),
+              const Spacer(),
+              CupertinoButton.filled(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                onPressed: () async {
+                  final text = _csv.text.trim();
+                  if (text.isEmpty) return;
+                  final msg = await widget.state.importBookCsv(text, replace: _replace);
+                  setState(() => _msg = msg);
+                },
+                child: const Text('Import CSV', style: TextStyle(fontSize: 13)),
+              ),
+            ],
+          ),
+          if (_msg != null) Text(_msg!, style: const TextStyle(color: DeskColors.muted, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExpRow extends StatelessWidget {
+  const _ExpRow(this.k, this.v);
   final String k;
   final String v;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 148,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: DeskColors.card,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: DeskColors.border),
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0xFF2A3140))),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(k, style: const TextStyle(color: DeskColors.dim, fontSize: 11, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text(v, style: const TextStyle(color: DeskColors.text, fontSize: 16, fontWeight: FontWeight.w700)),
+          Text(k, style: const TextStyle(color: DeskColors.text, fontSize: 16)),
+          const Spacer(),
+          Text(v, style: const TextStyle(color: DeskColors.text, fontSize: 16, fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -351,27 +429,33 @@ class _CurvePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = DeskColors.accentBright
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
+    final grid = Paint()
+      ..color = const Color(0xFF2A3140)
+      ..strokeWidth = 1;
+    for (var i = 1; i < 5; i++) {
+      final y = size.height * i / 5;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+      final x = size.width * i / 5;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
+    }
     if (values.length < 2) {
       return;
     }
     final min = values.reduce((a, b) => a < b ? a : b);
     final max = values.reduce((a, b) => a > b ? a : b);
     final span = (max - min).abs() < 1e-9 ? 1.0 : max - min;
-    final path = Path();
-    for (var i = 0; i < values.length; i++) {
-      final x = size.width * i / (values.length - 1);
-      final y = size.height - ((values[i] - min) / span) * size.height;
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
+    final open = values.first;
+    Offset pt(int i) => Offset(
+          size.width * i / (values.length - 1),
+          size.height - ((values[i] - min) / span) * size.height,
+        );
+    for (var i = 1; i < values.length; i++) {
+      final paint = Paint()
+        ..color = values[i] >= open ? DeskColors.green : DeskColors.red
+        ..strokeWidth = 2.2
+        ..style = PaintingStyle.stroke;
+      canvas.drawLine(pt(i - 1), pt(i), paint);
     }
-    canvas.drawPath(path, paint);
   }
 
   @override
