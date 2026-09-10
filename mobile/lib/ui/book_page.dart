@@ -319,34 +319,17 @@ class BookPage extends StatelessWidget {
 
   List<Widget> _positionSlivers(WhatsNewsState s) {
     final rows = s.bookPnl.positions;
+    final alpacaOn = s.alpacaStatus['configured'] == true;
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.headerContent, DeskSpace.inset, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Fidelity: Positions → download CSV (Symbol + Quantity; Cost Basis Average optional). No login, no orders.',
+                'Fidelity: Positions → download CSV (Symbol + Quantity; Cost Basis Average optional). No login, no orders. Import is the usual path.',
                 style: TextStyle(color: DeskColors.muted, fontSize: 12, height: 1.35),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Alpaca paper — not live P&L',
-                style: TextStyle(color: DeskColors.muted, fontSize: 12),
-              ),
-              if (s.alpacaMessage != null && s.alpacaMessage!.isNotEmpty)
-                Text(
-                  s.alpacaMessage!,
-                  style: const TextStyle(color: DeskColors.dim, fontSize: 11),
-                ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: CupertinoButton(
-                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
-                  onPressed: s.loadingBook ? null : s.syncAlpacaPaper,
-                  child: const Text('Sync Alpaca paper', style: TextStyle(fontSize: 13)),
-                ),
               ),
             ],
           ),
@@ -354,13 +337,52 @@ class BookPage extends StatelessWidget {
       ),
       SliverToBoxAdapter(child: _CsvPaste(state: s)),
       SliverToBoxAdapter(child: _AddLine(state: s)),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                alpacaOn
+                    ? 'Alpaca paper — not live P&L'
+                    : 'Alpaca paper — not live. Optional — Fidelity CSV is the usual path.',
+                style: const TextStyle(color: DeskColors.dim, fontSize: 11),
+              ),
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
+                onPressed: s.loadingBook
+                    ? null
+                    : () {
+                        if (!alpacaOn) {
+                          s.noteAlpacaQuiet();
+                          return;
+                        }
+                        s.syncAlpacaPaper();
+                      },
+                child: Text(
+                  'Sync Alpaca paper',
+                  style: TextStyle(fontSize: 12, color: alpacaOn ? DeskColors.accent : DeskColors.dim),
+                ),
+              ),
+              if (s.alpacaMessage != null &&
+                  s.alpacaMessage!.isNotEmpty &&
+                  !s.alpacaMessage!.contains('APCA_'))
+                Text(
+                  s.alpacaMessage!,
+                  style: const TextStyle(color: DeskColors.dim, fontSize: 11),
+                ),
+            ],
+          ),
+        ),
+      ),
       if (rows.isEmpty)
         const SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.all(24),
+            padding: EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
             child: Text(
               'Empty paper book. Paste a Fidelity CSV or add a line. Marks stay blank until Yahoo bars are stored.',
-              style: TextStyle(color: DeskColors.muted, height: 1.4),
+              style: TextStyle(color: DeskColors.muted, height: 1.4, fontSize: 12),
             ),
           ),
         )
@@ -563,7 +585,7 @@ class _CsvPasteState extends State<_CsvPaste> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

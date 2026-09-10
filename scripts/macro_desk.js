@@ -194,7 +194,7 @@ function renderMacroSeedBar() {
     coreBtn.type = 'button';
     coreBtn.className = 'btn btn-primary btn-sm';
     coreBtn.textContent = 'Seed Core 50';
-    coreBtn.title = 'Add ~50 liquid names to the desk. Does not download Yahoo.';
+    coreBtn.title = 'Add ~50 liquid names and Fetch Yahoo. Empty cards mean bars not in yet.';
     coreBtn.addEventListener('click', seedCore50);
     bar.appendChild(coreBtn);
 
@@ -404,13 +404,21 @@ async function seedCore50() {
     if (_macroBusy) return;
     _macroBusy = true;
     try {
-        const data = await apiFetch(`${API}/universe/core50`, { method: 'POST' });
+        const data = await apiFetch(`${API}/desk/seed-fetch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ core50: '1', delay: 0.4, period: '2y' }),
+        });
+        const n = (data.core50 && data.core50.count) || 0;
         if (typeof toast === 'function') {
-            toast(`Core 50 on desk (${data.count || 0} names). Fetch Yahoo per name.`, 'info');
+            toast(`Core 50 on desk (${n} names). Fetching Yahoo — empty cards mean bars not in yet.`, 'info');
         }
         if (typeof loadSymbols === 'function') await loadSymbols();
         await loadMacroBoard();
         renderMacroSeedBar();
+        if (typeof loadEngineMaps === 'function') {
+            try { await loadEngineMaps(); } catch (_) { /* maps refresh is best-effort */ }
+        }
     } catch (err) {
         if (typeof toast === 'function') toast(err.message || 'Core 50 failed', 'error');
     } finally {

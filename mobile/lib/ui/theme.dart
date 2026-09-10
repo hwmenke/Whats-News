@@ -65,3 +65,38 @@ CupertinoThemeData deskCupertinoTheme() {
     ),
   );
 }
+
+/// One-tap Core 50 when the desk has no Yahoo bars yet. Not a new board.
+class EmptySeedCta extends StatelessWidget {
+  const EmptySeedCta({
+    super.key,
+    required this.onSeed,
+    this.busy = false,
+    this.message = 'Empty desk — no Yahoo bars yet. Not broken.',
+  });
+
+  final VoidCallback onSeed;
+  final bool busy;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(message, style: const TextStyle(color: DeskColors.muted, height: 1.4, fontSize: 13)),
+        const SizedBox(height: DeskSpace.section),
+        CupertinoButton.filled(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          onPressed: busy ? null : onSeed,
+          child: Text(busy ? 'Seeding…' : 'Seed Core 50', style: const TextStyle(fontSize: 13)),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Or type AAPL and tap +. Cards light up after Yahoo fetch.',
+          style: TextStyle(color: DeskColors.dim, fontSize: 11),
+        ),
+      ],
+    );
+  }
+}

@@ -115,13 +115,16 @@ class _WatchlistPageState extends State<WatchlistPage> {
           SliverFillRemaining(
             hasScrollBody: false,
             child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                state.symbols.isEmpty
-                    ? 'Empty desk.\n\nSeed a Macro sleeve or Core 50, or type AAPL and tap +. Cards light up after Fetch from Yahoo — no invented prices.'
-                    : 'No names in this Country / Sector / Theme / Broad filter.',
-                style: const TextStyle(color: DeskColors.muted, height: 1.4),
-              ),
+              padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
+              child: state.symbols.isEmpty
+                  ? EmptySeedCta(
+                      busy: state.seedingSleeve,
+                      onSeed: state.seedCore50,
+                    )
+                  : const Text(
+                      'No names in this Country / Sector / Theme / Broad filter.',
+                      style: TextStyle(color: DeskColors.muted, height: 1.4),
+                    ),
             ),
           )
         else

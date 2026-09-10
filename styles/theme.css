@@ -810,6 +810,17 @@ body.workspace-scan .desk-ia-bar {
 }
 .scanner-empty { padding: 0 !important; margin: 0; }
 .scanner-empty .empty-icon { display: none; }
+.empty-state .empty-icon { display: none; }
+.empty-state h2 { font-family: var(--font-face-title); font-size: 16px; margin: 0 0 8px; }
+.empty-state > p { font-size: 13px; color: #666; margin: 0 0 10px; }
+#btn-empty-seed { margin: 0 0 8px; }
+.empty-seed-note { font-size: 12px !important; color: #666; }
+.book-alpaca {
+  margin-top: var(--space-section);
+  padding: 0;
+}
+.book-alpaca-note { font-size: 11px !important; color: #666 !important; margin: 0 !important; }
+.book-alpaca:not(.is-ready) #btn-alpaca-sync { opacity: 0.55; }
 .risk-container > :last-child,
 .warnings-container > :last-child,
 #scanner-area > :last-child {

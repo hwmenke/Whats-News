@@ -6,7 +6,7 @@
   <title>Whats-News – Watchlist Dashboard</title>
   <meta name="description" content="Whats-News: local watchlist dashboard with Yahoo Finance charts, analysis, and real headlines." />
   <link rel="stylesheet" href="styles/main.css" />
-  <link rel="stylesheet" href="styles/theme.css?v=55" />
+  <link rel="stylesheet" href="styles/theme.css?v=56" />
   <!-- TradingView Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <!-- Chart.js for statistics -->
@@ -327,16 +327,14 @@
 
     <!-- ── Empty State / First-run guide ── -->
     <div id="empty-state" class="empty-state" style="display:flex;">
-      <div class="empty-icon">📰</div>
-      <h2>Welcome to Whats-News</h2>
-      <p>Your local watchlist for charts, analysis, and real Yahoo Finance headlines.</p>
+      <h2>Empty desk</h2>
+      <p>No Yahoo bars yet — not broken. Seed Core 50 (or a Macro sleeve), then Watchlist / Scans / P&amp;L / Risk.</p>
+      <button type="button" id="btn-empty-seed" class="btn btn-primary">Seed Core 50</button>
+      <p class="empty-seed-note">Or type <strong>AAPL</strong> in the sidebar and press <strong>+</strong>.</p>
       <ol class="onboarding-steps">
-        <li>Open <strong>Macro</strong> and seed a sleeve (or <strong>Core 50</strong>) — cards light up after Yahoo fetch</li>
-        <li>Type a ticker in the sidebar (try <strong>AAPL</strong>) and press <strong>+</strong></li>
-        <li>Press <kbd>/</kbd> to jump without adding · <kbd>⌘K</kbd> for commands · <kbd>j</kbd>/<kbd>k</kbd> walk the list</li>
-        <li>Tab <strong>News · this ticker</strong> is the selected symbol · top-bar <a href="/news">Watchlist news</a> is the whole list</li>
-        <li>Press <kbd>f</kbd> for focus mode (hides extra chrome; Scan list and Review drawers stay)</li>
-        <li><kbd>1</kbd> Chart · <kbd>2</kbd> Scan (list stays up) · <kbd>3</kbd> Review</li>
+        <li>Seed once — cards light up after Yahoo fetch</li>
+        <li>Type a ticker and press <strong>+</strong> if you only want one name</li>
+        <li><kbd>/</kbd> jump · <kbd>⌘K</kbd> commands · <kbd>j</kbd>/<kbd>k</kbd> walk the list</li>
       </ol>
       <p class="kbd-hint-row" id="kbd-hint-row">
         <span><kbd>/</kbd> jump</span>
@@ -1471,19 +1469,12 @@
       <div class="book-head">
         <div>
           <strong class="book-title">Upload / Data</strong>
-          <p class="pnl-blurb">Fidelity: Positions → download CSV. Needs <code>Symbol</code> + <code>Quantity</code>. <code>Cost Basis Average</code> optional. No Fidelity login, no orders. Import only — P&amp;L and Risk are separate surfaces.</p>
+          <p class="pnl-blurb">Fidelity: Positions → download CSV. Needs <code>Symbol</code> + <code>Quantity</code>. <code>Cost Basis Average</code> optional. No Fidelity login, no orders. Import is the usual path — P&amp;L and Risk are separate surfaces.</p>
         </div>
         <button type="button" class="btn btn-ghost btn-sm" id="btn-book-reload">Reload</button>
       </div>
-      <div class="book-alpaca">
-        <p class="pnl-blurb">Alpaca paper — not live P&amp;L. Sync is GET /v2/account + /v2/positions only. Keys via env (<code>APCA_API_KEY_ID</code>). Live <code>api.alpaca.markets</code> is refused.</p>
-        <div class="book-import-row">
-          <button type="button" class="btn btn-primary btn-sm" id="btn-alpaca-sync">Sync Alpaca paper</button>
-          <span id="alpaca-sync-msg" class="scanner-ts"></span>
-        </div>
-      </div>
       <div class="book-import">
-        <textarea id="book-csv" class="book-csv" rows="6" placeholder="Paste Fidelity Positions CSV here…"></textarea>
+        <textarea id="book-csv" class="book-csv" rows="5" placeholder="Paste Fidelity Positions CSV here…"></textarea>
         <div class="book-import-row">
           <label class="dm-label-inline"><input type="checkbox" id="book-replace" /> Replace existing book</label>
           <button type="button" class="btn btn-primary btn-sm" id="btn-book-import">Import CSV</button>
@@ -1500,6 +1491,13 @@
         <input id="book-add-cost" type="number" step="any" placeholder="Avg cost (opt.)" />
         <button type="submit" class="btn btn-primary btn-sm">Add line</button>
       </form>
+      <div class="book-alpaca" id="book-alpaca">
+        <p class="pnl-blurb book-alpaca-note">Alpaca paper — not live P&amp;L.</p>
+        <div class="book-import-row">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-alpaca-sync">Sync Alpaca paper</button>
+          <span id="alpaca-sync-msg" class="scanner-ts"></span>
+        </div>
+      </div>
       <div class="scanner-table-wrap">
         <table class="scanner-table book-table" id="book-table">
           <thead>

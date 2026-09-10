@@ -2302,14 +2302,20 @@ function showEmptyState() {
     const title = document.querySelector('#empty-state h2');
     const blurb = document.querySelector('#empty-state > p');
     const steps = document.querySelector('#empty-state .onboarding-steps');
+    const seedBtn = document.getElementById('btn-empty-seed');
+    const seedNote = document.querySelector('.empty-seed-note');
     if (!state.symbols.length) {
-        if (title) title.textContent = 'Welcome to Whats-News';
-        if (blurb) blurb.textContent = 'Your local watchlist for charts, analysis, and real Yahoo Finance headlines.';
+        if (title) title.textContent = 'Empty desk';
+        if (blurb) blurb.textContent = 'No Yahoo bars yet — not broken. Seed Core 50 (or a Macro sleeve), then Watchlist / Scans / P&L / Risk.';
         if (steps) steps.style.display = '';
+        if (seedBtn) seedBtn.style.display = '';
+        if (seedNote) seedNote.style.display = '';
     } else {
         if (title) title.textContent = 'Pick a symbol';
         if (blurb) blurb.textContent = 'Click a ticker in the watchlist sidebar to load its chart and analysis.';
         if (steps) steps.style.display = 'none';
+        if (seedBtn) seedBtn.style.display = 'none';
+        if (seedNote) seedNote.style.display = 'none';
     }
 }
 
@@ -3820,6 +3826,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Focus mode pill — body.focus-mode hides extra chrome (CSS per workspace).
     document.getElementById('pill-focus')?.addEventListener('click', () => toggleFocusMode());
     document.getElementById('btn-yahoo-retry')?.addEventListener('click', retryYahooFetch);
+    document.getElementById('btn-empty-seed')?.addEventListener('click', async () => {
+        const btn = document.getElementById('btn-empty-seed');
+        if (btn) btn.disabled = true;
+        try {
+            if (typeof seedCore50 === 'function') await seedCore50();
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    });
 
     // Buttons
     document.getElementById('btn-add-symbol').addEventListener('click', addSymbol);

@@ -193,12 +193,13 @@ class ScansPage extends StatelessWidget {
             child: Center(child: CupertinoActivityIndicator()),
           )
         else if (_rowsEmpty(state))
-          const SliverToBoxAdapter(
+          SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
-              child: Text(
-                'No scan rows yet.\n\nSeed a Macro sleeve or Core 50, Fetch from Yahoo, then refresh. Empty is missing bars — not a fake print.',
-                style: TextStyle(color: DeskColors.muted, height: 1.4),
+              padding: const EdgeInsets.fromLTRB(DeskSpace.inset, DeskSpace.section, DeskSpace.inset, 0),
+              child: EmptySeedCta(
+                busy: state.seedingSleeve,
+                message: 'No scan rows yet — no Yahoo bars. Not broken.',
+                onSeed: state.seedCore50,
               ),
             ),
           )

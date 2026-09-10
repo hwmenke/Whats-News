@@ -327,9 +327,15 @@ class WhatsNewsState extends ChangeNotifier {
       if (bookPane == 'upload') {
         try {
           alpacaStatus = await api.getAlpacaStatus();
-          alpacaMessage = '${alpacaStatus['reason'] ?? alpacaStatus['note'] ?? ''}';
+          // Do not surface Missing APCA_* as Upload hero. Quiet unless keys exist.
+          if (alpacaStatus['configured'] == true) {
+            alpacaMessage = 'Alpaca paper — not live P&L';
+          } else {
+            alpacaMessage = '';
+          }
         } on ApiException {
           alpacaStatus = const {};
+          alpacaMessage = '';
         }
       }
     } on ApiException catch (e) {
@@ -354,13 +360,25 @@ class WhatsNewsState extends ChangeNotifier {
     await loadBook();
   }
 
+  void noteAlpacaQuiet() {
+    alpacaMessage = 'Alpaca paper — not live. Fidelity CSV is the usual path.';
+    notifyListeners();
+  }
+
   Future<String> syncAlpacaPaper() async {
     try {
       final raw = await api.syncAlpacaPaper();
       if (raw['ok'] == true) {
         alpacaMessage = 'Alpaca paper — not live P&L. Imported ${raw['imported'] ?? 0} lines.';
       } else {
-        alpacaMessage = '${raw['reason'] ?? raw['note'] ?? 'Alpaca paper unavailable'}';
+        final reason = '${raw['reason'] ?? ''}';
+        if (reason.toLowerCase().contains('missing') && reason.contains('APCA')) {
+          alpacaMessage = 'Alpaca paper — not live. Fidelity CSV is the usual path.';
+        } else {
+          alpacaMessage = reason.isNotEmpty
+              ? reason
+              : '${raw['note'] ?? 'Alpaca paper unavailable'}';
+        }
       }
       await loadBook();
       return alpacaMessage ?? '';

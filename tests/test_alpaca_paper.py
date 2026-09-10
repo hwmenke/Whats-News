@@ -168,14 +168,19 @@ class AlpacaApiTests(unittest.TestCase):
         blob = html + js + dart
         self.assertIn("Alpaca paper — not live P&L", dart)
         self.assertIn("Alpaca paper — not live P&amp;L", html)
-        self.assertIn("/api/alpaca/sync", js)
+        self.assertIn("/alpaca/sync", js)
+        self.assertIn("/alpaca/status", js)
         self.assertNotIn("api.alpaca.markets", js)
         self.assertNotIn("submit_order", blob)
         self.assertEqual(dart.count("Sync Alpaca paper"), 1)
         self.assertGreater(dart.find("Sync Alpaca paper"), dart.find("_positionSlivers"))
-        self.assertLess(dart.find("Sync Alpaca paper"), dart.find("_CsvPaste"))
+        self.assertGreater(dart.find("Sync Alpaca paper"), dart.find("_CsvPaste"))
+        self.assertLess(html.find("book-import"), html.find("book-alpaca"))
+        self.assertNotIn("APCA_API_KEY_ID", html[html.find("id=\"book-area\""):html.find("id=\"risk-area\"")])
+        self.assertIn("Fidelity CSV is the usual path", dart)
+        self.assertIn("noteAlpacaQuiet", dart)
         self.assertNotIn("Sync Alpaca paper", dart[dart.find("Widget _pnlFill"):dart.find("List<Widget> _positionSlivers")])
-        self.assertNotIn("Sync Alpaca paper", dart[dart.find("_riskSlivers"):dart.find("_positionSlivers")])
+        self.assertNotIn("Sync Alpaca paper", dart[dart.find("_riskSlivers"):dart.find("List<Widget> _positionSlivers")])
 
 
 if __name__ == "__main__":

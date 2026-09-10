@@ -295,6 +295,7 @@ async function loadPaperBook() {
             tbody.appendChild(tr);
         });
         if (empty) empty.style.display = rows.length ? 'none' : 'block';
+        await _refreshAlpacaChrome();
     } catch (err) {
         if (empty) {
             empty.style.display = 'block';
@@ -470,19 +471,63 @@ async function loadPaperRisk() {
     }
 }
 
+function _alpacaQuietCopy() {
+    return 'Alpaca paper — not live. Fidelity CSV is the usual path.';
+}
+
+async function _refreshAlpacaChrome() {
+    const box = document.getElementById('book-alpaca');
+    const btn = document.getElementById('btn-alpaca-sync');
+    const msg = document.getElementById('alpaca-sync-msg');
+    const note = document.querySelector('.book-alpaca-note');
+    try {
+        const st = await apiFetch(`${API}/alpaca/status`);
+        const on = !!st.configured;
+        if (box) box.classList.toggle('is-ready', on);
+        if (note) {
+            note.textContent = on
+                ? 'Alpaca paper — not live P&L.'
+                : 'Alpaca paper — not live. Optional — Fidelity CSV is the usual path.';
+        }
+        if (btn) {
+            btn.disabled = false;
+            btn.className = 'btn btn-ghost btn-sm';
+            btn.dataset.ready = on ? '1' : '0';
+            btn.title = on
+                ? 'Alpaca paper — not live P&L'
+                : 'No Alpaca paper keys on this Mac. Use Fidelity CSV.';
+        }
+        if (msg && !on) msg.textContent = '';
+        if (msg && on) msg.textContent = 'Alpaca paper — not live P&L';
+    } catch (_) {
+        if (note) note.textContent = 'Alpaca paper — not live. Optional — Fidelity CSV is the usual path.';
+        if (msg) msg.textContent = '';
+    }
+}
+
 function bindPaperBook() {
     document.getElementById('btn-pnl-refresh')?.addEventListener('click', () => loadPaperPnl());
     document.getElementById('btn-book-reload')?.addEventListener('click', () => loadPaperBook());
     document.getElementById('btn-risk-refresh')?.addEventListener('click', () => loadPaperRisk());
     document.getElementById('btn-alpaca-sync')?.addEventListener('click', async () => {
         const msg = document.getElementById('alpaca-sync-msg');
-        if (msg) msg.textContent = 'POST /api/alpaca/sync…';
+        const btn = document.getElementById('btn-alpaca-sync');
+        if (btn && btn.dataset.ready !== '1') {
+            if (msg) msg.textContent = _alpacaQuietCopy();
+            return;
+        }
+        if (msg) msg.textContent = 'Syncing paper…';
         try {
             const data = await apiFetch(`${API}/alpaca/sync`, { method: 'POST' });
             if (msg) {
-                msg.textContent = data.ok
-                    ? `Alpaca paper — not live P&L. Imported ${data.imported || 0} ${data.source || 'alpaca_paper'} lines.`
-                    : (data.reason || data.note || 'Alpaca paper unavailable');
+                const reason = String(data.reason || '');
+                if (data.ok) {
+                    msg.textContent = `Alpaca paper — not live P&L. Imported ${data.imported || 0} lines.`;
+                } else if (/missing/i.test(reason) && reason.includes('APCA')) {
+                    msg.textContent = _alpacaQuietCopy();
+                } else {
+                    msg.textContent = reason || data.note || 'Alpaca paper unavailable';
+                }
             }
             await loadPaperBook();
             await loadPaperPnl();

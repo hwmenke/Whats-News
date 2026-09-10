@@ -36,8 +36,8 @@ Xcode / Flutter missing? See `mobile/README.md`. Gear → server `http://127.0.0
 
 Empty cards are missing Yahoo bars — not a fake print.
 
-- Watchlist → open **Macro** (or Watchlist **gear** → Universe)
-- Tap **Seed Core 50** *or* one sleeve chip (Indexes / Big Tech / Sectors)
+- Empty desk: tap **Seed Core 50** on the empty screen (web or iPhone). Same tap lives on Watchlist / Scans when there are no Yahoo bars yet — empty means bars not in, not broken.
+- Or Watchlist → **Macro** / gear → one sleeve chip.
 - Wait for the fetch. Yahoo may throttle; retry the same tap later. Once is enough.
 
 Do **not** Register S&P / archive unless you want a slow univ:* dump.
