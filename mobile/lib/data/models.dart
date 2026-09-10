@@ -1,0 +1,2858 @@
+/// Shared models for the Whats-News client.
+///
+/// These match the JSON from the Python data layer (`/api/symbols`,
+/// `/api/ohlcv/<sym>`, `/api/news`) used by the Dash app.
+library;
+
+class WatchSymbol {
+  const WatchSymbol({
+    required this.symbol,
+    this.name = '',
+    this.sector = '',
+    this.groupTag = '',
+    this.filterKind = '',
+    this.groupLabel = '',
+  });
+
+  final String symbol;
+  final String name;
+  final String sector;
+  final String groupTag;
+  final String filterKind;
+  final String groupLabel;
+
+  bool get isUniverseArchive => groupTag.startsWith('univ:');
+
+  String get filterFamily {
+    if (filterKind.isNotEmpty) return filterKind;
+    final tag = groupTag.toLowerCase();
+    if (tag.contains('countries') || tag.contains('intl')) return 'country';
+    if (tag.contains('sector')) return 'sector';
+    if (tag.contains('theme') ||
+        tag.contains('tech') ||
+        tag.contains('resource') ||
+        tag.contains('crypto') ||
+        tag.contains('bond') ||
+        tag.contains('ags') ||
+        tag.contains('metal') ||
+        tag.contains('fx') ||
+        tag.contains('yield') ||
+        tag.contains('big_tech') ||
+        tag.contains('commodit') ||
+        tag.contains('rates')) {
+      return 'theme';
+    }
+    if (tag.contains('index') || tag == 'sleeve:core' || tag.contains('broad_etf')) {
+      return 'index';
+    }
+    return '';
+  }
+
+  String get displayGroup {
+    if (groupLabel.isNotEmpty) return groupLabel;
+    if (groupTag.isEmpty) return 'Ungrouped';
+    return groupTag;
+  }
+
+  factory WatchSymbol.fromJson(Map<String, dynamic> json) {
+    return WatchSymbol(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      name: json['name'] as String? ?? '',
+      sector: json['sector'] as String? ?? '',
+      groupTag: json['group_tag'] as String? ?? '',
+      filterKind: '${json['filter_kind'] ?? ''}',
+      groupLabel: '${json['group_label'] ?? ''}',
+    );
+  }
+}
+
+class OhlcvBar {
+  const OhlcvBar({
+    required this.date,
+    required this.open,
+    required this.high,
+    required this.low,
+    required this.close,
+    required this.volume,
+  });
+
+  final String date;
+  final double open;
+  final double high;
+  final double low;
+  final double close;
+  final double volume;
+
+  bool get isUp => close >= open;
+
+  factory OhlcvBar.fromJson(Map<String, dynamic> json) {
+    double n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v') ?? 0;
+    }
+
+    return OhlcvBar(
+      date: '${json['date'] ?? ''}',
+      open: n(json['open']),
+      high: n(json['high']),
+      low: n(json['low']),
+      close: n(json['close']),
+      volume: n(json['volume']),
+    );
+  }
+}
+
+class NewsArticle {
+  const NewsArticle({
+    required this.title,
+    required this.url,
+    this.symbol,
+    this.summary = '',
+    this.publishTime = '',
+    this.provider = 'Yahoo Finance',
+    this.providerUrl = 'https://finance.yahoo.com/',
+  });
+
+  final String title;
+  final String url;
+  final String? symbol;
+  final String summary;
+  final String publishTime;
+  final String provider;
+  final String providerUrl;
+
+  factory NewsArticle.fromJson(Map<String, dynamic> json) {
+    final symbol = json['symbol'] as String?;
+    return NewsArticle(
+      title: json['title'] as String? ?? 'No title',
+      url: json['url'] as String? ?? '',
+      symbol: symbol == null || symbol.isEmpty ? null : symbol.toUpperCase(),
+      summary: json['summary'] as String? ?? '',
+      publishTime: json['publish_time'] as String? ?? '',
+      provider: json['provider'] as String? ?? 'Yahoo Finance',
+      providerUrl: json['provider_url'] as String? ?? 'https://finance.yahoo.com/',
+    );
+  }
+}
+
+class NewsFeed {
+  const NewsFeed({
+    required this.articles,
+    this.source = 'Yahoo Finance',
+    this.message,
+    this.errors = const [],
+  });
+
+  final List<NewsArticle> articles;
+  final String source;
+  final String? message;
+  final List<String> errors;
+
+  factory NewsFeed.fromJson(Map<String, dynamic> json) {
+    final raw = json['articles'];
+    final articles = <NewsArticle>[];
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is Map<String, dynamic>) {
+          articles.add(NewsArticle.fromJson(item));
+        } else if (item is Map) {
+          articles.add(NewsArticle.fromJson(Map<String, dynamic>.from(item)));
+        }
+      }
+    }
+    final errRaw = json['errors'];
+    final errors = <String>[];
+    if (errRaw is List) {
+      for (final e in errRaw) {
+        if (e is Map && e['error'] != null) {
+          errors.add('${e['symbol'] ?? '?'}: ${e['error']}');
+        }
+      }
+    }
+    return NewsFeed(
+      articles: articles,
+      source: json['source'] as String? ?? 'Yahoo Finance',
+      message: json['message'] as String?,
+      errors: errors,
+    );
+  }
+}
+
+class ApiException implements Exception {
+  ApiException(this.message, {this.status, this.code, this.retryAfterSec});
+
+  final String message;
+  final int? status;
+  final String? code;
+  final int? retryAfterSec;
+
+  bool get isThrottle => code == 'yahoo_throttle' || status == 429;
+
+  bool get isMissingBars => status == 404;
+
+  @override
+  String toString() => message;
+}
+
+class IndicatorPoint {
+  const IndicatorPoint({required this.date, this.value});
+
+  final String date;
+  final double? value;
+
+  factory IndicatorPoint.fromJson(Map<String, dynamic> json) {
+    final raw = json['value'];
+    double? v;
+    if (raw is num) {
+      v = raw.toDouble();
+    } else if (raw != null) {
+      v = double.tryParse('$raw');
+    }
+    return IndicatorPoint(date: '${json['date'] ?? ''}', value: v);
+  }
+}
+
+/// Series from GET /api/indicators — KAMA / BB / RSI computed in Python.
+class IndicatorPack {
+  const IndicatorPack({this.series = const {}});
+
+  final Map<String, List<IndicatorPoint>> series;
+
+  static const empty = IndicatorPack();
+
+  List<IndicatorPoint> of(String key) => series[key] ?? const [];
+
+  factory IndicatorPack.fromJson(Map<String, dynamic> json) {
+    if (json['error'] != null) return empty;
+    final out = <String, List<IndicatorPoint>>{};
+    json.forEach((key, raw) {
+      if (raw is! List) return;
+      out[key] = [
+        for (final item in raw)
+          if (item is Map)
+            IndicatorPoint.fromJson(Map<String, dynamic>.from(item)),
+      ];
+    });
+    return IndicatorPack(series: out);
+  }
+}
+
+class TrendScanRow {
+  const TrendScanRow({
+    required this.symbol,
+    this.price,
+    this.rsi,
+    this.kama10Pct,
+    this.kama20Pct,
+    this.kama50Pct,
+    this.signal,
+    this.rr,
+    this.mrt,
+    this.mdb,
+    this.error,
+  });
+
+  final String symbol;
+  final double? price;
+  final double? rsi;
+  final double? kama10Pct;
+  final double? kama20Pct;
+  final double? kama50Pct;
+  final int? signal;
+  final double? rr;
+  final double? mrt;
+  final double? mdb;
+  final String? error;
+
+  factory TrendScanRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    int? i(Object? v) {
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse('$v');
+    }
+
+    return TrendScanRow(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      price: n(json['price']),
+      rsi: n(json['rsi']),
+      kama10Pct: n(json['kama10_pct']),
+      kama20Pct: n(json['kama20_pct']),
+      kama50Pct: n(json['kama50_pct']),
+      signal: i(json['signal']),
+      rr: n(json['rr']),
+      mrt: n(json['mrt']),
+      mdb: n(json['mdb']),
+      error: json['error'] as String?,
+    );
+  }
+}
+
+class ScannerTf {
+  const ScannerTf({
+    this.rsi14,
+    this.atrPct,
+    this.roc1m,
+    this.volRatio,
+    this.distHi,
+    this.distSma,
+    this.trendScore,
+    this.pKfPct,
+  });
+
+  final double? rsi14;
+  final double? atrPct;
+  final double? roc1m;
+  final double? volRatio;
+  final double? distHi;
+  final double? distSma;
+  final double? trendScore;
+  final double? pKfPct;
+
+  factory ScannerTf.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const ScannerTf();
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return ScannerTf(
+      rsi14: n(json['rsi_14']),
+      atrPct: n(json['atr_pct']),
+      roc1m: n(json['roc_1m']),
+      volRatio: n(json['vol_ratio']),
+      distHi: n(json['dist_hi']),
+      distSma: n(json['dist_sma']),
+      trendScore: n(json['trend_score']),
+      pKfPct: n(json['p_kf_pct']),
+    );
+  }
+}
+
+class ScannerRow {
+  const ScannerRow({
+    required this.symbol,
+    this.price,
+    this.chg,
+    this.error,
+    this.daily = const ScannerTf(),
+  });
+
+  final String symbol;
+  final double? price;
+  final double? chg;
+  final String? error;
+  final ScannerTf daily;
+
+  factory ScannerRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    Map<String, dynamic>? tf;
+    final raw = json['d'];
+    if (raw is Map) tf = Map<String, dynamic>.from(raw);
+
+    return ScannerRow(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      price: n(json['price']),
+      chg: n(json['chg']),
+      error: json['error'] as String?,
+      daily: ScannerTf.fromJson(tf),
+    );
+  }
+}
+
+class SetupScanRow {
+  const SetupScanRow({
+    required this.symbol,
+    this.ready = false,
+    this.price,
+    this.changePct,
+    this.setups = const [],
+    this.setupScore,
+    this.adrPct,
+    this.regime,
+    this.dist20dHighPct,
+    this.volRatio,
+    this.gapPct,
+    this.tmacStar,
+    this.error,
+  });
+
+  final String symbol;
+  final bool ready;
+  final double? price;
+  final double? changePct;
+  final List<String> setups;
+  final double? setupScore;
+  final double? adrPct;
+  final String? regime;
+  final double? dist20dHighPct;
+  final double? volRatio;
+  final double? gapPct;
+  final int? tmacStar;
+  final String? error;
+
+  /// Desk heuristic — high-ADR names (not a published rating).
+  bool get isHighAdr => adrPct != null && adrPct! >= 4.0;
+
+  bool get isEp => setups.contains('EP');
+  bool get isBreakoutQueue => setups.contains('BREAKOUT_QUEUE');
+  bool get isVolSurge => setups.contains('VOL_SURGE');
+  bool get isNearHigh => setups.contains('NEAR_HIGH');
+
+  bool get isQullaCandidate =>
+      isEp || isBreakoutQueue || isVolSurge || setups.contains('NEAR_HIGH') || isHighAdr;
+
+  factory SetupScanRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    final rawSetups = json['setups'];
+    final setups = <String>[];
+    if (rawSetups is List) {
+      for (final s in rawSetups) {
+        if (s != null && '$s'.isNotEmpty) setups.add('$s');
+      }
+    }
+    return SetupScanRow(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      ready: json['ready'] == true,
+      price: n(json['price']),
+      changePct: n(json['change_pct']),
+      setups: setups,
+      setupScore: n(json['setup_score']),
+      adrPct: n(json['adr_pct']),
+      regime: json['regime'] as String?,
+      dist20dHighPct: n(json['dist_20d_high_pct']),
+      volRatio: n(json['vol_ratio_5_20']),
+      gapPct: n(json['gap_pct']),
+      tmacStar: json['tmac_star'] is num ? (json['tmac_star'] as num).toInt() : int.tryParse('${json['tmac_star'] ?? ''}'),
+      error: json['error'] as String?,
+    );
+  }
+}
+
+class Sleeve {
+  const Sleeve({
+    required this.id,
+    required this.label,
+    required this.groupTag,
+    this.blurb = '',
+    this.tickers = const [],
+    this.filterKind = '',
+    this.skipped = '',
+  });
+
+  final String id;
+  final String label;
+  final String groupTag;
+  final String blurb;
+  final List<String> tickers;
+  final String filterKind;
+  final String skipped;
+
+  factory Sleeve.fromJson(Map<String, dynamic> json) {
+    final raw = json['tickers'];
+    return Sleeve(
+      id: '${json['id'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+      groupTag: '${json['group_tag'] ?? ''}',
+      blurb: '${json['blurb'] ?? ''}',
+      filterKind: '${json['filter_kind'] ?? ''}',
+      skipped: '${json['skipped'] ?? ''}',
+      tickers: [
+        if (raw is List)
+          for (final t in raw)
+            if (t != null && '$t'.trim().isNotEmpty) '$t'.trim().toUpperCase(),
+      ],
+    );
+  }
+}
+
+class VolRegime {
+  const VolRegime({
+    this.ready = false,
+    this.symbol = '',
+    this.vix,
+    this.percentile1y,
+    this.label = '',
+    this.note = '',
+  });
+
+  final bool ready;
+  final String symbol;
+  final double? vix;
+  final int? percentile1y;
+  final String label;
+  final String note;
+
+  static const empty = VolRegime();
+
+  factory VolRegime.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return empty;
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return VolRegime(
+      ready: json['ready'] == true,
+      symbol: '${json['symbol'] ?? ''}',
+      vix: n(json['vix']),
+      percentile1y: json['percentile_1y'] is num
+          ? (json['percentile_1y'] as num).toInt()
+          : int.tryParse('${json['percentile_1y'] ?? ''}'),
+      label: '${json['label'] ?? ''}',
+      note: '${json['note'] ?? ''}',
+    );
+  }
+}
+
+class MacroMoveRow {
+  const MacroMoveRow({
+    required this.symbol,
+    this.ready = false,
+    this.px,
+    this.dayPct,
+    this.z30,
+    this.z14,
+    this.extreme = false,
+  });
+
+  final String symbol;
+  final bool ready;
+  final double? px;
+  final double? dayPct;
+  final double? z30;
+  final double? z14;
+  final bool extreme;
+
+  factory MacroMoveRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return MacroMoveRow(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      ready: json['ready'] == true,
+      px: n(json['px']),
+      dayPct: n(json['day_pct']),
+      z30: n(json['z30']),
+      z14: n(json['z14']),
+      extreme: json['extreme'] == true,
+    );
+  }
+}
+
+class MacroSleeveBlock {
+  const MacroSleeveBlock({
+    required this.id,
+    required this.label,
+    this.groupTag = '',
+    this.filterKind = '',
+    this.blurb = '',
+    this.skipped = '',
+    this.tickers = const [],
+    this.readyCount = 0,
+    this.rows = const [],
+  });
+
+  final String id;
+  final String label;
+  final String groupTag;
+  final String filterKind;
+  final String blurb;
+  final String skipped;
+  final List<String> tickers;
+  final int readyCount;
+  final List<MacroMoveRow> rows;
+
+  factory MacroSleeveBlock.fromJson(Map<String, dynamic> json) {
+    final rawT = json['tickers'];
+    final rawR = json['rows'];
+    return MacroSleeveBlock(
+      id: '${json['id'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+      groupTag: '${json['group_tag'] ?? ''}',
+      filterKind: '${json['filter_kind'] ?? ''}',
+      blurb: '${json['blurb'] ?? ''}',
+      skipped: '${json['skipped'] ?? ''}',
+      tickers: [
+        if (rawT is List)
+          for (final t in rawT)
+            if (t != null && '$t'.trim().isNotEmpty) '$t'.trim().toUpperCase(),
+      ],
+      readyCount: json['ready_count'] is num ? (json['ready_count'] as num).toInt() : 0,
+      rows: [
+        if (rawR is List)
+          for (final item in rawR)
+            if (item is Map) MacroMoveRow.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
+  }
+}
+
+/// Column + measure registry from GET /api/boards/registry.
+class BoardRegistryCatalog {
+  const BoardRegistryCatalog({
+    this.version = 1,
+    this.theme = '',
+    this.flutterPath = '',
+    this.boards = const {},
+  });
+
+  final int version;
+  final String theme;
+  final String flutterPath;
+  final Map<String, List<BoardColumn>> boards;
+
+  static const empty = BoardRegistryCatalog();
+
+  factory BoardRegistryCatalog.fromJson(Map<String, dynamic> json) {
+    final rawBoards = json['boards'];
+    final boards = <String, List<BoardColumn>>{};
+    if (rawBoards is Map) {
+      rawBoards.forEach((key, value) {
+        final cols = value is Map ? value['columns'] : null;
+        boards['$key'] = [
+          if (cols is List)
+            for (final item in cols)
+              if (item is Map) BoardColumn.fromJson(Map<String, dynamic>.from(item)),
+        ];
+      });
+    }
+    return BoardRegistryCatalog(
+      version: json['version'] is int ? json['version'] as int : 1,
+      theme: '${json['theme'] ?? ''}',
+      flutterPath: '${json['flutter_path'] ?? ''}',
+      boards: boards,
+    );
+  }
+}
+
+class BoardColumn {
+  const BoardColumn({
+    required this.id,
+    this.label = '',
+    this.measure = '',
+    this.key = '',
+    this.format = 'text',
+    this.heat = 'none',
+    this.visible = true,
+    this.locked = false,
+    this.formula = '',
+  });
+
+  final String id;
+  final String label;
+  final String measure;
+  final String key;
+  final String format;
+  final String heat;
+  final bool visible;
+  final bool locked;
+  final String formula;
+
+  factory BoardColumn.fromJson(Map<String, dynamic> json) {
+    return BoardColumn(
+      id: '${json['id'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+      measure: '${json['measure'] ?? ''}',
+      key: '${json['key'] ?? ''}',
+      format: '${json['format'] ?? 'text'}',
+      heat: '${json['heat'] ?? 'none'}',
+      visible: json['visible'] != false,
+      locked: json['locked'] == true,
+      formula: '${json['formula'] ?? ''}',
+    );
+  }
+}
+
+/// Market Moves board from GET /api/market-moves (QUANT-locked z).
+class MarketMovesBoard {
+  const MarketMovesBoard({
+    this.asof,
+    this.asofEt = '',
+    this.groups = const [],
+    this.legend = '',
+    this.source = '',
+    this.note = '',
+    this.columns = const [],
+    this.boardId = '',
+  });
+
+  final String? asof;
+  final String asofEt;
+  final List<MarketMovesGroup> groups;
+  final String legend;
+  final String source;
+  final String note;
+  final List<BoardColumn> columns;
+  final String boardId;
+
+  static const empty = MarketMovesBoard();
+
+  factory MarketMovesBoard.fromJson(Map<String, dynamic> json) {
+    return MarketMovesBoard(
+      asof: json['asof'] as String?,
+      asofEt: '${json['asof_et'] ?? ''}',
+      groups: [
+        if (json['groups'] is List)
+          for (final item in json['groups'])
+            if (item is Map) MarketMovesGroup.fromJson(Map<String, dynamic>.from(item)),
+      ],
+      legend: '${json['legend'] ?? ''}',
+      source: '${json['source'] ?? ''}',
+      note: '${json['note'] ?? ''}',
+      columns: [
+        if (json['columns'] is List)
+          for (final item in json['columns'])
+            if (item is Map) BoardColumn.fromJson(Map<String, dynamic>.from(item)),
+      ],
+      boardId: '${json['board_id'] ?? ''}',
+    );
+  }
+}
+
+class MarketMovesGroup {
+  const MarketMovesGroup({
+    required this.id,
+    required this.label,
+    this.kind = 'price',
+    this.col = 0,
+    this.rows = const [],
+  });
+
+  final String id;
+  final String label;
+  final String kind;
+  final int col;
+  final List<MarketMovesRow> rows;
+
+  factory MarketMovesGroup.fromJson(Map<String, dynamic> json) {
+    return MarketMovesGroup(
+      id: '${json['id'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+      kind: '${json['kind'] ?? 'price'}',
+      col: json['col'] is num ? (json['col'] as num).toInt() : 0,
+      rows: [
+        if (json['rows'] is List)
+          for (final item in json['rows'])
+            if (item is Map) MarketMovesRow.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
+  }
+}
+
+class MarketMovesRow {
+  const MarketMovesRow({
+    required this.symbol,
+    required this.name,
+    this.px,
+    this.dayPct,
+    this.z,
+    this.z14,
+    this.extreme = false,
+    this.ready = false,
+  });
+
+  final String symbol;
+  final String name;
+  final double? px;
+  final double? dayPct;
+  final double? z;
+  final double? z14;
+  final bool extreme;
+  final bool ready;
+
+  factory MarketMovesRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return MarketMovesRow(
+      symbol: '${json['symbol'] ?? ''}',
+      name: '${json['name'] ?? ''}',
+      px: n(json['px']),
+      dayPct: n(json['day_pct']),
+      z: n(json['z']),
+      z14: n(json['z14']),
+      extreme: json['extreme'] == true,
+      ready: json['ready'] == true,
+    );
+  }
+}
+
+class MacroBoard {
+  const MacroBoard({
+    this.regime = VolRegime.empty,
+    this.sleeves = const [],
+    this.note = '',
+  });
+
+  final VolRegime regime;
+  final List<MacroSleeveBlock> sleeves;
+  final String note;
+
+  static const empty = MacroBoard();
+
+  factory MacroBoard.fromJson(Map<String, dynamic> json) {
+    return MacroBoard(
+      regime: VolRegime.fromJson(
+        json['regime'] is Map ? Map<String, dynamic>.from(json['regime'] as Map) : null,
+      ),
+      sleeves: [
+        if (json['sleeves'] is List)
+          for (final item in json['sleeves'])
+            if (item is Map)
+              MacroSleeveBlock.fromJson(Map<String, dynamic>.from(item)),
+      ],
+      note: '${json['note'] ?? ''}',
+    );
+  }
+}
+
+class EdgeInstrument {
+  const EdgeInstrument({
+    required this.symbol,
+    this.ready = false,
+    this.px,
+    this.dayPct,
+    this.dRsi14,
+    this.wRsi14,
+    this.vs50d,
+    this.vs200d,
+    this.slope200,
+    this.regime,
+    this.tags = const [],
+  });
+
+  final String symbol;
+  final bool ready;
+  final double? px;
+  final double? dayPct;
+  final double? dRsi14;
+  final double? wRsi14;
+  final double? vs50d;
+  final double? vs200d;
+  final String? slope200;
+  final String? regime;
+  final List<String> tags;
+
+  factory EdgeInstrument.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    final raw = json['tags'];
+    return EdgeInstrument(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      ready: json['ready'] == true,
+      px: n(json['px']),
+      dayPct: n(json['day_pct']),
+      dRsi14: n(json['d_rsi14']),
+      wRsi14: n(json['w_rsi14']),
+      vs50d: n(json['vs50d']),
+      vs200d: n(json['vs200d']),
+      slope200: json['slope200'] as String?,
+      regime: json['regime'] as String?,
+      tags: [
+        if (raw is List)
+          for (final t in raw)
+            if (t != null && '$t'.isNotEmpty) '$t',
+      ],
+    );
+  }
+}
+
+class EdgeSection {
+  const EdgeSection({
+    required this.id,
+    required this.label,
+    this.rows = const [],
+  });
+
+  final String id;
+  final String label;
+  final List<EdgeInstrument> rows;
+
+  factory EdgeSection.fromJson(Map<String, dynamic> json) {
+    final raw = json['rows'];
+    return EdgeSection(
+      id: '${json['id'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+      rows: [
+        if (raw is List)
+          for (final item in raw)
+            if (item is Map)
+              EdgeInstrument.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
+  }
+}
+
+class EdgesBoard {
+  const EdgesBoard({
+    this.regime = VolRegime.empty,
+    this.online = const [],
+    this.sections = const [],
+    this.setupBuckets = const {},
+    this.note = '',
+  });
+
+  final VolRegime regime;
+  final List<String> online;
+  final List<EdgeSection> sections;
+  final Map<String, List<String>> setupBuckets;
+  final String note;
+
+  static const empty = EdgesBoard();
+
+  factory EdgesBoard.fromJson(Map<String, dynamic> json) {
+    final buckets = <String, List<String>>{};
+    final rawB = json['setup_buckets'];
+    if (rawB is Map) {
+      rawB.forEach((key, value) {
+        if (value is List) {
+          buckets['$key'] = [
+            for (final s in value)
+              if (s != null && '$s'.isNotEmpty) '$s'.toUpperCase(),
+          ];
+        }
+      });
+    }
+    return EdgesBoard(
+      regime: VolRegime.fromJson(
+        json['regime'] is Map ? Map<String, dynamic>.from(json['regime'] as Map) : null,
+      ),
+      online: [
+        if (json['online'] is List)
+          for (final t in json['online'])
+            if (t != null && '$t'.isNotEmpty) '$t',
+      ],
+      sections: [
+        if (json['sections'] is List)
+          for (final item in json['sections'])
+            if (item is Map) EdgeSection.fromJson(Map<String, dynamic>.from(item)),
+      ],
+      setupBuckets: buckets,
+      note: '${json['note'] ?? ''}',
+    );
+  }
+}
+
+class FractalRow {
+  const FractalRow({
+    required this.symbol,
+    this.d65d,
+    this.d130d,
+    this.move65d,
+    this.move130d,
+    this.read = '',
+    this.tags = const [],
+  });
+
+  final String symbol;
+  final double? d65d;
+  final double? d130d;
+  final double? move65d;
+  final double? move130d;
+  final String read;
+  final List<String> tags;
+
+  bool get isFragile => read == 'FRAGILE' || tags.contains('FRAGILE');
+
+  factory FractalRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return FractalRow(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      d65d: n(json['d_65d']),
+      d130d: n(json['d_130d']),
+      move65d: n(json['move_65d']),
+      move130d: n(json['move_130d']),
+      read: '${json['read'] ?? ''}',
+      tags: [
+        if (json['tags'] is List)
+          for (final t in json['tags'])
+            if (t != null && '$t'.isNotEmpty) '$t',
+      ],
+    );
+  }
+}
+
+class FractalStatus {
+  const FractalStatus({
+    this.available = false,
+    this.reason = '',
+    this.source = '',
+    this.expected = '',
+    this.rows = const [],
+    this.columns = const [],
+  });
+
+  final bool available;
+  final String reason;
+  final String source;
+  final String expected;
+  final List<FractalRow> rows;
+  final List<String> columns;
+
+  static const empty = FractalStatus(
+    reason: 'Fractal: SPEC 25/27 — no rows yet',
+    expected: 'whats-news fractal_scan (SPEC 25/27)',
+  );
+
+  factory FractalStatus.fromJson(Map<String, dynamic> json) {
+    return FractalStatus(
+      available: json['available'] == true,
+      reason: '${json['reason'] ?? json['message'] ?? 'Fractal: SPEC 25/27'}',
+      source: '${json['source'] ?? ''}',
+      expected: '${json['expected'] ?? ''}',
+      columns: [
+        if (json['columns'] is List)
+          for (final c in json['columns'])
+            if (c != null) '$c',
+      ],
+      rows: [
+        if (json['rows'] is List)
+          for (final item in json['rows'])
+            if (item is Map) FractalRow.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
+  }
+}
+
+class TapeRow {
+  const TapeRow({
+    required this.symbol,
+    this.price,
+    this.changePct,
+    this.regime,
+    this.ready = false,
+    this.groupTag = '',
+    this.isEp = false,
+    this.isVolSurge = false,
+    this.isNearHigh = false,
+    this.breakoutScore,
+    this.adrPct,
+  });
+
+  final String symbol;
+  final double? price;
+  final double? changePct;
+  final String? regime;
+  final bool ready;
+  final String groupTag;
+  final bool isEp;
+  final bool isVolSurge;
+  final bool isNearHigh;
+  final double? breakoutScore;
+  final double? adrPct;
+
+  factory TapeRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return TapeRow(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      price: n(json['price']),
+      changePct: n(json['change_pct']),
+      regime: json['regime'] as String?,
+      ready: json['ready'] == true,
+      groupTag: '${json['group_tag'] ?? ''}',
+      isEp: json['is_ep'] == true,
+      isVolSurge: json['is_vol_surge'] == true,
+      isNearHigh: json['is_near_high'] == true,
+      breakoutScore: n(json['breakout_score']),
+      adrPct: n(json['adr_pct']),
+    );
+  }
+}
+
+class GroupRollup {
+  const GroupRollup({
+    required this.group,
+    required this.n,
+    this.avgChangePct,
+  });
+
+  final String group;
+  final int n;
+  final double? avgChangePct;
+
+  factory GroupRollup.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return GroupRollup(
+      group: '${json['group'] ?? 'Ungrouped'}',
+      n: json['n'] is num ? (json['n'] as num).toInt() : 0,
+      avgChangePct: n(json['avg_change_pct']),
+    );
+  }
+}
+
+class PortfolioSnapshot {
+  const PortfolioSnapshot({
+    this.count = 0,
+    this.readyCount = 0,
+    this.symbols = const [],
+    this.breakoutQueue = const [],
+    this.heatmap = const [],
+    this.groupRollup = const [],
+    this.message,
+  });
+
+  final int count;
+  final int readyCount;
+  final List<TapeRow> symbols;
+  final List<TapeRow> breakoutQueue;
+  final List<TapeRow> heatmap;
+  final List<GroupRollup> groupRollup;
+  final String? message;
+
+  static const empty = PortfolioSnapshot();
+
+  TapeRow? named(String symbol) {
+    final key = symbol.toUpperCase();
+    for (final s in symbols) {
+      if (s.symbol == key) return s;
+    }
+    return null;
+  }
+
+  /// Desk heuristic from real snapshot fields — not a forecast.
+  String get tapeTemperature {
+    if (readyCount == 0) return 'cold';
+    final up = heatmap.where((r) => r.regime == 'uptrend').length;
+    final down = heatmap.where((r) => r.regime == 'downtrend').length;
+    final bq = breakoutQueue.length;
+    if (bq >= 3 || (up > down && bq >= 1)) return 'hot';
+    if (bq >= 1 || up >= down) return 'warm';
+    return 'cool';
+  }
+
+  factory PortfolioSnapshot.fromJson(Map<String, dynamic> json) {
+    List<TapeRow> rows(Object? raw) {
+      if (raw is! List) return const [];
+      return [
+        for (final item in raw)
+          if (item is Map) TapeRow.fromJson(Map<String, dynamic>.from(item)),
+      ];
+    }
+
+    return PortfolioSnapshot(
+      count: json['count'] is num ? (json['count'] as num).toInt() : 0,
+      readyCount: json['ready_count'] is num ? (json['ready_count'] as num).toInt() : 0,
+      symbols: rows(json['symbols']),
+      breakoutQueue: rows(json['breakout_queue']),
+      heatmap: rows(json['heatmap']),
+      groupRollup: [
+        if (json['group_rollup'] is List)
+          for (final item in json['group_rollup'])
+            if (item is Map) GroupRollup.fromJson(Map<String, dynamic>.from(item)),
+      ],
+      message: json['message'] as String?,
+    );
+  }
+}
+
+class DeskNote {
+  const DeskNote({
+    required this.symbol,
+    this.ready = false,
+    this.regime,
+    this.adrPct,
+    this.dist20dHighPct,
+    this.volRatio,
+    this.isEp = false,
+    this.isVolSurge = false,
+    this.isNearHigh = false,
+    this.breakoutScore,
+    this.changePct,
+    this.error,
+  });
+
+  final String symbol;
+  final bool ready;
+  final String? regime;
+  final double? adrPct;
+  final double? dist20dHighPct;
+  final double? volRatio;
+  final bool isEp;
+  final bool isVolSurge;
+  final bool isNearHigh;
+  final double? breakoutScore;
+  final double? changePct;
+  final String? error;
+
+  static const empty = DeskNote(symbol: '');
+
+  factory DeskNote.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return DeskNote(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      ready: json['ready'] == true,
+      regime: json['regime'] as String?,
+      adrPct: n(json['adr_pct']),
+      dist20dHighPct: n(json['dist_20d_high_pct']),
+      volRatio: n(json['vol_ratio_5_20']),
+      isEp: json['is_ep'] == true,
+      isVolSurge: json['is_vol_surge'] == true,
+      isNearHigh: json['is_near_high'] == true,
+      breakoutScore: n(json['breakout_score']),
+      changePct: n(json['change_pct']),
+      error: json['error'] as String?,
+    );
+  }
+}
+
+class SpyRs {
+  const SpyRs({this.ready = false, this.lastRatio, this.note = ''});
+
+  final bool ready;
+  final double? lastRatio;
+  final String note;
+
+  static const empty = SpyRs();
+
+  factory SpyRs.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return SpyRs(
+      ready: json['ready'] == true,
+      lastRatio: n(json['last_ratio']),
+      note: '${json['note'] ?? ''}',
+    );
+  }
+}
+
+class BookPosition {
+  const BookPosition({
+    required this.symbol,
+    this.id,
+    this.qty,
+    this.side = 'long',
+    this.avgCost,
+    this.price,
+    this.marketValue,
+    this.dayPnl,
+    this.unrealized,
+    this.dayPct,
+    this.ready = false,
+    this.source = 'manual',
+    this.vsSma50,
+    this.rsi14,
+    this.fractalRead,
+    this.hmmLabel,
+    this.weightPct,
+    this.vol30,
+    this.pnlContribPct,
+    this.riskContribPct,
+    this.concentrated = false,
+  });
+
+  final int? id;
+  final String symbol;
+  final double? qty;
+  final String side;
+  final double? avgCost;
+  final double? price;
+  final double? marketValue;
+  final double? dayPnl;
+  final double? unrealized;
+  final double? dayPct;
+  final bool ready;
+  final String source;
+  final double? vsSma50;
+  final double? rsi14;
+  final String? fractalRead;
+  final String? hmmLabel;
+  final double? weightPct;
+  final double? vol30;
+  final double? pnlContribPct;
+  final double? riskContribPct;
+  final bool concentrated;
+
+  factory BookPosition.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return BookPosition(
+      id: json['id'] is num ? (json['id'] as num).toInt() : int.tryParse('${json['id']}'),
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      qty: n(json['qty']),
+      side: '${json['side'] ?? 'long'}',
+      avgCost: n(json['avg_cost']),
+      price: n(json['price']),
+      marketValue: n(json['market_value']),
+      dayPnl: n(json['day_pnl']),
+      unrealized: n(json['unrealized']),
+      dayPct: n(json['day_pct']),
+      ready: json['ready'] == true,
+      source: '${json['source'] ?? 'manual'}',
+      vsSma50: n(json['vs_sma50']),
+      rsi14: n(json['rsi14']),
+      fractalRead: json['fractal_read'] == null ? null : '${json['fractal_read']}',
+      hmmLabel: json['hmm_label'] == null ? null : '${json['hmm_label']}',
+      weightPct: n(json['weight_pct']),
+      vol30: n(json['vol_30']),
+      pnlContribPct: n(json['pnl_contrib_pct']),
+      riskContribPct: n(json['risk_contrib_pct']),
+      concentrated: json['concentrated'] == true,
+    );
+  }
+}
+
+class RiskName {
+  const RiskName({
+    required this.symbol,
+    this.weightPct,
+    this.vol20,
+    this.vol60,
+    this.betaSpy60,
+    this.mvar95,
+    this.cvar95,
+    this.pctVar,
+    this.ivar95,
+    this.flags = const [],
+    this.regime = '',
+  });
+
+  final String symbol;
+  final double? weightPct;
+  final double? vol20;
+  final double? vol60;
+  final double? betaSpy60;
+  final double? mvar95;
+  final double? cvar95;
+  final double? pctVar;
+  final double? ivar95;
+  final List<String> flags;
+  final String regime;
+
+  factory RiskName.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return RiskName(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      weightPct: n(json['weight_pct']),
+      vol20: n(json['vol_20']),
+      vol60: n(json['vol_60']),
+      betaSpy60: n(json['beta_spy_60']),
+      mvar95: n(json['mvar_95']),
+      cvar95: n(json['cvar_95']),
+      pctVar: n(json['pct_var']),
+      ivar95: n(json['ivar_95']),
+      flags: [
+        if (json['flags'] is List) for (final f in json['flags']) '$f',
+      ],
+      regime: '${json['regime'] ?? ''}',
+    );
+  }
+}
+
+class RiskCluster {
+  const RiskCluster({
+    this.id = 0,
+    this.members = const [],
+    this.pctVar,
+    this.vol20,
+    this.vol60,
+    this.regime = '',
+  });
+
+  final int id;
+  final List<String> members;
+  final double? pctVar;
+  final double? vol20;
+  final double? vol60;
+  final String regime;
+
+  factory RiskCluster.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return RiskCluster(
+      id: json['id'] is num ? (json['id'] as num).toInt() : 0,
+      members: [
+        if (json['members'] is List) for (final m in json['members']) '$m',
+      ],
+      pctVar: n(json['pct_var']),
+      vol20: n(json['vol_20']),
+      vol60: n(json['vol_60']),
+      regime: '${json['regime'] ?? ''}',
+    );
+  }
+}
+
+class RiskPack {
+  const RiskPack({
+    this.ready = false,
+    this.thin = true,
+    this.message = '',
+    this.note = '',
+    this.nNames = 0,
+    this.overlapDays = 0,
+    this.vol20,
+    this.vol60,
+    this.hist95Pct,
+    this.param95Pct,
+    this.hist99Pct,
+    this.param99Pct,
+    this.dayPct,
+    this.weekPct,
+    this.mtdPct,
+    this.ytdPct,
+    this.maxDdPct,
+    this.sharpe,
+    this.sortino,
+    this.curveKind = '',
+    this.names = const [],
+    this.clusters = const [],
+  });
+
+  final bool ready;
+  final bool thin;
+  final String message;
+  final String note;
+  final int nNames;
+  final int overlapDays;
+  final double? vol20;
+  final double? vol60;
+  final double? hist95Pct;
+  final double? param95Pct;
+  final double? hist99Pct;
+  final double? param99Pct;
+  final double? dayPct;
+  final double? weekPct;
+  final double? mtdPct;
+  final double? ytdPct;
+  final double? maxDdPct;
+  final double? sharpe;
+  final double? sortino;
+  final String curveKind;
+  final List<RiskName> names;
+  final List<RiskCluster> clusters;
+
+  static const empty = RiskPack(message: 'Thin book — Risk stack blank.');
+
+  factory RiskPack.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    Map<String, dynamic> pack(Object? raw) => raw is Map ? Map<String, dynamic>.from(raw) : const {};
+    final vr = json['var'] is Map ? Map<String, dynamic>.from(json['var'] as Map) : const <String, dynamic>{};
+    final vol = json['vol'] is Map ? Map<String, dynamic>.from(json['vol'] as Map) : const <String, dynamic>{};
+    final perf = json['perf'] is Map ? Map<String, dynamic>.from(json['perf'] as Map) : const <String, dynamic>{};
+    final ranked = json['ranked'] is List ? json['ranked'] : json['names'];
+    return RiskPack(
+      ready: json['ready'] == true,
+      thin: json['thin'] != false,
+      message: '${json['message'] ?? ''}',
+      note: '${json['note'] ?? ''}',
+      nNames: json['n_names'] is num ? (json['n_names'] as num).toInt() : 0,
+      overlapDays: json['overlap_days'] is num ? (json['overlap_days'] as num).toInt() : 0,
+      vol20: n(vol['vol_20']),
+      vol60: n(vol['vol_60']),
+      hist95Pct: n(pack(vr['hist_95'])['pct']),
+      param95Pct: n(pack(vr['param_95'])['pct']),
+      hist99Pct: n(pack(vr['hist_99'])['pct']),
+      param99Pct: n(pack(vr['param_99'])['pct']),
+      dayPct: n(perf['day']),
+      weekPct: n(perf['week']),
+      mtdPct: n(perf['mtd']),
+      ytdPct: n(perf['ytd']),
+      maxDdPct: n(perf['max_dd_pct']),
+      sharpe: n(perf['sharpe']),
+      sortino: n(perf['sortino']),
+      curveKind: '${perf['curve_kind'] ?? ''}',
+      names: [
+        if (ranked is List)
+          for (final r in ranked)
+            if (r is Map) RiskName.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      clusters: [
+        if (json['clusters'] is List)
+          for (final c in json['clusters'])
+            if (c is Map) RiskCluster.fromJson(Map<String, dynamic>.from(c)),
+      ],
+    );
+  }
+}
+
+class BookPnl {
+  const BookPnl({
+    this.ready = false,
+    this.deskName = 'Whats-News',
+    this.note = '',
+    this.message = '',
+    this.todayPnl,
+    this.todayPnlPct,
+    this.nav,
+    this.gross = 0,
+    this.longMv = 0,
+    this.shortMv = 0,
+    this.net = 0,
+    this.betaSpy,
+    this.varNote = '',
+    this.hist95Pct,
+    this.param95Pct,
+    this.es95Pct,
+    this.distMean,
+    this.distStdev,
+    this.distN = 0,
+    this.curve = const [],
+    this.curveLabel = '',
+    this.positions = const [],
+    this.tape = const [],
+    this.topWeightPct,
+    this.topSymbol = '',
+    this.hhi,
+    this.maxDdPct,
+    this.alerts = const [],
+    this.risk = RiskPack.empty,
+  });
+
+  final bool ready;
+  final String deskName;
+  final String note;
+  final String message;
+  final double? todayPnl;
+  final double? todayPnlPct;
+  final double? nav;
+  final double gross;
+  final double longMv;
+  final double shortMv;
+  final double net;
+  final double? betaSpy;
+  final String varNote;
+  final double? hist95Pct;
+  final double? param95Pct;
+  final double? es95Pct;
+  final double? distMean;
+  final double? distStdev;
+  final int distN;
+  final List<(String, double)> curve;
+  final String curveLabel;
+  final List<BookPosition> positions;
+  final List<BookPosition> tape;
+  final double? topWeightPct;
+  final String topSymbol;
+  final double? hhi;
+  final double? maxDdPct;
+  final List<String> alerts;
+  final RiskPack risk;
+
+  static const empty = BookPnl(
+    message: 'Empty paper book. Import a Fidelity CSV or add a line.',
+    note: 'Paper / local only. No invented P&L.',
+  );
+
+  factory BookPnl.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    final exp = json['exposure'] is Map ? Map<String, dynamic>.from(json['exposure'] as Map) : const <String, dynamic>{};
+    final vr = json['var'] is Map ? Map<String, dynamic>.from(json['var'] as Map) : const <String, dynamic>{};
+    final dist = json['distribution'] is Map ? Map<String, dynamic>.from(json['distribution'] as Map) : const <String, dynamic>{};
+    final conc = json['concentration'] is Map ? Map<String, dynamic>.from(json['concentration'] as Map) : const <String, dynamic>{};
+    final dd = json['drawdown'] is Map ? Map<String, dynamic>.from(json['drawdown'] as Map) : const <String, dynamic>{};
+    Map<String, dynamic> pack(Object? raw) => raw is Map ? Map<String, dynamic>.from(raw) : const {};
+
+    return BookPnl(
+      ready: json['ready'] == true,
+      deskName: '${json['desk_name'] ?? 'Whats-News'}',
+      note: '${json['note'] ?? ''}',
+      message: '${json['message'] ?? ''}',
+      todayPnl: n(json['today_pnl']),
+      todayPnlPct: n(json['today_pnl_pct']),
+      nav: n(json['nav']),
+      gross: n(exp['gross']) ?? 0,
+      longMv: n(exp['long']) ?? 0,
+      shortMv: n(exp['short']) ?? 0,
+      net: n(exp['net']) ?? 0,
+      betaSpy: n(json['beta_spy']),
+      varNote: '${vr['note'] ?? ''}',
+      hist95Pct: n(pack(vr['hist_95'])['pct']),
+      param95Pct: n(pack(vr['param_95'])['pct']),
+      es95Pct: n(pack(vr['es_95'])['pct']),
+      distMean: n(dist['mean']),
+      distStdev: n(dist['stdev']),
+      distN: n(dist['n'])?.toInt() ?? 0,
+      curve: [
+        if (json['equity_curve'] is List)
+          for (final p in json['equity_curve'])
+            if (p is Map && n(p['nav']) != null) ('${p['date'] ?? ''}', n(p['nav'])!),
+      ],
+      curveLabel: '${json['curve_label'] ?? ''}',
+      positions: [
+        if (json['positions'] is List)
+          for (final p in json['positions'])
+            if (p is Map) BookPosition.fromJson(Map<String, dynamic>.from(p)),
+      ],
+      tape: [
+        if (json['tape'] is List)
+          for (final p in json['tape'])
+            if (p is Map) BookPosition.fromJson(Map<String, dynamic>.from(p)),
+      ],
+      topWeightPct: n(conc['top_weight_pct']),
+      topSymbol: '${conc['top_symbol'] ?? ''}',
+      hhi: n(conc['hhi']),
+      maxDdPct: n(dd['max_dd_pct']),
+      alerts: [
+        if (json['alerts'] is List)
+          for (final a in json['alerts'])
+            if (a is Map) '${a['id'] ?? a['label'] ?? ''}'
+            else if (a != null) '$a',
+      ].where((e) => e.isNotEmpty).toList(),
+      risk: json['risk'] is Map
+          ? RiskPack.fromJson(Map<String, dynamic>.from(json['risk'] as Map))
+          : RiskPack.empty,
+    );
+  }
+}
+
+class ScanBreadth {
+  const ScanBreadth({
+    this.ready = false,
+    this.n = 0,
+    this.storedN = 0,
+    this.deskN = 0,
+    this.pctAboveSma50,
+    this.pctAboveSma200,
+    this.adv1d,
+    this.dec1d,
+    this.adv5d,
+    this.dec5d,
+    this.message = '',
+    this.note = '',
+  });
+
+  final bool ready;
+  final int n;
+  final int storedN;
+  final int deskN;
+  final double? pctAboveSma50;
+  final double? pctAboveSma200;
+  final int? adv1d;
+  final int? dec1d;
+  final int? adv5d;
+  final int? dec5d;
+  final String message;
+  final String note;
+
+  /// True-empty SQLite fallback only. Never show when [storedN] > 0.
+  static const empty = ScanBreadth(message: 'Empty universe — no stored bars to score.');
+
+  factory ScanBreadth.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    int? i(Object? v) {
+      if (v is num) return v.toInt();
+      return int.tryParse('$v');
+    }
+
+    return ScanBreadth(
+      ready: json['ready'] == true,
+      n: i(json['n']) ?? 0,
+      storedN: i(json['stored_n']) ?? 0,
+      deskN: i(json['desk_n']) ?? 0,
+      pctAboveSma50: n(json['pct_above_sma50']),
+      pctAboveSma200: n(json['pct_above_sma200']),
+      adv1d: i(json['adv_1d']),
+      dec1d: i(json['dec_1d']),
+      adv5d: i(json['adv_5d']),
+      dec5d: i(json['dec_5d']),
+      message: '${json['message'] ?? ''}',
+      note: '${json['note'] ?? ''}',
+    );
+  }
+}
+
+class ScanPackRow {
+  const ScanPackRow({
+    required this.symbol,
+    this.ready = false,
+    this.price,
+    this.dayPct,
+    this.vs20,
+    this.vs50,
+    this.vs200,
+    this.rsi14,
+    this.dist52w,
+    this.volRatio,
+    this.tags = const [],
+    this.rsSpy63d,
+    this.vcpProxy = false,
+  });
+
+  final String symbol;
+  final bool ready;
+  final double? price;
+  final double? dayPct;
+  final double? vs20;
+  final double? vs50;
+  final double? vs200;
+  final double? rsi14;
+  final double? dist52w;
+  final double? volRatio;
+  final List<String> tags;
+  final double? rsSpy63d;
+  final bool vcpProxy;
+
+  factory ScanPackRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return ScanPackRow(
+      symbol: (json['symbol'] as String? ?? '').toUpperCase(),
+      ready: json['ready'] == true,
+      price: n(json['price']),
+      dayPct: n(json['day_pct']),
+      vs20: n(json['vs20']),
+      vs50: n(json['vs50']),
+      vs200: n(json['vs200']),
+      rsi14: n(json['rsi14']),
+      dist52w: n(json['dist_52w_pct']),
+      volRatio: n(json['vol_ratio']),
+      tags: [
+        if (json['tags'] is List) for (final t in json['tags']) '$t',
+      ],
+      rsSpy63d: n(json['rs_spy_63d']),
+      vcpProxy: json['vcp_proxy'] == true,
+    );
+  }
+}
+
+class ScanPack {
+  const ScanPack({
+    this.lens = 'all',
+    this.count = 0,
+    this.scanned = 0,
+    this.rows = const [],
+    this.breadth = ScanBreadth.empty,
+    this.note = '',
+    this.message = '',
+    this.oneilNote = 'price/RS only — no fundamentals feed',
+    this.vcpNote = 'honest proxy, not certified VCP',
+  });
+
+  final String lens;
+  final int count;
+  final int scanned;
+  final List<ScanPackRow> rows;
+  final ScanBreadth breadth;
+  final String note;
+  final String message;
+  final String oneilNote;
+  final String vcpNote;
+
+  static const empty = ScanPack();
+
+  factory ScanPack.fromJson(Map<String, dynamic> json) {
+    return ScanPack(
+      lens: '${json['lens'] ?? 'all'}',
+      count: json['count'] is num ? (json['count'] as num).toInt() : 0,
+      scanned: json['scanned'] is num ? (json['scanned'] as num).toInt() : 0,
+      rows: [
+        if (json['rows'] is List)
+          for (final r in json['rows'])
+            if (r is Map) ScanPackRow.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      breadth: json['breadth'] is Map
+          ? ScanBreadth.fromJson(Map<String, dynamic>.from(json['breadth'] as Map))
+          : ScanBreadth.empty,
+      note: '${json['note'] ?? ''}',
+      message: '${json['message'] ?? ''}',
+      oneilNote: '${json['oneil_note'] ?? 'price/RS only — no fundamentals feed'}',
+      vcpNote: '${json['vcp_note'] ?? 'honest proxy, not certified VCP'}',
+    );
+  }
+}
+
+class FinvizNewsItem {
+  const FinvizNewsItem({this.title = '', this.url = '', this.published = ''});
+  final String title;
+  final String url;
+  final String published;
+
+  factory FinvizNewsItem.fromJson(Map<String, dynamic> json) {
+    return FinvizNewsItem(
+      title: '${json['title'] ?? ''}',
+      url: '${json['url'] ?? ''}',
+      published: '${json['published'] ?? ''}',
+    );
+  }
+}
+
+class FinvizQuote {
+  const FinvizQuote({
+    this.symbol = '',
+    this.ready = false,
+    this.name = '',
+    this.sector = '',
+    this.industry = '',
+    this.snapshot = const {},
+    this.news = const [],
+    this.reason = '',
+  });
+
+  final String symbol;
+  final bool ready;
+  final String name;
+  final String sector;
+  final String industry;
+  final Map<String, String> snapshot;
+  final List<FinvizNewsItem> news;
+  final String reason;
+
+  static const empty = FinvizQuote(reason: 'No Finviz quote');
+
+  factory FinvizQuote.fromJson(Map<String, dynamic> json) {
+    final snap = <String, String>{};
+    final raw = json['snapshot'];
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (v != null && '$v'.isNotEmpty) snap['$k'] = '$v';
+      });
+    }
+    return FinvizQuote(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      ready: json['ready'] == true || json['ok'] == true,
+      name: '${json['name'] ?? ''}',
+      sector: '${json['sector'] ?? ''}',
+      industry: '${json['industry'] ?? ''}',
+      snapshot: snap,
+      news: [
+        if (json['news'] is List)
+          for (final n in json['news'])
+            if (n is Map) FinvizNewsItem.fromJson(Map<String, dynamic>.from(n)),
+      ],
+      reason: '${json['reason'] ?? ''}',
+    );
+  }
+}
+
+class FinvizScreenerRow {
+  const FinvizScreenerRow({
+    required this.symbol,
+    this.company = '',
+    this.sector = '',
+    this.industry = '',
+    this.marketCap = '',
+    this.pe = '',
+    this.price = '',
+    this.change = '',
+  });
+
+  final String symbol;
+  final String company;
+  final String sector;
+  final String industry;
+  final String marketCap;
+  final String pe;
+  final String price;
+  final String change;
+
+  factory FinvizScreenerRow.fromJson(Map<String, dynamic> json) {
+    return FinvizScreenerRow(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      company: '${json['company'] ?? ''}',
+      sector: '${json['sector'] ?? ''}',
+      industry: '${json['industry'] ?? ''}',
+      marketCap: '${json['market_cap'] ?? ''}',
+      pe: '${json['pe'] ?? ''}',
+      price: '${json['price'] ?? ''}',
+      change: '${json['change'] ?? ''}',
+    );
+  }
+}
+
+class FinvizScreener {
+  const FinvizScreener({
+    this.preset = '',
+    this.label = '',
+    this.ready = false,
+    this.rows = const [],
+    this.reason = '',
+    this.filters = const [],
+  });
+
+  final String preset;
+  final String label;
+  final bool ready;
+  final List<FinvizScreenerRow> rows;
+  final String reason;
+  final List<String> filters;
+
+  static const empty = FinvizScreener(reason: 'No Finviz rows');
+
+  factory FinvizScreener.fromJson(Map<String, dynamic> json) {
+    return FinvizScreener(
+      preset: '${json['preset'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+      ready: json['ready'] == true || json['ok'] == true,
+      reason: '${json['reason'] ?? json['blurb'] ?? ''}',
+      filters: [
+        if (json['filters'] is List)
+          for (final f in json['filters'])
+            if (f != null) '$f',
+      ],
+      rows: [
+        if (json['rows'] is List)
+          for (final r in json['rows'])
+            if (r is Map) FinvizScreenerRow.fromJson(Map<String, dynamic>.from(r)),
+      ],
+    );
+  }
+}
+
+class HmmState {
+  const HmmState({
+    this.id = 0,
+    this.label = '',
+    this.mean,
+    this.vol,
+    this.realizedVol,
+    this.occupancy,
+  });
+
+  final int id;
+  final String label;
+  final double? mean;
+  final double? vol;
+  final double? realizedVol;
+  final double? occupancy;
+
+  factory HmmState.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return HmmState(
+      id: n(json['id'])?.toInt() ?? 0,
+      label: '${json['label'] ?? ''}',
+      mean: n(json['mean']),
+      vol: n(json['vol']),
+      realizedVol: n(json['realized_vol']),
+      occupancy: n(json['occupancy']),
+    );
+  }
+}
+
+class HmmRegime {
+  const HmmRegime({
+    this.available = false,
+    this.inherited = false,
+    this.symbol = 'SPY',
+    this.currentLabel = '',
+    this.asOf = '',
+    this.note = 'research label, not edge',
+    this.states = const [],
+    this.currentProbs = const [],
+    this.rows = const [],
+    this.reason = '',
+  });
+
+  final bool available;
+  final bool inherited;
+  final String symbol;
+  final String currentLabel;
+  final String asOf;
+  final String note;
+  final List<HmmState> states;
+  final List<double> currentProbs;
+  final List<HmmScanRow> rows;
+  final String reason;
+
+  static const empty = HmmRegime(reason: 'research label, not edge');
+
+  factory HmmRegime.fromJson(Map<String, dynamic> json) {
+    final spy = json['spy'] is Map ? Map<String, dynamic>.from(json['spy'] as Map) : json;
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+    return HmmRegime(
+      available: json['available'] == true || json['ready'] == true,
+      inherited: json['inherited'] == true,
+      symbol: '${json['symbol'] ?? json['anchor'] ?? 'SPY'}',
+      currentLabel: '${spy['current_label'] ?? json['current_label'] ?? ''}',
+      asOf: '${spy['as_of'] ?? json['as_of'] ?? ''}',
+      note: '${json['note'] ?? json['message'] ?? 'research label, not edge'}',
+      reason: '${json['reason'] ?? ''}',
+      states: [
+        if (spy['states'] is List)
+          for (final s in spy['states'])
+            if (s is Map) HmmState.fromJson(Map<String, dynamic>.from(s)),
+      ],
+      currentProbs: [
+        if (spy['current_probs'] is List)
+          for (final p in spy['current_probs'])
+            if (n(p) != null) n(p)!,
+      ],
+      rows: [
+        if (json['rows'] is List)
+          for (final r in json['rows'])
+            if (r is Map) HmmScanRow.fromJson(Map<String, dynamic>.from(r)),
+      ],
+    );
+  }
+}
+
+class ComboRow {
+  const ComboRow({
+    required this.symbol,
+    this.spyState = '',
+    this.fragile = false,
+    this.setups = const [],
+    this.flags = const [],
+    this.note = 'AND of real flags — research label, not edge',
+  });
+
+  final String symbol;
+  final String spyState;
+  final bool fragile;
+  final List<String> setups;
+  final List<String> flags;
+  final String note;
+
+  factory ComboRow.fromJson(Map<String, dynamic> json) {
+    return ComboRow(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      spyState: '${json['spy_read'] ?? json['spy_state'] ?? ''}',
+      fragile: json['fragile'] == true,
+      setups: [
+        if (json['setups'] is List)
+          for (final t in json['setups'])
+            if (t != null && '$t'.isNotEmpty) '$t',
+      ],
+      flags: [
+        if (json['flags'] is List)
+          for (final t in json['flags'])
+            if (t != null && '$t'.isNotEmpty) '$t',
+      ],
+      note: '${json['note'] ?? 'AND of real flags — research label, not edge'}',
+    );
+  }
+}
+
+class ComboScan {
+  const ComboScan({
+    this.available = false,
+    this.rows = const [],
+    this.reason = '',
+    this.note = 'AND of real flags only. research label, not edge.',
+  });
+
+  final bool available;
+  final List<ComboRow> rows;
+  final String reason;
+  final String note;
+
+  static const empty = ComboScan();
+
+  factory ComboScan.fromJson(Map<String, dynamic> json) {
+    return ComboScan(
+      available: json['available'] == true || json['ready'] == true,
+      reason: '${json['reason'] ?? ''}',
+      note: '${json['note'] ?? json['message'] ?? 'AND of real flags only. research label, not edge.'}',
+      rows: [
+        if (json['rows'] is List)
+          for (final r in json['rows'])
+            if (r is Map) ComboRow.fromJson(Map<String, dynamic>.from(r)),
+      ],
+    );
+  }
+}
+
+class HmmScanRow {
+  const HmmScanRow({
+    required this.symbol,
+    this.inherited = true,
+    this.spyState = '',
+    this.spyProb,
+    this.tag = '',
+    this.note = 'research label, not edge',
+  });
+
+  final String symbol;
+  final bool inherited;
+  final String spyState;
+  final double? spyProb;
+  final String tag;
+  final String note;
+
+  factory HmmScanRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return HmmScanRow(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      inherited: json['inherited'] != false,
+      spyState: '${json['spy_state'] ?? ''}',
+      spyProb: n(json['spy_prob']),
+      tag: '${json['tag'] ?? ''}',
+      note: '${json['note'] ?? 'research label, not edge'}',
+    );
+  }
+}
+
+class EngineRow {
+  const EngineRow({
+    required this.symbol,
+    this.engine = '',
+    this.takeaway = '',
+    this.vcp = '',
+    this.tmsZone = '',
+    this.impulse = '',
+    this.patternW = '',
+    this.bias,
+    this.dw = '',
+    this.rsiC = '',
+    this.vs20,
+    this.dist52w,
+    this.str,
+    this.grayTag = '',
+    this.sentiment = '',
+    this.tmacStar,
+    this.tesState = '',
+    this.dir5,
+    this.enginePrimary = '',
+  });
+
+  final String symbol;
+  final String engine;
+  final String takeaway;
+  final String vcp;
+  final String tmsZone;
+  final String impulse;
+  final String patternW;
+  final double? bias;
+  final String dw;
+  final String rsiC;
+  final double? vs20;
+  final double? dist52w;
+  final int? str;
+  final String grayTag;
+  final String sentiment;
+  final int? tmacStar;
+  final String tesState;
+  final int? dir5;
+  final String enginePrimary;
+
+  factory EngineRow.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    final rsi = json['rsi_c'];
+    return EngineRow(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      engine: '${json['engine'] ?? ''}',
+      takeaway: '${json['takeaway'] ?? ''}',
+      vcp: '${json['vcp'] ?? ''}',
+      tmsZone: '${json['tms_zone'] ?? ''}',
+      impulse: '${json['impulse'] ?? ''}',
+      patternW: '${json['pattern_w'] ?? ''}',
+      bias: n(json['bias']),
+      dw: '${json['dw'] ?? ''}',
+      rsiC: rsi is Map ? '${rsi['state'] ?? ''}' : '${json['state'] ?? ''}',
+      vs20: n(json['vs20']),
+      dist52w: n(json['dist_52w_pct']),
+      str: json['str'] is num ? (json['str'] as num).toInt() : int.tryParse('${json['str'] ?? ''}'),
+      grayTag: '${json['gray_tag'] ?? ''}',
+      sentiment: '${json['sentiment'] ?? ''}',
+      tmacStar: json['tmac_star'] is num ? (json['tmac_star'] as num).toInt() : int.tryParse('${json['tmac_star'] ?? ''}'),
+      tesState: '${json['tes_state'] ?? ''}',
+      dir5: json['dir5'] is num ? (json['dir5'] as num).toInt() : int.tryParse('${json['dir5'] ?? ''}'),
+      enginePrimary: '${json['engine_primary'] ?? ''}',
+    );
+  }
+}
+
+class EngineBoard {
+  const EngineBoard({
+    this.ready = false,
+    this.count = 0,
+    this.rows = const [],
+    this.counts = const {},
+    this.message = '',
+    this.note = '',
+    this.howto = '',
+    this.formulas = const {},
+    this.opportunity = const [],
+    this.pullbacks = const [],
+    this.nav = const [],
+  });
+
+  final bool ready;
+  final int count;
+  final List<EngineRow> rows;
+  final Map<String, int> counts;
+  final String message;
+  final String note;
+  final String howto;
+  final Map<String, String> formulas;
+  final List<String> opportunity;
+  final List<String> pullbacks;
+  final List<String> nav;
+
+  static const empty = EngineBoard();
+
+  factory EngineBoard.fromJson(Map<String, dynamic> json) {
+    Map<String, int> counts = {};
+    final rawCounts = json['counts'] ?? json['engine_counts'];
+    if (rawCounts is Map) {
+      rawCounts.forEach((k, v) {
+        if (v is num) counts['$k'] = v.toInt();
+      });
+    }
+    Map<String, String> formulas = {};
+    if (json['formulas'] is Map) {
+      (json['formulas'] as Map).forEach((k, v) => formulas['$k'] = '$v');
+    }
+    return EngineBoard(
+      ready: json['ready'] == true,
+      count: json['count'] is num
+          ? (json['count'] as num).toInt()
+          : (json['n'] is num ? (json['n'] as num).toInt() : 0),
+      rows: [
+        if (json['rows'] is List)
+          for (final r in json['rows'])
+            if (r is Map) EngineRow.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      counts: counts,
+      message: '${json['message'] ?? ''}',
+      note: '${json['note'] ?? ''}',
+      howto: '${json['howto'] ?? json['state_machine'] ?? ''}',
+      formulas: formulas,
+      opportunity: [
+        if (json['opportunity'] is List) for (final s in json['opportunity']) '$s',
+      ],
+      pullbacks: [
+        if (json['pullbacks'] is List)
+          for (final s in json['pullbacks'])
+            s is Map ? '${s['symbol'] ?? ''}' : '$s',
+      ],
+      nav: [
+        if (json['nav'] is List) for (final s in json['nav']) '$s',
+      ],
+    );
+  }
+}
+
+class EngineNamed {
+  const EngineNamed({
+    required this.symbol,
+    this.tag = '',
+    this.metric,
+    this.note = '',
+    this.state = '',
+    this.avgRsi,
+    this.align,
+    this.delta,
+    this.tesState = '',
+    this.dir5,
+  });
+
+  final String symbol;
+  final String tag;
+  final double? metric;
+  final String note;
+  final String state;
+  final double? avgRsi;
+  final double? align;
+  final double? delta;
+  final String tesState;
+  final int? dir5;
+
+  factory EngineNamed.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return EngineNamed(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      tag: '${json['gray_tag'] ?? json['state'] ?? ''}',
+      metric: n(json['str'] ?? json['stretch_pctile'] ?? json['stretch_pct']),
+      note: '${json['note'] ?? json['takeaway'] ?? ''}',
+      state: '${json['state'] ?? ''}',
+      avgRsi: n(json['avg_rsi']),
+      align: n(json['align']),
+      delta: n(json['delta']),
+      tesState: '${json['tes_state'] ?? ''}',
+      dir5: json['dir5'] is num ? (json['dir5'] as num).toInt() : int.tryParse('${json['dir5'] ?? ''}'),
+    );
+  }
+}
+
+class RsiCounterBoard {
+  const RsiCounterBoard({
+    this.ready = false,
+    this.rsiN = 14,
+    this.lag = 5,
+    this.daily = const {},
+    this.weekly = const {},
+    this.accelerating = const [],
+    this.fading = const [],
+    this.sectors = const [],
+    this.pullbacks = const [],
+    this.howto = '',
+    this.message = '',
+  });
+
+  final bool ready;
+  final int rsiN;
+  final int lag;
+  final Map<String, List<EngineNamed>> daily;
+  final Map<String, List<EngineNamed>> weekly;
+  final List<EngineNamed> accelerating;
+  final List<EngineNamed> fading;
+  final List<EngineNamed> sectors;
+  final List<EngineNamed> pullbacks;
+  final String howto;
+  final String message;
+
+  static const empty = RsiCounterBoard();
+
+  static Map<String, List<EngineNamed>> _buckets(Object? raw) {
+    final out = <String, List<EngineNamed>>{};
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (v is List) {
+          out['$k'] = [
+            for (final r in v)
+              if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+          ];
+        }
+      });
+    }
+    return out;
+  }
+
+  factory RsiCounterBoard.fromJson(Map<String, dynamic> json) {
+    return RsiCounterBoard(
+      ready: json['ready'] == true,
+      rsiN: json['rsi_n'] is num ? (json['rsi_n'] as num).toInt() : 14,
+      lag: json['lag'] is num ? (json['lag'] as num).toInt() : 5,
+      daily: _buckets(json['daily']),
+      weekly: _buckets(json['weekly']),
+      accelerating: [
+        if (json['accelerating'] is List)
+          for (final r in json['accelerating'])
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      fading: [
+        if (json['fading'] is List)
+          for (final r in json['fading'])
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      sectors: [
+        if (json['sectors'] is List)
+          for (final r in json['sectors'])
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      pullbacks: [
+        if (json['pullbacks'] is List)
+          for (final r in json['pullbacks'])
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      howto: '${json['howto'] ?? ''}',
+      message: '${json['message'] ?? ''}',
+    );
+  }
+}
+
+class PatternBoard {
+  const PatternBoard({
+    this.ready = false,
+    this.daily = const {},
+    this.weekly = const {},
+    this.dailyCounts = const {},
+    this.weeklyCounts = const {},
+    this.howto = '',
+    this.message = '',
+  });
+
+  final bool ready;
+  final Map<String, List<EngineNamed>> daily;
+  final Map<String, List<EngineNamed>> weekly;
+  final Map<String, int> dailyCounts;
+  final Map<String, int> weeklyCounts;
+  final String howto;
+  final String message;
+
+  static const empty = PatternBoard();
+
+  static Map<String, int> _counts(Object? raw) {
+    final out = <String, int>{};
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (v is num) out['$k'] = v.toInt();
+      });
+    }
+    return out;
+  }
+
+  static Map<String, List<EngineNamed>> _rows(Object? raw) {
+    final out = <String, List<EngineNamed>>{};
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (v is List) {
+          out['$k'] = [
+            for (final r in v)
+              if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+          ];
+        }
+      });
+    }
+    return out;
+  }
+
+  factory PatternBoard.fromJson(Map<String, dynamic> json) {
+    final d = json['daily'];
+    final w = json['weekly'];
+    return PatternBoard(
+      ready: json['ready'] == true,
+      daily: d is Map ? _rows(d['rows']) : const {},
+      weekly: w is Map ? _rows(w['rows']) : const {},
+      dailyCounts: d is Map ? _counts(d['counts']) : const {},
+      weeklyCounts: w is Map ? _counts(w['counts']) : const {},
+      howto: '${json['howto'] ?? ''}',
+      message: '${json['message'] ?? ''}',
+    );
+  }
+}
+
+class StretchBoard {
+  const StretchBoard({
+    this.ready = false,
+    this.strongest = const [],
+    this.breakdowns = const [],
+    this.stretched = const [],
+    this.compressed = const [],
+    this.howto = '',
+    this.message = '',
+  });
+
+  final bool ready;
+  final List<EngineNamed> strongest;
+  final List<EngineNamed> breakdowns;
+  final List<EngineNamed> stretched;
+  final List<EngineNamed> compressed;
+  final String howto;
+  final String message;
+
+  static const empty = StretchBoard();
+
+  static List<EngineNamed> _list(Object? raw) => [
+        if (raw is List)
+          for (final r in raw)
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ];
+
+  factory StretchBoard.fromJson(Map<String, dynamic> json) {
+    return StretchBoard(
+      ready: json['ready'] == true,
+      strongest: _list(json['strongest']),
+      breakdowns: _list(json['breakdowns']),
+      stretched: _list(json['stretched']),
+      compressed: _list(json['compressed']),
+      howto: '${json['howto'] ?? ''}',
+      message: '${json['message'] ?? ''}',
+    );
+  }
+}
+
+class SigmaBoard {
+  const SigmaBoard({
+    this.ready = false,
+    this.rows = const [],
+    this.message = '',
+    this.note = '',
+  });
+
+  final bool ready;
+  final List<Map<String, dynamic>> rows;
+  final String message;
+  final String note;
+
+  static const empty = SigmaBoard();
+
+  factory SigmaBoard.fromJson(Map<String, dynamic> json) {
+    return SigmaBoard(
+      ready: json['ready'] == true,
+      rows: [
+        if (json['rows'] is List)
+          for (final r in json['rows'])
+            if (r is Map) Map<String, dynamic>.from(r),
+      ],
+      message: '${json['message'] ?? ''}',
+      note: '${json['note'] ?? ''}',
+    );
+  }
+}
+
+class MapPoint {
+  const MapPoint({
+    required this.symbol,
+    this.x,
+    this.y,
+    this.assetClass = 'Stock',
+    this.tag = '',
+    this.marker = 'solid',
+    this.arrow = '',
+    this.fractalRead = '',
+    this.tdFlag = '',
+  });
+
+  final String symbol;
+  final double? x;
+  final double? y;
+  final String assetClass;
+  final String tag;
+  final String marker;
+  final String arrow;
+  final String fractalRead;
+  final String tdFlag;
+
+  factory MapPoint.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return MapPoint(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      x: n(json['x']),
+      y: n(json['y']),
+      assetClass: '${json['asset_class'] ?? 'Stock'}',
+      tag: '${json['coil_state'] ?? json['zone'] ?? ''}',
+      marker: '${json['marker'] ?? 'solid'}',
+      arrow: '${json['arrow'] ?? ''}',
+      fractalRead: '${json['fractal_read'] ?? ''}',
+      tdFlag: '${json['td_flag'] ?? ''}',
+    );
+  }
+}
+
+class EngineMaps {
+  const EngineMaps({
+    this.ready = false,
+    this.count = 0,
+    this.scanner = const [],
+    this.rotation = const [],
+    this.coil = const [],
+    this.fractalTd = const [],
+    this.tmsWeekly = const [],
+    this.tmsDaily = const [],
+    this.spyLabel = '',
+    this.spyNote = '',
+    this.tmsZones = const {},
+    this.top12m = const [],
+    this.bottom12m = const [],
+    this.howto = '',
+    this.message = '',
+    this.tmacNote = '',
+    this.tdNote = '',
+    this.fractalNoD = 0,
+  });
+
+  final bool ready;
+  final int count;
+  final List<EngineNamed> scanner;
+  final List<MapPoint> rotation;
+  final List<MapPoint> coil;
+  final List<MapPoint> fractalTd;
+  final List<MapPoint> tmsWeekly;
+  final List<MapPoint> tmsDaily;
+  final String spyLabel;
+  final String spyNote;
+  final Map<String, List<String>> tmsZones;
+  final List<EngineNamed> top12m;
+  final List<EngineNamed> bottom12m;
+  final String howto;
+  final String message;
+  final String tmacNote;
+  final String tdNote;
+  final int fractalNoD;
+
+  static const empty = EngineMaps();
+
+  static List<MapPoint> _pts(Object? raw) => [
+        if (raw is List)
+          for (final r in raw)
+            if (r is Map) MapPoint.fromJson(Map<String, dynamic>.from(r)),
+      ];
+
+  factory EngineMaps.fromJson(Map<String, dynamic> json) {
+    final scan = json['scanner'];
+    final rot = json['rotation'];
+    final coil = json['coil'];
+    final ft = json['fractal_td'];
+    final tm = json['tms_regime'];
+    final spy = tm is Map ? tm['spy_strip'] : null;
+    final ex = tm is Map ? tm['extremes'] : null;
+    return EngineMaps(
+      ready: json['ready'] == true,
+      count: json['count'] is num ? (json['count'] as num).toInt() : 0,
+      scanner: [
+        if (scan is Map && scan['rows'] is List)
+          for (final r in scan['rows'])
+            if (r is Map) EngineNamed.fromJson(Map<String, dynamic>.from(r)),
+      ],
+      rotation: rot is Map ? _pts(rot['points']) : const [],
+      coil: coil is Map ? _pts(coil['points']) : const [],
+      fractalTd: ft is Map ? _pts(ft['points']) : const [],
+      tmsWeekly: tm is Map ? _pts(tm['weekly']) : const [],
+      tmsDaily: tm is Map ? _pts(tm['daily']) : const [],
+      spyLabel: spy is Map ? '${spy['label'] ?? ''}' : '',
+      spyNote: spy is Map ? '${spy['note'] ?? ''}' : '',
+      tmsZones: {
+        if (tm is Map && tm['by_zone'] is Map)
+          for (final e in (tm['by_zone'] as Map).entries)
+            if (e.value is List && (e.value as List).isNotEmpty)
+              '${e.key}': [for (final s in e.value as List) '$s'],
+      },
+      top12m: [
+        if (ex is Map && ex['top_12m'] is List)
+          for (final r in ex['top_12m'])
+            if (r is Map)
+              EngineNamed.fromJson({
+                ...Map<String, dynamic>.from(r),
+                if (r['ret_12m'] is num) 'note': '${(r['ret_12m'] as num).toStringAsFixed(1)}%',
+              }),
+      ],
+      bottom12m: [
+        if (ex is Map && ex['bottom_12m'] is List)
+          for (final r in ex['bottom_12m'])
+            if (r is Map)
+              EngineNamed.fromJson({
+                ...Map<String, dynamic>.from(r),
+                if (r['ret_12m'] is num) 'note': '${(r['ret_12m'] as num).toStringAsFixed(1)}%',
+              }),
+      ],
+      howto: [
+        if (rot is Map) '${rot['howto'] ?? ''}',
+        if (coil is Map) '${coil['howto'] ?? ''}',
+      ].where((s) => s.isNotEmpty).join('\n'),
+      message: '${json['message'] ?? ''}',
+      tmacNote: '${json['tmac_note'] ?? ''}',
+      tdNote: '${json['td_note'] ?? ''}',
+      fractalNoD: ft is Map && ft['no_d'] is num ? (ft['no_d'] as num).toInt() : 0,
+    );
+  }
+}
+
+class WarningHit {
+  const WarningHit({
+    required this.symbol,
+    this.vcp = '',
+    this.patternD = '',
+    this.patternW = '',
+    this.dw = '',
+    this.str,
+    this.stretchPctile,
+    this.takeaway = '',
+    this.rsiC = '',
+    this.rsiCW = '',
+    this.kind = '',
+    this.label = '',
+  });
+
+  final String symbol;
+  final String vcp;
+  final String patternD;
+  final String patternW;
+  final String dw;
+  final int? str;
+  final double? stretchPctile;
+  final String takeaway;
+  final String rsiC;
+  final String rsiCW;
+  final String kind;
+  final String label;
+
+  factory WarningHit.fromJson(Map<String, dynamic> json) {
+    double? n(Object? v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v');
+    }
+
+    return WarningHit(
+      symbol: '${json['symbol'] ?? ''}'.toUpperCase(),
+      vcp: '${json['vcp'] ?? ''}',
+      patternD: '${json['pattern_d'] ?? ''}',
+      patternW: '${json['pattern_w'] ?? ''}',
+      dw: '${json['dw'] ?? ''}',
+      str: json['str'] is num ? (json['str'] as num).toInt() : int.tryParse('${json['str'] ?? ''}'),
+      stretchPctile: n(json['stretch_pctile']),
+      takeaway: '${json['takeaway'] ?? ''}',
+      rsiC: '${json['rsi_c'] ?? ''}',
+      rsiCW: '${json['rsi_c_w'] ?? ''}',
+      kind: '${json['kind'] ?? ''}',
+      label: '${json['label'] ?? ''}',
+    );
+  }
+}
+
+class WarningsBoard {
+  const WarningsBoard({
+    this.ready = false,
+    this.note = '',
+    this.howto = '',
+    this.message = '',
+    this.dailyBreakout = const [],
+    this.dailyBreakdown = const [],
+    this.dailyFromBottom = const [],
+    this.dailyFromTop = const [],
+    this.weeklyBreakout = const [],
+    this.weeklyBreakdown = const [],
+    this.weeklyFromBottom = const [],
+    this.weeklyFromTop = const [],
+    this.tightening = const [],
+    this.coiled = const [],
+    this.dailyOs = const [],
+    this.dailyOb = const [],
+    this.dailyUp = const [],
+    this.dailyDn = const [],
+    this.weeklyOs = const [],
+    this.weeklyOb = const [],
+    this.weeklyUp = const [],
+    this.weeklyDn = const [],
+    this.dwUp = const [],
+    this.dwDn = const [],
+    this.strongest = const [],
+    this.stretched = const [],
+    this.compressed = const [],
+    this.takeaways = const [],
+  });
+
+  final bool ready;
+  final String note;
+  final String howto;
+  final String message;
+  final List<WarningHit> dailyBreakout;
+  final List<WarningHit> dailyBreakdown;
+  final List<WarningHit> dailyFromBottom;
+  final List<WarningHit> dailyFromTop;
+  final List<WarningHit> weeklyBreakout;
+  final List<WarningHit> weeklyBreakdown;
+  final List<WarningHit> weeklyFromBottom;
+  final List<WarningHit> weeklyFromTop;
+  final List<WarningHit> tightening;
+  final List<WarningHit> coiled;
+  final List<WarningHit> dailyOs;
+  final List<WarningHit> dailyOb;
+  final List<WarningHit> dailyUp;
+  final List<WarningHit> dailyDn;
+  final List<WarningHit> weeklyOs;
+  final List<WarningHit> weeklyOb;
+  final List<WarningHit> weeklyUp;
+  final List<WarningHit> weeklyDn;
+  final List<WarningHit> dwUp;
+  final List<WarningHit> dwDn;
+  final List<WarningHit> strongest;
+  final List<WarningHit> stretched;
+  final List<WarningHit> compressed;
+  final List<WarningHit> takeaways;
+
+  static const empty = WarningsBoard();
+
+  static List<WarningHit> _hits(Object? raw) => [
+        if (raw is List)
+          for (final r in raw)
+            if (r is Map) WarningHit.fromJson(Map<String, dynamic>.from(r)),
+      ];
+
+  factory WarningsBoard.fromJson(Map<String, dynamic> json) {
+    final bo = json['breakouts'];
+    final daily = bo is Map ? bo['daily'] : null;
+    final weekly = bo is Map ? bo['weekly'] : null;
+    final vcp = json['vcp'];
+    final rsi = json['rsi_c'];
+    final rd = rsi is Map ? rsi['daily'] : null;
+    final rw = rsi is Map ? rsi['weekly'] : null;
+    final stretch = json['stretch'];
+    return WarningsBoard(
+      ready: json['ready'] == true,
+      note: '${json['note'] ?? ''}',
+      howto: '${json['howto'] ?? ''}',
+      message: '${json['message'] ?? ''}',
+      dailyBreakout: daily is Map ? _hits(daily['Breakout']) : const [],
+      dailyBreakdown: daily is Map ? _hits(daily['Breakdown']) : const [],
+      dailyFromBottom: daily is Map ? _hits(daily['From Bottom']) : const [],
+      dailyFromTop: daily is Map ? _hits(daily['From Top']) : const [],
+      weeklyBreakout: weekly is Map ? _hits(weekly['Breakout']) : const [],
+      weeklyBreakdown: weekly is Map ? _hits(weekly['Breakdown']) : const [],
+      weeklyFromBottom: weekly is Map ? _hits(weekly['From Bottom']) : const [],
+      weeklyFromTop: weekly is Map ? _hits(weekly['From Top']) : const [],
+      tightening: vcp is Map ? _hits(vcp['tightening']) : const [],
+      coiled: vcp is Map ? _hits(vcp['coiled']) : const [],
+      dailyOs: rd is Map ? _hits(rd['oversold']) : const [],
+      dailyOb: rd is Map ? _hits(rd['overbought']) : const [],
+      dailyUp: rd is Map ? _hits(rd['trend_up']) : const [],
+      dailyDn: rd is Map ? _hits(rd['trend_dn']) : const [],
+      weeklyOs: rw is Map ? _hits(rw['oversold']) : const [],
+      weeklyOb: rw is Map ? _hits(rw['overbought']) : const [],
+      weeklyUp: rw is Map ? _hits(rw['trend_up']) : const [],
+      weeklyDn: rw is Map ? _hits(rw['trend_dn']) : const [],
+      dwUp: rsi is Map ? _hits(rsi['dw_up']) : const [],
+      dwDn: rsi is Map ? _hits(rsi['dw_dn']) : const [],
+      strongest: stretch is Map ? _hits(stretch['strongest']) : const [],
+      stretched: stretch is Map ? _hits(stretch['stretched']) : const [],
+      compressed: stretch is Map ? _hits(stretch['compressed']) : const [],
+      takeaways: _hits(json['takeaways']),
+    );
+  }
+}

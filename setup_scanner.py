@@ -9,6 +9,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
+import equity_engine as ee
 import market_data as md
 import portfolio
 
@@ -27,6 +28,9 @@ SETUP_IDS = {
 
 # Last N daily bars for ADR% — legend uses 20 valid (H,L,C>0) bars, min 5.
 SCAN_ADR_BARS = 30
+# TMAC* / heat_proxy column: SPEC heat proxy (never branded TMAC).
+# Same daily window as equity_engine.measure (400) so SMA200 can vote when stored.
+SCAN_TMAC_BARS = 400
 
 
 def scan_adr_pct(rows: Optional[list] = None) -> Optional[float]:
@@ -90,6 +94,13 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
                 score += 1
 
         daily_rows = md.get_ohlcv(snap["symbol"], "daily", limit=SCAN_ADR_BARS)
+        tmac_df = md.get_ohlcv_df(snap["symbol"], "daily", limit=SCAN_TMAC_BARS)
+        tmac = None
+        if tmac_df is not None and not tmac_df.empty:
+            close = tmac_df["close"]
+            high = tmac_df["high"] if "high" in tmac_df.columns else close
+            low = tmac_df["low"] if "low" in tmac_df.columns else close
+            tmac = ee.tmac_star(high, low, close)
 
         return {
             "symbol": snap["symbol"],
@@ -104,6 +115,9 @@ def _scan_one_setup(symbol: str) -> Optional[dict]:
             "dist_20d_high_pct": snap.get("dist_20d_high_pct"),
             "vol_ratio_5_20": snap.get("vol_ratio_5_20"),
             "adr_pct": scan_adr_pct(daily_rows),
+            "tmac_star": tmac,
+            "heat_proxy": tmac,
+            "tmac_note": ee.TMAC_NOTE,
             "gap_pct": snap.get("gap_pct"),
             "regime": snap.get("regime"),
             "regime_weekly": snap.get("regime_weekly"),
@@ -176,4 +190,5 @@ def scan_setups(
         "setup_filter": setup_filter,
         "results": results,
         "setup_catalog": SETUP_IDS,
+        "tmac_note": ee.TMAC_NOTE,
     }

@@ -1,0 +1,24 @@
+[
+  {
+    "asset_id": "b0b6dd9d-8b9b-48a9-ba46-b9d54906e415",
+    "symbol": "AAPL",
+    "exchange": "NASDAQ",
+    "asset_class": "us_equity",
+    "qty": "10",
+    "side": "long",
+    "avg_entry_price": "140.00",
+    "market_value": "1500.00",
+    "cost_basis": "1400.00"
+  },
+  {
+    "asset_id": "aaaaaaaa-1111-2222-3333-444444444444",
+    "symbol": "MSFT",
+    "exchange": "NASDAQ",
+    "asset_class": "us_equity",
+    "qty": "5",
+    "side": "short",
+    "avg_entry_price": "380.00",
+    "market_value": "-1900.00",
+    "cost_basis": "1900.00"
+  }
+]

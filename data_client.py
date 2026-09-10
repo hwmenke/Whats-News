@@ -95,7 +95,46 @@ def list_symbol_codes() -> list[str]:
     return data or []
 
 
+def monthly_from_daily(daily_rows: list[dict]) -> list[dict]:
+    """Month-end OHLC from stored daily bars — same resample as the scanner."""
+    if not daily_rows:
+        return []
+    frame = pd.DataFrame(daily_rows)
+    if frame.empty or "date" not in frame.columns:
+        return []
+    work = frame.copy()
+    work["date"] = pd.to_datetime(work["date"])
+    work = work.set_index("date").sort_index()
+    agg = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+    monthly = pd.DataFrame()
+    for alias in ("ME", "M"):
+        try:
+            monthly = work.resample(alias).agg(agg).dropna(subset=["close"])
+            break
+        except Exception:
+            continue
+    if monthly.empty:
+        return []
+    rows: list[dict] = []
+    for ts, row in monthly.iterrows():
+        rows.append({
+            "date": ts.strftime("%Y-%m-%d"),
+            "open": float(row["open"]),
+            "high": float(row["high"]),
+            "low": float(row["low"]),
+            "close": float(row["close"]),
+            "volume": float(row["volume"]),
+        })
+    return rows
+
+
 def get_ohlcv(symbol: str, freq: str = "daily", limit: int = 500) -> list[dict]:
+    if freq == "monthly":
+        daily = get_ohlcv(symbol, "daily", limit=max(int(limit) * 23, 800))
+        rows = monthly_from_daily(daily)
+        if limit and len(rows) > limit:
+            return rows[-limit:]
+        return rows
     if use_embedded():
         import database as db
         return db.get_ohlcv(symbol, freq, limit)
@@ -128,7 +167,19 @@ def get_db_stats() -> dict:
 
 def health() -> dict:
     if use_embedded():
-        return {"ok": True, "mode": "embedded"}
+        import database as db
+        db.init_db()
+        try:
+            stats = db.get_db_stats() if hasattr(db, "get_db_stats") else {}
+            return {
+                "ok": True,
+                "mode": "embedded",
+                "schema_ok": True,
+                "symbol_count": stats.get("symbol_count", len(db.list_symbols())),
+                "path": stats.get("path", getattr(db, "DB_PATH", None)),
+            }
+        except Exception as exc:
+            return {"ok": False, "mode": "embedded", "schema_ok": False, "error": str(exc)}
     return _request("GET", "/api/health") or {"ok": False}
 
 

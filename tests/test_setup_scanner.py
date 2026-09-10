@@ -78,6 +78,10 @@ class SetupScannerTests(unittest.TestCase):
         self.assertAlmostEqual(expected, round(portfolio.legend_adr_pct(daily), 2))
         self.assertIn("vol_ratio_5_20", row)
         self.assertIsNotNone(row["vol_ratio_5_20"])
+        self.assertIn("tmac_star", row)
+        self.assertIsNone(row["tmac_star"])  # TEST1 has 60 daily bars; TMAC* needs 63
+        self.assertEqual(out["tmac_note"], "TMAC* heat proxy — never branded TMAC")
+        self.assertNotIn("tmac", [k for k in row if k == "tmac"])
 
     def test_scan_adr_pct_matches_legend_math(self):
         rows = [{"high": 102.41, "low": 100.0, "close": 100.0}] * 20
@@ -86,6 +90,105 @@ class SetupScannerTests(unittest.TestCase):
         self.assertIsNone(setup_scanner.scan_adr_pct([{"high": 102.0, "low": 100.0, "close": 100.0}] * 4))
         self.assertIsNone(setup_scanner.scan_adr_pct(None))
         self.assertIsNone(setup_scanner.scan_adr_pct([]))
+
+    def test_scan_payload_includes_tmac_star_when_bars_suffice(self):
+        idx = pd.date_range("2024-01-01", periods=90, freq="D")
+        frame = pd.DataFrame(
+            {
+                "open": np.linspace(80, 150, 90),
+                "high": np.linspace(81, 152, 90),
+                "low": np.linspace(79, 148, 90),
+                "close": np.linspace(80.5, 151, 90),
+                "volume": np.full(90, 2_000_000.0),
+            },
+            index=idx,
+        )
+        db.add_symbol("LONG1")
+        db.upsert_ohlcv("LONG1", "daily", frame)
+        with patch("setup_scanner.md.list_symbols_with_ohlcv", return_value=["LONG1"]):
+            out = setup_scanner.scan_setups(limit=10)
+        ready = [r for r in out["results"] if r.get("ready") and r.get("symbol") == "LONG1"]
+        self.assertTrue(ready)
+        row = ready[0]
+        self.assertIsInstance(row["tmac_star"], int)
+        self.assertGreaterEqual(row["tmac_star"], 70)
+        self.assertLessEqual(row["tmac_star"], 99)
+        self.assertEqual(row["heat_proxy"], row["tmac_star"])
+        self.assertEqual(row["tmac_note"], "TMAC* heat proxy — never branded TMAC")
+        self.assertEqual(out["tmac_note"], "TMAC* heat proxy — never branded TMAC")
+        self.assertNotIn("win rate", str(row["tmac_star"]))
+
+    def test_setup_tmac_matches_engine_measure_window(self):
+        idx = pd.date_range("2023-01-01", periods=220, freq="D")
+        close = np.linspace(80, 160, 220)
+        frame = pd.DataFrame(
+            {
+                "open": close,
+                "high": close + 1.0,
+                "low": close - 1.0,
+                "close": close,
+                "volume": np.full(220, 1_500_000.0),
+            },
+            index=idx,
+        )
+        db.add_symbol("LONG2")
+        db.upsert_ohlcv("LONG2", "daily", frame)
+        with patch("setup_scanner.md.list_symbols_with_ohlcv", return_value=["LONG2"]):
+            out = setup_scanner.scan_setups(symbols=["LONG2"], limit=5)
+        row = [r for r in out["results"] if r.get("symbol") == "LONG2"][0]
+        measured = __import__("equity_engine").measure("LONG2", daily=frame)
+        self.assertEqual(row["tmac_star"], measured["tmac_star"])
+        self.assertGreaterEqual(setup_scanner.SCAN_TMAC_BARS, 200)
+
+
+class SetupScanTmacColumnTests(unittest.TestCase):
+    """TMAC* 0–99 heat on the setup scanner table — interim until Quant SPEC."""
+
+    def test_table_column_and_heat_contract(self):
+        with open("scripts/setup_scanner.js", encoding="utf-8") as fh:
+            setup = fh.read()
+        with open("index.html", encoding="utf-8") as fh:
+            html = fh.read()
+        with open("setup_scanner.py", encoding="utf-8") as fh:
+            py = fh.read()
+
+        self.assertIn("function setupTmacHeat", setup)
+        self.assertIn("row.tmac_star", setup)
+        self.assertIn("TMAC* heat proxy — never branded TMAC", setup)
+        self.assertIn("setupTmacHeat", setup)
+        self.assertIn("rgba(34,197,94", setup)
+        self.assertIn("rgba(239,68,68", setup)
+
+        self.assertIn("TMAC* heat proxy — never branded TMAC", html)
+        self.assertIn(">TMAC*</th>", html)
+        self.assertIn('id="setup-scan-table"', html)
+
+        self.assertIn("tmac_star", py)
+        self.assertIn("heat_proxy", py)
+        self.assertIn("never branded TMAC", py)
+        self.assertIn("SCAN_TMAC_BARS = 400", py)
+        self.assertNotIn('"tmac":', py)
+
+        start = setup.index("function setupTmacHeat")
+        end = setup.index("function renderSetupScanTable")
+        script = setup[start:end] + r"""
+const lo = setupTmacHeat(0);
+const mid = setupTmacHeat(50);
+const hi = setupTmacHeat(99);
+const blank = setupTmacHeat(null);
+console.log(JSON.stringify({lo, mid, hi, blank}));
+"""
+        proc = subprocess.run(
+            ["node", "-e", script],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = __import__("json").loads(proc.stdout.strip())
+        self.assertIn("239,68,68", out["lo"])
+        self.assertIn("34,197,94", out["hi"])
+        self.assertEqual(out["blank"], "")
 
 
 class SetupScanRowMetricChipTests(unittest.TestCase):

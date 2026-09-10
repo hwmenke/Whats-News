@@ -29,13 +29,25 @@ import backtester
 import scanner
 import adaptive_trend as adaptive
 import conditional_dist
-import yfinance as yf
+import yahoo_news
 import portfolio
 import setup_scanner
 import index_universe
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
+
+
+def ensure_local_schema():
+    """Always create symbols/ohlcv if missing. Safe if already initialized."""
+    import database as db
+
+    db.init_db()
+
+
+# start.sh / iPhone client hit this process on :8050. Do not wait for the
+# first request — an empty leftover finance.db used to 500 watchlist + news.
+ensure_local_schema()
 
 
 def _data_error(exc):
@@ -62,18 +74,22 @@ def news_page():
 
 @app.route("/api/health")
 def health():
+    ensure_local_schema()
     try:
         data_health = md.health()
     except Exception as exc:
         data_health = {"ok": False, "error": str(exc)}
+    schema_ok = False
     try:
         symbol_count = len(md.list_symbols())
+        schema_ok = True
     except Exception:
         symbol_count = None
     return jsonify({
         "ok": True,
         "service": "whats-news",
         "layer": "analysis",
+        "schema_ok": schema_ok,
         "symbol_count": symbol_count,
         "data_service": data_health,
         "data_mode": data_client.DATA_SERVICE_MODE,
@@ -86,6 +102,641 @@ def portfolio_snapshot():
     """Watchlist tape: day change, RSI, regime vs KAMA — for PM desk."""
     try:
         return jsonify(portfolio.portfolio_snapshot())
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify({
+                "count": 0,
+                "ready_count": 0,
+                "symbols": [],
+                "tape": [],
+                "heatmap": [],
+                "breakout_queue": [],
+                "group_rollup": [],
+                "message": "No symbols in watchlist",
+            })
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/sleeves", methods=["GET"])
+def list_sleeves():
+    """Curated Yahoo ETF sleeves for the iPhone Macro board."""
+    import ticker_lists as tl
+    listed = tl.sleeves() if hasattr(tl, "sleeves") else getattr(tl, "MACRO_SLEEVES", [])
+    return jsonify({
+        "sleeves": listed,
+        "note": "Sleeves wrap ticker_lists.TICKER_LIBRARY — Yahoo names, not GDP.",
+    })
+
+
+@app.route("/api/sleeves/<string:sleeve_id>/seed", methods=["POST"])
+def seed_sleeve(sleeve_id):
+    """Add a sleeve's tickers to the desk and tag group_tag."""
+    import ticker_lists as tl
+    sleeve = tl.get_sleeve(sleeve_id) if hasattr(tl, "get_sleeve") else None
+    if not sleeve:
+        return jsonify({"error": "unknown sleeve"}), 404
+    ensure_local_schema()
+    try:
+        tickers = sleeve.get("tickers") or []
+        tag = sleeve.get("group_tag") or ""
+        result = md.add_symbols(tickers)
+        tagged = []
+        for raw in tickers:
+            sym = str(raw).strip().upper()
+            if not sym:
+                continue
+            md.set_symbol_group(sym, tag)
+            tagged.append(sym)
+        return jsonify({
+            "id": sleeve["id"],
+            "group_tag": tag,
+            "tagged": tagged,
+            **result,
+        }), 201 if result.get("added") else 200
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/macro/board", methods=["GET"])
+def macro_board_api():
+    """MARKET MOVES-style sleeve grid from stored daily bars only."""
+    import macro_board as mb
+    try:
+        return jsonify(mb.build_macro_board())
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(mb.empty_macro_board())
+        return jsonify({"error": str(exc)}), 500
+
+
+def _with_board_columns(payload, board_id):
+    """Stamp registry columns onto a board payload. No measure math."""
+    if not board_id:
+        return payload
+    import board_registry
+    return board_registry.attach(payload, board_id)
+
+
+@app.route("/api/boards/registry", methods=["GET"])
+def boards_registry_api():
+    """Column + measure registry for Market Moves and ENGINE (JSON; YAML twin on disk)."""
+    import board_registry
+    return jsonify(board_registry.catalog())
+
+
+@app.route("/api/market-moves", methods=["GET"])
+def market_moves_api():
+    """Dense Market Moves grid — QUANT-locked z from stored Yahoo closes."""
+    import market_moves as mm
+    try:
+        return jsonify(_with_board_columns(mm.build_board(), "market_moves"))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(_with_board_columns(mm.empty_board(), "market_moves"))
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/market-moves/seed", methods=["POST"])
+def market_moves_seed():
+    """Add Market Moves Yahoo names to the desk. Bars arrive only via Fetch."""
+    import market_moves as mm
+    body = request.get_json(force=True, silent=True) or {}
+    groups = body.get("groups")
+    if groups is not None and not isinstance(groups, list):
+        return jsonify({"error": "groups must be a list"}), 400
+    ensure_local_schema()
+    try:
+        return jsonify(mm.seed_symbols(groups)), 201
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/market-moves/fetch-core", methods=["POST"])
+def market_moves_fetch_core():
+    """Seed + Fetch Yahoo for Indexes, Big Tech, and Sectors."""
+    import market_moves as mm
+    body = request.get_json(force=True, silent=True) or {}
+    try:
+        delay = float(body.get("delay", 1.2))
+    except (TypeError, ValueError):
+        delay = 1.2
+    period = str(body.get("period") or "1y")
+    ensure_local_schema()
+    try:
+        return jsonify(mm.fetch_core(delay=delay, period=period))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/desk/seed-fetch", methods=["POST"])
+def desk_seed_fetch():
+    """Seed MM core (+ optional Core 50) then Fetch Yahoo for desk names missing ≥20 daily bars.
+
+    Documented path: docs/YAHOO_SEED.md. Seed registers names; Fetch writes ohlcv.
+    Does not invent prices. Archive univ:* stays off the desk.
+    """
+    import time
+    import data_fetcher as fetcher
+    import market_moves as mm
+    import ticker_lists as tl
+    body = request.get_json(force=True, silent=True) or {}
+    try:
+        delay = float(body.get("delay", 0.4))
+    except (TypeError, ValueError):
+        delay = 0.4
+    period = str(body.get("period") or "2y")
+    want_core50 = str(body.get("core50", "1")).lower() in ("1", "true", "yes")
+    ensure_local_schema()
+    core50 = {}
+    if want_core50:
+        tickers = tl.core50_tickers()
+        result = md.add_symbols(tickers)
+        for raw in tickers:
+            md.set_symbol_group(raw, tl.library_group_tag(raw))
+        core50 = {"count": len(tickers), **result}
+    # Maps/Coil need ~28 weekly bars. Keep fetching desk extras even if MM core
+    # throttles — sleeve seed on iPhone must still write Yahoo ohlcv.
+    try:
+        mm_core = mm.fetch_core(delay=delay, period=period)
+    except Exception as exc:
+        mm_core = {"error": str(exc), "fetched": [], "failed": [{"error": str(exc)}]}
+    have20 = set(md.list_symbols_with_ohlcv("daily", min_bars=20))
+    have_coil = set(md.list_symbols_with_ohlcv("daily", min_bars=140))
+    desk = [s["symbol"] for s in md.list_desk_symbols()]
+    missing = [s for s in desk if s not in have20]
+    short = [s for s in desk if s in have20 and s not in have_coil]
+    queue = missing + short
+    extra_fetched, extra_failed = [], []
+    for i, sym in enumerate(queue[:40]):
+        if i:
+            time.sleep(max(0.0, delay))
+        out = fetcher.fetch_and_store(sym, period=period)
+        if out.get("error"):
+            extra_failed.append({"symbol": sym, "error": out.get("error")})
+        else:
+            extra_fetched.append({
+                "symbol": sym,
+                "daily_rows": out.get("daily_rows"),
+                "weekly_rows": out.get("weekly_rows"),
+            })
+    stored_n = len(md.list_symbols_with_ohlcv("daily", min_bars=20))
+    coil_n = len(md.list_symbols_with_ohlcv("daily", min_bars=140))
+    return jsonify({
+        "core50": core50,
+        "market_moves": mm_core,
+        "desk_extra": {
+            "fetched": extra_fetched,
+            "failed": extra_failed,
+            "missing_before": missing,
+            "short_before": short,
+        },
+        "stored_n": stored_n,
+        "coil_n": coil_n,
+        "note": "Yahoo seed→fetch (2y for Maps/Coil). Failed names stay blank — not invented. See docs/YAHOO_SEED.md.",
+    })
+
+
+@app.route("/api/edges/board", methods=["GET"])
+def edges_board_api():
+    """Which-edge-is-online surface — real indicators, no screenshot win rates."""
+    import macro_board as mb
+    try:
+        return jsonify(mb.build_edges_board())
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(mb.empty_edges_board())
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/fractal/status", methods=["GET"])
+def fractal_status_api():
+    """SPEC 25/27 in-repo estimator. available=true; D is still null without bars."""
+    import fractal_scan
+    return jsonify(fractal_scan.status())
+
+
+@app.route("/api/fractal/scan", methods=["GET"])
+def fractal_scan_api():
+    """Desk (+ core indices) Fractal D from stored daily closes. Null D if NaN."""
+    import fractal_scan
+    desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+    try:
+        return jsonify(fractal_scan.scan(desk=desk))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(fractal_scan.empty_scan())
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/book/positions", methods=["GET"])
+def book_positions():
+    """Paper book lines. Empty list is honest — not a demo book."""
+    import paper_book
+    ensure_local_schema()
+    try:
+        rows = paper_book.list_positions()
+        return jsonify({
+            "desk_name": paper_book.get_desk_name(),
+            "positions": rows,
+            "count": len(rows),
+            "note": paper_book.NOTE,
+        })
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify({
+                "desk_name": paper_book.DESK_DEFAULT,
+                "positions": [],
+                "count": 0,
+                "note": paper_book.NOTE,
+            })
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/book/positions", methods=["POST"])
+def book_add_position():
+    import paper_book
+    ensure_local_schema()
+    body = request.get_json(silent=True) or {}
+    try:
+        row = paper_book.upsert_position(
+            symbol=body.get("symbol"),
+            qty=body.get("qty"),
+            side=body.get("side"),
+            avg_cost=body.get("avg_cost"),
+            note=body.get("note") or "",
+            source=body.get("source") or "manual",
+        )
+        return jsonify(row), 201
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@app.route("/api/book/positions/<int:pid>", methods=["PUT"])
+def book_update_position(pid):
+    import paper_book
+    ensure_local_schema()
+    body = request.get_json(silent=True) or {}
+    row = paper_book.update_position(pid, **body)
+    if row is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(row)
+
+
+@app.route("/api/book/positions/<int:pid>", methods=["DELETE"])
+def book_delete_position(pid):
+    import paper_book
+    ensure_local_schema()
+    if not paper_book.delete_position(pid):
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"ok": True, "id": pid})
+
+
+@app.route("/api/book/import", methods=["POST"])
+def book_import_csv():
+    """Fidelity Positions CSV (or any Symbol+Quantity CSV). No broker login."""
+    import paper_book
+    ensure_local_schema()
+    body = request.get_json(silent=True) or {}
+    text = body.get("csv") or body.get("text") or ""
+    if not text and request.data:
+        try:
+            text = request.get_data(as_text=True) or ""
+        except Exception:
+            text = ""
+    replace = bool(body.get("replace"))
+    try:
+        return jsonify(paper_book.import_csv(text, replace=replace))
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "imported": 0, "positions": []}), 400
+
+
+@app.route("/api/book/meta", methods=["PUT"])
+def book_meta():
+    import paper_book
+    ensure_local_schema()
+    body = request.get_json(silent=True) or {}
+    name = paper_book.set_desk_name(body.get("desk_name") or "")
+    return jsonify({"desk_name": name})
+
+
+@app.route("/api/book/pnl", methods=["GET"])
+@app.route("/api/pnl/desk", methods=["GET"])
+def book_pnl_api():
+    """Today's P&L, exposure, VaR from paper positions × stored closes."""
+    import paper_book
+    ensure_local_schema()
+    try:
+        return jsonify(paper_book.book_pnl())
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(paper_book.empty_pnl())
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/alpaca/status", methods=["GET"])
+def alpaca_status_api():
+    """Alpaca paper keys present? Never echoes secrets. Live URL refused."""
+    import alpaca_paper
+    return jsonify(alpaca_paper.status())
+
+
+@app.route("/api/alpaca/sync", methods=["POST"])
+def alpaca_sync_api():
+    """Read-only GET account + positions. paper=true hard-coded. No orders."""
+    import alpaca_paper
+    ensure_local_schema()
+    try:
+        return jsonify(alpaca_paper.sync())
+    except alpaca_paper.AlpacaDenied as exc:
+        return jsonify(alpaca_paper.empty_sync(str(exc), paper=True)), 200
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(alpaca_paper.empty_sync(str(exc), paper=True))
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/finviz/settings", methods=["GET"])
+def finviz_settings_get():
+    import finviz_client
+    ensure_local_schema()
+    return jsonify(finviz_client.get_settings())
+
+
+@app.route("/api/finviz/settings", methods=["PUT"])
+def finviz_settings_put():
+    import finviz_client
+    ensure_local_schema()
+    body = request.get_json(silent=True) or {}
+    enabled = body.get("enabled")
+    if isinstance(enabled, str):
+        enabled = enabled.strip().lower() in ("1", "true", "yes", "on")
+    return jsonify(finviz_client.set_settings(enabled=enabled, ttl_sec=body.get("ttl_sec")))
+
+
+@app.route("/api/finviz/presets", methods=["GET"])
+def finviz_presets_api():
+    import finviz_client
+    ensure_local_schema()
+    return jsonify(finviz_client.list_presets_payload())
+
+
+@app.route("/api/finviz/quote/<string:symbol>", methods=["GET"])
+def finviz_quote_api(symbol):
+    """Public Finviz quote snapshot + headlines. Empty + reason if blocked."""
+    import finviz_client
+    ensure_local_schema()
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    return jsonify(finviz_client.get_quote(symbol, force=force))
+
+
+@app.route("/api/finviz/screener", methods=["GET"])
+def finviz_screener_api():
+    import finviz_client
+    ensure_local_schema()
+    preset = request.args.get("preset") or ""
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    return jsonify(finviz_client.get_screener(preset, force=force))
+
+
+@app.route("/api/finviz/screener/refresh", methods=["POST"])
+def finviz_screener_refresh():
+    import finviz_client
+    ensure_local_schema()
+    body = request.get_json(silent=True) or {}
+    preset = body.get("preset") or request.args.get("preset") or ""
+    return jsonify(finviz_client.get_screener(preset, force=True))
+
+
+@app.route("/api/hmm/status", methods=["GET"])
+def hmm_status_api():
+    """SPY Gaussian HMM — research label, not edge."""
+    import hmm_regime
+    return jsonify(hmm_regime.status())
+
+
+@app.route("/api/hmm/regime", methods=["GET"])
+def hmm_regime_api():
+    """SPY 2/3-state fit. Other symbols inherit SPY. No per-name HMM."""
+    import hmm_regime
+    ensure_local_schema()
+    symbol = request.args.get("symbol") or "SPY"
+    try:
+        n_states = int(request.args.get("states") or request.args.get("n_states") or 2)
+    except (TypeError, ValueError):
+        n_states = 2
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    try:
+        return jsonify(hmm_regime.regime(symbol, n_states=n_states, force=force))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(hmm_regime.empty_regime(str(exc)))
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/hmm/scan", methods=["GET"])
+def hmm_scan_api():
+    """Desk names tagged with the SPY research label. Informational filter only."""
+    import hmm_regime
+    ensure_local_schema()
+    desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+    try:
+        n_states = int(request.args.get("states") or request.args.get("n_states") or 2)
+    except (TypeError, ValueError):
+        n_states = 2
+    state = request.args.get("state") or None
+    view = request.args.get("view") or None
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    try:
+        return jsonify(hmm_regime.scan(desk=desk, n_states=n_states, state=state, view=view, force=force))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(hmm_regime.empty_scan())
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/scans/breadth", methods=["GET"])
+def scans_breadth_api():
+    """Stockbee-style breadth idea from OUR Yahoo/SQLite universe — never scraped."""
+    import scan_pack
+    ensure_local_schema()
+    desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+    try:
+        symbols = [s["symbol"] for s in md.list_desk_symbols()] if desk else None
+        if desk and not symbols:
+            return jsonify(scan_pack.empty_breadth())
+        return jsonify(scan_pack.breadth(symbols=symbols))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(scan_pack.empty_breadth())
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/scans/pack", methods=["GET"])
+def scans_pack_api():
+    """MA / RSI / Breakout + style tags from stored daily bars. Empty is honest."""
+    import scan_pack
+    ensure_local_schema()
+    desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+    lens = request.args.get("lens") or "all"
+    try:
+        symbols = [s["symbol"] for s in md.list_desk_symbols()] if desk else None
+        if desk and not symbols:
+            return jsonify(scan_pack.scan(symbols=[], lens=lens))
+        return jsonify(scan_pack.scan(symbols=symbols, lens=lens))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(scan_pack.scan(symbols=[], lens=lens))
+        return jsonify({"error": str(exc)}), 500
+
+
+def _engine_desk_symbols():
+    """Desk tickers for ENGINE boards. Empty list is honest — not the full archive."""
+    try:
+        return [s["symbol"] for s in md.list_desk_symbols()]
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return []
+        raise
+
+
+def _engine_payload(builder, board_id=None, **kwargs):
+    import equity_engine
+    ensure_local_schema()
+    desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+    try:
+        symbols = _engine_desk_symbols() if desk else None
+        if desk and not symbols:
+            return jsonify(_with_board_columns(builder(symbols=[], **kwargs), board_id))
+        return jsonify(_with_board_columns(builder(symbols=symbols, **kwargs), board_id))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify(_with_board_columns(builder(symbols=[], **kwargs), board_id))
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/engine/catalog", methods=["GET"])
+def engine_catalog_api():
+    """ENGINE / RSI-C / VCP / Str formulas + state machine. No market data."""
+    import equity_engine
+    return jsonify(equity_engine.catalog())
+
+
+@app.route("/api/engine/command", methods=["GET"])
+def engine_command_api():
+    """Command counts: OPPORTUNITY / WATCH / pullbacks. Yahoo/SQLite only."""
+    import equity_engine
+    return _engine_payload(equity_engine.command_board)
+
+
+@app.route("/api/engine/board", methods=["GET"])
+def engine_board_api():
+    """Dense Setup Breakout ENGINE heat board."""
+    import equity_engine
+    return _engine_payload(equity_engine.board, board_id="engine_setup")
+
+
+@app.route("/api/engine/rsi-counter", methods=["GET"])
+def engine_rsi_counter_api():
+    """RSI(2)…RSI(21) daily LEFT / weekly RIGHT. Default n=14, Δ lag=5."""
+    import equity_engine
+    try:
+        rsi_n = int(request.args.get("n") or request.args.get("rsi_n") or 14)
+    except (TypeError, ValueError):
+        rsi_n = 14
+    try:
+        lag = int(request.args.get("lag") or 5)
+    except (TypeError, ValueError):
+        lag = 5
+    rsi_n = max(2, min(21, rsi_n))
+    lag = max(1, min(21, lag))
+    return _engine_payload(equity_engine.rsi_counter_board, rsi_n=rsi_n, lag=lag)
+
+
+@app.route("/api/engine/patterns", methods=["GET"])
+def engine_patterns_api():
+    """Daily 3M/1M + weekly 1Y/6M pattern scanner."""
+    import equity_engine
+    return _engine_payload(equity_engine.pattern_board)
+
+
+@app.route("/api/engine/warnings", methods=["GET"])
+def engine_warnings_api():
+    """Alert surface from existing Pattern / VCP / RSI-C / Str — no second estimator."""
+    import equity_engine
+    return _engine_payload(equity_engine.warnings_board)
+
+
+@app.route("/api/engine/stretch", methods=["GET"])
+def engine_stretch_api():
+    """Str −5…+5 and ADMA stretch/compress top 15."""
+    import equity_engine
+    return _engine_payload(equity_engine.stretch_board)
+
+
+@app.route("/api/engine/sigma", methods=["GET"])
+def engine_sigma_api():
+    """Macro-style return + σ grid from stored Yahoo closes."""
+    import equity_engine
+    return _engine_payload(equity_engine.sigma_board, board_id="engine_sigma")
+
+
+@app.route("/api/engine/maps", methods=["GET"])
+def engine_maps_api():
+    """Scanner / Rotation / Coil / Fractal×TD / TMS Regime from stored bars."""
+    import engine_maps
+    return _engine_payload(engine_maps.maps_board, board_id="engine_maps")
+
+
+@app.route("/api/hmm/combo", methods=["GET"])
+def hmm_combo_api():
+    """AND of real Fractal FRAGILE + inherited SPY HMM + setup tags. No invented hits."""
+    import hmm_regime
+    ensure_local_schema()
+    desk = request.args.get("desk", "1").lower() in ("1", "true", "yes")
+    try:
+        n_states = int(request.args.get("states") or request.args.get("n_states") or 2)
+    except (TypeError, ValueError):
+        n_states = 2
+    state = request.args.get("state") or None
+    frag_raw = request.args.get("fragile", "1").lower()
+    fragile = frag_raw in ("1", "true", "yes")
+    setups_raw = request.args.get("setup") or request.args.get("setups") or "EP,VOL_SURGE"
+    setups = [p.strip() for p in setups_raw.split(",") if p.strip()]
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    try:
+        return jsonify(hmm_regime.combo_scan(
+            desk=desk, n_states=n_states, state=state,
+            fragile=fragile, setups=setups, force=force,
+        ))
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify({
+                "available": False, "ready": False, "rows": [], "count": 0,
+                "note": hmm_regime.COMBO_NOTE, "reason": str(exc),
+                "research_label": True,
+            })
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/universe/core50", methods=["POST"])
+def seed_core50():
+    """Add a curated ~50-name desk. Does not download Yahoo bars."""
+    import ticker_lists as tl
+    ensure_local_schema()
+    try:
+        tickers = tl.core50_tickers()
+        result = md.add_symbols(tickers)
+        tagged = []
+        for raw in tickers:
+            tag = tl.library_group_tag(raw)
+            md.set_symbol_group(raw, tag)
+            tagged.append({"symbol": raw, "group_tag": tag})
+        return jsonify({
+            "count": len(tickers),
+            "tagged": tagged,
+            "note": "Core 50 added to the desk. Fetch Yahoo per name — not a bulk archive.",
+            **result,
+        }), 201 if result.get("added") else 200
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -204,13 +855,18 @@ def darvas_box_api(symbol):
 
 # -- Symbols (proxied to data service) -----------------------------------------
 
+def _annotate_symbols(rows):
+    import ticker_lists as tl
+    return [tl.annotate_symbol(r) for r in (rows or [])]
+
+
 @app.route("/api/symbols", methods=["GET"])
 def get_symbols():
     try:
         desk = request.args.get("desk", "").lower() in ("1", "true", "yes")
         if desk:
-            return jsonify(md.list_desk_symbols())
-        return jsonify(md.list_symbols())
+            return jsonify(_annotate_symbols(md.list_desk_symbols()))
+        return jsonify(_annotate_symbols(md.list_symbols()))
     except Exception as exc:
         return _data_error(exc)
 
@@ -343,8 +999,8 @@ def get_ohlcv(symbol):
     except (TypeError, ValueError):
         return jsonify({"error": "limit must be an integer"}), 400
 
-    if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if freq not in ("daily", "weekly", "monthly"):
+        return jsonify({"error": "freq must be 'daily', 'weekly', or 'monthly'"}), 400
     if limit <= 0:
         return jsonify({"error": "limit must be a positive integer"}), 400
 
@@ -365,8 +1021,8 @@ def get_ohlcv(symbol):
 @app.route("/api/indicators/<string:symbol>", methods=["GET"])
 def get_indicators(symbol):
     freq = request.args.get("freq", "daily")
-    if freq not in ("daily", "weekly"):
-        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if freq not in ("daily", "weekly", "monthly"):
+        return jsonify({"error": "freq must be 'daily', 'weekly', or 'monthly'"}), 400
 
     kama_param = request.args.get("kama", "10,20,50")
     try:
@@ -494,7 +1150,16 @@ def trend_scan():
     freq       = request.args.get("freq",   "daily")
     method     = request.args.get("method", "kama")
     rsi_period = int(request.args.get("rsi_period", 14))
-    symbols    = md.list_symbol_codes()
+    desk = request.args.get("desk", "").lower() in ("1", "true", "yes")
+    try:
+        if desk:
+            symbols = [s["symbol"] for s in md.list_desk_symbols()]
+        else:
+            symbols = md.list_symbol_codes()
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify([])
+        return jsonify({"error": str(exc)}), 500
     if not symbols:
         return jsonify([])
 
@@ -641,6 +1306,8 @@ def get_scanner():
         data = scanner.compute_scanner(symbols)
         return jsonify(data)
     except Exception as e:
+        if "no such table" in str(e).lower():
+            return jsonify([])
         return jsonify({"error": str(e)}), 500
 
 
@@ -675,6 +1342,14 @@ def setups_scan():
             )
         )
     except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify({
+                "count": 0,
+                "scanned": 0,
+                "results": [],
+                "setup_catalog": setup_scanner.SETUP_IDS,
+                "message": "No symbols in watchlist",
+            })
         return jsonify({"error": str(exc)}), 500
 
 
@@ -821,108 +1496,34 @@ def universe_refresh():
 
 @app.route("/api/news", methods=["GET"])
 def get_all_news():
-    """Fetch news for all watchlist symbols using yfinance."""
-    symbols = md.list_symbol_codes()
-    if not symbols:
-        return jsonify({"articles": [], "message": "No symbols in watchlist"})
-    
-    all_articles = []
-    seen_urls = set()
-    errors = []
-    
-    for symbol in symbols:
-        try:
-            ticker = yf.Ticker(symbol)
-            news_items = ticker.news
-            
-            if not news_items:
-                continue
-                
-            for item in news_items:
-                content = item.get("content", {})
-                url = (content.get("canonicalUrl", {}).get("url") or 
-                       content.get("clickThroughUrl", {}).get("url") or "")
-                
-                if url and url in seen_urls:
-                    continue
-                    
-                if url:
-                    seen_urls.add(url)
-                
-                provider = content.get("provider", {})
-                article = {
-                    "symbol": symbol,
-                    "title": content.get("title", "No title"),
-                    "summary": content.get("summary") or content.get("description", ""),
-                    "url": url,
-                    "publish_time": content.get("pubDate", ""),
-                    "provider": provider.get("displayName", "Yahoo Finance"),
-                    "provider_url": provider.get("url", "https://finance.yahoo.com/")
-                }
-                all_articles.append(article)
-                
-        except Exception as e:
-            errors.append({"symbol": symbol, "error": str(e)})
-    
-    all_articles.sort(key=lambda x: x.get("publish_time", ""), reverse=True)
-    
-    result = {
-        "articles": all_articles,
-        "source": "Yahoo Finance",
-        "symbol_count": len(symbols),
-        "article_count": len(all_articles)
-    }
-    
-    if errors:
-        result["errors"] = errors
-    
-    return jsonify(result)
+    """Fetch news for watchlist / desk symbols using yfinance.
+
+    Empty watchlist / missing schema → 200 with an empty feed, never 500.
+    ?desk=1 limits to desk symbols (same list as /api/symbols?desk=1).
+    """
+    desk = request.args.get("desk", "").lower() in ("1", "true", "yes")
+    try:
+        if desk:
+            symbols = [s["symbol"] for s in md.list_desk_symbols()]
+        else:
+            symbols = md.list_symbol_codes()
+    except Exception:
+        symbols = []
+    try:
+        return jsonify(yahoo_news.watchlist_news(symbols))
+    except Exception as exc:
+        return jsonify({
+            "articles": [],
+            "message": str(exc),
+            "source": yahoo_news.DEFAULT_PROVIDER,
+        })
 
 
 @app.route("/api/news/<string:symbol>", methods=["GET"])
 def get_symbol_news(symbol):
     """Fetch news for a specific symbol using yfinance."""
-    try:
-        ticker = yf.Ticker(symbol.upper())
-        news_items = ticker.news
-        
-        if not news_items:
-            return jsonify({
-                "symbol": symbol.upper(),
-                "articles": [],
-                "message": f"No news available for {symbol.upper()}",
-                "source": "Yahoo Finance"
-            })
-        
-        articles = []
-        for item in news_items:
-            content = item.get("content", {})
-            provider = content.get("provider", {})
-            
-            article = {
-                "title": content.get("title", "No title"),
-                "summary": content.get("summary") or content.get("description", ""),
-                "url": (content.get("canonicalUrl", {}).get("url") or 
-                       content.get("clickThroughUrl", {}).get("url") or ""),
-                "publish_time": content.get("pubDate", ""),
-                "provider": provider.get("displayName", "Yahoo Finance"),
-                "provider_url": provider.get("url", "https://finance.yahoo.com/")
-            }
-            articles.append(article)
-        
-        return jsonify({
-            "symbol": symbol.upper(),
-            "articles": articles,
-            "article_count": len(articles),
-            "source": "Yahoo Finance"
-        })
-        
-    except Exception as e:
-        return jsonify({
-            "symbol": symbol.upper(),
-            "error": str(e),
-            "source": "Yahoo Finance"
-        }), 500
+    payload, status = yahoo_news.symbol_news(symbol)
+    return jsonify(payload), status
 
 
 # -- Data Manager (proxied to data service) -------------------------------------
@@ -1023,9 +1624,11 @@ def fetch_batch():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
+    host = os.environ.get("HOST", "127.0.0.1")
     mode = data_client.DATA_SERVICE_MODE
     url = data_client.DATA_SERVICE_URL
-    print(f"\n  Whats-News analysis at http://localhost:{port}")
-    print(f"  News feed:              http://localhost:{port}/news")
+    print(f"\n  Whats-News analysis at http://{host}:{port}")
+    print(f"  News feed:              http://{host}:{port}/news")
+    print(f"  iPhone API:             http://{host}:{port}/api/health")
     print(f"  Data service mode={mode} url={url}\n")
-    app.run(debug=True, port=port)
+    app.run(debug=True, host=host, port=port)

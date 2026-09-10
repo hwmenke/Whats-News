@@ -105,6 +105,13 @@ def compute_indicators(symbol: str, freq: str = "daily", kama_periods: list = No
         except Exception:
             result[f"kama_{period}"] = []
 
+    # ── EMA 10 / 20 (stored close — Qulla-style moving-average respect) ──
+    try:
+        result["ema_10"] = _series_to_list(close.ewm(span=10, adjust=False).mean())
+        result["ema_20"] = _series_to_list(close.ewm(span=20, adjust=False).mean())
+    except Exception:
+        result["ema_10"] = result["ema_20"] = []
+
     # ── Bollinger Bands ───────────────────────────────────────────
     try:
         bb_upper, bb_mid, bb_lower = _bollinger(close, window=20, num_std=2.0)

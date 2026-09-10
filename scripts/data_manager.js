@@ -85,6 +85,26 @@ function _dmInitUniverseSection() {
     document.getElementById("btn-universe-archive")?.addEventListener("click", () => dmUniverseJob("archive"));
     document.getElementById("btn-universe-refresh")?.addEventListener("click", () => dmUniverseJob("refresh"));
     document.getElementById("btn-universe-abort")?.addEventListener("click", dmUniverseAbort);
+    document.getElementById("btn-core50")?.addEventListener("click", dmSeedCore50);
+}
+
+async function dmSeedCore50() {
+    const btn = document.getElementById("btn-core50");
+    if (btn) { btn.disabled = true; btn.textContent = "Seeding…"; }
+    try {
+        if (typeof seedCore50 === "function") {
+            await seedCore50();
+        } else {
+            const res = await apiFetch(`${API}/universe/core50`, { method: "POST" });
+            _dmLogLine(`Core 50: ${res.count || 0} names on desk (no Yahoo download)`, "ok");
+        }
+        await _dmLoadDbStats();
+        if (typeof loadSymbols === "function") loadSymbols().catch(() => {});
+    } catch (err) {
+        _dmLogLine(`Core 50 failed: ${err.message}`, "err");
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "Seed Core 50"; }
+    }
 }
 
 function _dmSelectedIndices() {
