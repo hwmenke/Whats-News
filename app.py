@@ -1028,4 +1028,5 @@ if __name__ == "__main__":
     print(f"\n  Whats-News analysis at http://localhost:{port}")
     print(f"  News feed:              http://localhost:{port}/news")
     print(f"  Data service mode={mode} url={url}\n")
-    app.run(debug=True, port=port)
+    debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
+    app.run(debug=debug, port=port)

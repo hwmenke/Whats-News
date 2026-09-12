@@ -283,4 +283,5 @@ def fetch_batch():
 if __name__ == "__main__":
     port = int(os.environ.get("DATA_PORT", os.environ.get("PORT", 8051)))
     print(f"\n  Data Management service at http://localhost:{port}\n")
-    app.run(debug=True, port=port, threaded=True)
+    debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
+    app.run(debug=debug, port=port, threaded=True)
