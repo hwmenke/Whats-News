@@ -1055,17 +1055,19 @@ async function openBookNews() {
         if (typeof renderNewsArticles === 'function') {
             renderNewsArticles(deduped);
         } else if (listEl) {
-            listEl.innerHTML = deduped.slice(0, 40).map(a => `
+            listEl.innerHTML = deduped.slice(0, 40).map(a => {
+                const safeUrl = (typeof a.url === 'string' && /^(https?:)?\/\//i.test(a.url)) ? a.url : '#';
+                return `
                 <article class="news-item" style="padding:12px 0;border-bottom:1px solid var(--border);">
-                  <div style="font-size:11px;color:var(--accent-bright);font-family:var(--font-mono);">${a.symbol || ''}</div>
-                  <a href="${a.url || '#'}" target="_blank" rel="noopener" style="color:var(--text-primary);font-weight:600;text-decoration:none;">
-                    ${a.title || 'Untitled'}
+                  <div style="font-size:11px;color:var(--accent-bright);font-family:var(--font-mono);">${escapeHtml(a.symbol || '')}</div>
+                  <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener" style="color:var(--text-primary);font-weight:600;text-decoration:none;">
+                    ${escapeHtml(a.title || 'Untitled')}
                   </a>
                   <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">
-                    via ${a.provider || 'Yahoo Finance'} · ${a.publish_time || ''}
+                    via ${escapeHtml(a.provider || 'Yahoo Finance')} · ${escapeHtml(a.publish_time || '')}
                   </div>
                 </article>
-            `).join('');
+            `; }).join('');
         }
         toast(`Book news: ${focus.join(', ')}`, 'info');
     } catch (e) {
