@@ -360,6 +360,24 @@ function _sorted(data) {
     });
 }
 
+// Default empty-state hint, saved before an error message overwrites it and
+// restored on the next successful render (see loadScannerData).
+let _defaultScannerEmptyHTML = null;
+
+function _showScannerError(message) {
+    const thead = document.getElementById('scanner-thead');
+    const tbody = document.getElementById('scanner-tbody');
+    const empty = document.getElementById('scanner-empty');
+    if (thead) thead.innerHTML = '';
+    if (tbody) tbody.innerHTML = '';
+    if (!empty) return;
+    if (_defaultScannerEmptyHTML === null) _defaultScannerEmptyHTML = empty.innerHTML;
+    const p = empty.querySelector('p');
+    if (p) p.textContent = 'Scan failed: ' + message + ' — retry with \u27F3 Scan All.';
+    else empty.textContent = 'Scan failed: ' + message;
+    empty.style.display = 'flex';
+}
+
 // ── Render ─────────────────────────────────────────────────────────────
 function renderScannerTable(data) {
     scannerState.data = data;
@@ -367,6 +385,10 @@ function renderScannerTable(data) {
     const tbody = document.getElementById('scanner-tbody');
     const empty = document.getElementById('scanner-empty');
     if (!thead || !tbody) return;
+    if (_defaultScannerEmptyHTML !== null && empty) {
+        empty.innerHTML = _defaultScannerEmptyHTML;
+        _defaultScannerEmptyHTML = null;
+    }
 
     // Header
     thead.innerHTML = '';
@@ -409,6 +431,7 @@ async function loadScannerData() {
         renderScannerTable(data);
         if (tsEl) tsEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
     } catch (e) {
+        _showScannerError(e.message);
         toast('Scanner error: ' + e.message, 'error');
     } finally {
         if (loadEl)   loadEl.style.display = 'none';

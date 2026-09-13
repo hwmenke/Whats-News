@@ -430,8 +430,16 @@ def conditional_distribution(symbol):
 
 @app.route("/api/knn/<string:symbol>")
 def get_knn(symbol):
-    k = int(request.args.get("k", 15))
-    result = knn_model.compute_knn_lookalike(symbol.upper(), k=k)
+    try:
+        k = int(request.args.get("k", 15))
+    except (TypeError, ValueError):
+        return jsonify({"error": "k must be an integer"}), 400
+    if k < 1 or k > 100:
+        return jsonify({"error": "k must be between 1 and 100"}), 400
+    try:
+        result = knn_model.compute_knn_lookalike(symbol.upper(), k=k)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
     if "error" in result:
         return jsonify(result), 404
     return jsonify(result)
@@ -441,7 +449,10 @@ def get_knn(symbol):
 
 @app.route("/api/backtest/<string:symbol>")
 def get_backtest(symbol):
-    result = backtester.run_optimization(symbol.upper())
+    try:
+        result = backtester.run_optimization(symbol.upper())
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
     if "error" in result:
         return jsonify(result), 404
     return jsonify(result)
@@ -493,7 +504,12 @@ def trend_scan():
 
     freq       = request.args.get("freq",   "daily")
     method     = request.args.get("method", "kama")
-    rsi_period = int(request.args.get("rsi_period", 14))
+    try:
+        rsi_period = int(request.args.get("rsi_period", 14))
+    except (TypeError, ValueError):
+        return jsonify({"error": "rsi_period must be an integer"}), 400
+    if rsi_period < 2 or rsi_period > 100:
+        return jsonify({"error": "rsi_period must be between 2 and 100"}), 400
     symbols    = md.list_symbol_codes()
     if not symbols:
         return jsonify([])
@@ -713,9 +729,15 @@ def universe_archive():
     """
     body = request.get_json(force=True) or {}
     start_date = body.get("start_date", "2000-01-01")
-    delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
+    try:
+        delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "delay must be a number"}), 400
     only_missing = bool(body.get("only_missing", False))
-    limit = int(body.get("limit", 0) or 0)
+    try:
+        limit = int(body.get("limit", 0) or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "limit must be an integer"}), 400
 
     if not data_client.use_embedded():
         return jsonify({"error": "universe archive requires embedded mode"}), 400
@@ -768,12 +790,18 @@ def universe_archive():
 def universe_refresh():
     """SSE incremental refresh for all symbols in DB."""
     body = request.get_json(force=True) or {}
-    delay = max(0.2, min(float(body.get("delay", 0.8)), 10.0))
+    try:
+        delay = max(0.2, min(float(body.get("delay", 0.8)), 10.0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "delay must be a number"}), 400
     try:
         overlap = int(body.get("overlap_days", 5))
     except (TypeError, ValueError):
         overlap = 5
-    limit = int(body.get("limit", 0) or 0)
+    try:
+        limit = int(body.get("limit", 0) or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "limit must be an integer"}), 400
 
     if not data_client.use_embedded():
         return jsonify({"error": "universe refresh requires embedded mode"}), 400
@@ -819,12 +847,47 @@ def universe_refresh():
 
 # -- News -----------------------------------------------------------------------
 
+import time as _time
+
+# Short TTL cache for the all-watchlist news fan-out: one page load otherwise
+# fires a sequential Yahoo request per symbol (throttle-prone). Keyed by the
+# sorted symbol tuple; bypass with ?refresh=1. Reversible: delete this block
+# and the cache hooks in get_all_news to restore uncached behaviour.
+_NEWS_CACHE_TTL = 300
+_news_cache = {}
+
+
+def _news_cache_get(key):
+    entry = _news_cache.get(key)
+    if not entry:
+        return None
+    payload, expires = entry
+    if _time.time() > expires:
+        _news_cache.pop(key, None)
+        return None
+    return payload
+
+
+def _news_cache_set(key, payload):
+    # Bound memory: keep only the most recent entries.
+    if len(_news_cache) >= 32:
+        _news_cache.pop(next(iter(_news_cache)), None)
+    _news_cache[key] = (payload, _time.time() + _NEWS_CACHE_TTL)
+
+
 @app.route("/api/news", methods=["GET"])
 def get_all_news():
     """Fetch news for all watchlist symbols using yfinance."""
     symbols = md.list_symbol_codes()
     if not symbols:
         return jsonify({"articles": [], "message": "No symbols in watchlist"})
+
+    cache_key = tuple(sorted(symbols))
+    force_refresh = request.args.get("refresh", "").lower() in ("1", "true", "yes")
+    if not force_refresh:
+        cached = _news_cache_get(cache_key)
+        if cached is not None:
+            return jsonify({**cached, "cached": True})
     
     all_articles = []
     seen_urls = set()
@@ -875,7 +938,9 @@ def get_all_news():
     
     if errors:
         result["errors"] = errors
-    
+
+    result["cached"] = False
+    _news_cache_set(cache_key, result)
     return jsonify(result)
 
 
@@ -955,7 +1020,10 @@ def fetch_batch():
 
         tickers = [t.strip().upper() for t in body.get("tickers", []) if str(t).strip()]
         start_date = body.get("start_date", "2000-01-01")
-        delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
+        try:
+            delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "delay must be a number"}), 400
         add_wl = bool(body.get("add_watchlist", True))
         if not tickers:
             return jsonify({"error": "tickers list is empty"}), 400
