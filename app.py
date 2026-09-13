@@ -33,6 +33,7 @@ import yfinance as yf
 import portfolio
 import setup_scanner
 import index_universe
+import precache  # precache: TTL + prewarm knobs for expensive reads
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -84,8 +85,25 @@ def health():
 @app.route("/api/portfolio/snapshot", methods=["GET"])
 def portfolio_snapshot():
     """Watchlist tape: day change, RSI, regime vs KAMA — for PM desk."""
+    # precache: short TTL so the tape feels instant; ?refresh=1 bypasses.
     try:
-        return jsonify(portfolio.portfolio_snapshot())
+        refresh = precache.wants_refresh(request.args)
+        symbols = sorted(s["symbol"] for s in md.list_symbols())
+        key = ("portfolio", tuple(symbols))
+
+        def _compute():
+            return portfolio.portfolio_snapshot()
+
+        payload, hit = precache.cached_call(
+            "portfolio", key, _compute, precache.PORTFOLIO_TTL_S,
+            refresh=refresh,
+        )
+        _payload, remaining = precache.cache_get("portfolio", key)
+        precache.maybe_refresh_in_background(
+            "portfolio", key, _compute, precache.PORTFOLIO_TTL_S, remaining)
+        resp = jsonify({**payload, "cached": hit})
+        resp.headers["X-Cache"] = "HIT" if hit else "MISS"
+        return resp
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -430,21 +448,53 @@ def conditional_distribution(symbol):
 
 @app.route("/api/knn/<string:symbol>")
 def get_knn(symbol):
-    k = int(request.args.get("k", 15))
-    result = knn_model.compute_knn_lookalike(symbol.upper(), k=k)
+    # precache: K refits are expensive; validate + cache per (symbol, k).
+    k_raw = request.args.get("k", 15)
+    k, err = precache.parse_capped_int(k_raw, default=15, lo=1,
+                                       hi=precache.KNN_K_CAP)
+    if err:
+        return jsonify({"error": f"k {err}"}), 400
+    try:
+        refresh = precache.wants_refresh(request.args)
+        key = (symbol.upper(), k)
+
+        def _compute():
+            return knn_model.compute_knn_lookalike(symbol.upper(), k=k)
+
+        result, hit = precache.cached_call(
+            "knn", key, _compute, precache.KNN_TTL_S, refresh=refresh,
+            should_cache=lambda p: "error" not in p)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
     if "error" in result:
         return jsonify(result), 404
-    return jsonify(result)
+    resp = jsonify({**result, "cached": hit})
+    resp.headers["X-Cache"] = "HIT" if hit else "MISS"
+    return resp
 
 
 # -- Backtester -----------------------------------------------------------------
 
 @app.route("/api/backtest/<string:symbol>")
 def get_backtest(symbol):
-    result = backtester.run_optimization(symbol.upper())
+    # precache: full FAST×SLOW grid is expensive; cache per symbol.
+    try:
+        refresh = precache.wants_refresh(request.args)
+        key = (symbol.upper(),)
+
+        def _compute():
+            return backtester.run_optimization(symbol.upper())
+
+        result, hit = precache.cached_call(
+            "backtest", key, _compute, precache.BACKTEST_TTL_S,
+            refresh=refresh, should_cache=lambda p: "error" not in p)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
     if "error" in result:
         return jsonify(result), 404
-    return jsonify(result)
+    resp = jsonify({**result, "cached": hit})
+    resp.headers["X-Cache"] = "HIT" if hit else "MISS"
+    return resp
 
 
 # -- Adaptive Trend -------------------------------------------------------------
@@ -493,10 +543,29 @@ def trend_scan():
 
     freq       = request.args.get("freq",   "daily")
     method     = request.args.get("method", "kama")
-    rsi_period = int(request.args.get("rsi_period", 14))
-    symbols    = md.list_symbol_codes()
+    # precache: bad params are JSON 400s (never HTML 500s for the UI).
+    if freq not in ("daily", "weekly"):
+        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if method not in ("kama", "adma"):
+        return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
+    rsi_period, err = precache.parse_capped_int(
+        request.args.get("rsi_period", 14), default=14, lo=2, hi=100)
+    if err:
+        return jsonify({"error": f"rsi_period {err}"}), 400
+    try:
+        symbols = md.list_symbol_codes()
+    except Exception as exc:
+        return _data_error(exc)
     if not symbols:
         return jsonify([])
+    # precache: per-request symbol cap keeps big books smooth.
+    limit, err = precache.parse_capped_int(
+        request.args.get("limit"), default=len(symbols),
+        lo=1, hi=precache.TRENDSCAN_SYMBOL_CAP)
+    if err:
+        return jsonify({"error": f"limit {err}"}), 400
+    symbols = symbols[:limit]
+    refresh = precache.wants_refresh(request.args)
 
     # Parse the same KAMA/ADMA config params as /api/adaptive-trend
     int_params   = ["sb_er","sb_fast","sb_slow","mb_er","mb_fast","mb_slow",
@@ -585,10 +654,26 @@ def trend_scan():
         except Exception as e:
             return {"symbol": sym, "error": str(e)}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        results = list(pool.map(_one, symbols))
+    # precache: array body shape is the JS contract — flag rides a header.
+    key = ("trendscan", freq, method, rsi_period, tuple(sorted(symbols)),
+           tuple(sorted(at_config.items())))
 
-    return jsonify(results)
+    def _compute():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            return list(pool.map(_one, symbols))
+
+    try:
+        results, hit = precache.cached_call(
+            "trendscan", key, _compute, precache.TRENDSCAN_TTL_S,
+            refresh=refresh)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    _payload, remaining = precache.cache_get("trendscan", key)
+    precache.maybe_refresh_in_background(
+        "trendscan", key, _compute, precache.TRENDSCAN_TTL_S, remaining)
+    resp = jsonify(results)
+    resp.headers["X-Cache"] = "HIT" if hit else "MISS"
+    return resp
 
 
 # -- Scanner --------------------------------------------------------------------
@@ -630,6 +715,7 @@ def run_scanner():
 @app.route("/api/scanner", methods=["GET"])
 def get_scanner():
     """Compute multi-timeframe scanner metrics for symbols with stored data."""
+    # precache: TTL + ?refresh=1 + symbol cap; array body is the JS contract.
     try:
         universe = request.args.get("universe", "1").lower() in ("1", "true", "yes")
         if universe:
@@ -638,8 +724,27 @@ def get_scanner():
             symbols = [s["symbol"] for s in md.list_desk_symbols()]
         if not symbols:
             return jsonify([])
-        data = scanner.compute_scanner(symbols)
-        return jsonify(data)
+        limit, err = precache.parse_capped_int(
+            request.args.get("limit"), default=len(symbols),
+            lo=1, hi=precache.SCANNER_SYMBOL_CAP)
+        if err:
+            return jsonify({"error": f"limit {err}"}), 400
+        symbols = symbols[:limit]
+        refresh = precache.wants_refresh(request.args)
+        key = ("scanner", universe, tuple(sorted(symbols)), len(symbols))
+
+        def _compute():
+            return scanner.compute_scanner(list(symbols))
+
+        data, hit = precache.cached_call(
+            "scanner", key, _compute, precache.SCANNER_TTL_S,
+            refresh=refresh)
+        _payload, remaining = precache.cache_get("scanner", key)
+        precache.maybe_refresh_in_background(
+            "scanner", key, _compute, precache.SCANNER_TTL_S, remaining)
+        resp = jsonify(data)
+        resp.headers["X-Cache"] = "HIT" if hit else "MISS"
+        return resp
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -652,28 +757,44 @@ def setups_catalog():
 @app.route("/api/setups/scan", methods=["GET"])
 def setups_scan():
     """Scan stored universe for named trading setups."""
+    # precache: TTL + ?refresh=1; bad params are JSON 400s.
+    setup_filter = request.args.get("setup") or None
+    limit, err = precache.parse_capped_int(
+        request.args.get("limit", 250), default=250,
+        lo=1, hi=precache.SETUPS_LIMIT_CAP)
+    if err:
+        return jsonify({"error": f"limit {err}"}), 400
+    min_score, err = precache.parse_capped_int(
+        request.args.get("min_score", 0), default=0, lo=0, hi=100)
+    if err:
+        return jsonify({"error": f"min_score {err}"}), 400
     try:
-        setup_filter = request.args.get("setup") or None
-        try:
-            limit = int(request.args.get("limit", 250))
-        except (TypeError, ValueError):
-            limit = 250
-        try:
-            min_score = int(request.args.get("min_score", 0))
-        except (TypeError, ValueError):
-            min_score = 0
         universe_only = request.args.get("universe", "1").lower() in ("1", "true", "yes")
-        symbols = None
-        if not universe_only:
+        if universe_only:
+            symbols = md.list_symbols_with_ohlcv("daily", min_bars=30)
+        else:
             symbols = [s["symbol"] for s in md.list_desk_symbols()]
-        return jsonify(
-            setup_scanner.scan_setups(
-                symbols=symbols,
+        refresh = precache.wants_refresh(request.args)
+        key = (setup_filter, limit, min_score, universe_only,
+               tuple(sorted(symbols)))
+
+        def _compute():
+            return setup_scanner.scan_setups(
+                symbols=list(symbols),
                 setup_filter=setup_filter,
                 limit=limit,
                 min_score=min_score,
             )
-        )
+
+        payload, hit = precache.cached_call(
+            "setups", key, _compute, precache.SETUPS_TTL_S,
+            refresh=refresh)
+        _cached_payload, remaining = precache.cache_get("setups", key)
+        precache.maybe_refresh_in_background(
+            "setups", key, _compute, precache.SETUPS_TTL_S, remaining)
+        resp = jsonify({**payload, "cached": hit})
+        resp.headers["X-Cache"] = "HIT" if hit else "MISS"
+        return resp
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -713,9 +834,15 @@ def universe_archive():
     """
     body = request.get_json(force=True) or {}
     start_date = body.get("start_date", "2000-01-01")
-    delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
+    try:
+        delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "delay must be a number"}), 400
     only_missing = bool(body.get("only_missing", False))
-    limit = int(body.get("limit", 0) or 0)
+    try:
+        limit = int(body.get("limit", 0) or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "limit must be an integer"}), 400
 
     if not data_client.use_embedded():
         return jsonify({"error": "universe archive requires embedded mode"}), 400
@@ -768,12 +895,18 @@ def universe_archive():
 def universe_refresh():
     """SSE incremental refresh for all symbols in DB."""
     body = request.get_json(force=True) or {}
-    delay = max(0.2, min(float(body.get("delay", 0.8)), 10.0))
+    try:
+        delay = max(0.2, min(float(body.get("delay", 0.8)), 10.0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "delay must be a number"}), 400
     try:
         overlap = int(body.get("overlap_days", 5))
     except (TypeError, ValueError):
         overlap = 5
-    limit = int(body.get("limit", 0) or 0)
+    try:
+        limit = int(body.get("limit", 0) or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "limit must be an integer"}), 400
 
     if not data_client.use_embedded():
         return jsonify({"error": "universe refresh requires embedded mode"}), 400
@@ -822,61 +955,93 @@ def universe_refresh():
 @app.route("/api/news", methods=["GET"])
 def get_all_news():
     """Fetch news for all watchlist symbols using yfinance."""
-    symbols = md.list_symbol_codes()
+    # precache: one page load otherwise fires a sequential Yahoo request
+    # per symbol (throttle-prone). TTL + ?refresh=1 + per-request limit.
+    # Single-symbol /api/news/<symbol> below stays live (uncached).
+    try:
+        symbols = md.list_symbol_codes()
+    except Exception as exc:
+        return _data_error(exc)
     if not symbols:
         return jsonify({"articles": [], "message": "No symbols in watchlist"})
-    
-    all_articles = []
-    seen_urls = set()
-    errors = []
-    
-    for symbol in symbols:
-        try:
-            ticker = yf.Ticker(symbol)
-            news_items = ticker.news
-            
-            if not news_items:
-                continue
-                
-            for item in news_items:
-                content = item.get("content", {})
-                url = (content.get("canonicalUrl", {}).get("url") or 
-                       content.get("clickThroughUrl", {}).get("url") or "")
-                
-                if url and url in seen_urls:
+
+    limit, err = precache.parse_capped_int(
+        request.args.get("limit"), default=precache.NEWS_LIMIT_CAP,
+        lo=1, hi=precache.NEWS_LIMIT_CAP)
+    if err:
+        return jsonify({"error": f"limit {err}"}), 400
+    refresh = precache.wants_refresh(request.args)
+    key = (tuple(sorted(symbols)), limit)
+
+    def _compute():
+        import time as _time
+
+        all_articles = []
+        seen_urls = set()
+        errors = []
+
+        for i, symbol in enumerate(symbols):
+            try:
+                ticker = yf.Ticker(symbol)
+                news_items = ticker.news
+
+                if not news_items:
                     continue
-                    
-                if url:
-                    seen_urls.add(url)
-                
-                provider = content.get("provider", {})
-                article = {
-                    "symbol": symbol,
-                    "title": content.get("title", "No title"),
-                    "summary": content.get("summary") or content.get("description", ""),
-                    "url": url,
-                    "publish_time": content.get("pubDate", ""),
-                    "provider": provider.get("displayName", "Yahoo Finance"),
-                    "provider_url": provider.get("url", "https://finance.yahoo.com/")
-                }
-                all_articles.append(article)
-                
-        except Exception as e:
-            errors.append({"symbol": symbol, "error": str(e)})
-    
-    all_articles.sort(key=lambda x: x.get("publish_time", ""), reverse=True)
-    
-    result = {
-        "articles": all_articles,
-        "source": "Yahoo Finance",
-        "symbol_count": len(symbols),
-        "article_count": len(all_articles)
-    }
-    
-    if errors:
-        result["errors"] = errors
-    
-    return jsonify(result)
+
+                for item in news_items:
+                    content = item.get("content", {})
+                    url = (content.get("canonicalUrl", {}).get("url") or
+                           content.get("clickThroughUrl", {}).get("url") or "")
+
+                    if url and url in seen_urls:
+                        continue
+
+                    if url:
+                        seen_urls.add(url)
+
+                    provider = content.get("provider", {})
+                    article = {
+                        "symbol": symbol,
+                        "title": content.get("title", "No title"),
+                        "summary": content.get("summary") or content.get("description", ""),
+                        "url": url,
+                        "publish_time": content.get("pubDate", ""),
+                        "provider": provider.get("displayName", "Yahoo Finance"),
+                        "provider_url": provider.get("url", "https://finance.yahoo.com/")
+                    }
+                    all_articles.append(article)
+
+            except Exception as e:
+                errors.append({"symbol": symbol, "error": str(e)})
+            # precache: small gap between Yahoo calls avoids 429 storms.
+            if precache.NEWS_GAP_S > 0 and i < len(symbols) - 1:
+                _time.sleep(precache.NEWS_GAP_S)
+
+        all_articles.sort(key=lambda x: x.get("publish_time", ""), reverse=True)
+
+        result = {
+            "articles": all_articles[:limit],
+            "source": "Yahoo Finance",
+            "symbol_count": len(symbols),
+            "article_count": min(len(all_articles), limit),
+        }
+
+        if errors:
+            result["errors"] = errors
+
+        return result
+
+    try:
+        result, hit = precache.cached_call(
+            "news", key, _compute, precache.NEWS_TTL_S, refresh=refresh)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    _payload, remaining = precache.cache_get("news", key)
+    precache.maybe_refresh_in_background(
+        "news", key, _compute, precache.NEWS_TTL_S, remaining)
+    resp = jsonify({**result, "cached": hit})
+    resp.headers["X-Cache"] = "HIT" if hit else "MISS"
+    return resp
 
 
 @app.route("/api/news/<string:symbol>", methods=["GET"])
@@ -925,6 +1090,38 @@ def get_symbol_news(symbol):
         }), 500
 
 
+# -- Cache knobs (precache) --------------------------------------------------------
+
+@app.route("/api/cache/stats", methods=["GET"])
+def cache_stats():
+    """TTL sizes + tunables for the read caches. Read-only, never fetches."""
+    try:
+        stats = precache.cache_stats()
+        try:
+            stats["watchlist_symbols"] = len(md.list_symbol_codes())
+        except Exception:
+            stats["watchlist_symbols"] = None
+        return jsonify(stats)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/cache/prewarm", methods=["POST"])
+def cache_prewarm():
+    """Trigger a background prewarm (DB-backed only, never Yahoo)."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        try:
+            cap = int(body.get("symbols", precache.PREFETCH_SYMBOLS))
+        except (TypeError, ValueError):
+            return jsonify({"error": "symbols must be an integer"}), 400
+        cap = max(0, min(cap, 500))
+        precache.schedule_background(lambda: precache.prewarm_sync(cap))
+        return jsonify({"message": "prewarm started", "symbols_cap": cap})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 # -- Data Manager (proxied to data service) -------------------------------------
 
 @app.route("/api/data-manager/ticker-lists", methods=["GET"])
@@ -955,7 +1152,10 @@ def fetch_batch():
 
         tickers = [t.strip().upper() for t in body.get("tickers", []) if str(t).strip()]
         start_date = body.get("start_date", "2000-01-01")
-        delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
+        try:
+            delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "delay must be a number"}), 400
         add_wl = bool(body.get("add_watchlist", True))
         if not tickers:
             return jsonify({"error": "tickers list is empty"}), 400
@@ -1028,4 +1228,9 @@ if __name__ == "__main__":
     print(f"\n  Whats-News analysis at http://localhost:{port}")
     print(f"  News feed:              http://localhost:{port}/news")
     print(f"  Data service mode={mode} url={url}\n")
+    # precache: warm DB-backed read caches off the request path.
+    try:
+        precache.prewarm_async()
+    except Exception as exc:
+        print(f"  Prewarm skipped: {exc}")
     app.run(debug=True, port=port)

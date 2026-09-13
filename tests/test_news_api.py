@@ -4,10 +4,12 @@ os.environ.setdefault("DATA_SERVICE_MODE", "embedded")
 from unittest.mock import patch, MagicMock
 
 import app as app_module
+import precache
 
 
 class NewsApiTests(unittest.TestCase):
     def setUp(self):
+        precache.cache_clear()
         self.client = app_module.app.test_client()
 
     @patch("app.md.list_symbol_codes")
