@@ -9,6 +9,12 @@ import app as app_module
 class NewsApiTests(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
+        # /api/news has a short TTL cache keyed by symbol set — clear it so
+        # each test below hits the mocked Yahoo layer, not a prior test.
+        app_module._news_cache.clear()
+
+    def tearDown(self):
+        app_module._news_cache.clear()
 
     @patch("app.md.list_symbol_codes")
     def test_get_all_news_empty_watchlist(self, mock_list_symbol_codes):
