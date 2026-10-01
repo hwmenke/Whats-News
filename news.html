@@ -762,11 +762,18 @@
 
     if (total === 0) {
       const emptyWatchlist = !symbolCount;
+      const throttled = !!state.meta.rate_limited;
+      let detail;
+      if (emptyWatchlist) {
+        detail = 'Your watchlist is empty. Add tickers on the Dashboard first.';
+      } else if (throttled) {
+        detail = `Yahoo is rate-limiting news for ${plural(symbolCount, 'symbol')}. Try Refresh again in a minute.`;
+      } else {
+        detail = `No headlines right now for ${plural(symbolCount, 'symbol')}. Yahoo may be throttling — try Refresh in a minute.`;
+      }
       els.list.replaceChildren(renderEmpty(
-        'No news available',
-        emptyWatchlist
-          ? 'Your watchlist is empty. Add tickers on the Dashboard first.'
-          : `No news found for ${plural(symbolCount, 'symbol')} in your watchlist.`,
+        throttled ? 'Yahoo is rate-limiting' : 'No news available',
+        detail,
         { linkDashboard: emptyWatchlist }
       ));
       els.count.textContent = `${plural(symbolCount || 0, 'symbol')}, 0 articles`;
