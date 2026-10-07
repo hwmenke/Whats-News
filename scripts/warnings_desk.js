@@ -18,14 +18,24 @@ function showWarningsArea() {
     if (el) el.style.display = 'flex';
 }
 
+function _wnArrowTone(s) {
+    const t = String(s || '');
+    if (t.includes('↓')) return 'mm-dn';
+    if (t.includes('↑')) return 'mm-up';
+    return '';
+}
+
 function _wnRow(r) {
     const str = r.str == null || Number.isNaN(Number(r.str)) ? '—' : String(r.str);
     const note = r.label || r.takeaway || '';
+    const d = r.pattern_d || '—';
+    const vcp = r.vcp || '—';
+    const rsi = r.rsi_c || '—';
     return `<tr>
         <td class="mm-name wn-sym">${_wnEsc(r.symbol || '')}</td>
-        <td>${_wnEsc(r.pattern_d || '—')}</td>
-        <td>${_wnEsc(r.vcp || '—')}</td>
-        <td>${_wnEsc(r.rsi_c || '—')}</td>
+        <td class="${_wnArrowTone(d)}">${_wnEsc(d)}</td>
+        <td class="${_wnArrowTone(vcp)}">${_wnEsc(vcp)}</td>
+        <td class="${_wnArrowTone(rsi)}">${_wnEsc(rsi)}</td>
         <td class="mm-z">${_wnEsc(str)}</td>
         <td class="wn-note">${_wnEsc(note || '—')}</td>
     </tr>`;

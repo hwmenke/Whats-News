@@ -34,8 +34,9 @@ class DeskColors {
   static const border = Color(0x00000000);
   static const accent = Color(0xFF111111);
   static const accentBright = Color(0xFF111111);
-  static const green = Color(0xFF22C55E);
-  static const red = Color(0xFFEF4444);
+  /// Direction ink on the white desk. Bright #22C55E / #EF4444 fail on paper.
+  static const green = Color(0xFF157A32);
+  static const red = Color(0xFFB42318);
   static const yellow = Color(0xFF111111);
   static const cyan = Color(0xFF0F766E);
   static const orange = Color(0xFFE07A5F);

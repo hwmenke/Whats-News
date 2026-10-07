@@ -151,22 +151,22 @@ function baseOpts() {
     return {
         layout: {
             background: { color: '#0d1117' },
-            textColor: '#8b949e',
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 10,
+            textColor: '#c5d0dc',
+            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontSize: 11,
         },
         grid: {
-            vertLines: { color: '#1c2230' },
-            horzLines: { color: '#1c2230' },
+            vertLines: { color: '#212833' },
+            horzLines: { color: '#212833' },
         },
         crosshair: {
             mode: LWC.CrosshairMode.Normal,
-            vertLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
-            horzLine: { color: '#3d4965', labelBackgroundColor: '#1c2230' },
+            vertLine: { color: '#4a5870', labelBackgroundColor: '#161b22' },
+            horzLine: { color: '#4a5870', labelBackgroundColor: '#161b22' },
         },
-        rightPriceScale: { borderColor: '#30363d' },
+        rightPriceScale: { borderColor: '#3d4960' },
         timeScale: {
-            borderColor: '#30363d',
+            borderColor: '#3d4960',
             timeVisible: true,
             secondsVisible: false,
             rightOffset: 6,

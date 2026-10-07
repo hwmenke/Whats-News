@@ -739,7 +739,7 @@ class _PnlCurvePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const left = 46.0;
+    const left = 54.0;
     const right = 8.0;
     const top = 10.0;
     const bottom = 18.0;
