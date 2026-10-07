@@ -115,13 +115,25 @@ async function loadDeskTrendScan() {
         rows.forEach(row => {
             const tr = document.createElement('tr');
             tr.dataset.symbol = row.symbol || '';
+            const sig = row.signal ?? row.trend_signal;
+            const tone = (v) => {
+                const n = Number(v);
+                if (v == null || v === '' || Number.isNaN(n) || n === 0) return '';
+                return n > 0 ? 'mm-up' : 'mm-dn';
+            };
+            const cell = (v, digits) => {
+                if (v == null || v === '') return '<td>—</td>';
+                const n = Number(v);
+                const txt = digits != null && !Number.isNaN(n) ? n.toFixed(digits) : String(v);
+                return `<td class="${tone(n)}">${txt}</td>`;
+            };
             tr.innerHTML = `
                 <td class="macro-sym">${row.symbol || ''}</td>
-                <td>${row.signal ?? row.trend_signal ?? '—'}</td>
+                ${cell(sig, null)}
                 <td>${row.rsi != null ? Number(row.rsi).toFixed(1) : '—'}</td>
-                <td>${row.kama10_pct != null ? Number(row.kama10_pct).toFixed(1) : '—'}</td>
-                <td>${row.kama20_pct != null ? Number(row.kama20_pct).toFixed(1) : '—'}</td>
-                <td>${row.kama50_pct != null ? Number(row.kama50_pct).toFixed(1) : '—'}</td>`;
+                ${cell(row.kama10_pct, 1)}
+                ${cell(row.kama20_pct, 1)}
+                ${cell(row.kama50_pct, 1)}`;
             tr.addEventListener('click', () => {
                 if (row.symbol && typeof selectSymbol === 'function') selectSymbol(row.symbol);
             });

@@ -1779,6 +1779,8 @@ class ScanNameRow extends StatelessWidget {
                           style: const TextStyle(
                             color: DeskColors.accentBright,
                             fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            height: 1,
                           ),
                         ),
                       ),

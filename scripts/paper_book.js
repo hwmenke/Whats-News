@@ -138,10 +138,10 @@ function _drawPnlCurve(points) {
     canvas.height = Math.max(200, Math.round(cssH));
     const W = canvas.width;
     const H = canvas.height;
-    const padL = 44;
-    const padR = 18;
-    const padT = 10;
-    const padB = 22;
+    const padL = 54;
+    const padR = 12;
+    const padT = 8;
+    const padB = 18;
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
@@ -161,9 +161,9 @@ function _drawPnlCurve(points) {
         x: padL + (i / (vals.length - 1)) * plotW,
         y: padT + (1 - (vals[i] - min) / span) * plotH,
     });
-    ctx.strokeStyle = '#f3f3f3';
+    ctx.strokeStyle = '#e4e4e4';
     ctx.lineWidth = 1;
-    ctx.fillStyle = '#444';
+    ctx.fillStyle = '#333';
     ctx.textBaseline = 'middle';
     _pnlYTickIdx(vals).forEach(i => {
         const p = xy(i);
@@ -192,7 +192,7 @@ function _drawPnlCurve(points) {
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
-        ctx.strokeStyle = vals[i] >= open ? '#22c55e' : '#ef4444';
+        ctx.strokeStyle = vals[i] >= open ? '#157a32' : '#b42318';
         ctx.lineWidth = 1.6;
         ctx.stroke();
     }
