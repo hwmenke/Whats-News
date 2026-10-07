@@ -7,10 +7,43 @@ import app as app_module
 import news_service
 
 
-class NewsApiTests(unittest.TestCase):
+class _OfflineNewsMixin:
+    """Keep unit tests off the network: no RSS fallback, no backoff sleeps."""
+
     def setUp(self):
         self.client = app_module.app.test_client()
         news_service.clear_cache()
+        self._retry = news_service.RETRY_DELAYS
+        self._interval = news_service.MIN_INTERVAL_SEC
+        news_service.RETRY_DELAYS = ()
+        news_service.MIN_INTERVAL_SEC = 0
+        self._rss = patch("news_service._fetch_yahoo_rss", return_value=[])
+        self.rss = self._rss.start()
+
+    def tearDown(self):
+        self._rss.stop()
+        news_service.RETRY_DELAYS = self._retry
+        news_service.MIN_INTERVAL_SEC = self._interval
+
+
+def _rss_article(symbol, title, url="https://finance.yahoo.com/rss-story"):
+    return {
+        "symbol": symbol,
+        "symbols": [symbol],
+        "title": title,
+        "summary": "RSS summary",
+        "url": url,
+        "publish_time": "2026-10-07T14:00:00+00:00",
+        "provider": "Yahoo Finance",
+        "provider_url": "https://finance.yahoo.com/",
+        "tags": [],
+        "feed": "yahoo_rss",
+    }
+
+
+class NewsApiTests(_OfflineNewsMixin, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
 
     @patch("app.md.list_symbol_codes")
     def test_get_all_news_empty_watchlist(self, mock_list_symbol_codes):
@@ -266,10 +299,9 @@ def _ticker_with(items):
     return ticker
 
 
-class NewsEnhancementTests(unittest.TestCase):
+class NewsEnhancementTests(_OfflineNewsMixin, unittest.TestCase):
     def setUp(self):
-        self.client = app_module.app.test_client()
-        news_service.clear_cache()
+        super().setUp()
 
     @patch("app.yf.Ticker")
     @patch("app.md.list_symbol_codes")
@@ -418,6 +450,72 @@ class NewsEnhancementTests(unittest.TestCase):
 
         self.assertEqual(data["article_count"], 1)
         self.assertFalse(data["cached"])
+
+    @patch("app.yf.Ticker")
+    def test_throttle_backoff_then_yfinance_success(self, mock_ticker_class):
+        news_service.RETRY_DELAYS = (0, 0)
+        calls = {"n": 0}
+
+        def create_ticker(symbol):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise Exception("429 Too Many Requests")
+            return _ticker_with([_news_item("Recovered after backoff")])
+
+        mock_ticker_class.side_effect = create_ticker
+        data = self.client.get("/api/news/AAPL").get_json()
+
+        self.assertEqual(calls["n"], 3)
+        self.assertEqual(data["article_count"], 1)
+        self.assertEqual(data["feeds"], ["yfinance"])
+        self.rss.assert_not_called()
+
+    @patch("app.yf.Ticker")
+    def test_empty_yfinance_falls_back_to_rss(self, mock_ticker_class):
+        mock_ticker_class.return_value = _ticker_with([])
+        self.rss.return_value = [_rss_article("AAPL", "Apple headline from RSS")]
+
+        data = self.client.get("/api/news/AAPL").get_json()
+
+        self.assertEqual(data["article_count"], 1)
+        self.assertEqual(data["articles"][0]["title"], "Apple headline from RSS")
+        self.assertEqual(data["articles"][0]["feed"], "yahoo_rss")
+        self.assertEqual(data["feeds"], ["yahoo_rss"])
+        self.assertEqual(data["source"], "Yahoo Finance")
+        self.rss.assert_called()
+
+    @patch("app.yf.Ticker")
+    def test_throttled_yfinance_falls_back_to_rss(self, mock_ticker_class):
+        mock_ticker_class.side_effect = Exception("Too Many Requests. Rate limited.")
+        self.rss.return_value = [_rss_article("AAPL", "RSS after throttle")]
+
+        response = self.client.get("/api/news/AAPL")
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["article_count"], 1)
+        self.assertEqual(data["feeds"], ["yahoo_rss"])
+        self.assertNotIn("error", data)
+
+    def test_parse_rss_feed_maps_pubdate(self):
+        xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel>
+          <item>
+            <title>Apple earnings beat &amp; raises outlook</title>
+            <link>https://finance.yahoo.com/story</link>
+            <description>Quarterly &lt;b&gt;results&lt;/b&gt; were strong.</description>
+            <pubDate>Wed, 07 Oct 2026 14:45:22 +0000</pubDate>
+          </item>
+        </channel></rss>"""
+        articles = news_service._parse_rss_feed(xml, "AAPL")
+        self.assertEqual(len(articles), 1)
+        article = articles[0]
+        self.assertEqual(article["symbol"], "AAPL")
+        self.assertEqual(article["feed"], "yahoo_rss")
+        self.assertIn("earnings", article["tags"])
+        self.assertEqual(article["publish_time"], "2026-10-07T14:45:22+00:00")
+        self.assertNotIn("<b>", article["summary"])
+        self.assertIn("results", article["summary"])
 
 
 if __name__ == "__main__":

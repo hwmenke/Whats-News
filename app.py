@@ -850,6 +850,7 @@ def get_all_news():
         "cache_age_sec": news["cache_age_sec"],
         "cache_ttl_sec": news_service.CACHE_TTL_SEC,
         "fetched_at": news["fetched_at"],
+        "feeds": news.get("feeds") or [],
     }
     if news["errors"]:
         result["errors"] = news["errors"]
@@ -880,6 +881,7 @@ def get_symbol_news(symbol):
         "cache_age_sec": news["cache_age_sec"],
         "cache_ttl_sec": news_service.CACHE_TTL_SEC,
         "fetched_at": news["fetched_at"],
+        "feeds": news.get("feeds") or [],
     }
     if not articles:
         result["message"] = f"No news available for {symbol}"
@@ -986,6 +988,9 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
     mode = data_client.DATA_SERVICE_MODE
     url = data_client.DATA_SERVICE_URL
+    if data_client.use_embedded():
+        import database as db
+        db.init_db()
     print(f"\n  Whats-News analysis at http://localhost:{port}")
     print(f"  News feed:              http://localhost:{port}/news")
     print(f"  Data service mode={mode} url={url}\n")

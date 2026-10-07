@@ -407,7 +407,7 @@
           <div class="wn-news-meta">
             <span id="wn-count">Loading…</span>
             <span class="wn-sep" aria-hidden="true">•</span>
-            <span>Source: Yahoo Finance</span>
+            <span id="wn-source">Source: Yahoo Finance</span>
             <span class="wn-sep" aria-hidden="true">•</span>
             <span id="wn-updated">Not yet updated</span>
           </div>
@@ -456,6 +456,7 @@
   const els = {
     list: $('wn-news-list'),
     count: $('wn-count'),
+    source: $('wn-source'),
     updated: $('wn-updated'),
     refresh: $('wn-refresh'),
     search: $('wn-search-input'),
@@ -513,6 +514,18 @@
 
   function plural(n, word) {
     return `${n} ${word}${n === 1 ? '' : 's'}`;
+  }
+
+  function sourceLabel(data) {
+    const feeds = Array.isArray(data && data.feeds) ? data.feeds : [];
+    const base = (data && data.source) || 'Yahoo Finance';
+    if (feeds.includes('yahoo_rss') && feeds.includes('yfinance')) {
+      return `Source: ${base} (RSS fallback)`;
+    }
+    if (feeds.length === 1 && feeds[0] === 'yahoo_rss') {
+      return `Source: ${base} RSS`;
+    }
+    return `Source: ${base}`;
   }
 
   /* ── Time ─────────────────────────────────────────────────── */
@@ -888,6 +901,7 @@
       }
       state.cached = data.cached === true;
       state.lastLoadedAt = parseTime(data.fetched_at || data.updated_at) || new Date();
+      if (els.source) els.source.textContent = sourceLabel(data);
       setDot('ok');
 
       renderList();
