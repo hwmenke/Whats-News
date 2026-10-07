@@ -33,6 +33,7 @@ import yfinance as yf
 import portfolio
 import setup_scanner
 import index_universe
+import news_service
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
@@ -819,110 +820,78 @@ def universe_refresh():
 
 # -- News -----------------------------------------------------------------------
 
+def _news_refresh_requested() -> bool:
+    return request.args.get("refresh", "").lower() in ("1", "true", "yes")
+
+
 @app.route("/api/news", methods=["GET"])
 def get_all_news():
-    """Fetch news for all watchlist symbols using yfinance."""
+    """Fetch merged watchlist news via yfinance (cached per symbol, ?refresh=1 to bypass)."""
     symbols = md.list_symbol_codes()
     if not symbols:
-        return jsonify({"articles": [], "message": "No symbols in watchlist"})
-    
-    all_articles = []
-    seen_urls = set()
-    errors = []
-    
-    for symbol in symbols:
-        try:
-            ticker = yf.Ticker(symbol)
-            news_items = ticker.news
-            
-            if not news_items:
-                continue
-                
-            for item in news_items:
-                content = item.get("content", {})
-                url = (content.get("canonicalUrl", {}).get("url") or 
-                       content.get("clickThroughUrl", {}).get("url") or "")
-                
-                if url and url in seen_urls:
-                    continue
-                    
-                if url:
-                    seen_urls.add(url)
-                
-                provider = content.get("provider", {})
-                article = {
-                    "symbol": symbol,
-                    "title": content.get("title", "No title"),
-                    "summary": content.get("summary") or content.get("description", ""),
-                    "url": url,
-                    "publish_time": content.get("pubDate", ""),
-                    "provider": provider.get("displayName", "Yahoo Finance"),
-                    "provider_url": provider.get("url", "https://finance.yahoo.com/")
-                }
-                all_articles.append(article)
-                
-        except Exception as e:
-            errors.append({"symbol": symbol, "error": str(e)})
-    
-    all_articles.sort(key=lambda x: x.get("publish_time", ""), reverse=True)
-    
+        return jsonify({
+            "articles": [],
+            "symbol_count": 0,
+            "article_count": 0,
+            "source": news_service.SOURCE,
+            "cached": False,
+            "fetched_at": news_service.now_iso(),
+            "message": "No symbols in watchlist",
+        })
+
+    news = news_service.fetch_news(symbols, refresh=_news_refresh_requested())
     result = {
-        "articles": all_articles,
-        "source": "Yahoo Finance",
+        "articles": news["articles"],
+        "source": news_service.SOURCE,
         "symbol_count": len(symbols),
-        "article_count": len(all_articles)
+        "article_count": len(news["articles"]),
+        "cached": news["cached"],
+        "cache_hits": news["cache_hits"],
+        "cache_age_sec": news["cache_age_sec"],
+        "cache_ttl_sec": news_service.CACHE_TTL_SEC,
+        "fetched_at": news["fetched_at"],
+        "feeds": news.get("feeds") or [],
     }
-    
-    if errors:
-        result["errors"] = errors
-    
+    if news.get("stale"):
+        result["stale"] = True
+    if news["errors"]:
+        result["errors"] = news["errors"]
+        if any(e.get("code") == "yahoo_throttle" for e in news["errors"]):
+            result["rate_limited"] = True
     return jsonify(result)
 
 
 @app.route("/api/news/<string:symbol>", methods=["GET"])
 def get_symbol_news(symbol):
-    """Fetch news for a specific symbol using yfinance."""
-    try:
-        ticker = yf.Ticker(symbol.upper())
-        news_items = ticker.news
-        
-        if not news_items:
-            return jsonify({
-                "symbol": symbol.upper(),
-                "articles": [],
-                "message": f"No news available for {symbol.upper()}",
-                "source": "Yahoo Finance"
-            })
-        
-        articles = []
-        for item in news_items:
-            content = item.get("content", {})
-            provider = content.get("provider", {})
-            
-            article = {
-                "title": content.get("title", "No title"),
-                "summary": content.get("summary") or content.get("description", ""),
-                "url": (content.get("canonicalUrl", {}).get("url") or 
-                       content.get("clickThroughUrl", {}).get("url") or ""),
-                "publish_time": content.get("pubDate", ""),
-                "provider": provider.get("displayName", "Yahoo Finance"),
-                "provider_url": provider.get("url", "https://finance.yahoo.com/")
-            }
-            articles.append(article)
-        
-        return jsonify({
-            "symbol": symbol.upper(),
-            "articles": articles,
-            "article_count": len(articles),
-            "source": "Yahoo Finance"
-        })
-        
-    except Exception as e:
-        return jsonify({
-            "symbol": symbol.upper(),
-            "error": str(e),
-            "source": "Yahoo Finance"
-        }), 500
+    """Fetch news for a specific symbol using yfinance (shares the per-symbol cache)."""
+    symbol = symbol.upper()
+    news = news_service.fetch_news([symbol], refresh=_news_refresh_requested())
+    hard = [e for e in news["errors"] if not e.get("stale")]
+    if hard:
+        failure = hard[0]
+        status = 429 if failure.get("code") == "yahoo_throttle" else 500
+        payload = {"symbol": symbol, "source": news_service.SOURCE}
+        payload.update({k: v for k, v in failure.items() if k != "symbol"})
+        return jsonify(payload), status
+
+    articles = news["articles"]
+    result = {
+        "symbol": symbol,
+        "articles": articles,
+        "article_count": len(articles),
+        "source": news_service.SOURCE,
+        "cached": news["cached"],
+        "cache_age_sec": news["cache_age_sec"],
+        "cache_ttl_sec": news_service.CACHE_TTL_SEC,
+        "fetched_at": news["fetched_at"],
+        "feeds": news.get("feeds") or [],
+    }
+    if news.get("stale"):
+        result["stale"] = True
+        result["errors"] = news["errors"]
+    if not articles:
+        result["message"] = f"No news available for {symbol}"
+    return jsonify(result)
 
 
 # -- Data Manager (proxied to data service) -------------------------------------
@@ -1025,6 +994,9 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
     mode = data_client.DATA_SERVICE_MODE
     url = data_client.DATA_SERVICE_URL
+    if data_client.use_embedded():
+        import database as db
+        db.init_db()
     print(f"\n  Whats-News analysis at http://localhost:{port}")
     print(f"  News feed:              http://localhost:{port}/news")
     print(f"  Data service mode={mode} url={url}\n")

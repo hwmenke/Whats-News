@@ -251,10 +251,17 @@ function syncNewsSurfaceLabels(symbol) {
             ? `Headlines for ${symbol} only — Watchlist news is in the top bar`
             : 'Headlines for the selected ticker only — Watchlist news is in the top bar';
     }
+    const book = state.newsScope === 'book' && Array.isArray(state.newsBookSymbols) && state.newsBookSymbols.length;
     const title = document.getElementById('news-title');
-    if (title) title.textContent = symbol ? `News for ${symbol}` : 'News for this ticker';
+    if (title) {
+        if (book) title.textContent = 'Book news';
+        else title.textContent = symbol ? `News for ${symbol}` : 'News for this ticker';
+    }
     const scope = document.getElementById('news-scope-label');
-    if (scope) scope.textContent = symbol ? `${symbol} only` : 'Selected symbol only';
+    if (scope) {
+        if (book) scope.textContent = state.newsBookSymbols.join(', ');
+        else scope.textContent = symbol ? `${symbol} only` : 'Selected symbol only';
+    }
 }
 
 // ── API helpers ──────────────────────────────────────────────
@@ -1012,17 +1019,20 @@ async function openBookNews() {
         switchTab('news');
         return;
     }
-    switchTab('news');
+    const seq = ++_newsLoadSeq;
+    switchTab('news', { skipNewsLoad: true });
     const listEl = document.getElementById('news-list');
     const emptyEl = document.getElementById('news-empty');
     const loadingEl = document.getElementById('news-loading');
+    const errorEl = document.getElementById('news-error');
     if (loadingEl) loadingEl.style.display = 'flex';
     if (emptyEl) emptyEl.style.display = 'none';
+    if (errorEl) errorEl.style.display = 'none';
     if (listEl) listEl.innerHTML = '';
+    const syms = focus.slice(0, 5);
     try {
-        // Prefer focused symbols: fetch per-symbol and merge
         const batches = await Promise.all(
-            focus.slice(0, 5).map(async sym => {
+            syms.map(async sym => {
                 try {
                     const data = await apiFetch(`${API}/news/${sym}`);
                     return (data.articles || []).map(a => ({ ...a, symbol: sym }));
@@ -1031,10 +1041,10 @@ async function openBookNews() {
                 }
             })
         );
-        const articles = batches.flat();
+        if (seq !== _newsLoadSeq) return;
         const seen = new Set();
         const deduped = [];
-        for (const a of articles) {
+        for (const a of batches.flat()) {
             const key = a.url || a.title;
             if (!key || seen.has(key)) continue;
             seen.add(key);
@@ -1043,6 +1053,9 @@ async function openBookNews() {
         deduped.sort((a, b) => (b.publish_time || '').localeCompare(a.publish_time || ''));
 
         if (loadingEl) loadingEl.style.display = 'none';
+        state.newsScope = 'book';
+        state.newsBookSymbols = syms;
+        syncNewsSurfaceLabels(state.activeSymbol);
         if (!deduped.length) {
             if (emptyEl) {
                 emptyEl.style.display = 'flex';
@@ -1051,24 +1064,10 @@ async function openBookNews() {
             }
             return;
         }
-        // Reuse single-symbol news renderer if present
-        if (typeof renderNewsArticles === 'function') {
-            renderNewsArticles(deduped);
-        } else if (listEl) {
-            listEl.innerHTML = deduped.slice(0, 40).map(a => `
-                <article class="news-item" style="padding:12px 0;border-bottom:1px solid var(--border);">
-                  <div style="font-size:11px;color:var(--accent-bright);font-family:var(--font-mono);">${a.symbol || ''}</div>
-                  <a href="${a.url || '#'}" target="_blank" rel="noopener" style="color:var(--text-primary);font-weight:600;text-decoration:none;">
-                    ${a.title || 'Untitled'}
-                  </a>
-                  <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">
-                    via ${a.provider || 'Yahoo Finance'} · ${a.publish_time || ''}
-                  </div>
-                </article>
-            `).join('');
-        }
-        toast(`Book news: ${focus.join(', ')}`, 'info');
+        renderNews(deduped.slice(0, 40), { showSymbol: true });
+        toast(`Book news: ${syms.join(', ')}`, 'info');
     } catch (e) {
+        if (seq !== _newsLoadSeq) return;
         if (loadingEl) loadingEl.style.display = 'none';
         toast('Book news failed: ' + e.message, 'error');
     }
@@ -1818,8 +1817,14 @@ async function loadStatsData(symbol) {
 }
 
 // ── News Data Loading ─────────────────────────────────────
+let _newsLoadSeq = 0;
+
 async function loadNewsData(symbol) {
     if (!symbol) return;
+    const seq = ++_newsLoadSeq;
+    state.newsScope = 'symbol';
+    state.newsBookSymbols = null;
+    syncNewsSurfaceLabels(symbol);
     showNewsArea();
     
     const loadingEl = document.getElementById('news-loading');
@@ -1838,6 +1843,7 @@ async function loadNewsData(symbol) {
     try {
         // Fetch news from API - returns { symbol, articles: [...], article_count, source } or { symbol, message, source } or { symbol, error, source }
         const data = await apiFetch(`${API}/news/${symbol}`);
+        if (seq !== _newsLoadSeq) return;
         
         // Hide loading
         if (loadingEl) loadingEl.style.display = 'none';
@@ -1883,6 +1889,7 @@ async function loadNewsData(symbol) {
         }
         
     } catch (e) {
+        if (seq !== _newsLoadSeq) return;
         if (loadingEl) loadingEl.style.display = 'none';
         if (errorEl) {
             errorEl.style.display = 'flex';
@@ -1899,11 +1906,47 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function renderNews(articles) {
+function newsArticleTags(article) {
+    const out = [];
+    const own = article && article.symbol;
+    for (const field of [article && article.tags, article && article.symbols]) {
+        if (!Array.isArray(field)) continue;
+        for (const t of field) {
+            const label = typeof t === 'string' ? t : (t && (t.name || t.label || t.symbol));
+            const clean = label == null ? '' : String(label).trim();
+            if (clean && clean !== own && !out.includes(clean)) out.push(clean);
+        }
+    }
+    return out.slice(0, 6);
+}
+
+function safeNewsUrl(raw) {
+    if (!raw) return null;
+    try {
+        const u = new URL(String(raw), window.location.href);
+        return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+    } catch {
+        return null;
+    }
+}
+
+// Book news clicks name their own ticker — point the desk at it without
+// reloading the news list (loadChartData runs inside onThisTickerNewsClick).
+function activateNewsArticleSymbol(article) {
+    const sym = article && article.symbol;
+    if (!sym || sym === state.activeSymbol) return;
+    state.activeSymbol = sym;
+    try { localStorage.setItem(LAST_SYMBOL_KEY, sym); } catch { /* ignore quota */ }
+    renderSymbolList();
+}
+
+function renderNews(articles, opts = {}) {
     const listEl = document.getElementById('news-list');
     if (!listEl) return;
     
     listEl.innerHTML = '';
+    const distinctSymbols = new Set(articles.map(a => a && a.symbol).filter(Boolean));
+    const showSymbol = opts.showSymbol === true || distinctSymbols.size > 1;
     
     articles.forEach(article => {
         const newsItem = document.createElement('div');
@@ -1911,9 +1954,11 @@ function renderNews(articles) {
         newsItem.title = 'Jump daily chart to this headline date';
         newsItem.addEventListener('click', ev => {
             if (ev.metaKey || ev.ctrlKey) {
-                if (article.url) window.open(article.url, '_blank');
+                const href = safeNewsUrl(article.url);
+                if (href) window.open(href, '_blank', 'noopener');
                 return;
             }
+            activateNewsArticleSymbol(article);
             onThisTickerNewsClick(article);
         });
         
@@ -1953,6 +1998,14 @@ function renderNews(articles) {
         const metaDiv = document.createElement('div');
         metaDiv.className = 'news-item-meta';
         
+        if (showSymbol && article.symbol) {
+            const chipEl = document.createElement('span');
+            chipEl.className = 'news-item-symbol';
+            chipEl.textContent = article.symbol;
+            chipEl.style.cssText = 'font-family:var(--font-mono);font-weight:600;color:var(--accent-bright);';
+            metaDiv.appendChild(chipEl);
+        }
+
         const providerEl = document.createElement('span');
         providerEl.className = 'news-item-provider';
         providerEl.textContent = article.provider || 'Yahoo Finance';
@@ -1964,6 +2017,14 @@ function renderNews(articles) {
             timeEl.textContent = timeStr;
             metaDiv.appendChild(timeEl);
         }
+
+        newsArticleTags(article).forEach(tag => {
+            const tagEl = document.createElement('span');
+            tagEl.className = 'news-item-tag';
+            tagEl.textContent = tag;
+            tagEl.style.cssText = 'opacity:0.7;font-size:0.9em;';
+            metaDiv.appendChild(tagEl);
+        });
         
         contentDiv.appendChild(metaDiv);
         newsItem.appendChild(contentDiv);
@@ -2357,7 +2418,7 @@ async function switchTab(tabId, opts = {}) {
         if (state.activeSymbol) loadChartData(state.activeSymbol);
     } else if (tabId === 'news') {
         showNewsArea();
-        if (state.activeSymbol) loadNewsData(state.activeSymbol);
+        if (state.activeSymbol && !opts.skipNewsLoad) loadNewsData(state.activeSymbol);
     } else if (tabId === 'stats') {
         showStatsArea();
         if (state.activeSymbol) loadStatsData(state.activeSymbol);
@@ -3211,6 +3272,32 @@ function toggleKbdHelp() {
     else openKbdHelp();
 }
 
+function openThisTickerNews() {
+    if (!state.activeSymbol) {
+        toast('Select a symbol first', 'warning');
+        return;
+    }
+    switchTab('news');
+}
+
+function readDeepLink() {
+    let params;
+    try { params = new URLSearchParams(window.location.search); } catch { return {}; }
+    const symbol = (params.get('symbol') || '').trim().toUpperCase();
+    const tab = (params.get('tab') || '').trim().toLowerCase();
+    return { symbol: symbol || null, tab: tab || null };
+}
+
+function clearDeepLink() {
+    try {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has('symbol') && !url.searchParams.has('tab')) return;
+        url.searchParams.delete('symbol');
+        url.searchParams.delete('tab');
+        window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+    } catch { /* ignore */ }
+}
+
 function setupPmKeyboard() {
     document.addEventListener('keydown', e => {
         const tag = (e.target && e.target.tagName) || '';
@@ -3231,6 +3318,11 @@ function setupPmKeyboard() {
         if (!e.metaKey && !e.ctrlKey && !e.altKey && (e.key === '1' || e.key === '2' || e.key === '3')) {
             e.preventDefault();
             setWorkspace(e.key === '1' ? 'chart' : e.key === '2' ? 'scan' : 'review');
+            return;
+        }
+        if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            e.preventDefault();
+            openThisTickerNews();
             return;
         }
         if (state.workspace === 'scan' && !e.metaKey && !e.ctrlKey) {
@@ -3717,11 +3809,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
         let last = null;
         try { last = localStorage.getItem(LAST_SYMBOL_KEY); } catch { last = null; }
-        const pick = (last && codes.includes(last)) ? last : codes[0];
+        const link = readDeepLink();
+        const linkOk = !!(link.symbol && codes.includes(link.symbol));
+        if (link.symbol && !linkOk) toast(`${link.symbol} is not on your watchlist`, 'warning');
+        const pick = linkOk ? link.symbol
+            : (last && codes.includes(last)) ? last : codes[0];
         await selectSymbol(pick);
+        const wantNews = link.tab === 'news';
         let ws = 'chart';
         try { ws = localStorage.getItem(WORKSPACE_KEY) || 'chart'; } catch { ws = 'chart'; }
-        if (ws === 'scan') setWorkspace('scan', { skipChart: true });
+        if (wantNews) switchTab('news');
+        else if (ws === 'scan') setWorkspace('scan', { skipChart: true });
+        if (link.symbol || link.tab) clearDeepLink();
     }
     // After workspace restore so Chart/Scan/Review chrome matches the saved desk.
     restoreFocusMode();
