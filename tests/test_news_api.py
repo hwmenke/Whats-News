@@ -497,6 +497,66 @@ class NewsEnhancementTests(_OfflineNewsMixin, unittest.TestCase):
         self.assertEqual(data["feeds"], ["yahoo_rss"])
         self.assertNotIn("error", data)
 
+    @patch("app.yf.Ticker")
+    def test_unsafe_urls_are_dropped(self, mock_ticker_class):
+        mock_ticker_class.return_value = _ticker_with([
+            _news_item("Script link", url="javascript:alert(1)",
+                       provider={"displayName": "Evil", "url": "javascript:alert(2)"}),
+            _news_item("Data link", url="data:text/html,<script>alert(3)</script>"),
+            _news_item("Good link", url="https://example.com/good"),
+        ])
+
+        articles = self.client.get("/api/news/AAPL").get_json()["articles"]
+        by_title = {a["title"]: a for a in articles}
+
+        self.assertEqual(by_title["Script link"]["url"], "")
+        self.assertEqual(by_title["Script link"]["provider_url"], "https://finance.yahoo.com/")
+        self.assertEqual(by_title["Data link"]["url"], "")
+        self.assertEqual(by_title["Good link"]["url"], "https://example.com/good")
+
+    @patch("app.yf.Ticker")
+    @patch("app.md.list_symbol_codes")
+    def test_throttled_refresh_keeps_cached_headlines(self, mock_symbols, mock_ticker_class):
+        mock_symbols.return_value = ["AAPL"]
+        mock_ticker_class.return_value = _ticker_with([_news_item("Cached Apple headline")])
+        self.client.get("/api/news")
+
+        mock_ticker_class.side_effect = Exception("429 Too Many Requests")
+        data = self.client.get("/api/news?refresh=1").get_json()
+
+        self.assertEqual(data["article_count"], 1)
+        self.assertEqual(data["articles"][0]["title"], "Cached Apple headline")
+        self.assertTrue(data["stale"])
+        self.assertTrue(data["errors"][0]["stale"])
+        self.assertTrue(data["rate_limited"])
+
+        single = self.client.get("/api/news/AAPL?refresh=1")
+        self.assertEqual(single.status_code, 200)
+        self.assertEqual(single.get_json()["article_count"], 1)
+        self.assertTrue(single.get_json()["stale"])
+
+    def test_parse_rss_tolerates_bad_dates_and_unsafe_links(self):
+        xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel>
+          <item>
+            <title>Bad date story</title>
+            <link>javascript:alert(1)</link>
+            <description>&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;Body</description>
+            <pubDate>not a date</pubDate>
+          </item>
+          <item>
+            <title>Good story</title>
+            <link>https://finance.yahoo.com/good</link>
+            <pubDate>Wed, 07 Oct 2026 14:45:22 +0000</pubDate>
+          </item>
+        </channel></rss>"""
+        articles = news_service._parse_rss_feed(xml, "AAPL")
+        self.assertEqual([a["title"] for a in articles], ["Bad date story", "Good story"])
+        self.assertEqual(articles[0]["publish_time"], "")
+        self.assertEqual(articles[0]["url"], "")
+        self.assertNotIn("<script>", articles[0]["summary"])
+        self.assertEqual(articles[1]["url"], "https://finance.yahoo.com/good")
+
     def test_parse_rss_feed_maps_pubdate(self):
         xml = b"""<?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0"><channel>

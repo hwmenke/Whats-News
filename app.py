@@ -852,6 +852,8 @@ def get_all_news():
         "fetched_at": news["fetched_at"],
         "feeds": news.get("feeds") or [],
     }
+    if news.get("stale"):
+        result["stale"] = True
     if news["errors"]:
         result["errors"] = news["errors"]
         if any(e.get("code") == "yahoo_throttle" for e in news["errors"]):
@@ -864,8 +866,9 @@ def get_symbol_news(symbol):
     """Fetch news for a specific symbol using yfinance (shares the per-symbol cache)."""
     symbol = symbol.upper()
     news = news_service.fetch_news([symbol], refresh=_news_refresh_requested())
-    if news["errors"]:
-        failure = news["errors"][0]
+    hard = [e for e in news["errors"] if not e.get("stale")]
+    if hard:
+        failure = hard[0]
         status = 429 if failure.get("code") == "yahoo_throttle" else 500
         payload = {"symbol": symbol, "source": news_service.SOURCE}
         payload.update({k: v for k, v in failure.items() if k != "symbol"})
@@ -883,6 +886,9 @@ def get_symbol_news(symbol):
         "fetched_at": news["fetched_at"],
         "feeds": news.get("feeds") or [],
     }
+    if news.get("stale"):
+        result["stale"] = True
+        result["errors"] = news["errors"]
     if not articles:
         result["message"] = f"No news available for {symbol}"
     return jsonify(result)

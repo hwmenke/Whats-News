@@ -908,8 +908,12 @@
       updateFreshness();
 
       if (Array.isArray(data.errors) && data.errors.length) {
-        const names = data.errors.map((e) => (e && e.symbol) || '').filter(Boolean);
-        showStatus(`Loaded with warnings${names.length ? `: ${names.join(', ')} failed` : ''}.`, 'warn');
+        const failed = data.errors.filter((e) => e && !e.stale).map((e) => e.symbol || '').filter(Boolean);
+        const stale = data.errors.filter((e) => e && e.stale).map((e) => e.symbol || '').filter(Boolean);
+        const parts = [];
+        if (failed.length) parts.push(`${failed.join(', ')} failed`);
+        if (stale.length) parts.push(`${stale.join(', ')} showing cached headlines`);
+        showStatus(`Loaded with warnings${parts.length ? `: ${parts.join('; ')}` : ''}.`, 'warn');
       } else {
         hideStatus();
       }

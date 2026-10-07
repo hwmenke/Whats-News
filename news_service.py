@@ -74,7 +74,8 @@ _TAG_PATTERNS = (
 _cache = {}
 _cache_lock = threading.Lock()
 _pace_lock = threading.Lock()
-_next_fetch_at = 0.0
+_next_fetch_at = {}
+RSS_MAX_BYTES = 2_000_000
 
 
 class NewsFetchError(Exception):
@@ -109,6 +110,35 @@ def _normalize_title(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip()
 
 
+def _safe_url(raw) -> str:
+    """Only absolute http(s) URLs leave the API; anything else (javascript:, data:, relative) is dropped."""
+    if not isinstance(raw, str):
+        return ""
+    url = raw.strip()
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        return ""
+    if parts.scheme.lower() not in ("http", "https") or not parts.netloc:
+        return ""
+    return url
+
+
+def _rss_time(pub: str) -> str:
+    """RFC 822 pubDate -> UTC ISO; unparseable dates become '' rather than failing the feed."""
+    if not pub:
+        return ""
+    try:
+        parsed = email.utils.parsedate_to_datetime(pub)
+    except (TypeError, ValueError, IndexError):
+        return ""
+    if parsed is None:
+        return ""
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed.astimezone(datetime.timezone.utc).isoformat(timespec="seconds")
+
+
 def _extract_thumbnail(content: dict) -> str:
     thumb = content.get("thumbnail")
     if not isinstance(thumb, dict):
@@ -132,32 +162,35 @@ def _parse_item(item: dict, symbol: str):
         "symbols": [symbol],
         "title": title,
         "summary": content.get("summary") or content.get("description", ""),
-        "url": url,
+        "url": _safe_url(url),
         "publish_time": content.get("pubDate", ""),
         "provider": provider.get("displayName", SOURCE),
-        "provider_url": provider.get("url", DEFAULT_PROVIDER_URL),
+        "provider_url": _safe_url(provider.get("url", DEFAULT_PROVIDER_URL)) or DEFAULT_PROVIDER_URL,
         "tags": tag_headline(title),
         "feed": FEED_YFINANCE,
     }
-    thumbnail = _extract_thumbnail(content)
+    thumbnail = _safe_url(_extract_thumbnail(content))
     if thumbnail:
         article["thumbnail"] = thumbnail
     return article
 
 
-def _pace():
-    """Keep a small gap between outbound Yahoo calls so a watchlist doesn't stampede."""
-    global _next_fetch_at
+def _pace(host: str):
+    """Keep a small gap between outbound calls to one Yahoo host so a watchlist doesn't stampede.
+
+    A slot is reserved under the lock and the wait happens outside it, so the
+    yfinance and RSS hosts are paced independently.
+    """
     gap = MIN_INTERVAL_SEC
     if gap <= 0:
         return
     with _pace_lock:
         now = time.monotonic()
-        wait = _next_fetch_at - now
-        if wait > 0:
-            time.sleep(wait)
-            now = time.monotonic()
-        _next_fetch_at = now + gap
+        slot = max(now, _next_fetch_at.get(host, 0.0))
+        _next_fetch_at[host] = slot + gap
+    wait = slot - now
+    if wait > 0:
+        time.sleep(wait)
 
 
 def _retry(fn):
@@ -180,7 +213,7 @@ def _retry(fn):
 
 
 def _fetch_yfinance(symbol: str) -> list:
-    _pace()
+    _pace(FEED_YFINANCE)
     news_items = yf.Ticker(symbol).news or []
     return [_parse_item(item, symbol) for item in news_items]
 
@@ -192,25 +225,17 @@ def _parse_rss_feed(body: bytes, symbol: str) -> list:
         raise NewsFetchError({"error": "Yahoo RSS response was not valid XML", "code": "fetch_failed"}) from exc
     articles = []
     for item in root.findall("./channel/item"):
-        title = (item.findtext("title") or "No title").strip()
-        link = (item.findtext("link") or "").strip()
-        raw_summary = item.findtext("description") or ""
-        summary = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", raw_summary))).strip()
-        pub = (item.findtext("pubDate") or "").strip()
-        publish_time = pub
-        if pub:
-            parsed = email.utils.parsedate_to_datetime(pub)
-            if parsed is not None:
-                if parsed.tzinfo is None:
-                    parsed = parsed.replace(tzinfo=datetime.timezone.utc)
-                publish_time = parsed.astimezone(datetime.timezone.utc).isoformat(timespec="seconds")
+        title = re.sub(r"\s+", " ", item.findtext("title") or "").strip() or "No title"
+        link = _safe_url(item.findtext("link") or "")
+        raw_summary = html.unescape(item.findtext("description") or "")
+        summary = re.sub(r"\s+", " ", re.sub(r"<[^>]*>", " ", raw_summary)).strip()
         articles.append({
             "symbol": symbol,
             "symbols": [symbol],
             "title": title,
             "summary": summary,
             "url": link,
-            "publish_time": publish_time,
+            "publish_time": _rss_time((item.findtext("pubDate") or "").strip()),
             "provider": SOURCE,
             "provider_url": DEFAULT_PROVIDER_URL,
             "tags": tag_headline(title),
@@ -221,13 +246,15 @@ def _parse_rss_feed(body: bytes, symbol: str) -> list:
 
 def _fetch_yahoo_rss(symbol: str) -> list:
     """Public Yahoo Finance headline RSS for one symbol. Real stories, no placeholders."""
-    _pace()
-    url = RSS_URL.format(symbol=urllib.parse.quote(symbol))
+    _pace(FEED_YAHOO_RSS)
+    url = RSS_URL.format(symbol=urllib.parse.quote(symbol, safe=""))
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/rss+xml, application/xml"})
     try:
         with urllib.request.urlopen(req, timeout=12) as resp:
             status = getattr(resp, "status", 200) or 200
-            body = resp.read()
+            body = resp.read(RSS_MAX_BYTES + 1)
+            if len(body) > RSS_MAX_BYTES:
+                raise NewsFetchError({"error": "Yahoo RSS response too large", "code": "fetch_failed"})
     except urllib.error.HTTPError as exc:
         if exc.code == 429:
             raise RuntimeError("429 Too Many Requests") from exc
@@ -310,10 +337,23 @@ def _load_symbol(symbol: str, refresh: bool, now: float) -> dict:
             }
     try:
         articles, feed = _fetch_symbol_uncached(symbol)
-    except NewsFetchError as exc:
-        return {"symbol": symbol, "failure": exc.payload}
     except Exception as exc:
-        return {"symbol": symbol, "failure": classify_yahoo_error(exc)}
+        failure = exc.payload if isinstance(exc, NewsFetchError) else classify_yahoo_error(exc)
+        # A throttled refresh (or an expired entry) should not wipe headlines we already have.
+        with _cache_lock:
+            entry = _cache.get(symbol)
+        if entry and entry["articles"]:
+            return {
+                "symbol": symbol,
+                "articles": entry["articles"],
+                "feed": entry.get("feed") or FEED_YFINANCE,
+                "cached": True,
+                "stale": True,
+                "age": now - entry["stored_at"],
+                "fetched_at": entry["fetched_at"],
+                "warning": failure,
+            }
+        return {"symbol": symbol, "failure": failure}
     fetched_at = now_iso()
     _cache_put(symbol, articles, now, fetched_at, feed)
     return {
@@ -378,6 +418,8 @@ def fetch_news(symbols: list, refresh: bool = False, now: float = None) -> dict:
             errors.append({"symbol": res["symbol"], **res["failure"]})
         else:
             ok.append(res)
+            if res.get("warning"):
+                errors.append({"symbol": res["symbol"], **res["warning"], "stale": True})
 
     hits = [r for r in ok if r["cached"]]
     fetched_times = [r["fetched_at"] for r in ok]
@@ -390,6 +432,7 @@ def fetch_news(symbols: list, refresh: bool = False, now: float = None) -> dict:
         "articles": merge_articles([r["articles"] for r in ok]),
         "errors": errors,
         "feeds": feeds,
+        "stale": any(r.get("stale") for r in ok),
         "cached": bool(ok) and len(hits) == len(ok),
         "cache_hits": len(hits),
         "cache_age_sec": round(max((r["age"] for r in hits), default=0.0)),

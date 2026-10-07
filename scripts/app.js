@@ -1908,15 +1908,26 @@ function escapeHtml(text) {
 
 function newsArticleTags(article) {
     const out = [];
+    const own = article && article.symbol;
     for (const field of [article && article.tags, article && article.symbols]) {
         if (!Array.isArray(field)) continue;
         for (const t of field) {
             const label = typeof t === 'string' ? t : (t && (t.name || t.label || t.symbol));
             const clean = label == null ? '' : String(label).trim();
-            if (clean && !out.includes(clean)) out.push(clean);
+            if (clean && clean !== own && !out.includes(clean)) out.push(clean);
         }
     }
     return out.slice(0, 6);
+}
+
+function safeNewsUrl(raw) {
+    if (!raw) return null;
+    try {
+        const u = new URL(String(raw), window.location.href);
+        return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+    } catch {
+        return null;
+    }
 }
 
 // Book news clicks name their own ticker — point the desk at it without
@@ -1943,7 +1954,8 @@ function renderNews(articles, opts = {}) {
         newsItem.title = 'Jump daily chart to this headline date';
         newsItem.addEventListener('click', ev => {
             if (ev.metaKey || ev.ctrlKey) {
-                if (article.url) window.open(article.url, '_blank', 'noopener');
+                const href = safeNewsUrl(article.url);
+                if (href) window.open(href, '_blank', 'noopener');
                 return;
             }
             activateNewsArticleSymbol(article);
