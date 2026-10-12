@@ -1086,7 +1086,12 @@ def conditional_distribution(symbol):
 
 @app.route("/api/knn/<string:symbol>")
 def get_knn(symbol):
-    k = int(request.args.get("k", 15))
+    try:
+        k = int(request.args.get("k", 15))
+    except ValueError:
+        return jsonify({"error": "k must be an integer"}), 400
+    if k <= 0:
+        return jsonify({"error": "k must be a positive integer"}), 400
     result = knn_model.compute_knn_lookalike(symbol.upper(), k=k)
     if "error" in result:
         return jsonify(result), 404

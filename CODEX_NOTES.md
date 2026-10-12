@@ -26,3 +26,4 @@
 2026-10-12: Fixed maximum drawdown to include the initial value so first-bar losses are counted; added regression coverage for initial declines, later peaks, and rising prices and required embedded unittest suite passes (399 tests).
 2026-10-12: Fixed the statistics-panel RSI calculation to report 100 after warmup for rising prices without losses; added rising/falling/flat/mixed regression coverage and required embedded unittest suite passes (400 tests).
 2026-10-12: Fixed statistics daily and forward returns to leave missing endpoint closes unavailable instead of forward-filling fabricated returns; added daily/distribution and five-day regression coverage and required embedded unittest suite passes (402 tests).
+2026-10-12: Fixed the KNN API to reject malformed and nonpositive neighbor counts with JSON 400 responses before calculation; added invalid/default/valid/missing-data regression coverage and required embedded unittest suite passes (405 tests).
