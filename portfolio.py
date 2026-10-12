@@ -261,8 +261,9 @@ def _adr_bar_range_pct(row) -> float | None:
         close = float(row.get("close"))
     except (TypeError, ValueError):
         return None
-    if high > 0 and low > 0 and close > 0:
-        return ((high - low) / close) * 100
+    if all(isfinite(value) and value > 0 for value in (high, low, close)):
+        pct = ((high - low) / close) * 100
+        return pct if isfinite(pct) else None
     return None
 
 
@@ -286,7 +287,8 @@ def legend_adr_pct(
             break
     if len(ranges) < min_bars:
         return None
-    return sum(ranges) / len(ranges)
+    mean = sum(ranges) / len(ranges)
+    return mean if isfinite(mean) else None
 
 
 def legend_sma200_dist_pct(close, sma200) -> float | None:
@@ -308,7 +310,7 @@ def format_legend_adr(adr) -> str:
         n = float(adr)
     except (TypeError, ValueError):
         return ""
-    if n != n:  # NaN
+    if not isfinite(n):
         return ""
     return f"ADR {n:.2f}%"
 

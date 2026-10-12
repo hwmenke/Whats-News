@@ -39,7 +39,8 @@ function _adrBarRangePct(bar) {
     const low = _legendStatNum(bar.low);
     const close = _legendStatNum(bar.close);
     if (!(high > 0 && low > 0 && close > 0)) return null;
-    return ((high - low) / close) * 100;
+    const pct = ((high - low) / close) * 100;
+    return Number.isFinite(pct) ? pct : null;
 }
 
 function computeAdrPct(rows, lookback, minBars) {
@@ -55,7 +56,8 @@ function computeAdrPct(rows, lookback, minBars) {
     if (ranges.length < nMin) return null;
     let sum = 0;
     for (let i = 0; i < ranges.length; i++) sum += ranges[i];
-    return sum / ranges.length;
+    const mean = sum / ranges.length;
+    return Number.isFinite(mean) ? mean : null;
 }
 
 function distToSma200Pct(close, sma200) {

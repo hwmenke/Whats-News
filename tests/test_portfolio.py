@@ -716,6 +716,19 @@ class FrontendContractTests(unittest.TestCase):
 class LegendStatsMathTests(unittest.TestCase):
     """ADR%, RVOL, 52H gap, and dist-to-SMA200 — same formulas as scripts/legend_stats.js."""
 
+    def test_adr_skips_non_finite_prices_and_overflow_ranges(self):
+        valid = {"high": 102.0, "low": 100.0, "close": 100.0}
+        invalid = [dict(valid, **{column: value})
+                   for column in ("high", "low", "close")
+                   for value in (float("nan"), float("inf"), float("-inf"))]
+        invalid.append({"high": 1e308, "low": 1, "close": 1e-308})
+        self.assertEqual(portfolio.legend_adr_pct([valid] * 5 + invalid), 2.0)
+        self.assertIsNone(portfolio.legend_adr_pct([valid] * 4 + invalid))
+        for value in (float("nan"), float("inf"), float("-inf")):
+            self.assertEqual(portfolio.format_legend_adr(value), "")
+        huge = {"high": 1e306, "low": 1, "close": 1}
+        self.assertIsNone(portfolio.legend_adr_pct([huge] * 5))
+
     def test_adr_mean_last_20_valid_daily_bars(self):
         bar = {"high": 102.41, "low": 100.0, "close": 100.0}
         rows = [bar] * 20
