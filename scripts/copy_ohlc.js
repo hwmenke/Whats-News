@@ -8,8 +8,10 @@
  * Example: AAPL 2026-08-27 O 226.10 H 228.40 L 225.00 C 227.55 +0.82%
  */
 function _copyOhlcPx(v) {
+    if (!(typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) ||
+        !Number.isFinite(Number(v))) return '—';
     if (typeof _fmtPx === 'function') return _fmtPx(v);
-    return (v == null || !Number.isFinite(Number(v))) ? '—' : Number(v).toFixed(2);
+    return Number(v).toFixed(2);
 }
 
 function _copyOhlcDailyRows() {

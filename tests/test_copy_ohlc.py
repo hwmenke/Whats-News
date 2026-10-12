@@ -7,6 +7,38 @@ import unittest
 
 
 class CopyOhlcTests(unittest.TestCase):
+    def test_malformed_prices_do_not_become_clipboard_quotes(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        source = Path(__file__).resolve().parents[1] / "scripts" / "copy_ohlc.js"
+        script = r"""
+const fs = require('fs');
+const vm = require('vm');
+const assert = require('assert');
+const ctx = vm.createContext({});
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), ctx);
+const invalid = [null, undefined, '', '  ', true, false, [], [100], {}, NaN, Infinity, -Infinity, 'bad'];
+// Validate before either the fallback or the shared chart formatter can coerce.
+for (const formatter of [undefined, v => Number(v).toFixed(2)]) {
+    ctx._fmtPx = formatter;
+    for (const value of invalid) assert.strictEqual(ctx._copyOhlcPx(value), '—');
+    assert.strictEqual(ctx._copyOhlcPx(0), '0.00');
+    assert.strictEqual(ctx._copyOhlcPx('125.50'), '125.50');
+    assert.strictEqual(ctx._copyOhlcPx(123.45), '123.45');
+}
+ctx.state = {activeSymbol: 'TEST'};
+ctx.rawRows = {daily: [{date: '2026-01-02', open: '', high: true, low: [], close: '100'}]};
+ctx.linkedBarFor = () => ({row: {date: '2026-01-02', open: null, high: ' ', low: false, close: 0}});
+assert.strictEqual(ctx.formatPaintedOhlcLine(),
+    'TEST 2026-01-02 O — H — L — C 100.00 · W 2026-01-02 O — H — L — C 0.00');
+"""
+        result = subprocess.run(
+            [node, "-e", script, str(source)], capture_output=True,
+            text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
     def test_missing_closes_do_not_fabricate_percentage_changes(self):
         node = shutil.which("node")
         if not node:
