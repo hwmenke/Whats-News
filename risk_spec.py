@@ -246,10 +246,13 @@ def _perf_window(curve: list[dict], *, kind: str) -> float | None:
     else:
         return None
     base = None
-    for pt in curve:
+    for i, pt in enumerate(curve):
         d = str(pt.get("date") or "")
         if d.startswith(want):
-            base = _finite(pt.get("nav"))
+            # Period returns include the first trading day's move, measured
+            # from the preceding close. A partial-period curve has no baseline.
+            if i > 0:
+                base = _finite(curve[i - 1].get("nav"))
             break
     if base is None or abs(base) <= 1e-12:
         return None

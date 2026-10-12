@@ -23,6 +23,33 @@ def _gbm(n, seed, mu=0.0004, sigma=0.012):
     return 100.0 * np.exp(np.cumsum(r))
 
 
+class PerfWindowTests(unittest.TestCase):
+    def test_period_returns_include_first_trading_day(self):
+        curve = [
+            {"date": "2025-12-31", "nav": 100.0},
+            {"date": "2026-01-02", "nav": 110.0},
+            {"date": "2026-01-30", "nav": 120.0},
+            {"date": "2026-02-02", "nav": 126.0},
+            {"date": "2026-02-03", "nav": 132.0},
+        ]
+        self.assertAlmostEqual(risk_spec._perf_window(curve, kind="mtd"), 10.0)
+        self.assertAlmostEqual(risk_spec._perf_window(curve, kind="ytd"), 32.0)
+        self.assertAlmostEqual(risk_spec._perf_window(curve[:2], kind="mtd"), 10.0)
+        self.assertAlmostEqual(risk_spec._perf_window(curve[:2], kind="ytd"), 10.0)
+
+    def test_period_returns_require_valid_preceding_close(self):
+        for kind in ("mtd", "ytd"):
+            for baseline in (None, 0.0, float("nan"), float("inf")):
+                with self.subTest(kind=kind, baseline=baseline):
+                    curve = [
+                        {"date": "2025-12-31", "nav": baseline},
+                        {"date": "2026-01-02", "nav": 110.0},
+                        {"date": "2026-01-05", "nav": 120.0},
+                    ]
+                    self.assertIsNone(risk_spec._perf_window(curve, kind=kind))
+                    self.assertIsNone(risk_spec._perf_window(curve[1:], kind=kind))
+
+
 class RiskSpecTests(unittest.TestCase):
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()
