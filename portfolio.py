@@ -563,7 +563,11 @@ def position_size(
     Prefer a user/structural stop (`stop_price`). Fall back to atr_mult×ATR
     when no stop is provided (Brandt / Neumann risk box).
     """
-    if not price or risk_dollars <= 0:
+    if (
+        not price or not isfinite(price) or price <= 0
+        or not isfinite(risk_dollars) or risk_dollars <= 0
+        or (stop_price is not None and not isfinite(float(stop_price)))
+    ):
         return {
             "shares": None,
             "risk_dollars": risk_dollars,
@@ -586,7 +590,7 @@ def position_size(
             "notional": None,
             "stop_source": None,
         }
-    if stop_distance <= 0:
+    if not isfinite(stop_distance) or stop_distance <= 0:
         return {
             "shares": None,
             "risk_dollars": risk_dollars,
@@ -594,7 +598,16 @@ def position_size(
             "notional": None,
             "stop_source": None,
         }
-    shares = int(risk_dollars // stop_distance)
+    share_count = risk_dollars // stop_distance
+    if not isfinite(share_count):
+        return {
+            "shares": None,
+            "risk_dollars": risk_dollars,
+            "stop_distance": None,
+            "notional": None,
+            "stop_source": None,
+        }
+    shares = int(share_count)
     return {
         "shares": shares,
         "risk_dollars": risk_dollars,

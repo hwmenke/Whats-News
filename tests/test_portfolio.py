@@ -256,6 +256,26 @@ class PortfolioSnapshotTests(unittest.TestCase):
         self.assertEqual(size["stop_distance"], 2)
         self.assertEqual(size["stop_source"], "user_stop")
 
+    def test_position_size_omits_non_finite_inputs_and_overflow(self):
+        for value in (np.nan, np.inf, -np.inf):
+            for kwargs in (
+                {"price": value}, {"risk_dollars": value},
+                {"atr": value}, {"atr_mult": value},
+                {"stop_price": value},
+            ):
+                with self.subTest(kwargs=kwargs):
+                    args = {"price": 100, "atr": 2, "risk_dollars": 100}
+                    args.update(kwargs)
+                    size = portfolio.position_size(**args)
+                    self.assertIsNone(size["shares"])
+                    self.assertIsNone(size["notional"])
+        for args in (
+            {"price": 100, "atr": 1e308, "atr_mult": 2},
+            {"price": 100, "atr": 1e-308, "risk_dollars": 100},
+        ):
+            with self.subTest(args=args):
+                self.assertIsNone(portfolio.position_size(**args)["shares"])
+
     def test_darvas_box_and_endpoint(self):
         self._seed("BOXA", n=80)
         snap = portfolio.snapshot_symbol("BOXA")
