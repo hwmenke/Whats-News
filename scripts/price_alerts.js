@@ -226,7 +226,10 @@ function removePriceAlert(price) {
     const sym = _alertSymbol();
     if (!sym || !Number.isFinite(snap)) return;
     const store = _readAlertStore();
-    const next = _alertsForSymbol(sym).filter(p => !_alertPricesNear(p, snap));
+    const next = _alertsForSymbol(sym);
+    const idx = next.findIndex(p => _snapAlertPrice(p) === snap);
+    if (idx < 0) return;
+    next.splice(idx, 1);
     if (next.length) store[sym] = next;
     else delete store[sym];
     _writeAlertStore(store);

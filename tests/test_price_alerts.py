@@ -10,6 +10,41 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class PriceAlertTests(unittest.TestCase):
+    def test_removing_one_chip_preserves_nearby_alerts(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = r"""
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+let saved = JSON.stringify({AAPL: [100, 100.10, 100.123], MSFT: [200]});
+const ctx = {
+    document: {addEventListener() {}, getElementById() {return null;}},
+    localStorage: {
+        getItem() {return saved;},
+        setItem(key, value) {saved = value;}
+    },
+    state: {activeSymbol: 'AAPL'}
+};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync('scripts/price_alerts.js', 'utf8'), ctx);
+ctx.removePriceAlert(100.10);
+assert.deepStrictEqual(JSON.parse(saved), {AAPL: [100, 100.123], MSFT: [200]});
+// Chips display two decimals, including for legacy saved prices.
+ctx.removePriceAlert(100.12);
+assert.deepStrictEqual(JSON.parse(saved), {AAPL: [100], MSFT: [200]});
+ctx.removePriceAlert(100.01);
+assert.deepStrictEqual(JSON.parse(saved), {AAPL: [100], MSFT: [200]});
+ctx.removePriceAlert(100);
+assert.deepStrictEqual(JSON.parse(saved), {MSFT: [200]});
+"""
+        proc = subprocess.run(
+            [node, "-e", script], cwd=ROOT, capture_output=True,
+            text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+
     def test_click_prices_reject_malformed_values_and_keep_valid_fallbacks(self):
         node = shutil.which("node")
         if not node:
