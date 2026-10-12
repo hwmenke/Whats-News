@@ -17,7 +17,8 @@ def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     avg_gain = gain.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
     rs       = avg_gain / avg_loss.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0)
 
 
 def _safe(val):
