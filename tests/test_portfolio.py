@@ -195,6 +195,20 @@ class PortfolioSnapshotTests(unittest.TestCase):
         self.assertEqual(atr["stop_distance"], 3.0)
         self.assertGreater(user["shares"], atr["shares"])
 
+    def test_position_size_requires_positive_stop_distance(self):
+        for kwargs in ({"stop_price": 100}, {"atr_mult": 0}, {"atr_mult": -1}):
+            with self.subTest(kwargs=kwargs):
+                size = portfolio.position_size(100, 2, 100, **kwargs)
+                self.assertEqual(size, {
+                    "shares": None, "risk_dollars": 100,
+                    "stop_distance": None, "notional": None, "stop_source": None,
+                })
+        # A valid stop wider than the budget still produces a real zero-share size.
+        size = portfolio.position_size(100, 2, 1, stop_price=98)
+        self.assertEqual(size["shares"], 0)
+        self.assertEqual(size["stop_distance"], 2)
+        self.assertEqual(size["stop_source"], "user_stop")
+
     def test_darvas_box_and_endpoint(self):
         self._seed("BOXA", n=80)
         snap = portfolio.snapshot_symbol("BOXA")

@@ -586,7 +586,15 @@ def position_size(
             "notional": None,
             "stop_source": None,
         }
-    shares = int(risk_dollars // stop_distance) if stop_distance > 0 else 0
+    if stop_distance <= 0:
+        return {
+            "shares": None,
+            "risk_dollars": risk_dollars,
+            "stop_distance": None,
+            "notional": None,
+            "stop_source": None,
+        }
+    shares = int(risk_dollars // stop_distance)
     return {
         "shares": shares,
         "risk_dollars": risk_dollars,
