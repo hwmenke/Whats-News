@@ -2,3 +2,4 @@
 2026-10-12: Preserved Yahoo watchlist headlines when a legacy provider timestamp is out of range, with regression coverage for invalid dates; required embedded unittest suite passes (369 tests).
 2026-10-12: Fixed watchlist headline ordering to compare publication times in UTC across timezone offsets, keeping malformed dates last and provider date strings intact; regression coverage added and required embedded unittest suite passes (370 tests).
 2026-10-12: Fixed daily and weekly SPY comparison overlays to skip NaN/infinite closes and ratios instead of corrupting rebased chart values; added regression coverage and required embedded unittest suite passes (372 tests).
+2026-10-12: Fixed OHLCV database ingestion to skip rows with non-finite numeric values while preserving valid zero-volume bars; added regression coverage for every OHLCV column and required embedded unittest suite passes (373 tests).

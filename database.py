@@ -400,7 +400,7 @@ def upsert_ohlcv(symbol: str, freq: str, df: pd.DataFrame):
     """
     Upsert OHLCV rows from a DataFrame.
     df must have columns: open, high, low, close, volume
-    df index must be datetime.
+    df index must be datetime. Rows with missing or non-finite values are skipped.
 
     Uses vectorized prep + a single executemany (not iterrows) so bulk
     loads of hundreds of tickers stay practical.
@@ -416,6 +416,8 @@ def upsert_ohlcv(symbol: str, freq: str, df: pd.DataFrame):
 
     work = df.loc[:, list(required)].copy()
     work = work.dropna(how="any")
+    work = work.astype(float).dropna(how="any")
+    work = work.loc[~work.isin([float("inf"), float("-inf")]).any(axis=1)]
     if work.empty:
         return 0
 
