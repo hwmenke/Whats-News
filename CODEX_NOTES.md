@@ -16,3 +16,4 @@
 2026-10-12: Fixed malformed Yahoo article URLs to preserve ticker headlines and use valid modern/legacy URL fallbacks; added endpoint regression coverage and required embedded unittest suite passes (386 tests).
 2026-10-12: Fixed chart RVOL averaging to add numeric-string volumes numerically and keep invalid prior volumes from poisoning the average; added executable JavaScript regression coverage for the prior-20 window and required embedded unittest suite passes (387 tests).
 2026-10-12: Fixed ADR calculations to skip non-finite prices and overflowing bar ranges, omit overflowing averages, and suppress infinite labels; added Python and browser regression coverage and required embedded unittest suite passes (388 tests).
+2026-10-12: Fixed the 200-day SMA helper to omit non-finite averages, including overflow, while preserving valid trailing-window calculations; added regression coverage and required embedded unittest suite passes (390 tests).

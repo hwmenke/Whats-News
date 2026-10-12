@@ -14,6 +14,21 @@ import database as db
 import portfolio
 
 
+class LastSmaTests(unittest.TestCase):
+    def test_non_finite_averages_are_omitted(self):
+        for value in (np.inf, -np.inf, np.nan):
+            with self.subTest(value=value):
+                close = pd.Series([100.0] * 199 + [value])
+                self.assertIsNone(portfolio.last_sma(close))
+        with np.errstate(over="ignore"):
+            self.assertIsNone(portfolio.last_sma(pd.Series([1e308] * 200)))
+
+    def test_valid_average_uses_only_last_200_closes(self):
+        close = pd.Series([np.inf] + [100.0] * 199 + [200.0])
+        self.assertEqual(portfolio.last_sma(close), 100.5)
+        self.assertIsNone(portfolio.last_sma(close.iloc[-199:]))
+
+
 class PortfolioSnapshotTests(unittest.TestCase):
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()

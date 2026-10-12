@@ -370,7 +370,7 @@ def last_sma(close: pd.Series, window: int = SMA200_BARS) -> float | None:
         val = float(s.iloc[-window:].astype(float).mean(skipna=False))
     except (TypeError, ValueError):
         return None
-    if val != val or not (val > 0):
+    if not isfinite(val) or not (val > 0):
         return None
     return val
 
