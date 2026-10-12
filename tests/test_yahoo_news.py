@@ -56,6 +56,34 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_malformed_urls_preserve_headlines_and_valid_fallbacks(self):
+        for malformed in ([], {"unexpected": "value"}, 42, True, "   "):
+            with self.subTest(url=malformed):
+                ticker = MagicMock()
+                ticker.news = [
+                    {"content": {
+                        "title": "Modern fallback",
+                        "canonicalUrl": {"url": malformed},
+                        "clickThroughUrl": {"url": "https://example.com/modern"},
+                    }},
+                    {"title": "Legacy fallback", "link": malformed,
+                     "url": "https://example.com/legacy"},
+                    {"title": "No valid URL", "link": malformed},
+                    {"title": "Valid headline", "link": "https://example.com/valid"},
+                ]
+                factory = lambda symbol: ticker
+                watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+                symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+                self.assertEqual(status, 200)
+                self.assertNotIn("errors", watchlist)
+                for result in (watchlist, symbol):
+                    self.assertEqual(result["article_count"], 4)
+                    self.assertEqual(
+                        [article["url"] for article in result["articles"]],
+                        ["https://example.com/modern", "https://example.com/legacy",
+                         "", "https://example.com/valid"],
+                    )
+
     def test_malformed_entries_are_skipped_without_losing_real_headlines(self):
         ticker = MagicMock()
         ticker.news = [

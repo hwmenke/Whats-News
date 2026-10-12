@@ -22,9 +22,9 @@ def _url_from_content(content: dict) -> str:
         nested = content.get(key) or {}
         if isinstance(nested, dict):
             url = nested.get("url") or ""
-            if url:
+            if isinstance(url, str) and url.strip():
                 return url
-        elif isinstance(nested, str) and nested:
+        elif isinstance(nested, str) and nested.strip():
             return nested
     return ""
 
@@ -64,7 +64,11 @@ def article_from_item(item: Any, symbol: Optional[str] = None) -> dict:
         article = {
             "title": item.get("title") or "No title",
             "summary": item.get("summary") or "",
-            "url": item.get("link") or item.get("url") or "",
+            "url": next(
+                (url for url in (item.get("link"), item.get("url"))
+                 if isinstance(url, str) and url.strip()),
+                "",
+            ),
             "publish_time": publish_time,
             "provider": item.get("publisher") or DEFAULT_PROVIDER,
             "provider_url": DEFAULT_PROVIDER_URL,
