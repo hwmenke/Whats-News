@@ -805,8 +805,15 @@ def snapshot_symbol(symbol: str) -> dict:
 
     week_ago = close.iloc[-6] if len(close) >= 6 else close.iloc[0]
     month_ago = close.iloc[-22] if len(close) >= 22 else close.iloc[0]
-    ret_5d = (last / float(week_ago) - 1) * 100 if week_ago else None
-    ret_21d = (last / float(month_ago) - 1) * 100 if month_ago else None
+    def _period_return(baseline):
+        baseline = float(baseline)
+        if not isfinite(last) or not isfinite(baseline) or baseline == 0:
+            return None
+        result = (last / baseline - 1) * 100
+        return result if isfinite(result) else None
+
+    ret_5d = _period_return(week_ago)
+    ret_21d = _period_return(month_ago)
 
     # Weekly regime (same KAMA20 logic on weekly bars)
     w_df = md.get_ohlcv_df(sym, "weekly", limit=80)
