@@ -23,6 +23,27 @@ def _gbm(n, seed, mu=0.0004, sigma=0.012):
     return 100.0 * np.exp(np.cumsum(r))
 
 
+class SortinoTests(unittest.TestCase):
+    def test_constant_losses_have_defined_downside_deviation(self):
+        self.assertAlmostEqual(
+            risk_spec._sortino(np.full(60, -0.01)), -np.sqrt(252.0)
+        )
+
+    def test_downside_deviation_includes_nonnegative_days(self):
+        returns = np.tile([-0.02, 0.0, 0.01, 0.03], 15)
+        expected = np.mean(returns) / 0.01 * np.sqrt(252.0)
+        self.assertAlmostEqual(risk_spec._sortino(returns), expected)
+        # A single losing day still supplies measurable downside risk.
+        returns = np.array([-0.02] + [0.01] * 59)
+        expected = np.mean(returns) / (0.02 / np.sqrt(60)) * np.sqrt(252.0)
+        self.assertAlmostEqual(risk_spec._sortino(returns), expected)
+
+    def test_short_or_no_downside_history_is_unavailable(self):
+        self.assertIsNone(risk_spec._sortino(np.full(59, -0.01)))
+        self.assertIsNone(risk_spec._sortino(np.full(60, 0.01)))
+        self.assertIsNone(risk_spec._sortino(np.zeros(60)))
+
+
 class PerfWindowTests(unittest.TestCase):
     def test_zero_latest_nav_preserves_total_loss_return(self):
         curve = [

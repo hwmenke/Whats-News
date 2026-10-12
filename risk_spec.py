@@ -205,10 +205,10 @@ def _sortino(rets: np.ndarray) -> float | None:
     if rets is None or len(rets) < MIN_OVERLAP:
         return None
     mu = float(np.mean(rets))
-    downside = rets[rets < 0.0]
-    if len(downside) < 2:
-        return None
-    dsig = float(np.std(downside, ddof=1))
+    # Downside deviation relative to rf=0 uses every observation, with
+    # non-negative returns contributing zero rather than being discarded.
+    downside = np.minimum(rets, 0.0)
+    dsig = float(np.sqrt(np.mean(np.square(downside))))
     if dsig <= 0 or not math.isfinite(dsig):
         return None
     return (mu / dsig) * ANN
