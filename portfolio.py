@@ -652,7 +652,9 @@ def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     avg_gain = gain.ewm(alpha=1 / window, min_periods=window, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1 / window, min_periods=window, adjust=False).mean()
     rs = avg_gain / avg_loss.replace(0, np.nan)
-    return 100 - (100 / (1 + rs))
+    rsi = 100 - (100 / (1 + rs))
+    # Preserve warmup/flat missing values, but gains without losses mean RSI 100.
+    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0)
 
 
 def _atr(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 14) -> pd.Series:

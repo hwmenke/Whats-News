@@ -71,6 +71,22 @@ class PortfolioSnapshotTests(unittest.TestCase):
         self.assertIsNotNone(snap["rsi14"])
         self.assertIsNotNone(snap["stop_long_1_5atr"])
 
+    def test_snapshot_rising_prices_have_overbought_rsi(self):
+        close = np.arange(100.0, 130.0)
+        daily = pd.DataFrame(
+            {"open": close, "high": close + 1, "low": close - 1,
+             "close": close, "volume": np.full(len(close), 1_000_000.0)},
+            index=pd.date_range("2024-01-01", periods=len(close)),
+        )
+        with patch.object(portfolio.md, "get_ohlcv_df", side_effect=[daily, pd.DataFrame()]):
+            snap = portfolio.snapshot_symbol("AAPL")
+        self.assertEqual(snap["rsi14"], 100.0)
+        self.assertEqual(snap["rsi_zone"], "overbought")
+        rsi = portfolio._rsi(daily["close"])
+        self.assertTrue(rsi.iloc[:14].isna().all())
+        self.assertTrue((rsi.iloc[14:] == 100.0).all())
+        self.assertTrue(portfolio._rsi(pd.Series([100.0] * 30)).isna().all())
+
     def test_snapshot_breakout_fields(self):
         self._seed_breakout()
         snap = portfolio.snapshot_symbol("EPCO")
