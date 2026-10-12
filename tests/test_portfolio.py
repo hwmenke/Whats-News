@@ -30,6 +30,27 @@ class LastSmaTests(unittest.TestCase):
 
 
 class PortfolioSnapshotTests(unittest.TestCase):
+    def test_daily_change_omits_invalid_baselines_and_preserves_total_loss(self):
+        for previous, latest, expected in (
+            (0.0, 100.0, None),
+            (np.nan, 100.0, None),
+            (np.inf, 100.0, None),
+            (100.0, np.inf, None),
+            (1e-308, 100.0, None),
+            (100.0, 0.0, -100.0),
+            (100.0, 105.0, 5.0),
+        ):
+            with self.subTest(previous=previous, latest=latest):
+                close = np.array([100.0] * 28 + [previous, latest])
+                daily = pd.DataFrame(
+                    {"open": close, "high": close, "low": close,
+                     "close": close, "volume": np.full(len(close), 1000.0)},
+                    index=pd.date_range("2024-01-01", periods=len(close)),
+                )
+                with patch.object(portfolio.md, "get_ohlcv_df", side_effect=[daily, pd.DataFrame()]):
+                    snap = portfolio.snapshot_symbol("AAPL")
+                self.assertEqual(snap["change_pct"], expected)
+
     def test_relative_strength_ranks_zero_above_losses_and_missing_returns(self):
         returns = {"GAIN": 5.0, "FLAT": 0.0, "LOSS": -5.0, "MISSING": None}
         rows = [

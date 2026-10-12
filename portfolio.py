@@ -745,7 +745,9 @@ def snapshot_symbol(symbol: str) -> dict:
     last = float(close.iloc[-1])
     prev = float(close.iloc[-2]) if len(close) > 1 else last
     chg = last - prev
-    chg_pct = (chg / prev * 100) if prev else 0.0
+    chg_pct = (chg / prev * 100) if isfinite(last) and isfinite(prev) and prev != 0 else None
+    if chg_pct is not None and not isfinite(chg_pct):
+        chg_pct = None
 
     # ── Momentum / breakout metrics (Qullamaggie loop) ──────────────
     # Distance from N-day high, 0 = sitting at the high (near-high queue).
@@ -828,7 +830,7 @@ def snapshot_symbol(symbol: str) -> dict:
         "ready": True,
         "price": round(last, 2),
         "change": round(chg, 2),
-        "change_pct": round(chg_pct, 2),
+        "change_pct": round(chg_pct, 2) if chg_pct is not None else None,
         "ret_5d_pct": round(ret_5d, 2) if ret_5d is not None else None,
         "ret_21d_pct": round(ret_21d, 2) if ret_21d is not None else None,
         "rsi14": round(rsi14, 1) if rsi14 is not None else None,
