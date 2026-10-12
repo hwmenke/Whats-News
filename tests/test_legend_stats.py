@@ -9,6 +9,22 @@ import portfolio
 
 
 class LegendStatsTests(unittest.TestCase):
+    def test_python_rvol_omits_non_finite_values_and_overflow(self):
+        rows = [{"volume": value} for value in
+                ("100", None, "bad", float("inf"), float("-inf"), float("nan"), 0)]
+        rows.append({"volume": "200"})
+        self.assertAlmostEqual(portfolio.legend_avg20_vol(rows, 7), 100 / 7)
+        self.assertEqual(portfolio.legend_rvol(rows, 7), 14)
+        for value in (float("inf"), float("-inf"), float("nan")):
+            self.assertIsNone(portfolio.legend_rvol([{"volume": 100}, {"volume": value}], 1))
+        overflowing = [{"volume": 1e308}] * 3
+        self.assertIsNone(portfolio.legend_avg20_vol(overflowing, 2))
+        self.assertIsNone(portfolio.legend_rvol(overflowing, 2))
+        self.assertIsNone(portfolio.legend_rvol([{"volume": 1e-308}, {"volume": 1e308}], 1))
+        valid = [{"volume": 9000}] + [{"volume": "100"}] * 20 + [{"volume": 0}]
+        self.assertEqual(portfolio.legend_avg20_vol(valid, 21), 100)
+        self.assertEqual(portfolio.legend_rvol(valid, 21), 0)
+
     def test_52h_gap_omits_non_finite_highs_and_overflow(self):
         rows = [{"high": value} for value in (100, float("inf"), float("nan"), float("-inf"))]
         self.assertEqual(portfolio.legend_high52(rows, 3), 100)

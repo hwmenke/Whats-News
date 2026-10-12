@@ -377,7 +377,7 @@ def last_sma(close: pd.Series, window: int = SMA200_BARS) -> float | None:
 
 
 def _legend_bar_volume(row) -> float:
-    """Match JS `r.volume || 0`: missing / non-numeric / NaN volume counts as 0."""
+    """Missing, non-numeric, or non-finite prior volume counts as 0."""
     if not isinstance(row, dict):
         return 0.0
     raw = row.get("volume")
@@ -387,7 +387,7 @@ def _legend_bar_volume(row) -> float:
         vol = float(raw)
     except (TypeError, ValueError):
         return 0.0
-    if vol != vol:  # NaN
+    if not isfinite(vol):
         return 0.0
     return vol
 
@@ -408,7 +408,8 @@ def legend_avg20_vol(rows: list | None, i) -> float | None:
     window = rows[max(0, idx - LEGEND_RVOL_LOOKBACK) : idx]
     if not window:
         return None
-    return sum(_legend_bar_volume(r) for r in window) / len(window)
+    avg = sum(_legend_bar_volume(r) for r in window) / len(window)
+    return avg if isfinite(avg) else None
 
 
 def legend_rvol(rows: list | None, i) -> float | None:
@@ -426,9 +427,10 @@ def legend_rvol(rows: list | None, i) -> float | None:
         vol = float(rows[idx].get("volume"))
     except (TypeError, ValueError, AttributeError):
         return None
-    if vol != vol or vol < 0:
+    if not isfinite(vol) or vol < 0:
         return None
-    return vol / avg
+    ratio = vol / avg
+    return ratio if isfinite(ratio) else None
 
 
 def legend_high52(rows: list | None, i, lookback: int = LEGEND_52W_BARS) -> float | None:
