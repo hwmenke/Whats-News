@@ -220,7 +220,7 @@ def _perf_window(curve: list[dict], *, kind: str) -> float | None:
     last = curve[-1]
     last_nav = _finite(last.get("nav"))
     last_d = str(last.get("date") or "")[:10]
-    if last_nav is None or abs(last_nav) <= 1e-12 or not last_d:
+    if last_nav is None or not last_d:
         return None
     if kind == "day":
         prev = _finite(curve[-2].get("nav"))

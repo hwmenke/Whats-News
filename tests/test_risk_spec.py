@@ -24,6 +24,21 @@ def _gbm(n, seed, mu=0.0004, sigma=0.012):
 
 
 class PerfWindowTests(unittest.TestCase):
+    def test_zero_latest_nav_preserves_total_loss_return(self):
+        curve = [
+            {"date": "2025-12-31", "nav": 100.0},
+            {"date": "2026-01-02", "nav": 110.0},
+            {"date": "2026-01-05", "nav": 120.0},
+            {"date": "2026-01-06", "nav": 90.0},
+            {"date": "2026-01-07", "nav": 80.0},
+            {"date": "2026-01-08", "nav": 0.0},
+        ]
+        for kind in ("day", "week", "mtd", "ytd"):
+            with self.subTest(kind=kind):
+                self.assertEqual(risk_spec._perf_window(curve, kind=kind), -100.0)
+                zero_baselines = [dict(point, nav=0.0) for point in curve]
+                self.assertIsNone(risk_spec._perf_window(zero_baselines, kind=kind))
+
     def test_period_returns_include_first_trading_day(self):
         curve = [
             {"date": "2025-12-31", "nav": 100.0},
