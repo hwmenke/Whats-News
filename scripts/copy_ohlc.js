@@ -43,7 +43,12 @@ function paintedDailyOhlcIndex(rows, legend) {
 }
 
 function _copyOhlcChgPct(row, prev) {
-    if (!row || !prev || !prev.close) return '';
+    if (!row || !prev) return '';
+    const validClose = value => (
+        (typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''))
+        && Number.isFinite(Number(value))
+    );
+    if (!validClose(row.close) || !validClose(prev.close) || Number(prev.close) === 0) return '';
     const chg = (Number(row.close) / Number(prev.close) - 1) * 100;
     if (!Number.isFinite(chg)) return '';
     return ` ${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
