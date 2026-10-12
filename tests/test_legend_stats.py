@@ -9,6 +9,30 @@ import portfolio
 
 
 class LegendStatsTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required")
+    def test_browser_rvol_omits_overflow_and_preserves_valid_values(self):
+        script = r"""
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+const ctx = vm.createContext({});
+vm.runInContext(fs.readFileSync('scripts/legend_stats.js', 'utf8'), ctx);
+assert.strictEqual(ctx.computeRvol([{volume: 1e-308}, {volume: 1e308}], 1), null);
+assert.strictEqual(ctx.computeRvol([{volume: 1e308}, {volume: 1e308}, {volume: 100}], 2), null);
+assert.strictEqual(ctx.computeRvol([{volume: '100'}, {volume: '200'}], 1), 2);
+assert.strictEqual(ctx.computeRvol([{volume: 100}, {volume: 0}], 1), 0);
+assert.strictEqual(ctx.computeRvol([{volume: 0}, {volume: 100}], 1), null);
+assert.strictEqual(ctx.formatRvolLegend(ctx.computeRvol([
+    {volume: 1e-308}, {volume: 1e308}
+], 1)), '');
+"""
+        result = subprocess.run(
+            [shutil.which("node"), "-e", script],
+            cwd=pathlib.Path(__file__).resolve().parents[1],
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_python_rvol_omits_non_finite_values_and_overflow(self):
         rows = [{"volume": value} for value in
                 ("100", None, "bad", float("inf"), float("-inf"), float("nan"), 0)]

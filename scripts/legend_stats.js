@@ -77,7 +77,8 @@ function _legendAvg20Vol(rows, i) {
         return Number.isFinite(volume) ? volume : 0;
     });
     if (!windowVols.length) return null;
-    return windowVols.reduce((a, b) => a + b, 0) / windowVols.length;
+    const avg = windowVols.reduce((a, b) => a + b, 0) / windowVols.length;
+    return Number.isFinite(avg) ? avg : null;
 }
 
 function computeRvol(rows, i) {
@@ -87,7 +88,8 @@ function computeRvol(rows, i) {
     if (bar == null || bar.volume == null || bar.volume === '') return null;
     const vol = _legendStatNum(bar.volume);
     if (!Number.isFinite(vol) || vol < 0) return null;
-    return vol / avg;
+    const ratio = vol / avg;
+    return Number.isFinite(ratio) ? ratio : null;
 }
 
 function high52AsOfBar(rows, i, lookback) {
