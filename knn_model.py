@@ -73,7 +73,7 @@ def compute_knn_lookalike(symbol: str, k: int = 15) -> dict:
     # ── Build feature matrix ──────────────────────────────────────────────────
     df["rsi14"] = ta.momentum.RSIIndicator(close, window=14).rsi()
 
-    ret_1d = close.pct_change()
+    ret_1d = close.pct_change(fill_method=None)
     df["vol20_ann"] = ret_1d.rolling(20).std() * np.sqrt(252)
 
     macd_ind     = ta.trend.MACD(close, window_slow=26, window_fast=12, window_sign=9)
@@ -90,9 +90,9 @@ def compute_knn_lookalike(symbol: str, k: int = 15) -> dict:
         df[f"kama_dist_{period}"] = (close / kama_s.replace(0, np.nan)) - 1.0
 
     # Forward returns (for labelling neighbours)
-    df["fwd_1d"]  = close.pct_change(1).shift(-1)
-    df["fwd_5d"]  = close.pct_change(5).shift(-5)
-    df["fwd_20d"] = close.pct_change(20).shift(-20)
+    df["fwd_1d"]  = close.pct_change(1, fill_method=None).shift(-1)
+    df["fwd_5d"]  = close.pct_change(5, fill_method=None).shift(-5)
+    df["fwd_20d"] = close.pct_change(20, fill_method=None).shift(-20)
 
     FEATURE_COLS = [
         "rsi14", "vol20_ann", "macd_hist", "cci_norm",
