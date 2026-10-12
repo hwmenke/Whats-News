@@ -60,7 +60,10 @@ function _alertsForSymbol(sym) {
     if (!sym) return [];
     const list = _readAlertStore()[sym];
     if (!Array.isArray(list)) return [];
-    return list.map(Number).filter(n => Number.isFinite(n));
+    return list.filter(value =>
+        typeof value === 'number' ||
+        (typeof value === 'string' && value.trim() !== '')
+    ).map(Number).filter(n => Number.isFinite(n));
 }
 
 function getPriceAlertsOn() {
