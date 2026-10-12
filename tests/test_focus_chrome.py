@@ -49,7 +49,9 @@ class FocusChromeDensityTests(unittest.TestCase):
         snippet = html[idx : idx + 220]
         self.assertIn('aria-pressed="false"', snippet)
         self.assertIn('id="focus-mode-chip"', html)
-        self.assertIn("class=\"workspace-chart\"", html)
+        body = re.search(r'<body\b[^>]*\bclass="([^"]*)"', html)
+        self.assertIsNotNone(body, "Body must declare its default workspace")
+        self.assertIn("workspace-chart", body.group(1).split())
         self.assertIn("function setPressed", js)
         self.assertIn("aria-pressed", js)
 
