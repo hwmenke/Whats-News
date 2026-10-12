@@ -39,6 +39,28 @@ class ApiValidationTests(unittest.TestCase):
 class StatsEdgeCaseTests(unittest.TestCase):
     @patch("stats._rsi")
     @patch("stats.db.get_ohlcv_df")
+    def test_nonfinite_returns_are_excluded_from_statistics(self, mock_get_ohlcv_df, mock_rsi):
+        index = pd.date_range("2024-01-01", periods=8)
+        mock_get_ohlcv_df.return_value = pd.DataFrame(
+            {"close": [0.0, 100.0, 110.0, 132.0, 145.2, 174.24, 191.664, 230.0]},
+            index=index,
+        )
+        mock_rsi.return_value = pd.Series(np.arange(8, dtype=float), index=index)
+
+        result = stats.compute_stats("TEST")
+
+        self.assertAlmostEqual(result["metrics"]["avg_daily_ret"], (0.7 + 230 / 191.664 - 1) / 6)
+        self.assertEqual(sum(item["count"] for item in result["distribution"]), 6)
+        daily = result["rsi_analysis"]["fwd_1d"]
+        self.assertEqual(len(daily), 6)
+        np.testing.assert_allclose([item["value"] for item in daily], [0.1, 0.2, 0.1, 0.2, 0.1, 230 / 191.664 - 1])
+        forward = result["rsi_analysis"]["fwd_5d"]
+        self.assertEqual(len(forward), 2)
+        np.testing.assert_allclose([item["value"] for item in forward],
+                                   [191.664 / 100.0 - 1, 230 / 110.0 - 1])
+
+    @patch("stats._rsi")
+    @patch("stats.db.get_ohlcv_df")
     def test_forward_returns_skip_missing_endpoint_closes(self, mock_get_ohlcv_df, mock_rsi):
         index = pd.date_range("2024-01-01", periods=12)
         mock_get_ohlcv_df.return_value = pd.DataFrame(
