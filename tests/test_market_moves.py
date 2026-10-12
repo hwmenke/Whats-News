@@ -49,6 +49,24 @@ class QuantLockZTests(unittest.TestCase):
         level = pd.Series(np.linspace(100, 110, 20))
         self.assertIsNone(mm.daily_z(level))
 
+    def test_daily_z_blank_when_latest_return_is_missing(self):
+        for kind in ("price", "yield"):
+            for missing_index in (-1, -2):
+                with self.subTest(kind=kind, missing_index=missing_index):
+                    level = pd.Series(100.0 + np.arange(50, dtype=float) ** 2 / 100.0)
+                    self.assertIsNotNone(mm.daily_z(level, kind=kind))
+                    level.iloc[missing_index] = np.nan
+                    self.assertIsNone(mm.daily_z(level, kind=kind))
+                    row = mm.move_row(level, kind=kind)
+                    self.assertFalse(row["ready"])
+                    self.assertIsNone(row["day_pct"])
+                    self.assertIsNone(row["z"])
+
+    def test_price_returns_do_not_fill_missing_closes(self):
+        returns = mm._series_returns(pd.Series([100.0, np.nan, 110.0, 121.0]), "price")
+        self.assertTrue(returns.iloc[:3].isna().all())
+        self.assertAlmostEqual(returns.iloc[3], 0.1)
+
     def test_z14_uses_rolling_14d_return_sigma_not_daily_sqrt(self):
         # 112 flats at 100, then 14 prints at 110 → R_14 = 0.10.
         # σ of rolling 14d returns ≠ σ_daily · √14.

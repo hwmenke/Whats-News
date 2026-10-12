@@ -290,7 +290,7 @@ def _series_returns(level: pd.Series, kind: str) -> pd.Series:
     s = level.astype(float)
     if kind == "yield":
         return s.diff()
-    return s.pct_change()
+    return s.pct_change(fill_method=None)
 
 
 def _rolling_horizon_returns(level: pd.Series, horizon: int, kind: str) -> pd.Series:
@@ -304,7 +304,12 @@ def daily_z(level: pd.Series, kind: str = "price", window: int = Z_WINDOW) -> fl
     """Demeaned daily z. Today is inside the N-window. Sample σ, ddof=1."""
     if level is None or len(level.dropna()) < window + 1:
         return None
-    rets = _series_returns(level, kind).dropna()
+    rets = _series_returns(level, kind)
+    # A score for today requires today's return; never reuse an older score
+    # when the latest close or its preceding close is missing.
+    if _finite(rets.iloc[-1]) is None:
+        return None
+    rets = rets.dropna()
     if len(rets) < window:
         return None
     w = rets.iloc[-window:].astype(float)
@@ -354,7 +359,7 @@ def move_row(level: pd.Series, kind: str = "price") -> dict:
     }
     if level is None or len(level.dropna()) < 2:
         return empty
-    close = level.astype(float).dropna()
+    close = level.astype(float)
     last = _finite(close.iloc[-1])
     prev = _finite(close.iloc[-2])
     if last is None or prev is None:
