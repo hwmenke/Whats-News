@@ -107,7 +107,8 @@ function gapFrom52hPct(close, high52) {
     const c = _legendStatNum(close);
     const h = _legendStatNum(high52);
     if (!(c > 0 && h > 0)) return null;
-    return (c / h - 1) * 100;
+    const pct = (c / h - 1) * 100;
+    return Number.isFinite(pct) ? pct : null;
 }
 
 function formatAdrLegend(adr) {

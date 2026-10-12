@@ -453,7 +453,7 @@ def legend_high52(rows: list | None, i, lookback: int = LEGEND_52W_BARS) -> floa
             h = float(row.get("high"))
         except (TypeError, ValueError):
             continue
-        if h != h:
+        if not isfinite(h):
             continue
         hi = h if hi is None else max(hi, h)
     return hi
@@ -466,8 +466,9 @@ def legend_gap_from_52h_pct(close, high52) -> float | None:
         h = float(high52)
     except (TypeError, ValueError):
         return None
-    if c > 0 and h > 0:
-        return (c / h - 1) * 100
+    if isfinite(c) and isfinite(h) and c > 0 and h > 0:
+        pct = (c / h - 1) * 100
+        return pct if isfinite(pct) else None
     return None
 
 
@@ -490,7 +491,7 @@ def format_legend_52h_gap(pct) -> str:
         n = float(pct)
     except (TypeError, ValueError):
         return ""
-    if n != n:
+    if not isfinite(n):
         return ""
     mag = f"{abs(n):.1f}"
     if mag == "0.0":
