@@ -646,7 +646,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function formatRvolLegend", stats)
         self.assertIn("function format52hGapLegend", stats)
         self.assertIn("function _legendAvg20Vol", stats)
-        self.assertIn("rows.slice(Math.max(0, i - 20), i).map(r => r.volume || 0)", stats)
+        self.assertIn("rows.slice(Math.max(0, i - 20), i)", stats)
         self.assertIn("rows.slice(Math.max(0, i - 20), i).map(r => r.volume || 0)", charts)
         self.assertIn("const FIFTY_TWO_WEEK_BARS = 252", charts)
         self.assertIn("evaluated per hovered index", stats)

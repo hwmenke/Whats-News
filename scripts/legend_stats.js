@@ -69,7 +69,10 @@ function distToSma200Pct(close, sma200) {
 // (slice [i-20, i), not including bar i). Missing volume counts as 0.
 function _legendAvg20Vol(rows, i) {
     if (!rows || i == null || i < 0) return null;
-    const windowVols = rows.slice(Math.max(0, i - 20), i).map(r => r.volume || 0);
+    const windowVols = rows.slice(Math.max(0, i - 20), i).map(r => {
+        const volume = _legendStatNum(r && r.volume);
+        return Number.isFinite(volume) ? volume : 0;
+    });
     if (!windowVols.length) return null;
     return windowVols.reduce((a, b) => a + b, 0) / windowVols.length;
 }

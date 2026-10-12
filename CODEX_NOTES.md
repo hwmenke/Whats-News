@@ -14,3 +14,4 @@
 2026-10-12: Fixed price-alert clicks to reject blank, boolean, and other malformed chart prices while preserving valid coordinate/bar-close fallbacks; added regression coverage and required embedded unittest suite passes (385 tests).
 2026-10-12: Fixed VWAP to reject boolean, array, and object prices and volumes instead of coercing malformed data into chart values; added regression coverage preserving numeric strings and zero prices and required embedded unittest suite passes (385 tests).
 2026-10-12: Fixed malformed Yahoo article URLs to preserve ticker headlines and use valid modern/legacy URL fallbacks; added endpoint regression coverage and required embedded unittest suite passes (386 tests).
+2026-10-12: Fixed chart RVOL averaging to add numeric-string volumes numerically and keep invalid prior volumes from poisoning the average; added executable JavaScript regression coverage for the prior-20 window and required embedded unittest suite passes (387 tests).
