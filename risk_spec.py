@@ -511,10 +511,17 @@ def evaluate(ready: list[dict], *, curve: list[dict] | None = None,
     curve_kind = "synthetic_nav_from_stored_closes" if syn else None
     nav_arr = np.asarray([_finite(p.get("nav")) for p in syn if _finite(p.get("nav")) is not None], dtype=float)
     syn_rets = None
-    if len(nav_arr) >= 2:
-        prev = nav_arr[:-1]
-        ok = np.abs(prev) > 1e-12
-        syn_rets = ((nav_arr[1:] - prev) / np.abs(prev))[ok]
+    if len(syn) >= 2:
+        # Keep missing dates in place so a gap cannot become a daily return.
+        daily_nav = np.asarray([
+            value if (value := _finite(p.get("nav"))) is not None else np.nan
+            for p in syn
+        ], dtype=float)
+        prev, current = daily_nav[:-1], daily_nav[1:]
+        ok = np.isfinite(prev) & np.isfinite(current) & (np.abs(prev) > 1e-12)
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            syn_rets = (current[ok] - prev[ok]) / np.abs(prev[ok])
+        syn_rets = syn_rets[np.isfinite(syn_rets)]
 
     perf = {
         "day": _round(_perf_window(syn, kind="day"), 3),

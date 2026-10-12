@@ -158,6 +158,29 @@ class RiskSpecTests(unittest.TestCase):
         self.assertNotIn("bloomberg", blob)
         self.assertNotIn("10.95b", blob)
 
+    def test_performance_daily_returns_do_not_bridge_missing_nav(self):
+        dates = pd.bdate_range("2026-01-01", periods=70).strftime("%Y-%m-%d")
+        ready = [
+            {"ready": True, "symbol": symbol, "market_value": 1000.0,
+             "_closes": list(zip(dates, _gbm(70, seed)))}
+            for seed, symbol in enumerate(("AAA", "BBB", "CCC"), start=1)
+        ]
+        nav = _gbm(70, 20)
+        expected = (nav[1:] - nav[:-1]) / nav[:-1]
+        expected = np.delete(expected, [29, 30])
+        for missing in (None, float("nan"), float("inf")):
+            with self.subTest(missing=missing):
+                curve = [{"date": date, "nav": value}
+                         for date, value in zip(dates, nav)]
+                curve[30]["nav"] = missing
+                result = risk_spec.evaluate(ready, curve=curve)
+                self.assertTrue(result["ready"], result.get("message"))
+                self.assertEqual(result["perf"]["n"], 67)
+                self.assertEqual(result["perf"]["sharpe"],
+                                 round(risk_spec._sharpe(expected), 3))
+                self.assertEqual(result["perf"]["sortino"],
+                                 round(risk_spec._sortino(expected), 3))
+
     def test_surface_no_scaffold_todo(self):
         blob = ""
         for path in (
