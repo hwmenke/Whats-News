@@ -25,3 +25,4 @@
 2026-10-12: Fixed 52-week-high legend calculations to skip non-finite highs and omit non-finite inputs, overflow results, and infinite labels; added Python/browser regression coverage and required embedded unittest suite passes (398 tests).
 2026-10-12: Fixed maximum drawdown to include the initial value so first-bar losses are counted; added regression coverage for initial declines, later peaks, and rising prices and required embedded unittest suite passes (399 tests).
 2026-10-12: Fixed the statistics-panel RSI calculation to report 100 after warmup for rising prices without losses; added rising/falling/flat/mixed regression coverage and required embedded unittest suite passes (400 tests).
+2026-10-12: Fixed statistics daily and forward returns to leave missing endpoint closes unavailable instead of forward-filling fabricated returns; added daily/distribution and five-day regression coverage and required embedded unittest suite passes (402 tests).

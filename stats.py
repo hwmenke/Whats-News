@@ -68,9 +68,11 @@ def compute_stats(symbol: str) -> dict:
         return {"error": "No data found"}
 
     # 1. Base Returns
-    df['ret_1d'] = df['close'].pct_change()
+    # Missing closes must leave returns missing, rather than imply a flat
+    # session or a move measured across a gap in the price history.
+    df['ret_1d'] = df['close'].pct_change(fill_method=None)
     df['fwd_ret_1d'] = df['ret_1d'].shift(-1)
-    df['fwd_ret_5d'] = df['close'].pct_change(5).shift(-5)
+    df['fwd_ret_5d'] = df['close'].pct_change(5, fill_method=None).shift(-5)
 
     # 2. Key Metrics
     returns = df['ret_1d'].dropna()

@@ -37,6 +37,47 @@ class ApiValidationTests(unittest.TestCase):
 
 
 class StatsEdgeCaseTests(unittest.TestCase):
+    @patch("stats._rsi")
+    @patch("stats.db.get_ohlcv_df")
+    def test_forward_returns_skip_missing_endpoint_closes(self, mock_get_ohlcv_df, mock_rsi):
+        index = pd.date_range("2024-01-01", periods=12)
+        mock_get_ohlcv_df.return_value = pd.DataFrame(
+            {"close": [100.0, 110.0, 120.0, 130.0, 140.0, np.nan,
+                       160.0, 170.0, 180.0, 190.0, 200.0, 210.0]},
+            index=index,
+        )
+        mock_rsi.return_value = pd.Series(np.arange(12, dtype=float), index=index)
+
+        result = stats.compute_stats("TEST")
+
+        expected = [160 / 110 - 1, 170 / 120 - 1, 180 / 130 - 1,
+                    190 / 140 - 1, 210 / 160 - 1]
+        actual = [item["value"] for item in result["rsi_analysis"]["fwd_5d"]]
+        np.testing.assert_allclose(actual, expected)
+
+    @patch("stats.db.get_ohlcv_df")
+    def test_missing_closes_do_not_create_daily_returns(self, mock_get_ohlcv_df):
+        for closes, expected_return, expected_count in (
+            ([100.0, np.nan, 120.0, 132.0], 0.1, 1),
+            ([100.0, np.nan, 120.0], None, 0),
+        ):
+            with self.subTest(closes=closes):
+                mock_get_ohlcv_df.return_value = pd.DataFrame(
+                    {"close": closes},
+                    index=pd.date_range("2024-01-01", periods=len(closes)),
+                )
+                result = stats.compute_stats("TEST")
+                if expected_return is None:
+                    self.assertIsNone(result["metrics"]["avg_daily_ret"])
+                    self.assertIsNone(result["metrics"]["win_rate"])
+                else:
+                    self.assertAlmostEqual(result["metrics"]["avg_daily_ret"], expected_return)
+                    self.assertEqual(result["metrics"]["win_rate"], 1.0)
+                self.assertEqual(
+                    sum(item["count"] for item in result["distribution"]),
+                    expected_count,
+                )
+
     def test_stats_rsi_handles_lossless_prices_without_filling_warmup(self):
         index = pd.date_range("2024-01-01", periods=30)
         for closes, expected in (
