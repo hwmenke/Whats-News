@@ -10,6 +10,24 @@ import backtester
 
 
 class DrawdownTests(unittest.TestCase):
+    def test_zero_volatility_preserves_strategy_metrics(self):
+        for prices, ann_ret, max_dd, win_rate in (
+            ([100.0, 50.0, 25.0], -126.0, -0.75, 0.0),
+            ([100.0, 200.0, 400.0], 252.0, 0.0, 1.0),
+            ([100.0, 100.0, 100.0], 0.0, 0.0, 0.0),
+        ):
+            with self.subTest(prices=prices):
+                close = pd.Series(prices)
+                fast = pd.Series(2.0, index=close.index)
+                slow = pd.Series(1.0, index=close.index)
+                result = backtester._run_strategy(close, fast, slow)
+                self.assertEqual(result["ann_ret"], ann_ret)
+                self.assertEqual(result["ann_vol"], 0.0)
+                self.assertIsNone(result["sharpe"])
+                self.assertEqual(result["max_dd"], max_dd)
+                self.assertEqual(result["n_trades"], 1)
+                self.assertEqual(result["win_rate"], win_rate)
+
     def test_strategy_drawdown_includes_starting_equity_and_later_peaks(self):
         for prices, expected in (
             ([100.0, 80.0, 60.0], -0.4),

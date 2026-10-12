@@ -89,7 +89,7 @@ def _run_strategy(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
 
     # Drop leading NaNs
     strat_ret = strat_ret.dropna()
-    if strat_ret.empty or strat_ret.std() == 0:
+    if strat_ret.empty:
         return {
             "ann_ret": None, "ann_vol": None, "sharpe": None,
             "max_dd": None, "n_trades": 0, "win_rate": None,
@@ -98,7 +98,7 @@ def _run_strategy(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
     # Annualised return & vol
     ann_ret = strat_ret.mean() * 252
     ann_vol = strat_ret.std() * np.sqrt(252)
-    sharpe  = ann_ret / ann_vol if ann_vol != 0 else 0.0
+    sharpe  = ann_ret / ann_vol if ann_vol != 0 else None
 
     # Max drawdown
     equity   = (1 + strat_ret).cumprod()
