@@ -91,16 +91,20 @@ function _clickIsModifier(param) {
 }
 
 function _priceFromClickParam(param) {
+    const validPrice = value =>
+        (typeof value === 'number' ||
+         (typeof value === 'string' && value.trim() !== '')) &&
+        Number.isFinite(Number(value));
     const s = (typeof series !== 'undefined' && series.daily) ? series.daily.candle : null;
     const y = param && param.point ? param.point.y : null;
     if (s && y != null && typeof s.coordinateToPrice === 'function') {
         const px = s.coordinateToPrice(y);
-        if (px != null && Number.isFinite(Number(px))) return Number(px);
+        if (validPrice(px)) return Number(px);
     }
     // Fallback: library only gave bar time — use that bar's close.
     if (s && param && param.seriesData && typeof param.seriesData.get === 'function') {
         const bar = param.seriesData.get(s);
-        if (bar && typeof bar === 'object' && bar.close != null && Number.isFinite(Number(bar.close))) {
+        if (bar && typeof bar === 'object' && validPrice(bar.close)) {
             return Number(bar.close);
         }
         if (typeof bar === 'number' && Number.isFinite(bar)) return bar;
@@ -109,7 +113,7 @@ function _priceFromClickParam(param) {
     const rows = (typeof rawRows !== 'undefined' && rawRows.daily) ? rawRows.daily : [];
     if (key && rows.length) {
         const row = rows.find(r => String(r.date).slice(0, 10) === key);
-        if (row && row.close != null && Number.isFinite(Number(row.close))) return Number(row.close);
+        if (row && validPrice(row.close)) return Number(row.close);
     }
     return null;
 }

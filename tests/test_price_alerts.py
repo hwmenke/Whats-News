@@ -10,6 +10,52 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class PriceAlertTests(unittest.TestCase):
+    def test_click_prices_reject_malformed_values_and_keep_valid_fallbacks(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = r"""
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+let coordinatePrice = null;
+let barClose = null;
+let storedClose = null;
+const candle = {coordinateToPrice() {return coordinatePrice;}};
+const ctx = {
+    document: {addEventListener() {}},
+    series: {daily: {candle}},
+    rawRows: {daily: []},
+    _legendTimeKey(time) {return time;}
+};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync('scripts/price_alerts.js', 'utf8'), ctx);
+const param = {
+    point: {y: 10}, time: '2026-10-12',
+    seriesData: {get() {return {close: barClose};}}
+};
+for (const value of [null, undefined, '', '   ', false, true, [], {}, NaN, Infinity, 'bad']) {
+    coordinatePrice = barClose = storedClose = value;
+    ctx.rawRows.daily = [{date: param.time, close: storedClose}];
+    assert.strictEqual(ctx._priceFromClickParam(param), null);
+}
+for (const value of [0, 123.45, '125.50']) {
+    coordinatePrice = value;
+    assert.strictEqual(ctx._priceFromClickParam(param), Number(value));
+    coordinatePrice = '';
+    barClose = value;
+    assert.strictEqual(ctx._priceFromClickParam(param), Number(value));
+    barClose = false;
+    ctx.rawRows.daily = [{date: param.time, close: value}];
+    assert.strictEqual(ctx._priceFromClickParam(param), Number(value));
+}
+"""
+        proc = subprocess.run(
+            [node, "-e", script], cwd=ROOT, capture_output=True,
+            text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+
     def test_malformed_saved_prices_do_not_draw_alert_lines(self):
         node = shutil.which("node")
         if not node:
