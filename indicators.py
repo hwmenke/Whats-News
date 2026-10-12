@@ -36,6 +36,8 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
     slow_sc = 2.0 / (slow + 1)
     prices = close.values
     kama_vals = np.full(len(prices), np.nan)
+    if len(prices) < window:
+        return pd.Series(kama_vals, index=close.index)
     kama_vals[window - 1] = prices[window - 1]
     for i in range(window, len(prices)):
         direction  = abs(prices[i] - prices[i - window])

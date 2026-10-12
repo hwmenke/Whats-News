@@ -5,3 +5,4 @@
 2026-10-12: Fixed OHLCV database ingestion to skip rows with non-finite numeric values while preserving valid zero-volume bars; added regression coverage for every OHLCV column and required embedded unittest suite passes (373 tests).
 2026-10-12: Fixed ATR percentage calculation and formatting to omit non-finite inputs and overflow results instead of returning infinity or misleading zero; added regression coverage and required embedded unittest suite passes (374 tests).
 2026-10-12: Fixed RSI to return 100 after warmup when prices rise without losses; added regression coverage for rising, falling, mixed, and flat series and required embedded unittest suite passes (378 tests).
+2026-10-12: Fixed KAMA on histories shorter than its lookback to preserve dated missing warmup values instead of throwing and returning an empty series; added short-history and first-update regression coverage and required embedded unittest suite passes (380 tests).
