@@ -38,6 +38,22 @@ class ApiValidationTests(unittest.TestCase):
 
 class StatsEdgeCaseTests(unittest.TestCase):
     @patch("stats.db.get_ohlcv_df")
+    def test_max_drawdown_includes_initial_value_and_later_peaks(self, mock_get_ohlcv_df):
+        for closes, expected in (
+            ([100.0, 80.0], -0.2),
+            ([100.0, 80.0, 60.0], -0.4),
+            ([100.0, 120.0, 90.0], -0.25),
+            ([100.0, 110.0, 120.0], 0.0),
+        ):
+            with self.subTest(closes=closes):
+                mock_get_ohlcv_df.return_value = pd.DataFrame(
+                    {"close": closes},
+                    index=pd.date_range("2024-01-01", periods=len(closes)),
+                )
+                result = stats.compute_stats("TEST")
+                self.assertAlmostEqual(result["metrics"]["max_drawdown"], expected)
+
+    @patch("stats.db.get_ohlcv_df")
     def test_compute_stats_returns_none_for_flat_series(self, mock_get_ohlcv_df):
         index = pd.date_range("2024-01-01", periods=40, freq="D")
         mock_get_ohlcv_df.return_value = pd.DataFrame(

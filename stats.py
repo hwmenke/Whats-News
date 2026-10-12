@@ -84,7 +84,9 @@ def compute_stats(symbol: str) -> dict:
         vol_ann = ret_std * np.sqrt(252) if pd.notna(ret_std) else None
         sharpe = (ret_mean / ret_std * np.sqrt(252)) if pd.notna(ret_std) and ret_std != 0 else None
 
-        cumulative = (1 + returns).cumprod()
+        # Include the initial value so a loss on the first return counts
+        # toward drawdown rather than becoming the starting peak.
+        cumulative = pd.concat([pd.Series([1.0]), (1 + returns).cumprod()], ignore_index=True)
         peak = cumulative.cummax()
         drawdown = (cumulative - peak) / peak
         max_dd = drawdown.min()
