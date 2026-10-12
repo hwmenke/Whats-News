@@ -292,14 +292,15 @@ def legend_adr_pct(
 
 
 def legend_sma200_dist_pct(close, sma200) -> float | None:
-    """(close / sma200 - 1) * 100. Omit if either is missing or not > 0."""
+    """(close / sma200 - 1) * 100. Omit invalid inputs or non-finite results."""
     try:
         c = float(close)
         s = float(sma200)
     except (TypeError, ValueError):
         return None
-    if c > 0 and s > 0:
-        return (c / s - 1) * 100
+    if isfinite(c) and isfinite(s) and c > 0 and s > 0:
+        pct = (c / s - 1) * 100
+        return pct if isfinite(pct) else None
     return None
 
 
@@ -322,7 +323,7 @@ def format_legend_sma200_dist(pct) -> str:
         n = float(pct)
     except (TypeError, ValueError):
         return ""
-    if n != n:
+    if not isfinite(n):
         return ""
     sign = "+" if n >= 0 else LEGEND_MINUS
     return f"200 {sign}{abs(n):.1f}%"

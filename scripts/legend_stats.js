@@ -64,7 +64,8 @@ function distToSma200Pct(close, sma200) {
     const c = _legendStatNum(close);
     const s = _legendStatNum(sma200);
     if (!(c > 0 && s > 0)) return null;
-    return (c / s - 1) * 100;
+    const pct = (c / s - 1) * 100;
+    return Number.isFinite(pct) ? pct : null;
 }
 
 // Same formula as _avg20Vol in charts.js: mean of prior 20 bars' volume
