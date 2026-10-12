@@ -10,11 +10,11 @@ import market_data as db
 
 
 def _safe(val):
-    """Convert NaN / numpy types to Python-native for JSON."""
+    """Convert non-finite numbers / numpy types to Python-native for JSON."""
     if val is None:
         return None
     try:
-        if np.isnan(val):
+        if not np.isfinite(val):
             return None
     except (TypeError, ValueError):
         pass

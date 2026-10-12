@@ -1,10 +1,30 @@
 """Indicator regression tests using synthetic price series."""
 
+import json
 import unittest
 
+import numpy as np
 import pandas as pd
 
-from indicators import _kama, _rsi
+from indicators import _kama, _rsi, _series_to_list
+
+
+class IndicatorSerializationTests(unittest.TestCase):
+    def test_non_finite_values_are_null_in_strict_json(self):
+        values = pd.Series(
+            [np.nan, np.inf, -np.inf, 0.0, 12.5],
+            index=pd.date_range("2026-01-01", periods=5),
+        )
+        points = _series_to_list(values)
+        payload = json.loads(json.dumps(points, allow_nan=False))
+        self.assertEqual(
+            [point["value"] for point in payload],
+            [None, None, None, 0.0, 12.5],
+        )
+        self.assertEqual(
+            [point["date"] for point in payload],
+            [date.strftime("%Y-%m-%d") for date in values.index],
+        )
 
 
 class KamaTests(unittest.TestCase):

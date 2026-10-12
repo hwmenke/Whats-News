@@ -6,3 +6,4 @@
 2026-10-12: Fixed ATR percentage calculation and formatting to omit non-finite inputs and overflow results instead of returning infinity or misleading zero; added regression coverage and required embedded unittest suite passes (374 tests).
 2026-10-12: Fixed RSI to return 100 after warmup when prices rise without losses; added regression coverage for rising, falling, mixed, and flat series and required embedded unittest suite passes (378 tests).
 2026-10-12: Fixed KAMA on histories shorter than its lookback to preserve dated missing warmup values instead of throwing and returning an empty series; added short-history and first-update regression coverage and required embedded unittest suite passes (380 tests).
+2026-10-12: Fixed indicator serialization to emit null for infinite values instead of invalid JSON numbers; added strict JSON regression coverage preserving dates and finite values and required embedded unittest suite passes (381 tests).
