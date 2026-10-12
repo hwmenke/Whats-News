@@ -35,16 +35,20 @@ function setVwapOn(on, opts) {
     return vwapOn;
 }
 
+function _vwapNumber(value) {
+    if (typeof value !== 'number' && typeof value !== 'string') return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
 function typicalPrice(row) {
     if (!row) return null;
     // Number(null) and Number('') are zero, but missing prices are not quotes.
-    if ([row.high, row.low, row.close].some(value =>
-        value == null || (typeof value === 'string' && value.trim() === '')
-    )) return null;
-    const h = Number(row.high);
-    const l = Number(row.low);
-    const c = Number(row.close);
-    if (!Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) return null;
+    const h = _vwapNumber(row.high);
+    const l = _vwapNumber(row.low);
+    const c = _vwapNumber(row.close);
+    if (h == null || l == null || c == null) return null;
     return (h + l + c) / 3;
 }
 
@@ -57,7 +61,7 @@ function sessionVwapPoints(rows) {
         const row = list[i] || {};
         const time = row.date != null ? row.date : null;
         const tp = typicalPrice(row);
-        const rawVol = Number(row.volume);
+        const rawVol = _vwapNumber(row.volume);
         const vol = (Number.isFinite(rawVol) && rawVol > 0) ? rawVol : 0;
         if (tp != null && vol > 0) {
             cumPv += tp * vol;
