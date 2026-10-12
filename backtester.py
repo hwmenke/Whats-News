@@ -102,7 +102,7 @@ def _run_strategy(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
 
     # Max drawdown
     equity   = (1 + strat_ret).cumprod()
-    peak     = equity.cummax()
+    peak     = equity.cummax().clip(lower=1.0)
     drawdown = (equity - peak) / peak
     max_dd   = drawdown.min()
 
@@ -186,7 +186,7 @@ def run_optimization(symbol: str) -> dict:
     bh_ann_vol = daily_ret.std() * np.sqrt(252)
     bh_sharpe  = bh_ann_ret / bh_ann_vol if bh_ann_vol != 0 else 0.0
     equity_bh  = (1 + daily_ret).cumprod()
-    peak_bh    = equity_bh.cummax()
+    peak_bh    = equity_bh.cummax().clip(lower=1.0)
     bh_max_dd  = ((equity_bh - peak_bh) / peak_bh).min()
 
     benchmark = {
