@@ -1462,6 +1462,17 @@ class TapeSma200ChipTests(unittest.TestCase):
 class TapeAtrPctChipTests(unittest.TestCase):
     """Compact ATR% on tape/watchlist rows when ATR and price exist on the snapshot."""
 
+    def test_non_finite_atr_percentages_are_omitted(self):
+        for invalid in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(invalid=invalid):
+                self.assertIsNone(portfolio.tape_atr_pct(invalid, 100))
+                self.assertIsNone(portfolio.tape_atr_pct(2, invalid))
+                self.assertEqual(portfolio.format_tape_atr_pct(invalid), "")
+        self.assertIsNone(portfolio.tape_atr_pct(1e308, 1e-308))
+        self.assertIsNone(portfolio.tape_atr_pct(1e308, 1))
+        self.assertEqual(portfolio.tape_atr_pct(2, 100), 2)
+        self.assertEqual(portfolio.format_tape_atr_pct(2), "ATR 2.0%")
+
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self._tmpdir.name, "p.db")

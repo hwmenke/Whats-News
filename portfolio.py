@@ -327,16 +327,17 @@ def format_legend_sma200_dist(pct) -> str:
 
 
 def tape_atr_pct(atr, close) -> float | None:
-    """ATR / close * 100. Omit if ATR or close is missing or not > 0."""
+    """ATR / close * 100. Omit missing, non-finite, or non-positive values."""
     try:
         a = float(atr)
         c = float(close)
     except (TypeError, ValueError):
         return None
-    if a != a or c != c:  # NaN
+    if not isfinite(a) or not isfinite(c):
         return None
     if a > 0 and c > 0:
-        return (a / c) * 100
+        pct = (a / c) * 100
+        return pct if isfinite(pct) else None
     return None
 
 
@@ -348,7 +349,7 @@ def format_tape_atr_pct(pct) -> str:
         n = float(pct)
     except (TypeError, ValueError):
         return ""
-    if n != n:
+    if not isfinite(n):
         return ""
     return f"ATR {n:.1f}%"
 
