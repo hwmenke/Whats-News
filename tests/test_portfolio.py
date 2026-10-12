@@ -896,6 +896,22 @@ class SpyRsOverlayTests(unittest.TestCase):
         self._path_patch.stop()
         self._tmpdir.cleanup()
 
+    def test_overlay_skips_nonfinite_closes(self):
+        valid = {"date": "2024-01-01", "close": 100.0}
+        finite = {"date": "2024-01-02", "close": 200.0}
+        expected = [{"date": "2024-01-01", "ratio": 1.0, "value": 100.0}]
+        for invalid in (float("nan"), float("inf"), float("-inf")):
+            bad = {"date": "2024-01-02", "close": invalid}
+            for symbol, spy in (([valid, bad], [valid, finite]),
+                                ([valid, finite], [valid, bad])):
+                with self.subTest(invalid=invalid, symbol=symbol):
+                    out = portfolio.spy_rs_overlay(symbol, spy)
+                    self.assertTrue(out["ready"])
+                    self.assertEqual(out["points"], expected)
+                    self.assertEqual(out["n"], 1)
+                    self.assertEqual(out["last_ratio"], 1.0)
+            self.assertFalse(portfolio.spy_rs_overlay([bad], [bad])["ready"])
+
     def test_overlay_is_close_ratio_rebased_to_last_print(self):
         symbol = [
             {"date": "2024-01-02", "close": 100},
@@ -1004,6 +1020,24 @@ class SpyRsOverlayTests(unittest.TestCase):
 
 class SpyRsWeeklyOverlayTests(unittest.TestCase):
     """Weekly vs-SPY line — same daily SPY series, W-FRI align, not a rating."""
+
+    def test_weekly_overlay_skips_nonfinite_inputs(self):
+        daily = [{"date": "2024-01-05", "ratio": 1.0}]
+        weekly = [{"date": "2024-01-05", "close": 100.0}]
+        expected = [{"date": "2024-01-05", "ratio": 1.0, "value": 100.0}]
+        for invalid in (float("nan"), float("inf"), float("-inf")):
+            for points, rows in (
+                (daily + [{"date": "2024-01-12", "ratio": invalid}],
+                 weekly + [{"date": "2024-01-12", "close": 200.0}]),
+                (daily + [{"date": "2024-01-12", "ratio": 2.0}],
+                 weekly + [{"date": "2024-01-12", "close": invalid}]),
+            ):
+                with self.subTest(invalid=invalid, rows=rows):
+                    out = portfolio.spy_rs_weekly_from_daily_points(points, rows)
+                    self.assertTrue(out["ready"])
+                    self.assertEqual(out["points"], expected)
+                    self.assertEqual(out["n"], 1)
+                    self.assertEqual(out["last_ratio"], 1.0)
 
     def test_weekly_hook_contract(self):
         with open("scripts/spy_rs.js", encoding="utf-8") as fh:

@@ -5,6 +5,7 @@ portfolio.py — Fast watchlist / PM-desk snapshots for technical analysis.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from math import isfinite
 
 import numpy as np
 import pandas as pd
@@ -62,7 +63,7 @@ def spy_rs_overlay(symbol_rows: list | None, spy_rows: list | None) -> dict:
             px = float(row.get("close"))
         except (TypeError, ValueError):
             continue
-        if day and px > 0:
+        if day and isfinite(px) and px > 0:
             spy_close[day] = px
 
     aligned: list[tuple[str, float, float]] = []
@@ -77,7 +78,7 @@ def spy_rs_overlay(symbol_rows: list | None, spy_rows: list | None) -> dict:
             px = float(row.get("close"))
         except (TypeError, ValueError):
             continue
-        if px <= 0:
+        if not isfinite(px) or px <= 0:
             continue
         aligned.append((day, px, px / spy_px))
 
@@ -148,7 +149,7 @@ def spy_rs_weekly_from_daily_points(
             ratio = float(point.get("ratio"))
         except (TypeError, ValueError):
             continue
-        if day and ratio > 0:
+        if day and isfinite(ratio) and ratio > 0:
             daily.append((day, ratio))
     daily.sort(key=lambda item: item[0])
 
@@ -161,7 +162,7 @@ def spy_rs_weekly_from_daily_points(
             px = float(row.get("close"))
         except (TypeError, ValueError):
             continue
-        if day and px > 0:
+        if day and isfinite(px) and px > 0:
             weeks.append((day, px))
 
     if not daily or not weeks:
