@@ -86,6 +86,10 @@ def articles_from_news_items(
     if not news_items:
         return articles
     for item in news_items:
+        # Malformed provider entries are not articles; do not manufacture
+        # placeholder headlines or include them in the article count.
+        if not isinstance(item, dict) or not item:
+            continue
         article = article_from_item(item, symbol=symbol)
         url = article.get("url") or ""
         if seen_urls is not None and url:

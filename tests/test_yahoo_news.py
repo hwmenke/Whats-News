@@ -56,6 +56,26 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_malformed_entries_are_skipped_without_losing_real_headlines(self):
+        ticker = MagicMock()
+        ticker.news = [
+            None,
+            "invalid entry",
+            42,
+            [],
+            {},
+            {"title": "Real headline", "link": "https://example.com/real"},
+        ]
+        factory = lambda symbol: ticker
+        watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+        symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+        self.assertEqual(status, 200)
+        self.assertNotIn("errors", watchlist)
+        for result in (watchlist, symbol):
+            self.assertEqual(result["article_count"], 1)
+            self.assertEqual(result["articles"][0]["title"], "Real headline")
+            self.assertEqual(result["articles"][0]["url"], "https://example.com/real")
+
     def test_sorts_publication_instants_across_timezones(self):
         dates = [
             "2026-08-21T10:00:00+02:00",
