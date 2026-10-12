@@ -56,6 +56,33 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_invalid_legacy_timestamp_preserves_ticker_headlines(self):
+        for timestamp in (float("inf"), 10**100, "invalid", -1, None):
+            with self.subTest(timestamp=timestamp):
+                ticker = MagicMock()
+                ticker.news = [
+                    {
+                        "title": "Headline with invalid date",
+                        "link": "https://example.com/invalid-date",
+                        "providerPublishTime": timestamp,
+                    },
+                    {
+                        "title": "Headline with valid date",
+                        "link": "https://example.com/valid-date",
+                        "providerPublishTime": 1_724_000_000,
+                    },
+                ]
+                result = yahoo_news.watchlist_news(
+                    ["AAPL"], ticker_factory=lambda symbol: ticker
+                )
+                self.assertNotIn("errors", result)
+                self.assertEqual(result["article_count"], 2)
+                self.assertEqual(result["articles"][0]["title"], "Headline with valid date")
+                self.assertEqual(result["articles"][1]["publish_time"], "")
+                self.assertEqual(
+                    result["articles"][1]["title"], "Headline with invalid date"
+                )
+
     def test_empty_watchlist(self):
         result = yahoo_news.watchlist_news([])
         self.assertEqual(result["articles"], [])

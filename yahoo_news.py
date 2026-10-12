@@ -55,9 +55,13 @@ def article_from_item(item: Any, symbol: Optional[str] = None) -> dict:
         if isinstance(ts, (int, float)) and ts > 0:
             from datetime import datetime, timezone
 
-            publish_time = datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
+            try:
+                publish_time = datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
+            except (OverflowError, OSError, ValueError):
+                # A malformed provider date should not discard the headline.
+                pass
         article = {
             "title": item.get("title") or "No title",
             "summary": item.get("summary") or "",
