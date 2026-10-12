@@ -7,6 +7,7 @@
  * Weekly bars are W-FRI (see data_fetcher.py). Matching:
  *   daily  → first weekly bar with date >= daily (covering Friday bar)
  *   weekly → last daily bar with date <= weekly (that week's last print)
+ * Missing weeks leave the readout blank; matches must be within six days.
  *
  * Isolated so other chart specialists can edit sticky legend / packs / prefetch
  * without a rewrite here.
@@ -24,9 +25,12 @@ function _linkedPx(v) {
 function _firstWeeklyOnOrAfter(rows, key) {
     if (!rows || !rows.length || !key) return null;
     for (let i = 0; i < rows.length; i++) {
-        if (_linkedBarDate(rows[i]) >= key) return { row: rows[i], idx: i };
+        if (_linkedBarDate(rows[i]) >= key) {
+            const days = (Date.parse(_linkedBarDate(rows[i])) - Date.parse(key)) / 86400000;
+            return days <= 6 ? { row: rows[i], idx: i } : null;
+        }
     }
-    return { row: rows[rows.length - 1], idx: rows.length - 1 };
+    return null;
 }
 
 function _lastDailyOnOrBefore(rows, key) {
@@ -36,7 +40,9 @@ function _lastDailyOnOrBefore(rows, key) {
         if (_linkedBarDate(rows[i]) <= key) found = { row: rows[i], idx: i };
         else break;
     }
-    return found;
+    if (!found) return null;
+    const days = (Date.parse(key) - Date.parse(_linkedBarDate(found.row))) / 86400000;
+    return days <= 6 ? found : null;
 }
 
 function linkedBarFor(sourceFreq, dateKey) {

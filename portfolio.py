@@ -223,25 +223,34 @@ def linked_ohlc_bar(
 
     Daily → first weekly bar with date >= daily (the covering Friday bar).
     Weekly → last daily bar with date <= weekly (that week's last print).
+    Missing covering weeks or daily prints in that week return None.
     Chart range sync is separate; this is bar readout only.
     """
     key = str(date_key or "")[:10]
     if not key:
+        return None
+    try:
+        source_date = date.fromisoformat(key)
+    except ValueError:
         return None
     freq = (source_freq or "").lower()
     if freq == "daily":
         rows = weekly_rows or []
         for row in rows:
             if _bar_date(row) >= key:
-                return row
-        return rows[-1] if rows else None
+                week_limit = (source_date + timedelta(days=6)).isoformat()
+                return row if _bar_date(row) <= week_limit else None
+        return None
     found = None
     for row in daily_rows or []:
         if _bar_date(row) <= key:
             found = row
         else:
             break
-    return found
+    week_start = (source_date - timedelta(days=6)).isoformat()
+    if found and _bar_date(found) >= week_start:
+        return found
+    return None
 
 
 ADR_LOOKBACK = 20
