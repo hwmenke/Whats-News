@@ -56,6 +56,30 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_sorts_publication_instants_across_timezones(self):
+        dates = [
+            "2026-08-21T10:00:00+02:00",
+            "invalid",
+            "2026-08-21T09:30:00Z",
+            "2026-08-21T05:00:00-04:00",
+            "",
+            "2026-08-21T09:15:00",
+        ]
+        ticker = MagicMock()
+        ticker.news = [
+            {"content": {"title": "Headline", "pubDate": date}}
+            for date in dates
+        ]
+        result = yahoo_news.watchlist_news(
+            ["AAPL"], ticker_factory=lambda symbol: ticker
+        )
+        self.assertNotIn("errors", result)
+        self.assertEqual(result["article_count"], len(dates))
+        self.assertEqual(
+            [article["publish_time"] for article in result["articles"]],
+            [dates[2], dates[5], dates[3], dates[0], dates[1], dates[4]],
+        )
+
     def test_invalid_legacy_timestamp_preserves_ticker_headlines(self):
         for timestamp in (float("inf"), 10**100, "invalid", -1, None):
             with self.subTest(timestamp=timestamp):

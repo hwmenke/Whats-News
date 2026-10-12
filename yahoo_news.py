@@ -8,6 +8,7 @@ yfinance's public Yahoo news payload (same source as the existing /news page).
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 import yfinance as yf
@@ -53,8 +54,6 @@ def article_from_item(item: Any, symbol: Optional[str] = None) -> dict:
         ts = item.get("providerPublishTime")
         publish_time = ""
         if isinstance(ts, (int, float)) and ts > 0:
-            from datetime import datetime, timezone
-
             try:
                 publish_time = datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
                     "%Y-%m-%dT%H:%M:%SZ"
@@ -103,6 +102,17 @@ def _ticker_news(symbol: str, ticker_factory: Optional[Callable[[str], Any]] = N
     return list(ticker.news or [])
 
 
+def _publication_sort_key(article: dict) -> datetime:
+    """Compare publication instants; keep missing or malformed dates last."""
+    try:
+        published = datetime.fromisoformat(article.get("publish_time") or "")
+        if published.tzinfo is None:
+            published = published.replace(tzinfo=timezone.utc)
+        return published.astimezone(timezone.utc)
+    except (TypeError, ValueError, OverflowError):
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
 def watchlist_news(
     symbols: list[str],
     *,
@@ -125,7 +135,7 @@ def watchlist_news(
         except Exception as exc:
             errors.append({"symbol": symbol, "error": str(exc)})
 
-    all_articles.sort(key=lambda x: x.get("publish_time") or "", reverse=True)
+    all_articles.sort(key=_publication_sort_key, reverse=True)
 
     result: dict = {
         "articles": all_articles,
