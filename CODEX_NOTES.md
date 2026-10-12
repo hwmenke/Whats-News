@@ -4,3 +4,4 @@
 2026-10-12: Fixed daily and weekly SPY comparison overlays to skip NaN/infinite closes and ratios instead of corrupting rebased chart values; added regression coverage and required embedded unittest suite passes (372 tests).
 2026-10-12: Fixed OHLCV database ingestion to skip rows with non-finite numeric values while preserving valid zero-volume bars; added regression coverage for every OHLCV column and required embedded unittest suite passes (373 tests).
 2026-10-12: Fixed ATR percentage calculation and formatting to omit non-finite inputs and overflow results instead of returning infinity or misleading zero; added regression coverage and required embedded unittest suite passes (374 tests).
+2026-10-12: Fixed RSI to return 100 after warmup when prices rise without losses; added regression coverage for rising, falling, mixed, and flat series and required embedded unittest suite passes (378 tests).

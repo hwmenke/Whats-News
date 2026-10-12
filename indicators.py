@@ -54,7 +54,10 @@ def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     avg_gain = gain.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
     rs = avg_gain / avg_loss.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    # Gains without losses have RSI 100; retain missing values during warmup
+    # and when both averages are zero (an undefined relative strength).
+    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0)
 
 
 def _bollinger(close: pd.Series, window: int = 20, num_std: float = 2.0):
