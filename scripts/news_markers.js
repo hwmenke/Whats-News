@@ -89,6 +89,12 @@ function newsDateKey(publishTime) {
         return isNaN(d.getTime()) ? null : _fmtNyDate(d);
     }
     const raw = String(publishTime).trim();
+    // A calendar date has no timezone; keep it on that day's bar.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        const date = new Date(raw + 'T00:00:00Z');
+        return !isNaN(date.getTime()) && date.toISOString().slice(0, 10) === raw
+            ? raw : null;
+    }
     const parsed = new Date(raw);
     if (!isNaN(parsed.getTime())) return _fmtNyDate(parsed);
     const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
