@@ -880,7 +880,10 @@ def portfolio_snapshot() -> dict:
     # Book RS only — not a published rating.
     ranked = sorted(
         ready,
-        key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
+        key=lambda r: (
+            r.get("ret_21d_pct") is not None,
+            r["ret_21d_pct"] if r.get("ret_21d_pct") is not None else 0,
+        ),
         reverse=True,
     )
     for i, row in enumerate(ranked, start=1):

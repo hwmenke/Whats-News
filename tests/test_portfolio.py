@@ -30,6 +30,23 @@ class LastSmaTests(unittest.TestCase):
 
 
 class PortfolioSnapshotTests(unittest.TestCase):
+    def test_relative_strength_ranks_zero_above_losses_and_missing_returns(self):
+        returns = {"GAIN": 5.0, "FLAT": 0.0, "LOSS": -5.0, "MISSING": None}
+        rows = [
+            {"symbol": symbol, "ready": True, "ret_21d_pct": value}
+            for symbol, value in returns.items()
+        ]
+        with patch.object(portfolio.md, "list_symbols", return_value=[
+            {"symbol": row["symbol"]} for row in rows
+        ]), patch.object(portfolio, "snapshot_symbol", side_effect=rows):
+            snapshot = portfolio.portfolio_snapshot()
+
+        ranks = {row["symbol"]: row["rs_rank_21d"] for row in snapshot["symbols"]}
+        self.assertEqual(ranks, {"GAIN": 1, "FLAT": 2, "LOSS": 3, "MISSING": 4})
+        self.assertEqual(snapshot["strongest_rs"]["symbol"], "GAIN")
+        self.assertEqual(snapshot["weakest_rs"]["symbol"], "MISSING")
+        self.assertEqual(snapshot["news_focus"], ["GAIN", "FLAT", "LOSS"])
+
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self._tmpdir.name, "p.db")
