@@ -37,6 +37,10 @@ function setVwapOn(on, opts) {
 
 function typicalPrice(row) {
     if (!row) return null;
+    // Number(null) and Number('') are zero, but missing prices are not quotes.
+    if ([row.high, row.low, row.close].some(value =>
+        value == null || (typeof value === 'string' && value.trim() === '')
+    )) return null;
     const h = Number(row.high);
     const l = Number(row.low);
     const c = Number(row.close);

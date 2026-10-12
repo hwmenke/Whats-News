@@ -86,6 +86,23 @@ almost(tp, 10);
 
 assert(desk.typicalPrice({ high: 12, low: 8 }) == null, 'missing close');
 assert(desk.typicalPrice(null) == null, 'null row');
+for (const field of ['high', 'low', 'close']) {
+    for (const missing of [null, undefined, '', '   ']) {
+        const row = { date: 'missing', high: 12, low: 8, close: 10, volume: 100 };
+        row[field] = missing;
+        assert(desk.typicalPrice(row) == null, 'missing ' + field + ' must not become zero');
+        const points = desk.sessionVwapPoints([
+            row,
+            { date: 'valid', high: 12, low: 8, close: 10, volume: 100 },
+            row,
+        ]);
+        assert(points[0].value === undefined, 'missing leading price must not seed VWAP');
+        almost(points[1].value, 10);
+        almost(points[2].value, 10);
+    }
+}
+almost(desk.typicalPrice({ high: '12', low: '8', close: '10' }), 10);
+almost(desk.typicalPrice({ high: 0, low: 0, close: 0 }), 0);
 
 const rows = [
     { date: '2024-01-02', high: 12, low: 8, close: 10, volume: 100 },
