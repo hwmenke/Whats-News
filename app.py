@@ -1154,7 +1154,12 @@ def trend_scan():
 
     freq       = request.args.get("freq",   "daily")
     method     = request.args.get("method", "kama")
-    rsi_period = int(request.args.get("rsi_period", 14))
+    try:
+        rsi_period = int(request.args.get("rsi_period", 14))
+    except (TypeError, ValueError):
+        return jsonify({"error": "rsi_period must be a positive integer"}), 400
+    if rsi_period <= 0:
+        return jsonify({"error": "rsi_period must be a positive integer"}), 400
     desk = request.args.get("desk", "").lower() in ("1", "true", "yes")
     try:
         if desk:
