@@ -100,7 +100,10 @@ def resolve_feature(name, df: pd.DataFrame) -> pd.Series:
     if base == "ema":
         if not period:
             raise ConditionError("EMA needs a period, e.g. EMA(20)")
-        return close.ewm(span=period, adjust=False).mean()
+        valid_close = close.replace([np.inf, -np.inf], np.nan)
+        # EWM carries the previous value across missing observations; that
+        # estimate must not turn a bar without a quote into a filter match.
+        return valid_close.ewm(span=period, adjust=False).mean().where(valid_close.notna())
     if base in ("macd", "macd_line"):
         return _macd_line(close)
     if base == "macd_signal":

@@ -48,6 +48,22 @@ class FeatureParsingTests(unittest.TestCase):
             got, self.df["close"].ewm(span=20, adjust=False).mean(), check_names=False
         )
 
+    def test_ema_missing_quotes_do_not_match_filters(self):
+        for missing in (np.nan, np.inf, -np.inf):
+            with self.subTest(missing=missing):
+                df = _frame([10, 12, missing, 16])
+                ema = cd.resolve_feature("EMA(2)", df)
+                self.assertTrue(pd.isna(ema.iloc[2]))
+                expected = df["close"].replace([np.inf, -np.inf], np.nan).ewm(
+                    span=2, adjust=False
+                ).mean()
+                pd.testing.assert_series_equal(ema.iloc[[0, 1, 3]], expected.iloc[[0, 1, 3]])
+                for left, right in (("EMA(2)", 0), (20, "EMA(2)")):
+                    mask = cd.evaluate_condition(
+                        df, {"left": left, "op": ">", "right": right}
+                    )
+                    self.assertEqual(mask.tolist(), [True, True, False, True])
+
     def test_rsi_default_window(self):
         got = cd.resolve_feature("RSI(14)", self.df)
         self.assertEqual(len(got), len(self.df))
