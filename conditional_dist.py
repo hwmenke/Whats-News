@@ -134,7 +134,7 @@ def _normalize_condition(cond: dict) -> dict:
     right = cond.get("right", cond.get("value"))
     if left is None or op is None or right is None:
         raise ConditionError("Condition needs left, op and right")
-    if op not in OPS:
+    if not isinstance(op, str) or op not in OPS:
         raise ConditionError(f"Unsupported operator: {op!r}")
     return {"left": left, "op": op, "right": right}
 

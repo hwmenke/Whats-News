@@ -346,6 +346,19 @@ class ApiRouteTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("error", resp.get_json())
 
+    @patch("conditional_dist.db.get_ohlcv_df")
+    def test_malformed_operators_return_400(self, mock_df):
+        mock_df.return_value = self.df
+        for key in ("op", "operator"):
+            for operator in ([], {}, ["<"], {"value": "<"}, True, 1):
+                with self.subTest(key=key, operator=operator):
+                    resp = self.client.post(
+                        "/api/conditional-distribution/AAPL",
+                        json={"conditions": [{"left": "price", key: operator, "right": 100}]},
+                    )
+                    self.assertEqual(resp.status_code, 400)
+                    self.assertIn("Unsupported operator", resp.get_json()["error"])
+
     def test_bad_horizon_returns_400(self):
         resp = self.client.post(
             "/api/conditional-distribution/AAPL",
