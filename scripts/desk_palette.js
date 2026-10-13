@@ -173,6 +173,11 @@ function initDeskPalette() {
         }
     });
     document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && isPaletteOpen()) {
+            e.preventDefault();
+            closeDeskPalette();
+            return;
+        }
         const tag = (e.target && e.target.tagName) || '';
         const typing = tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable;
         if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {

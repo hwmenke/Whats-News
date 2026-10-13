@@ -64,11 +64,25 @@ ctx.openDeskPalette('command');
 documentHandlers.keydown({key: 'k', ctrlKey: true, target: input, preventDefault() {}});
 assert.strictEqual(document.activeElement, opener);
 assert.strictEqual(restored, 3);
+// Escape must also work after Tab moves focus from the input to a result.
+ctx.openDeskPalette('command');
+const result = {tagName: 'BUTTON'};
+document.activeElement = result;
+let prevented = false;
+documentHandlers.keydown({key: 'Escape', target: result, preventDefault() {prevented = true;}});
+assert.strictEqual(prevented, true);
+assert.strictEqual(overlay.hidden, true);
+assert.strictEqual(document.activeElement, opener);
+assert.strictEqual(restored, 4);
+// Escape outside the palette remains available to other keyboard handlers.
+prevented = false;
+documentHandlers.keydown({key: 'Escape', target: opener, preventDefault() {prevented = true;}});
+assert.strictEqual(prevented, false);
 // A removed opener cannot receive focus.
 ctx.openDeskPalette();
 opener.isConnected = false;
 ctx.closeDeskPalette();
-assert.strictEqual(restored, 3);
+assert.strictEqual(restored, 4);
 """
         proc = subprocess.run(
             [node, "-e", script], cwd=ROOT, capture_output=True,
