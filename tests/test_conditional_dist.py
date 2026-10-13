@@ -59,6 +59,33 @@ class FeatureParsingTests(unittest.TestCase):
             with self.assertRaises(cd.ConditionError):
                 cd.resolve_feature(bad, self.df)
 
+    def test_rsi_rising_prices_match_overbought_filter_after_warmup(self):
+        rsi = cd.resolve_feature("RSI(14)", self.df)
+        self.assertTrue(rsi.iloc[:14].isna().all())
+        self.assertTrue((rsi.iloc[14:] == 100).all())
+        mask = cd.build_mask(
+            self.df, [{"left": "RSI(14)", "op": ">", "right": 70}]
+        )
+        self.assertFalse(mask.iloc[:14].any())
+        self.assertTrue(mask.iloc[14:].all())
+
+    def test_rsi_falling_flat_and_mixed_prices(self):
+        falling = cd._rsi(_frame(100 - np.arange(60))["close"])
+        self.assertTrue(falling.iloc[:14].isna().all())
+        self.assertTrue((falling.iloc[14:] == 0).all())
+        flat = cd._rsi(_frame(np.full(60, 100))["close"])
+        self.assertTrue(flat.isna().all())
+        close = _frame(100 + np.sin(np.arange(60)) * 5)["close"]
+        delta = close.diff()
+        gain = delta.clip(lower=0).ewm(
+            alpha=1 / 14, min_periods=14, adjust=False
+        ).mean()
+        loss = (-delta).clip(lower=0).ewm(
+            alpha=1 / 14, min_periods=14, adjust=False
+        ).mean()
+        expected = 100 - 100 / (1 + gain / loss)
+        pd.testing.assert_series_equal(cd._rsi(close), expected)
+
     def test_roc_matches_pandas(self):
         got = cd.resolve_feature("ROC(20)", self.df)
         pd.testing.assert_series_equal(got, self.df["close"].pct_change(20) * 100.0, check_names=False)
