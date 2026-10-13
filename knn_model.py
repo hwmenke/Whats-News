@@ -34,11 +34,10 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
 
 
 def _safe_float(val):
-    """Convert to Python float or None."""
+    """Convert finite values to Python float; leave invalid values unavailable."""
     try:
-        if val is None or (isinstance(val, float) and np.isnan(val)):
-            return None
-        return float(val)
+        value = float(val)
+        return value if np.isfinite(value) else None
     except Exception:
         return None
 
