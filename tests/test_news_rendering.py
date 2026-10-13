@@ -8,6 +8,37 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class NewsRenderingTests(unittest.TestCase):
+    def test_summary_markup_is_parsed_in_an_inert_document(self):
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('node not available')
+        script = r'''
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync('news.html', 'utf8');
+const markup = '<img src=x onerror="alert(1)"><b>Headline summary</b>';
+const calls = [];
+const ctx = {
+    document: {createElement() {throw new Error('Provider HTML reached the live DOM');}},
+    DOMParser: class {
+        parseFromString(html, type) {
+            calls.push([html, type]);
+            return {body: {textContent: html === markup ? 'Headline summary' : ''}};
+        }
+    }
+};
+vm.createContext(ctx);
+vm.runInContext(source.slice(source.indexOf('  function stripHtml'),
+                            source.indexOf('  function showStatus')), ctx);
+assert.strictEqual(ctx.stripHtml(markup), 'Headline summary');
+assert.strictEqual(ctx.stripHtml(null), '');
+assert.deepStrictEqual(calls, [[markup, 'text/html'], ['', 'text/html']]);
+'''
+        result = subprocess.run([node, '-e', script], cwd=ROOT,
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
     def test_provider_content_is_text_and_links_require_http(self):
         node = shutil.which('node')
         if not node:
