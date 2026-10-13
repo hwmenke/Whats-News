@@ -118,8 +118,10 @@ def compute_indicators(symbol: str, freq: str = "daily", kama_periods: list = No
 
     # ── EMA 10 / 20 (stored close — Qulla-style moving-average respect) ──
     try:
-        result["ema_10"] = _series_to_list(close.ewm(span=10, adjust=False).mean())
-        result["ema_20"] = _series_to_list(close.ewm(span=20, adjust=False).mean())
+        finite_close = close.replace([np.inf, -np.inf], np.nan)
+        for period in (10, 20):
+            ema = finite_close.ewm(span=period, adjust=False).mean()
+            result[f"ema_{period}"] = _series_to_list(ema.where(finite_close.notna()))
     except Exception:
         result["ema_10"] = result["ema_20"] = []
 

@@ -2,11 +2,51 @@
 
 import json
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 
-from indicators import _kama, _macd, _rsi, _series_to_list
+from indicators import _kama, _macd, _rsi, _series_to_list, compute_indicators
+
+
+class EmaTests(unittest.TestCase):
+    @patch("indicators.db.get_ohlcv_df")
+    def test_missing_quotes_leave_ema_gaps_and_recover(self, mock_data):
+        for missing in (np.nan, np.inf, -np.inf):
+            with self.subTest(missing=missing):
+                close = pd.Series(
+                    [100 + i % 7 for i in range(40)], dtype=float,
+                    index=pd.date_range("2026-01-01", periods=40),
+                )
+                close.iloc[30] = missing
+                mock_data.return_value = pd.DataFrame(
+                    {"close": close, "high": close + 1, "low": close - 1}
+                )
+                result = compute_indicators("TEST")
+                clean = close.replace([np.inf, -np.inf], np.nan)
+                for period in (10, 20):
+                    points = result[f"ema_{period}"]
+                    self.assertIsNone(points[30]["value"])
+                    self.assertTrue(np.isfinite(points[29]["value"]))
+                    self.assertTrue(np.isfinite(points[31]["value"]))
+                    expected = clean.ewm(span=period, adjust=False).mean()
+                    self.assertEqual(points, _series_to_list(expected.where(clean.notna())))
+
+    @patch("indicators.db.get_ohlcv_df")
+    def test_finite_quotes_preserve_pandas_ema(self, mock_data):
+        close = pd.Series(
+            [100 + i % 7 for i in range(40)], dtype=float,
+            index=pd.date_range("2026-01-01", periods=40),
+        )
+        mock_data.return_value = pd.DataFrame(
+            {"close": close, "high": close + 1, "low": close - 1}
+        )
+        result = compute_indicators("TEST")
+        for period in (10, 20):
+            self.assertEqual(result[f"ema_{period}"], _series_to_list(
+                close.ewm(span=period, adjust=False).mean()
+            ))
 
 
 class IndicatorSerializationTests(unittest.TestCase):
