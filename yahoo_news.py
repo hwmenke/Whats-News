@@ -53,7 +53,7 @@ def article_from_item(item: Any, symbol: Optional[str] = None) -> dict:
         # Older yfinance shape (title/link at top level).
         ts = item.get("providerPublishTime")
         publish_time = ""
-        if isinstance(ts, (int, float)) and ts > 0:
+        if isinstance(ts, (int, float)) and not isinstance(ts, bool) and ts > 0:
             try:
                 publish_time = datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
                     "%Y-%m-%dT%H:%M:%SZ"

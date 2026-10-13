@@ -56,6 +56,27 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_boolean_legacy_timestamps_remain_unavailable(self):
+        ticker = MagicMock()
+        ticker.news = [
+            {"title": "Boolean date", "providerPublishTime": True},
+            {"title": "False date", "providerPublishTime": False},
+            {"title": "Valid date", "providerPublishTime": 1_724_000_000},
+        ]
+        factory = lambda symbol: ticker
+        watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+        symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+        self.assertEqual(status, 200)
+        self.assertNotIn("errors", watchlist)
+        for result in (watchlist, symbol):
+            self.assertEqual(result["article_count"], 3)
+            self.assertEqual(result["articles"][0]["title"], "Valid date")
+            self.assertTrue(result["articles"][0]["publish_time"].startswith("2024-08-18"))
+            self.assertEqual(
+                [article["publish_time"] for article in result["articles"][1:]],
+                ["", ""],
+            )
+
     def test_symbol_news_sorts_publication_instants_and_keeps_missing_dates_last(self):
         dates = [
             "2026-08-21T10:00:00+02:00",
