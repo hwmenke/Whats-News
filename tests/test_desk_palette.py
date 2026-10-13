@@ -10,6 +10,72 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class DeskPaletteTests(unittest.TestCase):
+    def test_closing_restores_focus_to_opener(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = r"""
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+const inputHandlers = {}, overlayHandlers = {}, documentHandlers = {};
+const document = {
+    activeElement: null,
+    addEventListener(event, handler) {documentHandlers[event] = handler;},
+    getElementById(id) {return elements[id];}
+};
+let restored = 0;
+const opener = {
+    isConnected: true,
+    focus() {restored++; document.activeElement = this;}
+};
+const input = {
+    value: '', isConnected: true,
+    focus() {document.activeElement = this;},
+    addEventListener(event, handler) {inputHandlers[event] = handler;}
+};
+const overlay = {
+    hidden: true,
+    addEventListener(event, handler) {overlayHandlers[event] = handler;}
+};
+const elements = {
+    'desk-palette': overlay, 'desk-palette-input': input,
+    'desk-palette-results': {innerHTML: '', querySelectorAll() {return [];}}
+};
+const ctx = {document, state: {symbols: []}, requestAnimationFrame(fn) {fn();}};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync('scripts/desk_palette.js', 'utf8'), ctx);
+ctx.initDeskPalette();
+document.activeElement = opener;
+ctx.openDeskPalette();
+assert.strictEqual(document.activeElement, input);
+// Switching modes while open must preserve the original opener.
+ctx.openDeskPalette('command');
+inputHandlers.keydown({key: 'Escape', preventDefault() {}});
+assert.strictEqual(overlay.hidden, true);
+assert.strictEqual(document.activeElement, opener);
+assert.strictEqual(restored, 1);
+ctx.closeDeskPalette();
+assert.strictEqual(restored, 1);
+ctx.openDeskPalette();
+overlayHandlers.click({target: overlay});
+assert.strictEqual(document.activeElement, opener);
+ctx.openDeskPalette('command');
+documentHandlers.keydown({key: 'k', ctrlKey: true, target: input, preventDefault() {}});
+assert.strictEqual(document.activeElement, opener);
+assert.strictEqual(restored, 3);
+// A removed opener cannot receive focus.
+ctx.openDeskPalette();
+opener.isConnected = false;
+ctx.closeDeskPalette();
+assert.strictEqual(restored, 3);
+"""
+        proc = subprocess.run(
+            [node, "-e", script], cwd=ROOT, capture_output=True,
+            text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+
     def test_arrow_down_with_no_matches_recovers_selection(self):
         node = shutil.which("node")
         if not node:

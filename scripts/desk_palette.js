@@ -19,6 +19,7 @@ const PALETTE_COMMANDS = [
 let _paletteMode = 'jump';
 let _paletteItems = [];
 let _paletteIdx = 0;
+let _palettePreviousFocus = null;
 
 function isPaletteOpen() {
     const el = document.getElementById('desk-palette');
@@ -28,6 +29,9 @@ function isPaletteOpen() {
 function closeDeskPalette() {
     const el = document.getElementById('desk-palette');
     if (el) el.hidden = true;
+    const previous = _palettePreviousFocus;
+    _palettePreviousFocus = null;
+    if (previous?.isConnected && typeof previous.focus === 'function') previous.focus();
 }
 
 function openDeskPalette(mode = 'jump') {
@@ -35,6 +39,7 @@ function openDeskPalette(mode = 'jump') {
     const input = document.getElementById('desk-palette-input');
     const title = document.getElementById('desk-palette-title');
     if (!el || !input) return;
+    if (el.hidden) _palettePreviousFocus = document.activeElement;
     _paletteMode = mode === 'command' ? 'command' : 'jump';
     if (title) title.textContent = _paletteMode === 'command' ? 'Commands' : 'Jump to symbol';
     input.placeholder = _paletteMode === 'command'
