@@ -56,6 +56,31 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_non_string_modern_dates_preserve_headlines_without_publication_dates(self):
+        invalid_dates = [True, False, 1724000000, 1.5, [], ["2026-08-21"], {},
+                         {"date": "2026-08-21"}, None]
+        ticker = MagicMock()
+        ticker.news = [
+            {"content": {"title": f"Headline {index}", "pubDate": date}}
+            for index, date in enumerate(invalid_dates)
+        ] + [{"content": {"title": "Valid date", "pubDate": "2026-08-21T10:00:00Z"}}]
+        factory = lambda symbol: ticker
+        watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+        symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+        self.assertEqual(status, 200)
+        self.assertNotIn("errors", watchlist)
+        for result in (watchlist, symbol):
+            self.assertEqual(result["article_count"], len(invalid_dates) + 1)
+            self.assertEqual(result["articles"][0]["publish_time"], "2026-08-21T10:00:00Z")
+            self.assertEqual(
+                [article["publish_time"] for article in result["articles"][1:]],
+                [""] * len(invalid_dates),
+            )
+            self.assertEqual(
+                [article["title"] for article in result["articles"][1:]],
+                [f"Headline {index}" for index in range(len(invalid_dates))],
+            )
+
     def test_url_whitespace_is_trimmed_before_watchlist_deduplication(self):
         url = "https://example.com/article?source=yahoo#news"
         items = [

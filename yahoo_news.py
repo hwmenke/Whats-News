@@ -41,11 +41,16 @@ def article_from_item(item: Any, symbol: Optional[str] = None) -> dict:
         provider = content.get("provider") or {}
         if not isinstance(provider, dict):
             provider = {}
+        # Modern Yahoo dates are ISO strings; malformed values can break
+        # client sorting or be interpreted as fabricated epoch dates.
+        publish_time = content.get("pubDate")
+        if not isinstance(publish_time, str):
+            publish_time = ""
         article = {
             "title": content.get("title") or "No title",
             "summary": content.get("summary") or content.get("description") or "",
             "url": _url_from_content(content),
-            "publish_time": content.get("pubDate") or "",
+            "publish_time": publish_time,
             "provider": provider.get("displayName") or DEFAULT_PROVIDER,
             "provider_url": provider.get("url") or DEFAULT_PROVIDER_URL,
         }
