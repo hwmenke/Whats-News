@@ -104,13 +104,17 @@ def resolve_feature(name, df: pd.DataFrame) -> pd.Series:
         # EWM carries the previous value across missing observations; that
         # estimate must not turn a bar without a quote into a filter match.
         return valid_close.ewm(span=period, adjust=False).mean().where(valid_close.notna())
-    if base in ("macd", "macd_line"):
-        return _macd_line(close)
-    if base == "macd_signal":
-        return _macd_line(close).ewm(span=9, adjust=False).mean()
-    if base == "macd_hist":
-        line = _macd_line(close)
-        return line - line.ewm(span=9, adjust=False).mean()
+    if base in ("macd", "macd_line", "macd_signal", "macd_hist"):
+        valid_close = close.replace([np.inf, -np.inf], np.nan)
+        line = _macd_line(valid_close)
+        if base == "macd_signal":
+            result = line.ewm(span=9, adjust=False).mean()
+        elif base == "macd_hist":
+            result = line - line.ewm(span=9, adjust=False).mean()
+        else:
+            result = line
+        # Like EMA, MACD estimates across gaps must not match missing bars.
+        return result.where(valid_close.notna())
 
     raise ConditionError(f"Unknown feature: {name!r}")
 

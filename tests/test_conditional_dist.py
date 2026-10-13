@@ -64,6 +64,29 @@ class FeatureParsingTests(unittest.TestCase):
                     )
                     self.assertEqual(mask.tolist(), [True, True, False, True])
 
+    def test_macd_family_matches_pandas(self):
+        close = self.df["close"]
+        line = close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
+        signal = line.ewm(span=9, adjust=False).mean()
+        for feature, expected in (("MACD", line), ("MACD_LINE", line),
+                                  ("MACD_SIGNAL", signal), ("MACD_HIST", line - signal)):
+            with self.subTest(feature=feature):
+                pd.testing.assert_series_equal(cd.resolve_feature(feature, self.df), expected)
+
+    def test_macd_family_missing_quotes_do_not_match_filters(self):
+        for missing in (np.nan, np.inf, -np.inf):
+            df = _frame([10, 12, missing, 16])
+            clean = _frame([10, 12, np.nan, 16])
+            for feature in ("MACD", "MACD_LINE", "MACD_SIGNAL", "MACD_HIST"):
+                with self.subTest(missing=missing, feature=feature):
+                    result = cd.resolve_feature(feature, df)
+                    self.assertTrue(pd.isna(result.iloc[2]))
+                    self.assertTrue(np.isfinite(result.iloc[[0, 1, 3]]).all())
+                    pd.testing.assert_series_equal(result, cd.resolve_feature(feature, clean))
+                    for left, right in ((feature, -100), (100, feature)):
+                        mask = cd.evaluate_condition(df, {"left": left, "op": ">", "right": right})
+                        self.assertEqual(mask.tolist(), [True, True, False, True])
+
     def test_rsi_default_window(self):
         got = cd.resolve_feature("RSI(14)", self.df)
         self.assertEqual(len(got), len(self.df))
