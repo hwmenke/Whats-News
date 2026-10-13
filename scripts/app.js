@@ -1083,7 +1083,15 @@ async function openBookNews() {
             seen.add(key);
             deduped.push(a);
         }
-        deduped.sort((a, b) => (b.publish_time || '').localeCompare(a.publish_time || ''));
+        const publicationTime = article => {
+            const time = Date.parse(article.publish_time || '');
+            return Number.isFinite(time) ? time : -Infinity;
+        };
+        deduped.sort((a, b) => {
+            const left = publicationTime(a);
+            const right = publicationTime(b);
+            return left === right ? 0 : (left > right ? -1 : 1);
+        });
 
         if (loadingEl) loadingEl.style.display = 'none';
         if (!deduped.length) {

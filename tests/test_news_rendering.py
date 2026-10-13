@@ -48,3 +48,43 @@ assert.ok(empty.includes('href="/"'));
         result = subprocess.run([node, '-e', script], cwd=ROOT,
                                 capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
+    def test_book_news_orders_publication_instants_and_keeps_bad_dates_last(self):
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('node not available')
+        script = r'''
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync('scripts/app.js', 'utf8');
+const articles = [
+    {title: 'older offset', url: 'one', publish_time: '2026-10-13T11:00:00+02:00'},
+    {title: 'bad date', url: 'two', publish_time: 'not-a-date'},
+    {title: 'newer instant', url: 'three', publish_time: '2026-10-13T06:00:00-04:00'},
+    {title: 'missing date', url: 'four'},
+    {title: 'equal instant', url: 'five', publish_time: '2026-10-13T10:00:00Z'}
+];
+let rendered;
+const ctx = {
+    state: {portfolioMeta: {news_focus: ['AAPL', 'MSFT']}},
+    API: '/api', switchTab() {}, toast() {},
+    document: {getElementById() {return null;}},
+    apiFetch: async url => ({articles: url.endsWith('AAPL') ? articles : [articles[2]]}),
+    renderNewsArticles(value) {rendered = value;}
+};
+vm.createContext(ctx);
+vm.runInContext(source.slice(source.indexOf('async function openBookNews()'),
+                            source.indexOf('function readWatchlistFilter()')), ctx);
+(async () => {
+    await ctx.openBookNews();
+    assert.deepStrictEqual(Array.from(rendered, a => a.title), [
+        'newer instant', 'equal instant', 'older offset', 'bad date', 'missing date'
+    ]);
+    assert.strictEqual(rendered[0].publish_time, articles[2].publish_time);
+    assert.strictEqual(rendered[0].symbol, 'AAPL');
+})().catch(error => {console.error(error); process.exitCode = 1;});
+'''
+        result = subprocess.run([node, '-e', script], cwd=ROOT,
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
