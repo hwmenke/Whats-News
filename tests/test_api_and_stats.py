@@ -73,6 +73,32 @@ class StatsKamaTests(unittest.TestCase):
 
 
 class StatsEdgeCaseTests(unittest.TestCase):
+    def test_invalid_kama_distances_do_not_create_crossovers(self):
+        index = pd.date_range("2026-01-01", periods=30)
+        frame = pd.DataFrame({"close": np.full(30, 100.0)}, index=index)
+        for invalid in (np.inf, -np.inf, np.nan, 1e-308, 0.0):
+            with self.subTest(invalid=invalid):
+                estimates = pd.Series([101.0, invalid] + [99.0] * 28, index=index)
+                with patch.object(stats.db, "get_ohlcv_df", return_value=frame), patch.object(
+                    stats, "_kama", return_value=estimates,
+                ):
+                    result = stats.compute_stats("TEST")
+                for crossing in result["kama_cross_analysis"]:
+                    self.assertEqual(crossing["count_1d"], 0)
+                    self.assertEqual(crossing["count_5d"], 0)
+                for horizon in ("fwd_1d", "fwd_5d"):
+                    for bins in result["kama_distance_analysis"][horizon].values():
+                        self.assertTrue(bins)
+                        self.assertTrue(all(item["value"] == 0.0 for item in bins))
+
+        estimates = pd.Series([101.0] + [99.0] * 29, index=index)
+        with patch.object(stats.db, "get_ohlcv_df", return_value=frame), patch.object(
+            stats, "_kama", return_value=estimates,
+        ):
+            result = stats.compute_stats("TEST")
+        for crossing in result["kama_cross_analysis"]:
+            self.assertEqual(crossing["count_1d"], 1 if crossing["direction"] == "bull" else 0)
+
     def test_stats_rsi_preserves_quote_gaps_and_recovers(self):
         for missing in (np.nan, np.inf, -np.inf):
             for prices in (

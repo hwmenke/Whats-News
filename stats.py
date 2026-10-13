@@ -154,8 +154,8 @@ def compute_stats(symbol: str) -> dict:
     for period in KAMA_PERIODS:
         kama_col = f'kama_{period}'
         gap_col = f'price_vs_kama_{period}'
-        df[kama_col] = _kama(df['close'], window=period)
-        df[gap_col] = (df['close'] / df[kama_col].replace(0, np.nan)) - 1.0
+        df[kama_col] = _kama(df['close'], window=period).replace([np.inf, -np.inf], np.nan)
+        df[gap_col] = ((df['close'] / df[kama_col].replace(0, np.nan)) - 1.0).replace([np.inf, -np.inf], np.nan)
 
         kama_distance_analysis["fwd_1d"][str(period)] = get_binned_performance(gap_col, 'fwd_ret_1d')
         kama_distance_analysis["fwd_5d"][str(period)] = get_binned_performance(gap_col, 'fwd_ret_5d')
