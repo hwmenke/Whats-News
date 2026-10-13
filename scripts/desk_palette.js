@@ -170,6 +170,7 @@ function initDeskPalette() {
     });
     input.addEventListener('input', () => { _paletteIdx = 0; renderPaletteResults(input.value); });
     input.addEventListener('keydown', e => {
+        if (e.isComposing || e.keyCode === 229) return;
         if (e.key === 'ArrowDown') {
             e.preventDefault();
             _paletteIdx = Math.min(_paletteItems.length - 1, _paletteIdx + 1);
@@ -187,6 +188,7 @@ function initDeskPalette() {
         }
     });
     document.addEventListener('keydown', e => {
+        if (e.isComposing || e.keyCode === 229) return;
         if (e.key === 'Escape' && isPaletteOpen()) {
             e.preventDefault();
             closeDeskPalette();

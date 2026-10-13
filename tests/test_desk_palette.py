@@ -10,6 +10,63 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class DeskPaletteTests(unittest.TestCase):
+    def test_composition_keys_do_not_execute_or_dismiss_palette(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = r"""
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+const inputHandlers = {}, documentHandlers = {};
+const input = {
+    value: 'AAPL', tagName: 'INPUT',
+    addEventListener(event, handler) {inputHandlers[event] = handler;}
+};
+const overlay = {hidden: false, addEventListener() {}};
+const elements = {
+    'desk-palette': overlay, 'desk-palette-input': input,
+    'desk-palette-results': {innerHTML: '', querySelectorAll() {return [];}}
+};
+const selected = [];
+const ctx = {
+    document: {
+        addEventListener(event, handler) {documentHandlers[event] = handler;},
+        getElementById(id) {return elements[id];}
+    },
+    state: {symbols: [{symbol: 'AAPL'}, {symbol: 'MSFT'}]},
+    selectSymbol(code) {selected.push(code);}
+};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync('scripts/desk_palette.js', 'utf8'), ctx);
+ctx.initDeskPalette();
+ctx.renderPaletteResults('');
+// Some browsers report composition confirmation with keyCode 229 even when
+// isComposing is false. Neither form should run commands or change selection.
+for (const composition of [{isComposing: true}, {isComposing: false, keyCode: 229}]) {
+    for (const key of ['ArrowDown', 'Enter', 'Escape', 'k', '/']) {
+        const event = {
+            key, target: input, ctrlKey: key === 'k', ...composition,
+            preventDefault() {assert.fail('composition must remain native');}
+        };
+        inputHandlers.keydown(event);
+        documentHandlers.keydown(event);
+        assert.strictEqual(overlay.hidden, false);
+        assert.deepStrictEqual(selected, []);
+    }
+}
+let prevented = false;
+inputHandlers.keydown({key: 'Enter', preventDefault() {prevented = true;}});
+assert.strictEqual(prevented, true);
+assert.deepStrictEqual(selected, ['AAPL']);
+assert.strictEqual(overlay.hidden, true);
+"""
+        proc = subprocess.run(
+            [node, "-e", script], cwd=ROOT, capture_output=True,
+            text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+
     def test_tab_stays_inside_modal_with_and_without_results(self):
         node = shutil.which("node")
         if not node:
