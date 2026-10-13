@@ -152,6 +152,14 @@ def fetch_symbol(symbol):
 
 @app.route("/api/refresh", methods=["POST"])
 def refresh_all():
+    data = request.get_json(silent=True)
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    overlap_days = data.get("overlap_days", 3)
+    if isinstance(overlap_days, bool) or not isinstance(overlap_days, int) or overlap_days < 0:
+        return jsonify({"error": "overlap_days must be a nonnegative integer"}), 400
     if hasattr(db, "list_symbol_codes"):
         symbols = db.list_symbol_codes()
     else:
@@ -160,7 +168,7 @@ def refresh_all():
 
     def _fetch(sym):
         try:
-            return fetcher.fetch_and_store(sym)
+            return fetcher.fetch_and_store(sym, overlap_days=overlap_days)
         except Exception as exc:
             return {"symbol": sym, "error": str(exc)}
 

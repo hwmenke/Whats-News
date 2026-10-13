@@ -85,6 +85,39 @@ class DataServiceApiTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIsInstance(res.get_json(), list)
 
+    @patch("data_service.app.fetcher.fetch_and_store")
+    def test_refresh_passes_overlap_and_preserves_default(self, mock_fetch):
+        db.add_symbol("AAPL")
+        mock_fetch.return_value = {"symbol": "AAPL"}
+        for body, expected in ((None, 3), ({}, 3), ({"overlap_days": 0}, 0),
+                               ({"overlap_days": 7}, 7)):
+            with self.subTest(body=body):
+                mock_fetch.reset_mock()
+                response = self.client.post("/api/refresh", json=body)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json(), [{"symbol": "AAPL"}])
+                mock_fetch.assert_called_once_with("AAPL", overlap_days=expected)
+
+    @patch("data_service.app.fetcher.fetch_and_store")
+    def test_refresh_rejects_invalid_overlap_before_fetching(self, mock_fetch):
+        db.add_symbol("AAPL")
+        for value in (-1, True, False, None, "7", 1.5, [], {}):
+            with self.subTest(value=value):
+                response = self.client.post("/api/refresh", json={"overlap_days": value})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("error", response.get_json())
+        response = self.client.post("/api/refresh", json=[7])
+        self.assertEqual(response.status_code, 400)
+        mock_fetch.assert_not_called()
+
+    def test_http_refresh_sends_overlap_to_service(self):
+        with patch.object(data_client, "DATA_SERVICE_MODE", "http"), \
+                patch.object(data_client, "_request", return_value=[]) as request:
+            self.assertEqual(data_client.refresh_all(overlap_days=7), [])
+        request.assert_called_once_with(
+            "POST", "/api/refresh", body={"overlap_days": 7}, timeout=600.0
+        )
+
     def test_desk_query_hides_universe_archive(self):
         db.add_symbol("AAPL")
         db.add_universe_symbols({"ZZUNIV": ["sp500"]})
