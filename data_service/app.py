@@ -139,7 +139,7 @@ def symbol_fresh(symbol):
 
 @app.route("/api/symbols/<string:symbol>/group", methods=["PUT"])
 def set_symbol_group(symbol):
-    data = request.get_json(force=True)
+    data = request.get_json(force=True, silent=True)
     if not isinstance(data, dict):
         return jsonify({"error": "request body must be an object"}), 400
     if not isinstance(data.get("group_tag", ""), str):

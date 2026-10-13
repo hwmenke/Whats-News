@@ -206,6 +206,21 @@ class SymbolInputValidationTests(unittest.TestCase):
 
 
 class SymbolGroupValidationTests(unittest.TestCase):
+    def test_malformed_json_returns_json_errors_without_group_writes(self):
+        for application, target in ((app_module.app, "app.md"),
+                                    (data_app, "data_service.app.db")):
+            client = application.test_client()
+            with patch(f"{target}.set_symbol_group") as write:
+                for body in ('', '{', '{"group_tag": "tech"',
+                             '{"group_tag": "tech",}', 'null trailing'):
+                    with self.subTest(app=application.name, body=body):
+                        response = client.put("/api/symbols/aapl/group", data=body,
+                                              content_type="application/json")
+                        self.assertEqual(response.status_code, 400)
+                        self.assertTrue(response.is_json)
+                        self.assertIn("error", response.get_json())
+                write.assert_not_called()
+
     def test_invalid_inputs_are_rejected_before_group_writes(self):
         for application, target in ((app_module.app, "app.md"),
                                     (data_app, "data_service.app.db")):
