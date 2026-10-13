@@ -105,23 +105,24 @@ def blank_stack(*, reason: str, n_names: int = 0, overlap: int = 0) -> dict:
     }
 
 
-def _closes_map(closes: list) -> dict[str, float]:
+def _closes_map(closes: list) -> dict[str, float | None]:
     out = {}
     for row in closes or []:
         if not row:
             continue
         date, px = row[0], _finite(row[1])
-        if date and px is not None and px > 0:
-            out[str(date)[:10]] = px
+        if date:
+            # Preserve missing quotes so adjacent daily returns cannot bridge gaps.
+            out[str(date)[:10]] = px if px is not None and px > 0 else None
     return out
 
 
-def _simple_returns(px_by_date: dict[str, float]) -> dict[str, float]:
+def _simple_returns(px_by_date: dict[str, float | None]) -> dict[str, float]:
     dates = sorted(px_by_date)
     out = {}
     for i in range(1, len(dates)):
         a, b = px_by_date[dates[i - 1]], px_by_date[dates[i]]
-        if a and a > 0:
+        if a is not None and b is not None and a > 0:
             r = b / a - 1.0
             if math.isfinite(r):
                 out[dates[i]] = r
@@ -305,7 +306,7 @@ def evaluate(ready: list[dict], *, curve: list[dict] | None = None,
             "side": m.get("side") or ("short" if (m.get("qty") or 0) < 0 else "long"),
             "mv": mv,
             "rets": rets,
-            "bars": len(cmap),
+            "bars": sum(px is not None for px in cmap.values()),
         })
     n = len(names)
     if n < MIN_NAMES:

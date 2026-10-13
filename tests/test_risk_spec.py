@@ -23,6 +23,35 @@ def _gbm(n, seed, mu=0.0004, sigma=0.012):
     return 100.0 * np.exp(np.cumsum(r))
 
 
+class StoredCloseReturnsTests(unittest.TestCase):
+    def test_invalid_quotes_do_not_bridge_daily_returns(self):
+        for missing in (None, float("nan"), float("inf"), 0, -1, "invalid"):
+            with self.subTest(close=missing):
+                closes = risk_spec._closes_map([
+                    ("2026-09-01", 100),
+                    ("2026-09-02", missing),
+                    ("2026-09-03", 121),
+                    ("2026-09-04", 133.1),
+                ])
+                returns = risk_spec._simple_returns(closes)
+                self.assertEqual(set(returns), {"2026-09-04"})
+                self.assertAlmostEqual(returns["2026-09-04"], 0.1)
+
+    def test_missing_quotes_reduce_risk_overlap(self):
+        dates = pd.bdate_range("2026-01-01", periods=61).strftime("%Y-%m-%d")
+        names = []
+        for i, symbol in enumerate(("A", "B", "C")):
+            closes = list(zip(dates, _gbm(61, i)))
+            if i == 0:
+                closes[30] = (dates[30], None)
+            names.append({"ready": True, "symbol": symbol,
+                          "market_value": 1000, "_closes": closes})
+        result = risk_spec.evaluate(names)
+        self.assertFalse(result["ready"])
+        self.assertEqual(result["overlap_days"], 58)
+        self.assertIn("overlap", result["message"])
+
+
 class SortinoTests(unittest.TestCase):
     def test_constant_losses_have_defined_downside_deviation(self):
         self.assertAlmostEqual(
