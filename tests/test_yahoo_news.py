@@ -56,6 +56,33 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_url_whitespace_is_trimmed_before_watchlist_deduplication(self):
+        url = "https://example.com/article?source=yahoo#news"
+        items = [
+            {"content": {"title": "Canonical", "canonicalUrl": {"url": f"  {url}\n"}}},
+            {"content": {"title": "Clickthrough", "clickThroughUrl": {"url": f"\t{url} "}}},
+            {"content": {"title": "Direct", "canonicalUrl": f" {url} "}},
+            {"title": "Legacy link", "link": f" {url}\t"},
+            {"title": "Legacy fallback", "url": f"\n{url} "},
+        ]
+        for item in items:
+            with self.subTest(item=item):
+                self.assertEqual(yahoo_news.article_from_item(item)["url"], url)
+
+        def factory(symbol):
+            ticker = MagicMock()
+            ticker.news = items if symbol == "AAPL" else [
+                {"title": "Same article", "link": url},
+                {"title": "Different article", "link": url + "2"},
+            ]
+            return ticker
+
+        result = yahoo_news.watchlist_news(["AAPL", "MSFT"], ticker_factory=factory)
+        self.assertNotIn("errors", result)
+        self.assertEqual(result["article_count"], 2)
+        self.assertEqual([a["url"] for a in result["articles"]], [url, url + "2"])
+        self.assertEqual(result["articles"][0]["symbol"], "AAPL")
+
     def test_boolean_legacy_timestamps_remain_unavailable(self):
         ticker = MagicMock()
         ticker.news = [

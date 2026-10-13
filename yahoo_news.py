@@ -23,9 +23,9 @@ def _url_from_content(content: dict) -> str:
         if isinstance(nested, dict):
             url = nested.get("url") or ""
             if isinstance(url, str) and url.strip():
-                return url
+                return url.strip()
         elif isinstance(nested, str) and nested.strip():
-            return nested
+            return nested.strip()
     return ""
 
 
@@ -65,7 +65,7 @@ def article_from_item(item: Any, symbol: Optional[str] = None) -> dict:
             "title": item.get("title") or "No title",
             "summary": item.get("summary") or "",
             "url": next(
-                (url for url in (item.get("link"), item.get("url"))
+                (url.strip() for url in (item.get("link"), item.get("url"))
                  if isinstance(url, str) and url.strip()),
                 "",
             ),
