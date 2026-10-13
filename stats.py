@@ -67,6 +67,11 @@ def compute_stats(symbol: str) -> dict:
     if df.empty:
         return {"error": "No data found"}
 
+    # Invalid quotes must remain gaps, including when used as a baseline:
+    # dividing a finite close by infinity otherwise fabricates a total loss.
+    df = df.copy()
+    df['close'] = df['close'].replace([np.inf, -np.inf], np.nan)
+
     # 1. Base Returns
     # Missing closes must leave returns missing, rather than imply a flat
     # session or a move measured across a gap in the price history.

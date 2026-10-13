@@ -39,6 +39,33 @@ class ApiValidationTests(unittest.TestCase):
 class StatsEdgeCaseTests(unittest.TestCase):
     @patch("stats._rsi")
     @patch("stats.db.get_ohlcv_df")
+    def test_infinite_closes_preserve_daily_and_forward_return_gaps(self, mock_get_ohlcv_df, mock_rsi):
+        index = pd.date_range("2024-01-01", periods=12)
+        mock_rsi.return_value = pd.Series(np.arange(12, dtype=float), index=index)
+        for invalid in (np.inf, -np.inf):
+            with self.subTest(invalid=invalid):
+                frame = pd.DataFrame(
+                    {"close": [100.0, 110.0, 120.0, 130.0, 140.0, invalid,
+                               160.0, 170.0, 180.0, 190.0, 200.0, 210.0]},
+                    index=index,
+                )
+                mock_get_ohlcv_df.return_value = frame
+                result = stats.compute_stats("TEST")
+                self.assertEqual(sum(item["count"] for item in result["distribution"]), 9)
+                expected_daily = [110 / 100 - 1, 120 / 110 - 1, 130 / 120 - 1,
+                                  140 / 130 - 1, 170 / 160 - 1, 180 / 170 - 1,
+                                  190 / 180 - 1, 200 / 190 - 1, 210 / 200 - 1]
+                self.assertAlmostEqual(result["metrics"]["avg_daily_ret"], np.mean(expected_daily))
+                self.assertEqual(result["metrics"]["win_rate"], 1.0)
+                np.testing.assert_allclose(
+                    [item["value"] for item in result["rsi_analysis"]["fwd_5d"]],
+                    [160 / 110 - 1, 170 / 120 - 1, 180 / 130 - 1,
+                     190 / 140 - 1, 210 / 160 - 1],
+                )
+                self.assertEqual(frame.loc[index[5], "close"], invalid)
+
+    @patch("stats._rsi")
+    @patch("stats.db.get_ohlcv_df")
     def test_nonfinite_returns_are_excluded_from_statistics(self, mock_get_ohlcv_df, mock_rsi):
         index = pd.date_range("2024-01-01", periods=8)
         mock_get_ohlcv_df.return_value = pd.DataFrame(
