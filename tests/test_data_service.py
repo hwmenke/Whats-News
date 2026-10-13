@@ -170,6 +170,45 @@ class DataServiceApiTests(unittest.TestCase):
         mock_ticker_class.assert_called_once_with("AAPL")
 
 
+class BatchFetchValidationTests(unittest.TestCase):
+    def test_invalid_batches_do_not_fetch_or_write(self):
+        for application in (app_module.app, data_app):
+            with patch("database.add_symbol") as write, patch("data_fetcher.fetch_full_history") as fetch:
+                bodies = [None, [], "AAPL", True, {}, {"tickers": []}, {"tickers": [" "]},
+                          *({"tickers": v} for v in (None, "AAPL", {}, True)),
+                          *({"tickers": ["AAPL", v]} for v in (None, 7, True, [], {}))]
+                for body in bodies:
+                    with self.subTest(app=application.name, body=body):
+                        response = application.test_client().post(
+                            "/api/data-manager/fetch-batch", data=json.dumps(body),
+                            content_type="application/json")
+                        self.assertEqual(response.status_code, 400)
+                        self.assertIn("error", response.get_json())
+                for body in ("", "{", '{"tickers": ["AAPL"],}'):
+                    response = application.test_client().post(
+                        "/api/data-manager/fetch-batch", data=body, content_type="application/json")
+                    self.assertEqual(response.status_code, 400)
+                    self.assertTrue(response.is_json)
+                write.assert_not_called()
+                fetch.assert_not_called()
+
+    def test_valid_tickers_are_normalized_before_streaming(self):
+        for application in (app_module.app, data_app):
+            with patch.object(data_client, "use_embedded", return_value=True), \
+                    patch("database.add_symbol") as write, \
+                    patch("data_fetcher.fetch_full_history", return_value={}) as fetch:
+                response = application.test_client().post(
+                    "/api/data-manager/fetch-batch", json={"tickers": ["", " aapl ", "  "]})
+                self.assertEqual(response.status_code, 200)
+                events = [json.loads(line[6:]) for line in response.get_data(as_text=True).splitlines()
+                          if line.startswith("data: ")]
+                self.assertEqual(events[0], {"type": "start", "total": 1})
+                self.assertEqual(events[1]["symbol"], "AAPL")
+                self.assertEqual(events[-1], {"type": "done", "ok": 1, "failed": 0})
+                write.assert_called_once_with("AAPL")
+                fetch.assert_called_once_with("AAPL", start="2000-01-01")
+
+
 class SymbolInputValidationTests(unittest.TestCase):
     def test_malformed_json_returns_json_errors_without_watchlist_writes(self):
         for application, target in ((app_module.app, "app.md"),

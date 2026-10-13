@@ -250,8 +250,17 @@ def get_ticker_lists():
 
 @app.route("/api/data-manager/fetch-batch", methods=["POST"])
 def fetch_batch():
-    body = request.get_json(force=True) or {}
-    tickers = [t.strip().upper() for t in body.get("tickers", []) if str(t).strip()]
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    raw_tickers = body.get("tickers", [])
+    if not isinstance(raw_tickers, list) or any(
+        not isinstance(ticker, str) for ticker in raw_tickers
+    ):
+        return jsonify({"error": "tickers must be a list of strings"}), 400
+    tickers = [ticker.strip().upper() for ticker in raw_tickers if ticker.strip()]
+    if not tickers:
+        return jsonify({"error": "tickers list is empty"}), 400
     start_date = body.get("start_date", "2000-01-01")
     delay = float(body.get("delay", 1.5))
     add_wl = bool(body.get("add_watchlist", True))

@@ -1582,14 +1582,23 @@ def fetch_batch():
     """
     Proxy SSE batch fetch to the data service (or run embedded for tests).
     """
-    body = request.get_json(force=True) or {}
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    raw_tickers = body.get("tickers", [])
+    if not isinstance(raw_tickers, list) or any(
+        not isinstance(ticker, str) for ticker in raw_tickers
+    ):
+        return jsonify({"error": "tickers must be a list of strings"}), 400
+    tickers = [ticker.strip().upper() for ticker in raw_tickers if ticker.strip()]
+    if not tickers:
+        return jsonify({"error": "tickers list is empty"}), 400
 
     if data_client.use_embedded():
         import time
         import database as db
         import data_fetcher as fetcher
 
-        tickers = [t.strip().upper() for t in body.get("tickers", []) if str(t).strip()]
         start_date = body.get("start_date", "2000-01-01")
         delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
         add_wl = bool(body.get("add_watchlist", True))
