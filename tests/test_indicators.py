@@ -48,6 +48,22 @@ class KamaTests(unittest.TestCase):
 
 
 class RsiTests(unittest.TestCase):
+    def test_missing_quotes_do_not_inherit_rsi_readings(self):
+        for missing in (np.nan, np.inf, -np.inf):
+            for prices in (list(range(25)), [100 + i % 3 for i in range(25)]):
+                with self.subTest(missing=missing, prices=prices):
+                    close = pd.Series(prices, dtype=float)
+                    close.iloc[20] = missing
+                    result = _rsi(close)
+                    self.assertTrue(np.isfinite(result.iloc[19]))
+                    self.assertTrue(pd.isna(result.iloc[20]))
+                    self.assertIsNone(_series_to_list(pd.Series(
+                        [result.iloc[20]], index=pd.date_range("2026-01-01", periods=1)
+                    ))[0]["value"])
+                    self.assertTrue(np.isfinite(result.iloc[22]))
+                    expected = _rsi(close.replace([np.inf, -np.inf], np.nan))
+                    pd.testing.assert_series_equal(result, expected)
+
     def test_rising_prices_reach_100_after_warmup(self):
         result = _rsi(pd.Series(range(20), dtype=float))
         self.assertTrue(result.iloc[:14].isna().all())

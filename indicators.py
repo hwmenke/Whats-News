@@ -50,6 +50,7 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
 
 def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     """Wilder RSI via exponential moving average."""
+    close = close.replace([np.inf, -np.inf], np.nan)
     delta = close.diff()
     gain  = delta.clip(lower=0)
     loss  = (-delta).clip(lower=0)
@@ -59,7 +60,9 @@ def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     rsi = 100.0 - (100.0 / (1.0 + rs))
     # Gains without losses have RSI 100; retain missing values during warmup
     # and when both averages are zero (an undefined relative strength).
-    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0)
+    # Smoothing can carry an estimate across gaps, but a bar without a
+    # finite close cannot supply an RSI reading.
+    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0).where(close.notna())
 
 
 def _bollinger(close: pd.Series, window: int = 20, num_std: float = 2.0):
