@@ -47,6 +47,7 @@ function openDeskPalette(mode = 'jump') {
         : 'Jump to ticker — does not add';
     el.hidden = false;
     input.value = '';
+    _paletteIdx = 0;
     renderPaletteResults('');
     requestAnimationFrame(() => input.focus());
 }

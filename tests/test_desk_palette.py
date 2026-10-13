@@ -10,6 +10,59 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class DeskPaletteTests(unittest.TestCase):
+    def test_opening_resets_selection_for_reopen_and_mode_switch(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = r"""
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+const handlers = {};
+const input = {
+    value: '', focus() {},
+    addEventListener(event, handler) {handlers[event] = handler;}
+};
+const overlay = {hidden: true, addEventListener() {}};
+const results = {innerHTML: '', querySelectorAll() {return [];}};
+const elements = {
+    'desk-palette': overlay, 'desk-palette-input': input,
+    'desk-palette-results': results
+};
+const selected = [], workspaces = [];
+const ctx = {
+    document: {addEventListener() {}, getElementById(id) {return elements[id];}},
+    requestAnimationFrame(fn) {fn();},
+    state: {symbols: [{symbol: 'AAPL'}, {symbol: 'MSFT'}, {symbol: 'GOOG'}]},
+    selectSymbol(code) {selected.push(code);},
+    setWorkspace(name) {workspaces.push(name);}
+};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync('scripts/desk_palette.js', 'utf8'), ctx);
+ctx.initDeskPalette();
+const press = key => handlers.keydown({key, preventDefault() {}});
+ctx.openDeskPalette();
+press('ArrowDown');
+press('ArrowDown');
+press('Escape');
+ctx.openDeskPalette();
+press('Enter');
+assert.deepStrictEqual(selected, ['AAPL']);
+assert.strictEqual(overlay.hidden, true);
+ctx.openDeskPalette();
+press('ArrowDown');
+ctx.openDeskPalette('command');
+assert.ok(/desk-palette-row active[\s\S]*?data-idx="0"/.test(results.innerHTML));
+press('Enter');
+assert.deepStrictEqual(workspaces, ['chart']);
+assert.strictEqual(overlay.hidden, true);
+"""
+        proc = subprocess.run(
+            [node, "-e", script], cwd=ROOT, capture_output=True,
+            text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+
     def test_closing_restores_focus_to_opener(self):
         node = shutil.which("node")
         if not node:
