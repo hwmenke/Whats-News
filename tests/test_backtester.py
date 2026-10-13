@@ -10,6 +10,41 @@ import backtester
 
 
 class DrawdownTests(unittest.TestCase):
+    def test_kama_restarts_warmup_after_invalid_quotes(self):
+        for window in set(backtester.FAST_PERIODS + backtester.SLOW_PERIODS):
+            for invalid in (np.nan, np.inf, -np.inf):
+                with self.subTest(window=window, invalid=invalid):
+                    before = pd.Series(np.linspace(100, 120, window + 3))
+                    after = pd.Series(np.linspace(130, 150, window + 3))
+                    close = pd.concat([before, pd.Series([invalid]), after], ignore_index=True)
+                    close.index = pd.date_range("2024-01-01", periods=len(close))
+                    result = backtester._kama(close, window)
+                    gap = len(before)
+                    self.assertTrue(result.iloc[gap:gap + window].isna().all())
+                    pd.testing.assert_series_equal(
+                        result.iloc[:gap].reset_index(drop=True),
+                        backtester._kama(before, window),
+                    )
+                    pd.testing.assert_series_equal(
+                        result.iloc[gap + 1:].reset_index(drop=True),
+                        backtester._kama(after, window),
+                    )
+                    self.assertTrue(np.isfinite(result.iloc[-1]))
+                    self.assertTrue(result.index.equals(close.index))
+
+    def test_kama_complete_history_preserves_original_recurrence(self):
+        close = pd.Series([100., 103., 101., 106., 102., 108., 110., 107.])
+        window = 3
+        expected = pd.Series(np.nan, index=close.index)
+        expected.iloc[window - 1] = close.iloc[window - 1]
+        for i in range(window, len(close)):
+            direction = abs(close.iloc[i] - close.iloc[i - window])
+            volatility = np.abs(np.diff(close.iloc[i - window:i + 1])).sum()
+            er = direction / volatility if volatility else 0
+            sc = (er * (2 / 3 - 2 / 31) + 2 / 31) ** 2
+            expected.iloc[i] = expected.iloc[i - 1] + sc * (close.iloc[i] - expected.iloc[i - 1])
+        pd.testing.assert_series_equal(backtester._kama(close, window), expected)
+
     @patch("backtester._compute_trend_score")
     @patch("backtester.db.get_ohlcv_df")
     def test_flat_benchmark_leaves_undefined_sharpe_unavailable(self, mock_data, mock_trend):
