@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -167,6 +168,41 @@ class DataServiceApiTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(data["symbol"], "AAPL")
         mock_ticker_class.assert_called_once_with("AAPL")
+
+
+class SymbolInputValidationTests(unittest.TestCase):
+    def test_invalid_inputs_are_rejected_before_watchlist_writes(self):
+        for application, target in ((app_module.app, "app.md"),
+                                    (data_app, "data_service.app.db")):
+            client = application.test_client()
+            with patch(f"{target}.add_symbol") as single, patch(f"{target}.add_symbols") as bulk:
+                bodies = [None, [], ["AAPL"], "AAPL", 7, True,
+                          *({"symbol": value} for value in (None, 7, True, [], {})),
+                          *({"symbols": value} for value in (None, False, "AAPL", {})),
+                          *({"symbols": ["AAPL", value]} for value in (None, 7, True, [], {}))]
+                for body in bodies:
+                    with self.subTest(app=application.name, body=body):
+                        response = client.post("/api/symbols", data=json.dumps(body),
+                                               content_type="application/json")
+                        self.assertEqual(response.status_code, 400)
+                        self.assertIn("error", response.get_json())
+                single.assert_not_called()
+                bulk.assert_not_called()
+
+    def test_valid_bulk_strings_remain_normalized_and_deduplicated(self):
+        for application in (app_module.app, data_app):
+            with tempfile.TemporaryDirectory() as directory, patch.object(
+                db, "DB_PATH", os.path.join(directory, "symbols.db")
+            ), patch.object(data_client, "DATA_SERVICE_MODE", "embedded"):
+                db.init_db()
+                client = application.test_client()
+                response = client.post("/api/symbols", json={"symbols": [" aapl ", "AAPL", "", "msft"]})
+                self.assertEqual(response.status_code, 201)
+                self.assertEqual(response.get_json()["added"], ["AAPL", "MSFT"])
+                self.assertEqual(db.list_symbol_codes(), ["AAPL", "MSFT"])
+                response = client.post("/api/symbols", json={"symbols": []})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json()["added"], [])
 
 
 class AnalysisProxiesDataTests(unittest.TestCase):

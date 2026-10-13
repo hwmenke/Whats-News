@@ -77,7 +77,17 @@ def get_symbol_codes():
 
 @app.route("/api/symbols", methods=["POST"])
 def add_symbol():
-    data = request.get_json(force=True) or {}
+    data = request.get_json(force=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    if "symbols" in data:
+        raw = data["symbols"]
+        if not isinstance(raw, list):
+            return jsonify({"error": "symbols must be a list"}), 400
+        if any(not isinstance(item, str) for item in raw):
+            return jsonify({"error": "symbols must contain only strings"}), 400
+    elif not isinstance(data.get("symbol", ""), str):
+        return jsonify({"error": "symbol must be a string"}), 400
 
     if "symbols" in data:
         raw = data.get("symbols") or []
