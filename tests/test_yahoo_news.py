@@ -56,6 +56,35 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_malformed_headline_metadata_uses_string_defaults(self):
+        for value in (None, True, False, 42, 1.5, [], ["text"], {}, {"text": "value"}, ""):
+            with self.subTest(value=value):
+                ticker = MagicMock()
+                ticker.news = [
+                    {"content": {"title": value, "provider": {
+                        "displayName": value, "url": value}}},
+                    {"title": value, "publisher": value},
+                    {"content": {"title": "Real headline", "provider": {
+                        "displayName": "Reuters", "url": "https://reuters.com/"}}},
+                    {"title": "Legacy headline", "publisher": "Reuters"},
+                ]
+                factory = lambda symbol: ticker
+                watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+                symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+                self.assertEqual(status, 200)
+                self.assertNotIn("errors", watchlist)
+                for result in (watchlist, symbol):
+                    self.assertEqual(result["article_count"], 4)
+                    for article in result["articles"][:2]:
+                        self.assertEqual(article["title"], "No title")
+                        self.assertEqual(article["provider"], yahoo_news.DEFAULT_PROVIDER)
+                        self.assertEqual(article["provider_url"], yahoo_news.DEFAULT_PROVIDER_URL)
+                    self.assertEqual(result["articles"][2]["title"], "Real headline")
+                    self.assertEqual(result["articles"][2]["provider"], "Reuters")
+                    self.assertEqual(result["articles"][2]["provider_url"], "https://reuters.com/")
+                    self.assertEqual(result["articles"][3]["title"], "Legacy headline")
+                    self.assertEqual(result["articles"][3]["provider"], "Reuters")
+
     def test_malformed_summaries_keep_text_fallbacks_and_headlines(self):
         for summary in (None, True, 42, 1.5, [], ["text"], {}, {"text": "summary"}):
             with self.subTest(summary=summary):

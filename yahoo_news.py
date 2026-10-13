@@ -17,8 +17,8 @@ DEFAULT_PROVIDER = "Yahoo Finance"
 DEFAULT_PROVIDER_URL = "https://finance.yahoo.com/"
 
 
-def _summary_text(*values: Any) -> str:
-    """Keep provider text without coercing malformed payloads into summaries."""
+def _text_value(*values: Any) -> str:
+    """Keep provider text without coercing malformed payloads into strings."""
     return next((value for value in values if isinstance(value, str) and value), "")
 
 
@@ -52,12 +52,12 @@ def article_from_item(item: Any, symbol: Optional[str] = None) -> dict:
         if not isinstance(publish_time, str):
             publish_time = ""
         article = {
-            "title": content.get("title") or "No title",
-            "summary": _summary_text(content.get("summary"), content.get("description")),
+            "title": _text_value(content.get("title")) or "No title",
+            "summary": _text_value(content.get("summary"), content.get("description")),
             "url": _url_from_content(content),
             "publish_time": publish_time,
-            "provider": provider.get("displayName") or DEFAULT_PROVIDER,
-            "provider_url": provider.get("url") or DEFAULT_PROVIDER_URL,
+            "provider": _text_value(provider.get("displayName")) or DEFAULT_PROVIDER,
+            "provider_url": _text_value(provider.get("url")) or DEFAULT_PROVIDER_URL,
         }
     else:
         # Older yfinance shape (title/link at top level).
@@ -72,15 +72,15 @@ def article_from_item(item: Any, symbol: Optional[str] = None) -> dict:
                 # A malformed provider date should not discard the headline.
                 pass
         article = {
-            "title": item.get("title") or "No title",
-            "summary": _summary_text(item.get("summary")),
+            "title": _text_value(item.get("title")) or "No title",
+            "summary": _text_value(item.get("summary")),
             "url": next(
                 (url.strip() for url in (item.get("link"), item.get("url"))
                  if isinstance(url, str) and url.strip()),
                 "",
             ),
             "publish_time": publish_time,
-            "provider": item.get("publisher") or DEFAULT_PROVIDER,
+            "provider": _text_value(item.get("publisher")) or DEFAULT_PROVIDER,
             "provider_url": DEFAULT_PROVIDER_URL,
         }
 
