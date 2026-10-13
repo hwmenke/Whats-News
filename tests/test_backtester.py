@@ -10,6 +10,21 @@ import backtester
 
 
 class DrawdownTests(unittest.TestCase):
+    @patch("backtester._compute_trend_score")
+    @patch("backtester.db.get_ohlcv_df")
+    def test_flat_benchmark_leaves_undefined_sharpe_unavailable(self, mock_data, mock_trend):
+        index = pd.date_range("2024-01-01", periods=220)
+        close = pd.Series(100.0, index=index)
+        mock_data.return_value = pd.DataFrame({"close": close})
+        mock_trend.return_value = pd.Series(np.nan, index=index)
+
+        benchmark = backtester.run_optimization("TEST")["benchmark"]
+
+        self.assertIsNone(benchmark["sharpe"])
+        self.assertEqual(benchmark["ann_ret"], 0.0)
+        self.assertEqual(benchmark["ann_vol"], 0.0)
+        self.assertEqual(benchmark["max_dd"], 0.0)
+
     def test_zero_volatility_preserves_strategy_metrics(self):
         for prices, ann_ret, max_dd, win_rate in (
             ([100.0, 50.0, 25.0], -126.0, -0.75, 0.0),

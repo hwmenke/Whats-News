@@ -184,7 +184,7 @@ def run_optimization(symbol: str) -> dict:
     daily_ret = close.pct_change().dropna()
     bh_ann_ret = daily_ret.mean() * 252
     bh_ann_vol = daily_ret.std() * np.sqrt(252)
-    bh_sharpe  = bh_ann_ret / bh_ann_vol if bh_ann_vol != 0 else 0.0
+    bh_sharpe  = bh_ann_ret / bh_ann_vol if bh_ann_vol != 0 else None
     equity_bh  = (1 + daily_ret).cumprod()
     peak_bh    = equity_bh.cummax().clip(lower=1.0)
     bh_max_dd  = ((equity_bh - peak_bh) / peak_bh).min()
