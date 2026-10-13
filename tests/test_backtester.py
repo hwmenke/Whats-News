@@ -25,6 +25,38 @@ class DrawdownTests(unittest.TestCase):
         self.assertEqual(benchmark["ann_vol"], 0.0)
         self.assertEqual(benchmark["max_dd"], 0.0)
 
+    def test_strategy_returns_do_not_bridge_invalid_quotes(self):
+        for invalid in (np.nan, np.inf, -np.inf):
+            with self.subTest(invalid=invalid):
+                close = pd.Series([100.0, invalid, 200.0, 220.0])
+                fast = pd.Series(2.0, index=close.index)
+                slow = pd.Series(1.0, index=close.index)
+                result = backtester._run_strategy(close, fast, slow)
+                self.assertAlmostEqual(result["ann_ret"], 25.2)
+                self.assertEqual(result["win_rate"], 1.0)
+                self.assertEqual(result["max_dd"], 0.0)
+
+    def test_daily_returns_omit_zero_baselines_and_overflow(self):
+        close = pd.Series([0.0, 100.0, 0.0, 1e-300, 1e300])
+        result = backtester._daily_returns(close)
+        self.assertTrue(result.iloc[[0, 1, 3, 4]].isna().all())
+        self.assertEqual(result.iloc[2], -1.0)
+
+    @patch("backtester._compute_trend_score")
+    @patch("backtester.db.get_ohlcv_df")
+    def test_benchmark_and_curve_do_not_bridge_missing_quotes(self, mock_data, mock_trend):
+        index = pd.date_range("2024-01-01", periods=220)
+        close = pd.Series([100.0, np.nan] + [200.0] * 218, index=index)
+        mock_data.return_value = pd.DataFrame({"close": close})
+        mock_trend.return_value = pd.Series(np.nan, index=index)
+
+        result = backtester.run_optimization("TEST")
+
+        self.assertEqual(result["benchmark"]["ann_ret"], 0.0)
+        self.assertEqual(result["benchmark"]["max_dd"], 0.0)
+        self.assertTrue(result["equity_curve"])
+        self.assertTrue(all(point["benchmark"] == 1.0 for point in result["equity_curve"]))
+
     def test_zero_volatility_preserves_strategy_metrics(self):
         for prices, ann_ret, max_dd, win_rate in (
             ([100.0, 50.0, 25.0], -126.0, -0.75, 0.0),
