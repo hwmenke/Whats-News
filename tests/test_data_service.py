@@ -171,6 +171,22 @@ class DataServiceApiTests(unittest.TestCase):
 
 
 class SymbolInputValidationTests(unittest.TestCase):
+    def test_malformed_json_returns_json_errors_without_watchlist_writes(self):
+        for application, target in ((app_module.app, "app.md"),
+                                    (data_app, "data_service.app.db")):
+            client = application.test_client()
+            with patch(f"{target}.add_symbol") as single, patch(f"{target}.add_symbols") as bulk:
+                for body in ('', '{', '{"symbol": "AAPL"',
+                             '{"symbols": ["AAPL"],}', 'null trailing'):
+                    with self.subTest(app=application.name, body=body):
+                        response = client.post("/api/symbols", data=body,
+                                               content_type="application/json")
+                        self.assertEqual(response.status_code, 400)
+                        self.assertTrue(response.is_json)
+                        self.assertIn("error", response.get_json())
+                single.assert_not_called()
+                bulk.assert_not_called()
+
     def test_invalid_inputs_are_rejected_before_watchlist_writes(self):
         for application, target in ((app_module.app, "app.md"),
                                     (data_app, "data_service.app.db")):
