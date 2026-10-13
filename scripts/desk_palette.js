@@ -97,6 +97,12 @@ function paletteRows(query) {
     return rows.slice(0, 24);
 }
 
+function escapePaletteText(value) {
+    return String(value).replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[char]);
+}
+
 function renderPaletteResults(query) {
     const box = document.getElementById('desk-palette-results');
     if (!box) return;
@@ -109,8 +115,8 @@ function renderPaletteResults(query) {
     box.innerHTML = _paletteItems.map((item, i) => `
       <button type="button" class="desk-palette-row${i === _paletteIdx ? ' active' : ''}"
               data-idx="${i}" role="option">
-        <span class="desk-palette-label">${item.label}</span>
-        <span class="desk-palette-meta">${item.hint || ''}</span>
+        <span class="desk-palette-label">${escapePaletteText(item.label)}</span>
+        <span class="desk-palette-meta">${escapePaletteText(item.hint || '')}</span>
       </button>
     `).join('');
     box.querySelectorAll('.desk-palette-row').forEach(btn => {

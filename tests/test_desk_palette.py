@@ -10,6 +10,44 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class DeskPaletteTests(unittest.TestCase):
+    def test_watchlist_labels_render_as_text_and_keep_original_symbol(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = r"""
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+const symbol = '<img src=x onerror="alert(1)">&\'TEST';
+const results = {innerHTML: '', querySelectorAll() {return [];}};
+const overlay = {hidden: false};
+const selected = [];
+const ctx = {
+    document: {
+        addEventListener() {},
+        getElementById(id) {
+            return {'desk-palette-results': results, 'desk-palette': overlay}[id];
+        }
+    },
+    state: {symbols: [{symbol}, {symbol: 'BRK.B'}]},
+    selectSymbol(code) {selected.push(code);}
+};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync('scripts/desk_palette.js', 'utf8'), ctx);
+ctx.renderPaletteResults('');
+assert.ok(!results.innerHTML.includes('<img'));
+assert.ok(results.innerHTML.includes('&lt;img src=x onerror=&quot;alert(1)&quot;&gt;&amp;&#39;TEST'));
+assert.ok(results.innerHTML.includes('BRK.B'));
+ctx.runPaletteItem(0, false);
+assert.deepStrictEqual(selected, [symbol]);
+assert.strictEqual(overlay.hidden, true);
+"""
+        proc = subprocess.run(
+            [node, "-e", script], cwd=ROOT, capture_output=True,
+            text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+
     def test_composition_keys_do_not_execute_or_dismiss_palette(self):
         node = shutil.which("node")
         if not node:
