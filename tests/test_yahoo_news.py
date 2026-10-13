@@ -56,6 +56,36 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_symbol_news_sorts_publication_instants_and_keeps_missing_dates_last(self):
+        dates = [
+            "2026-08-21T10:00:00+02:00",
+            "invalid",
+            "2026-08-21T09:30:00Z",
+            "2026-08-21T05:00:00-04:00",
+            "",
+            "2026-08-21T09:15:00",
+        ]
+        ticker = MagicMock()
+        ticker.news = [
+            {"content": {"title": f"Headline {index}", "pubDate": date}}
+            for index, date in enumerate(dates)
+        ]
+        result, status = yahoo_news.symbol_news(
+            "aapl", ticker_factory=lambda symbol: ticker
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["symbol"], "AAPL")
+        self.assertEqual(result["article_count"], len(dates))
+        self.assertEqual(
+            [article["publish_time"] for article in result["articles"]],
+            [dates[2], dates[5], dates[3], dates[0], dates[1], dates[4]],
+        )
+        self.assertEqual(
+            [article["title"] for article in result["articles"]],
+            ["Headline 2", "Headline 5", "Headline 3", "Headline 0",
+             "Headline 1", "Headline 4"],
+        )
+
     def test_malformed_urls_preserve_headlines_and_valid_fallbacks(self):
         for malformed in ([], {"unexpected": "value"}, 42, True, "   "):
             with self.subTest(url=malformed):

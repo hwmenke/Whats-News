@@ -176,6 +176,7 @@ def symbol_news(
                 200,
             )
         articles = articles_from_news_items(items)
+        articles.sort(key=_publication_sort_key, reverse=True)
         return (
             {
                 "symbol": sym,
