@@ -98,8 +98,9 @@ def compute_knn_lookalike(symbol: str, k: int = 15) -> dict:
         "vol_ratio", "kama_dist_10", "kama_dist_20", "kama_dist_50",
     ]
 
-    # Drop rows where any feature is NaN
-    df_feat = df[FEATURE_COLS + ["fwd_1d", "fwd_5d", "fwd_20d"]].dropna(subset=FEATURE_COLS)
+    # Only finite features can be scaled and compared by nearest neighbors.
+    finite_features = np.isfinite(df[FEATURE_COLS]).all(axis=1)
+    df_feat = df.loc[finite_features, FEATURE_COLS + ["fwd_1d", "fwd_5d", "fwd_20d"]]
     if df.index[-1] not in df_feat.index:
         return {"error": f"Latest bar has incomplete features for {symbol}"}
     if len(df_feat) < k + 1:

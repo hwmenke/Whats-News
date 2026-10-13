@@ -11,6 +11,39 @@ import knn_model
 
 
 class KnnModelTests(unittest.TestCase):
+    @patch("knn_model._kama")
+    @patch("knn_model.db.get_ohlcv_df")
+    def test_nonfinite_features_are_excluded_before_scaling(self, get_data, kama):
+        dates = pd.date_range("2025-01-01", periods=140)
+        close = pd.Series(100 + np.arange(140) + np.sin(np.arange(140)), index=dates)
+        frame = pd.DataFrame({
+            "close": close, "high": close + 2, "low": close - 2,
+            "volume": 1000.0 + np.arange(140),
+        })
+        get_data.side_effect = lambda *args, **kwargs: frame.copy()
+        for invalid_index in (80, 139):
+            with self.subTest(invalid_index=invalid_index):
+                def overflowing_kama(prices, window):
+                    values = pd.Series(100.0, index=prices.index)
+                    values.iloc[invalid_index] = 1e-310
+                    return values
+
+                kama.side_effect = overflowing_kama
+                with np.errstate(over="ignore"):
+                    result = knn_model.compute_knn_lookalike("TEST", k=90)
+                if invalid_index == 139:
+                    self.assertEqual(result, {
+                        "error": "Latest bar has incomplete features for TEST",
+                    })
+                else:
+                    self.assertNotIn("error", result)
+                    self.assertEqual(len(result["neighbors"]), 90)
+                    self.assertNotIn(
+                        dates[80].strftime("%Y-%m-%d"),
+                        [row["date"] for row in result["neighbors"]],
+                    )
+                    json.dumps(result, allow_nan=False)
+
     @patch("knn_model.db.get_ohlcv_df")
     def test_missing_latest_features_do_not_use_an_older_current_state(self, get_data):
         dates = pd.date_range("2025-01-01", periods=140)
