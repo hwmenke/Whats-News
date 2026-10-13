@@ -11,6 +11,43 @@ import knn_model
 
 
 class KnnModelTests(unittest.TestCase):
+    def test_kama_restarts_warmup_after_quote_gaps(self):
+        dates = pd.date_range("2025-01-01", periods=180)
+        original = pd.Series(100 + np.arange(180) + np.sin(np.arange(180)), index=dates)
+        for period in (10, 20, 50):
+            for gap in (0, 70):
+                for invalid in (np.nan, np.inf, -np.inf):
+                    with self.subTest(period=period, gap=gap, invalid=invalid):
+                        close = original.copy()
+                        close.iloc[gap] = invalid
+                        result = knn_model._kama(close, window=period)
+                        self.assertTrue(result.iloc[gap:gap + period].isna().all())
+                        self.assertEqual(result.iloc[gap + period], close.iloc[gap + period])
+                        pd.testing.assert_series_equal(
+                            result.iloc[gap + 1:],
+                            knn_model._kama(close.iloc[gap + 1:], window=period),
+                        )
+                        pd.testing.assert_series_equal(
+                            result.iloc[:gap],
+                            knn_model._kama(close.iloc[:gap], window=period),
+                        )
+
+    @patch("knn_model.db.get_ohlcv_df")
+    def test_lookalikes_recover_after_historical_quote_gap(self, get_data):
+        dates = pd.date_range("2025-01-01", periods=180)
+        close = pd.Series(100 + np.arange(180) + np.sin(np.arange(180)), index=dates)
+        close.iloc[70] = np.nan
+        get_data.return_value = pd.DataFrame({
+            "close": close, "high": close + 2, "low": close - 2,
+            "volume": 1000.0 + np.arange(180),
+        })
+        result = knn_model.compute_knn_lookalike("TEST", k=5)
+        self.assertNotIn("error", result)
+        self.assertEqual(result["as_of"], dates[-1].strftime("%Y-%m-%d"))
+        self.assertEqual(len(result["neighbors"]), 5)
+        self.assertTrue(all(value is not None for value in result["current_features"].values()))
+        json.dumps(result, allow_nan=False)
+
     @patch("knn_model._kama")
     @patch("knn_model.db.get_ohlcv_df")
     def test_nonfinite_features_are_excluded_before_scaling(self, get_data, kama):
