@@ -1060,6 +1060,10 @@ def conditional_distribution(symbol):
         return jsonify({"error": "conditions must be a list"}), 400
 
     horizons = body.get("horizons", [5, 10])
+    if not isinstance(horizons, list) or any(
+        isinstance(h, bool) or not isinstance(h, (int, str)) for h in horizons
+    ):
+        return jsonify({"error": "horizons must be a list of integers"}), 400
     try:
         horizons = [int(h) for h in horizons]
     except (TypeError, ValueError):

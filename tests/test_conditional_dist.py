@@ -366,6 +366,33 @@ class ApiRouteTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
+    @patch("conditional_dist.compute_conditional_distribution")
+    def test_malformed_horizons_rejected_before_calculation(self, compute):
+        for horizons in ([1.9], [True], [False], [float("inf")],
+                         [None], [{}], [[5]], "5", {"5": 10}, 5):
+            with self.subTest(horizons=horizons):
+                resp = self.client.post(
+                    "/api/conditional-distribution/AAPL",
+                    json={"conditions": [], "horizons": horizons},
+                )
+                self.assertEqual(resp.status_code, 400)
+                self.assertIn("error", resp.get_json())
+        compute.assert_not_called()
+
+    @patch("conditional_dist.compute_conditional_distribution")
+    def test_integer_horizons_and_empty_defaults_preserved(self, compute):
+        compute.return_value = {"by_horizon": {}}
+        for horizons, expected in (([1, 250], [1, 250]),
+                                   (["5", "10"], [5, 10]),
+                                   ([], [5, 10])):
+            with self.subTest(horizons=horizons):
+                resp = self.client.post(
+                    "/api/conditional-distribution/AAPL",
+                    json={"conditions": [], "horizons": horizons},
+                )
+                self.assertEqual(resp.status_code, 200)
+                compute.assert_called_with("AAPL", [], expected)
+
 
 if __name__ == "__main__":
     unittest.main()
