@@ -10,6 +10,61 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class DeskPaletteTests(unittest.TestCase):
+    def test_tab_stays_inside_modal_with_and_without_results(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        script = r"""
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+const handlers = {};
+const document = {
+    activeElement: null, addEventListener() {},
+    getElementById(id) {return elements[id];}
+};
+const focusable = () => ({focus() {document.activeElement = this;}});
+const input = Object.assign(focusable(), {addEventListener() {}});
+let rows = [focusable(), focusable()];
+const overlay = {
+    hidden: false,
+    addEventListener(event, handler) {handlers[event] = handler;},
+    querySelectorAll() {return rows;}
+};
+const elements = {'desk-palette': overlay, 'desk-palette-input': input};
+const ctx = {document};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync('scripts/desk_palette.js', 'utf8'), ctx);
+ctx.initDeskPalette();
+const tab = (shiftKey = false) => {
+    let prevented = false;
+    handlers.keydown({key: 'Tab', shiftKey, preventDefault() {prevented = true;}});
+    return prevented;
+};
+input.focus();
+assert.strictEqual(tab(true), true);
+assert.strictEqual(document.activeElement, rows[1]);
+assert.strictEqual(tab(), true);
+assert.strictEqual(document.activeElement, input);
+// Interior movement remains native in both directions.
+assert.strictEqual(tab(), false);
+rows[0].focus();
+assert.strictEqual(tab(), false);
+assert.strictEqual(tab(true), false);
+rows = [];
+input.focus();
+assert.strictEqual(tab(), true);
+assert.strictEqual(tab(true), true);
+assert.strictEqual(document.activeElement, input);
+overlay.hidden = true;
+assert.strictEqual(tab(), false);
+"""
+        proc = subprocess.run(
+            [node, "-e", script], cwd=ROOT, capture_output=True,
+            text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+
     def test_opening_resets_selection_for_reopen_and_mode_switch(self):
         node = shutil.which("node")
         if not node:

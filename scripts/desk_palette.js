@@ -155,6 +155,19 @@ function initDeskPalette() {
     const input = document.getElementById('desk-palette-input');
     if (!overlay || !input) return;
     overlay.addEventListener('click', e => { if (e.target === overlay) closeDeskPalette(); });
+    overlay.addEventListener('keydown', e => {
+        if (e.key !== 'Tab' || !isPaletteOpen()) return;
+        const rows = [...overlay.querySelectorAll('.desk-palette-row')];
+        const first = input;
+        const last = rows[rows.length - 1] || input;
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    });
     input.addEventListener('input', () => { _paletteIdx = 0; renderPaletteResults(input.value); });
     input.addEventListener('keydown', e => {
         if (e.key === 'ArrowDown') {
