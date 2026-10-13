@@ -13,6 +13,7 @@ Tests / single-process: DATA_SERVICE_MODE=embedded
 """
 
 import json
+import math
 import os
 import urllib.error
 import urllib.request
@@ -1201,6 +1202,8 @@ def trend_scan():
 
             close = ohlcv["close"]
             price = float(close.iloc[-1])
+            if not math.isfinite(price):
+                return {"symbol": sym, "error": "Latest close is unavailable"}
             if price <= 0:
                 return {"symbol": sym, "error": "Zero price"}
 

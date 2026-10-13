@@ -2,6 +2,8 @@ import os
 import unittest
 from unittest.mock import patch
 
+import pandas as pd
+
 os.environ.setdefault("DATA_SERVICE_MODE", "embedded")
 
 import app as app_module
@@ -10,6 +12,39 @@ import app as app_module
 class TrendScanApiTests(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
+
+    @patch("app.adaptive.compute_adaptive_trend")
+    @patch("app.md.get_ohlcv_df")
+    @patch("app.md.list_symbol_codes", return_value=["AAPL"])
+    @patch("app.md.list_desk_symbols", return_value=[{"symbol": "AAPL"}])
+    def test_nonfinite_latest_close_returns_symbol_error(self, desk, symbols, ohlcv, trend):
+        for price in (float("nan"), float("inf"), float("-inf")):
+            for desk_mode in ("0", "1"):
+                with self.subTest(price=price, desk=desk_mode):
+                    ohlcv.return_value = pd.DataFrame({"close": [100.0] * 59 + [price]})
+                    response = self.client.get(
+                        "/api/trend-scan", query_string={"desk": desk_mode},
+                    )
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.get_json(), [{
+                        "symbol": "AAPL", "error": "Latest close is unavailable",
+                    }])
+                    self.assertNotIn("NaN", response.get_data(as_text=True))
+                    self.assertNotIn("Infinity", response.get_data(as_text=True))
+        trend.assert_not_called()
+
+    @patch("app.adaptive.compute_adaptive_trend", return_value={})
+    @patch("app.md.get_ohlcv_df")
+    @patch("app.md.list_symbol_codes", return_value=["AAPL"])
+    def test_finite_latest_close_preserves_scan_metrics(self, symbols, ohlcv, trend):
+        ohlcv.return_value = pd.DataFrame({"close": [100.0 + i for i in range(60)]})
+        response = self.client.get("/api/trend-scan")
+        self.assertEqual(response.status_code, 200)
+        row = response.get_json()[0]
+        self.assertNotIn("error", row)
+        self.assertEqual(row["price"], 159.0)
+        self.assertIsNotNone(row["kama10_pct"])
+        trend.assert_called_once()
 
     @patch("app.md.list_symbol_codes")
     @patch("app.md.list_desk_symbols")
