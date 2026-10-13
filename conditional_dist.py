@@ -49,6 +49,7 @@ class ConditionError(ValueError):
 
 def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     """Wilder RSI via exponential moving average (matches indicators.py)."""
+    close = close.replace([np.inf, -np.inf], np.nan)
     delta = close.diff()
     gain = delta.clip(lower=0)
     loss = (-delta).clip(lower=0)
@@ -57,7 +58,9 @@ def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     rs = avg_gain / avg_loss.replace(0, np.nan)
     rsi = 100.0 - (100.0 / (1.0 + rs))
     # Gains without losses are overbought; warmup and flat bars stay missing.
-    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0)
+    # Smoothing carries estimates across gaps; bars without quotes cannot
+    # supply an RSI signal, even when the previous estimate was valid.
+    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0).where(close.notna())
 
 
 def _macd_line(close: pd.Series) -> pd.Series:

@@ -93,6 +93,22 @@ class FeatureParsingTests(unittest.TestCase):
         valid = got.dropna()
         self.assertTrue(((valid >= 0) & (valid <= 100)).all())
 
+    def test_rsi_missing_quotes_do_not_match_filters(self):
+        for missing in (np.nan, np.inf, -np.inf):
+            with self.subTest(missing=missing):
+                df = _frame([10, 12, 14, missing, 16, 18])
+                result = cd.resolve_feature("RSI(2)", df)
+                self.assertTrue(pd.isna(result.iloc[3]))
+                self.assertEqual(result.iloc[2], 100)
+                self.assertEqual(result.iloc[5], 100)
+                clean = _frame([10, 12, 14, np.nan, 16, 18])
+                pd.testing.assert_series_equal(result, cd.resolve_feature("RSI(2)", clean))
+                for left, right in (("RSI(2)", 70), (110, "RSI(2)")):
+                    mask = cd.evaluate_condition(
+                        df, {"left": left, "op": ">", "right": right}
+                    )
+                    self.assertEqual(mask.tolist(), [False, False, True, False, True, True])
+
     def test_bad_specs_raise(self):
         for bad in ("MA", "not a feature!", "RSI(", "sma()"):
             with self.assertRaises(cd.ConditionError):
