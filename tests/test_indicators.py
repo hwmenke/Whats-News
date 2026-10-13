@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from indicators import _kama, _rsi, _series_to_list
+from indicators import _kama, _macd, _rsi, _series_to_list
 
 
 class IndicatorSerializationTests(unittest.TestCase):
@@ -45,6 +45,36 @@ class KamaTests(unittest.TestCase):
         self.assertTrue(result.iloc[:9].isna().all())
         self.assertEqual(result.iloc[9], 9.0)
         self.assertAlmostEqual(result.iloc[10], 9.0 + (2.0 / 3.0) ** 2)
+
+
+class MacdTests(unittest.TestCase):
+    def test_missing_quotes_do_not_inherit_macd_readings(self):
+        for missing in (np.nan, np.inf, -np.inf):
+            with self.subTest(missing=missing):
+                close = pd.Series(
+                    [100 + i % 7 for i in range(40)], dtype=float,
+                    index=pd.date_range("2026-01-01", periods=40),
+                )
+                close.iloc[30] = missing
+                clean = close.replace([np.inf, -np.inf], np.nan)
+                line = clean.ewm(span=12, adjust=False).mean() - clean.ewm(
+                    span=26, adjust=False
+                ).mean()
+                signal = line.ewm(span=9, adjust=False).mean()
+                for actual, expected in zip(_macd(close), (line, signal, line - signal)):
+                    self.assertTrue(np.isfinite(actual.iloc[29]))
+                    self.assertIsNone(_series_to_list(actual)[30]["value"])
+                    self.assertTrue(np.isfinite(actual.iloc[31]))
+                    pd.testing.assert_series_equal(actual, expected.where(clean.notna()))
+
+    def test_finite_prices_match_pandas_macd(self):
+        close = pd.Series([100 + i % 7 for i in range(40)], dtype=float)
+        line = close.ewm(span=12, adjust=False).mean() - close.ewm(
+            span=26, adjust=False
+        ).mean()
+        signal = line.ewm(span=9, adjust=False).mean()
+        for actual, expected in zip(_macd(close), (line, signal, line - signal)):
+            pd.testing.assert_series_equal(actual, expected)
 
 
 class RsiTests(unittest.TestCase):

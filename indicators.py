@@ -76,12 +76,15 @@ def _bollinger(close: pd.Series, window: int = 20, num_std: float = 2.0):
 
 def _macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
     """Returns (macd_line, signal_line, histogram) series."""
+    close = close.replace([np.inf, -np.inf], np.nan)
     ema_fast    = close.ewm(span=fast,   adjust=False).mean()
     ema_slow    = close.ewm(span=slow,   adjust=False).mean()
     macd_line   = ema_fast - ema_slow
     signal_line = macd_line.ewm(span=signal, adjust=False).mean()
     hist        = macd_line - signal_line
-    return macd_line, signal_line, hist
+    # Keep smoothing across gaps, but do not chart estimates for missing bars.
+    valid = close.notna()
+    return macd_line.where(valid), signal_line.where(valid), hist.where(valid)
 
 
 def _cci(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 20) -> pd.Series:
