@@ -95,7 +95,7 @@ function renderPaletteResults(query) {
     const box = document.getElementById('desk-palette-results');
     if (!box) return;
     _paletteItems = paletteRows(query);
-    if (_paletteIdx >= _paletteItems.length) _paletteIdx = 0;
+    if (_paletteIdx < 0 || _paletteIdx >= _paletteItems.length) _paletteIdx = 0;
     if (!_paletteItems.length) {
         box.innerHTML = '<div class="desk-palette-empty">No matches</div>';
         return;
