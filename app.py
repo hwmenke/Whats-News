@@ -942,7 +942,11 @@ def delete_symbol(symbol):
 
 @app.route("/api/symbols/<string:symbol>/group", methods=["PUT"])
 def set_symbol_group(symbol):
-    data = request.get_json(force=True) or {}
+    data = request.get_json(force=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    if not isinstance(data.get("group_tag", ""), str):
+        return jsonify({"error": "group_tag must be a string"}), 400
     group_tag = data.get("group_tag", "").strip()
     try:
         return jsonify(md.set_symbol_group(symbol.upper(), group_tag))

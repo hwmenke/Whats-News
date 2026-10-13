@@ -205,6 +205,38 @@ class SymbolInputValidationTests(unittest.TestCase):
                 self.assertEqual(response.get_json()["added"], [])
 
 
+class SymbolGroupValidationTests(unittest.TestCase):
+    def test_invalid_inputs_are_rejected_before_group_writes(self):
+        for application, target in ((app_module.app, "app.md"),
+                                    (data_app, "data_service.app.db")):
+            client = application.test_client()
+            with patch(f"{target}.set_symbol_group") as write:
+                bodies = [None, [], ["tech"], "tech", 7, False,
+                          *({"group_tag": value} for value in (None, 7, True, [], {}))]
+                for body in bodies:
+                    with self.subTest(app=application.name, body=body):
+                        response = client.put("/api/symbols/aapl/group", data=json.dumps(body),
+                                              content_type="application/json")
+                        self.assertEqual(response.status_code, 400)
+                        self.assertIn("error", response.get_json())
+                write.assert_not_called()
+
+    def test_valid_tags_are_trimmed_and_can_be_cleared(self):
+        for application in (app_module.app, data_app):
+            with tempfile.TemporaryDirectory() as directory, patch.object(
+                db, "DB_PATH", os.path.join(directory, "groups.db")
+            ), patch.object(data_client, "DATA_SERVICE_MODE", "embedded"):
+                db.init_db()
+                db.add_symbol("AAPL")
+                client = application.test_client()
+                for body, expected in (({"group_tag": "  tech  "}, "tech"),
+                                       ({"group_tag": ""}, ""), ({}, "")):
+                    with self.subTest(app=application.name, body=body):
+                        response = client.put("/api/symbols/aapl/group", json=body)
+                        self.assertEqual(response.status_code, 200)
+                        self.assertEqual(db.list_symbols()[0]["group_tag"], expected)
+
+
 class AnalysisProxiesDataTests(unittest.TestCase):
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()
