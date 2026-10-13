@@ -59,6 +59,18 @@ class FeatureParsingTests(unittest.TestCase):
             with self.assertRaises(cd.ConditionError):
                 cd.resolve_feature(bad, self.df)
 
+    def test_rsi_period_validation_preserves_default_and_positive_periods(self):
+        with self.assertRaisesRegex(cd.ConditionError, "RSI period must be positive"):
+            cd.resolve_feature("RSI(0)", self.df)
+        pd.testing.assert_series_equal(
+            cd.resolve_feature("RSI", self.df), cd.resolve_feature("RSI(14)", self.df)
+        )
+        for period in (1, 5, 14):
+            with self.subTest(period=period):
+                result = cd.resolve_feature(f"RSI({period})", self.df)
+                self.assertTrue(result.iloc[:period].isna().all())
+                self.assertTrue((result.iloc[period:] == 100).all())
+
     def test_rsi_rising_prices_match_overbought_filter_after_warmup(self):
         rsi = cd.resolve_feature("RSI(14)", self.df)
         self.assertTrue(rsi.iloc[:14].isna().all())
@@ -358,6 +370,22 @@ class ApiRouteTests(unittest.TestCase):
                     )
                     self.assertEqual(resp.status_code, 400)
                     self.assertIn("Unsupported operator", resp.get_json()["error"])
+
+    @patch("conditional_dist.db.get_ohlcv_df")
+    def test_zero_rsi_period_returns_400_for_either_operand(self, mock_df):
+        mock_df.return_value = self.df
+        for condition in (
+            {"left": "RSI(0)", "op": "<", "right": 30},
+            {"left": 30, "op": "<", "right": "rsi( 0 )"},
+            {"feature": "RSI(0)", "operator": "<", "value": 30},
+        ):
+            with self.subTest(condition=condition):
+                response = self.client.post(
+                    "/api/conditional-distribution/AAPL",
+                    json={"conditions": [condition]},
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("RSI period must be positive", response.get_json()["error"])
 
     def test_bad_horizon_returns_400(self):
         resp = self.client.post(

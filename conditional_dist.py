@@ -84,7 +84,9 @@ def resolve_feature(name, df: pd.DataFrame) -> pd.Series:
     period = int(match.group(2)) if match.group(2) else None
 
     if base == "rsi":
-        return _rsi(close, period or 14)
+        if period == 0:
+            raise ConditionError("RSI period must be positive, e.g. RSI(14)")
+        return _rsi(close, 14 if period is None else period)
     if base in ("ma", "sma"):
         if not period:
             raise ConditionError("Moving average needs a period, e.g. MA(50)")
