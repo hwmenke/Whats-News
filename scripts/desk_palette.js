@@ -29,6 +29,7 @@ function isPaletteOpen() {
 function closeDeskPalette() {
     const el = document.getElementById('desk-palette');
     if (el) el.hidden = true;
+    document.getElementById('desk-palette-input')?.setAttribute?.('aria-expanded', 'false');
     const previous = _palettePreviousFocus;
     _palettePreviousFocus = null;
     if (previous?.isConnected && typeof previous.focus === 'function') previous.focus();
@@ -46,6 +47,7 @@ function openDeskPalette(mode = 'jump') {
         ? 'Filter commands or type a ticker…'
         : 'Jump to ticker — does not add';
     el.hidden = false;
+    input.setAttribute?.('aria-expanded', 'true');
     input.value = '';
     _paletteIdx = 0;
     renderPaletteResults('');
@@ -106,15 +108,18 @@ function escapePaletteText(value) {
 function renderPaletteResults(query) {
     const box = document.getElementById('desk-palette-results');
     if (!box) return;
+    const input = document.getElementById('desk-palette-input');
     _paletteItems = paletteRows(query);
     if (_paletteIdx < 0 || _paletteIdx >= _paletteItems.length) _paletteIdx = 0;
     if (!_paletteItems.length) {
+        input?.removeAttribute?.('aria-activedescendant');
         box.innerHTML = '<div class="desk-palette-empty">No matches</div>';
         return;
     }
+    input?.setAttribute?.('aria-activedescendant', `desk-palette-option-${_paletteIdx}`);
     box.innerHTML = _paletteItems.map((item, i) => `
       <button type="button" class="desk-palette-row${i === _paletteIdx ? ' active' : ''}"
-              data-idx="${i}" role="option">
+              id="desk-palette-option-${i}" data-idx="${i}" role="option" aria-selected="${i === _paletteIdx}">
         <span class="desk-palette-label">${escapePaletteText(item.label)}</span>
         <span class="desk-palette-meta">${escapePaletteText(item.hint || '')}</span>
       </button>

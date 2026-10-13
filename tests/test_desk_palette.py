@@ -301,9 +301,11 @@ assert.strictEqual(restored, 4);
 const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
-const handlers = {};
+const handlers = {}, attributes = {};
 const input = {
     value: 'ZZZ',
+    setAttribute(name, value) {attributes[name] = value;},
+    removeAttribute(name) {delete attributes[name];},
     addEventListener(event, handler) {handlers[event] = handler;}
 };
 const overlay = {hidden: false, addEventListener() {}};
@@ -326,14 +328,30 @@ ctx.initDeskPalette();
 input.value = 'NO MATCH!';
 handlers.input();
 assert.ok(results.innerHTML.includes('No matches'));
+assert.strictEqual(attributes['aria-activedescendant'], undefined);
 handlers.keydown({key: 'ArrowDown', preventDefault() {}});
 // Results can change after a watchlist refresh without another input event.
 input.value = 'AAPL';
 ctx.renderPaletteResults(input.value);
 assert.ok(results.innerHTML.includes('desk-palette-row active'));
+assert.strictEqual(attributes['aria-activedescendant'], 'desk-palette-option-0');
+assert.ok(results.innerHTML.includes('id="desk-palette-option-0" data-idx="0" role="option" aria-selected="true"'));
+ctx.state.symbols.push({symbol: 'MSFT'});
+input.value = '';
+handlers.input();
+handlers.keydown({key: 'ArrowDown', preventDefault() {}});
+assert.strictEqual(attributes['aria-activedescendant'], 'desk-palette-option-1');
+assert.ok(results.innerHTML.includes('id="desk-palette-option-0" data-idx="0" role="option" aria-selected="false"'));
+assert.ok(results.innerHTML.includes('id="desk-palette-option-1" data-idx="1" role="option" aria-selected="true"'));
+input.value = 'NO MATCH!';
+handlers.input();
+assert.strictEqual(attributes['aria-activedescendant'], undefined);
+input.value = 'AAPL';
+handlers.input();
 handlers.keydown({key: 'Enter', preventDefault() {}});
 assert.deepStrictEqual(selected, ['AAPL']);
 assert.strictEqual(overlay.hidden, true);
+assert.strictEqual(attributes['aria-expanded'], 'false');
 """
         proc = subprocess.run(
             [node, "-e", script], cwd=ROOT, capture_output=True,
