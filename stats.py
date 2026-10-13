@@ -49,9 +49,19 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
 
     fast_sc = 2.0 / (fast + 1)
     slow_sc = 2.0 / (slow + 1)
-    kama_vals[window - 1] = prices[window - 1]
-
-    for i in range(window, len(prices)):
+    # A quote gap resets the recursive estimate. Seed again only after a
+    # complete warmup so later valid history can still inform the analysis.
+    valid_run = 0
+    for i in range(len(prices)):
+        if not np.isfinite(prices[i]):
+            valid_run = 0
+            continue
+        valid_run += 1
+        if valid_run < window:
+            continue
+        if valid_run == window:
+            kama_vals[i] = prices[i]
+            continue
         direction = abs(prices[i] - prices[i - window])
         volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
         er = direction / volatility if volatility != 0 else 0

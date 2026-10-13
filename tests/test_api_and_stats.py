@@ -36,6 +36,42 @@ class ApiValidationTests(unittest.TestCase):
         self.assertEqual(response.get_json(), {"error": "limit must be a positive integer"})
 
 
+class StatsKamaTests(unittest.TestCase):
+    def test_quote_gaps_restart_warmup_and_recover(self):
+        for period in stats.KAMA_PERIODS:
+            for missing in (np.nan, np.inf, -np.inf):
+                for gap in (0, period - 1, period + 5):
+                    with self.subTest(period=period, missing=missing, gap=gap):
+                        close = pd.Series(
+                            [100 + i + i % 7 for i in range(160)], dtype=float,
+                            index=pd.date_range("2026-01-01", periods=160),
+                        )
+                        close.iloc[gap] = missing
+                        result = stats._kama(close, window=period)
+                        self.assertTrue(result.iloc[gap:gap + period].isna().all())
+                        self.assertEqual(result.iloc[gap + period], close.iloc[gap + period])
+                        self.assertTrue(np.isfinite(result.iloc[gap + period:]).all())
+                        pd.testing.assert_series_equal(
+                            result.iloc[gap + 1:],
+                            stats._kama(close.iloc[gap + 1:], window=period),
+                        )
+                        pd.testing.assert_series_equal(
+                            result.iloc[:gap], stats._kama(close.iloc[:gap], window=period),
+                        )
+
+    def test_complete_history_preserves_recursive_updates(self):
+        for period in stats.KAMA_PERIODS:
+            with self.subTest(period=period):
+                close = pd.Series(range(160), dtype=float)
+                result = stats._kama(close, window=period)
+                self.assertTrue(result.iloc[:period - 1].isna().all())
+                expected = float(period - 1)
+                self.assertEqual(result.iloc[period - 1], expected)
+                for i in range(period, len(close)):
+                    expected += (2.0 / 3.0) ** 2 * (close.iloc[i] - expected)
+                    self.assertAlmostEqual(result.iloc[i], expected)
+
+
 class StatsEdgeCaseTests(unittest.TestCase):
     @patch("stats._rsi")
     @patch("stats.db.get_ohlcv_df")
