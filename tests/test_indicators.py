@@ -68,6 +68,25 @@ class IndicatorSerializationTests(unittest.TestCase):
 
 
 class KamaTests(unittest.TestCase):
+    def test_quote_gaps_restart_warmup_and_recover(self):
+        for missing in (np.nan, np.inf, -np.inf):
+            for gap in (0, 9, 15):
+                with self.subTest(missing=missing, gap=gap):
+                    close = pd.Series(
+                        range(40), dtype=float,
+                        index=pd.date_range("2026-01-01", periods=40),
+                    )
+                    close.iloc[gap] = missing
+                    result = _kama(close, window=10)
+                    self.assertTrue(result.iloc[gap:gap + 10].isna().all())
+                    self.assertEqual(result.iloc[gap + 10], close.iloc[gap + 10])
+                    pd.testing.assert_series_equal(
+                        result.iloc[gap + 1:], _kama(close.iloc[gap + 1:], window=10)
+                    )
+                    pd.testing.assert_series_equal(
+                        result.iloc[:gap], _kama(close.iloc[:gap], window=10)
+                    )
+
     def test_short_histories_preserve_index_and_missing_warmup(self):
         for count in (0, 1, 9):
             with self.subTest(count=count):
@@ -85,6 +104,14 @@ class KamaTests(unittest.TestCase):
         self.assertTrue(result.iloc[:9].isna().all())
         self.assertEqual(result.iloc[9], 9.0)
         self.assertAlmostEqual(result.iloc[10], 9.0 + (2.0 / 3.0) ** 2)
+
+    def test_complete_rising_history_preserves_recursive_updates(self):
+        close = pd.Series(range(40), dtype=float)
+        result = _kama(close, window=10)
+        expected = 9.0
+        for i in range(10, len(close)):
+            expected += (2.0 / 3.0) ** 2 * (close.iloc[i] - expected)
+            self.assertAlmostEqual(result.iloc[i], expected)
 
 
 class MacdTests(unittest.TestCase):

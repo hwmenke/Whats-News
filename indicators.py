@@ -36,10 +36,19 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
     slow_sc = 2.0 / (slow + 1)
     prices = close.values
     kama_vals = np.full(len(prices), np.nan)
-    if len(prices) < window:
-        return pd.Series(kama_vals, index=close.index)
-    kama_vals[window - 1] = prices[window - 1]
-    for i in range(window, len(prices)):
+    # Restart warmup after a quote gap; recursive NaNs would otherwise
+    # suppress every later reading, even once a complete window is available.
+    valid_run = 0
+    for i in range(len(prices)):
+        if not np.isfinite(prices[i]):
+            valid_run = 0
+            continue
+        valid_run += 1
+        if valid_run < window:
+            continue
+        if valid_run == window:
+            kama_vals[i] = prices[i]
+            continue
         direction  = abs(prices[i] - prices[i - window])
         volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
         er  = direction / volatility if volatility != 0 else 0
