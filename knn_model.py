@@ -100,6 +100,8 @@ def compute_knn_lookalike(symbol: str, k: int = 15) -> dict:
 
     # Drop rows where any feature is NaN
     df_feat = df[FEATURE_COLS + ["fwd_1d", "fwd_5d", "fwd_20d"]].dropna(subset=FEATURE_COLS)
+    if df.index[-1] not in df_feat.index:
+        return {"error": f"Latest bar has incomplete features for {symbol}"}
     if len(df_feat) < k + 1:
         return {"error": f"Not enough valid feature rows for {symbol}"}
 

@@ -11,6 +11,24 @@ import knn_model
 
 
 class KnnModelTests(unittest.TestCase):
+    @patch("knn_model.db.get_ohlcv_df")
+    def test_missing_latest_features_do_not_use_an_older_current_state(self, get_data):
+        dates = pd.date_range("2025-01-01", periods=140)
+        close = pd.Series(100 + np.arange(140) + np.sin(np.arange(140)), index=dates)
+        frame = pd.DataFrame({
+            "close": close, "high": close + 2, "low": close - 2,
+            "volume": 1000.0 + np.arange(140),
+        })
+        get_data.side_effect = lambda *args, **kwargs: frame.copy()
+        valid = knn_model.compute_knn_lookalike("TEST", k=1)
+        self.assertEqual(valid["as_of"], dates[-1].strftime("%Y-%m-%d"))
+
+        frame.loc[dates[-1], "volume"] = np.nan
+        with patch("knn_model.NearestNeighbors") as nearest_neighbors:
+            result = knn_model.compute_knn_lookalike("TEST", k=1)
+        self.assertEqual(result, {"error": "Latest bar has incomplete features for TEST"})
+        nearest_neighbors.assert_not_called()
+
     def test_safe_float_omits_nonfinite_values(self):
         for value in (None, np.nan, np.inf, -np.inf, "inf", "invalid"):
             with self.subTest(value=value):
