@@ -38,6 +38,14 @@ ctx.removePriceAlert(100.01);
 assert.deepStrictEqual(JSON.parse(saved), {AAPL: [100], MSFT: [200]});
 ctx.removePriceAlert(100);
 assert.deepStrictEqual(JSON.parse(saved), {MSFT: [200]});
+// Legacy precision must match the displayed chip, including binary rounding.
+saved = JSON.stringify({AAPL: [2.675, 2.68, 1.335], MSFT: [200]});
+ctx.removePriceAlert(Number((2.675).toFixed(2)));
+assert.deepStrictEqual(JSON.parse(saved), {AAPL: [2.68, 1.335], MSFT: [200]});
+ctx.removePriceAlert(Number((1.335).toFixed(2)));
+assert.deepStrictEqual(JSON.parse(saved), {AAPL: [2.68], MSFT: [200]});
+ctx.removePriceAlert(2.68);
+assert.deepStrictEqual(JSON.parse(saved), {MSFT: [200]});
 """
         proc = subprocess.run(
             [node, "-e", script], cwd=ROOT, capture_output=True,

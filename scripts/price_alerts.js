@@ -227,7 +227,9 @@ function removePriceAlert(price) {
     if (!sym || !Number.isFinite(snap)) return;
     const store = _readAlertStore();
     const next = _alertsForSymbol(sym);
-    const idx = next.findIndex(p => _snapAlertPrice(p) === snap);
+    // Match the chip label, whose toFixed rounding can differ from Math.round
+    // for legacy prices with more than two decimal places (e.g. 2.675).
+    const idx = next.findIndex(p => Number(p.toFixed(2)) === snap);
     if (idx < 0) return;
     next.splice(idx, 1);
     if (next.length) store[sym] = next;
