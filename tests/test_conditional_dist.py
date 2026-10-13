@@ -92,6 +92,26 @@ class FeatureParsingTests(unittest.TestCase):
         with self.assertRaises(cd.ConditionError):
             cd.resolve_feature("ROC", self.df)
 
+    def test_roc_missing_endpoints_do_not_match_momentum_filters(self):
+        for missing in (np.nan, np.inf, -np.inf):
+            with self.subTest(missing=missing):
+                df = _frame([10, missing, 12, 15])
+                roc = cd.resolve_feature("ROC(1)", df)
+                self.assertTrue(roc.iloc[:3].isna().all())
+                self.assertAlmostEqual(roc.iloc[3], 25.0)
+                mask = cd.build_mask(
+                    df, [{"left": "ROC(1)", "op": ">=", "right": 0}]
+                )
+                self.assertEqual(mask.tolist(), [False, False, False, True])
+                # A missing intermediate quote does not invalidate finite endpoints.
+                self.assertAlmostEqual(cd.resolve_feature("ROC(2)", df).iloc[2], 20.0)
+
+    def test_roc_zero_baselines_and_overflow_are_unavailable(self):
+        roc = cd.resolve_feature("ROC(1)", _frame([0, 10, 0, 1e-308, 1e308]))
+        self.assertTrue(pd.isna(roc.iloc[1]))
+        self.assertEqual(roc.iloc[2], -100.0)
+        self.assertTrue(pd.isna(roc.iloc[4]))
+
 
 class DescribeTests(unittest.TestCase):
     def test_std_is_none_for_single_sample(self):

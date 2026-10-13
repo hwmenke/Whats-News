@@ -92,7 +92,9 @@ def resolve_feature(name, df: pd.DataFrame) -> pd.Series:
     if base == "roc":
         if not period:
             raise ConditionError("ROC needs a period, e.g. ROC(20)")
-        return close.pct_change(period) * 100.0  # percent momentum over `period` bars
+        valid_close = close.replace([np.inf, -np.inf], np.nan)
+        momentum = valid_close.pct_change(period, fill_method=None) * 100.0
+        return momentum.replace([np.inf, -np.inf], np.nan)
     if base == "ema":
         if not period:
             raise ConditionError("EMA needs a period, e.g. EMA(20)")
