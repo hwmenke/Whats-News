@@ -11,6 +11,7 @@ KAMA_PERIODS = [10, 20, 50]
 
 def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     """Wilder RSI via exponential moving average."""
+    close = close.replace([np.inf, -np.inf], np.nan)
     delta    = close.diff()
     gain     = delta.clip(lower=0)
     loss     = (-delta).clip(lower=0)
@@ -18,7 +19,7 @@ def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     avg_loss = loss.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
     rs       = avg_gain / avg_loss.replace(0, np.nan)
     rsi = 100.0 - (100.0 / (1.0 + rs))
-    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0)
+    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0).where(close.notna())
 
 
 def _safe(val):

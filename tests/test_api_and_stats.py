@@ -73,6 +73,27 @@ class StatsKamaTests(unittest.TestCase):
 
 
 class StatsEdgeCaseTests(unittest.TestCase):
+    def test_stats_rsi_preserves_quote_gaps_and_recovers(self):
+        for missing in (np.nan, np.inf, -np.inf):
+            for prices in (
+                np.arange(100.0, 140.0),
+                100 + np.sin(np.arange(40)) * 5,
+            ):
+                with self.subTest(missing=missing, prices=prices.tolist()):
+                    close = pd.Series(prices, index=pd.date_range("2026-01-01", periods=40))
+                    close.iloc[25] = missing
+                    result = stats._rsi(close)
+                    self.assertTrue(result.iloc[:14].isna().all())
+                    self.assertTrue(pd.isna(result.iloc[25]))
+                    self.assertTrue(np.isfinite(result.iloc[26:]).all())
+                    cleaned = close.replace([np.inf, -np.inf], np.nan)
+                    delta = cleaned.diff()
+                    gain = delta.clip(lower=0).ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
+                    loss = (-delta).clip(lower=0).ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
+                    expected = 100 - 100 / (1 + gain / loss.replace(0, np.nan))
+                    expected = expected.mask((loss == 0) & (gain > 0), 100.0).where(cleaned.notna())
+                    pd.testing.assert_series_equal(result, expected)
+
     @patch("stats._rsi")
     @patch("stats.db.get_ohlcv_df")
     def test_infinite_closes_preserve_daily_and_forward_return_gaps(self, mock_get_ohlcv_df, mock_rsi):
