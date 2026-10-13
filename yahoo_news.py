@@ -17,6 +17,11 @@ DEFAULT_PROVIDER = "Yahoo Finance"
 DEFAULT_PROVIDER_URL = "https://finance.yahoo.com/"
 
 
+def _summary_text(*values: Any) -> str:
+    """Keep provider text without coercing malformed payloads into summaries."""
+    return next((value for value in values if isinstance(value, str) and value), "")
+
+
 def _url_from_content(content: dict) -> str:
     for key in ("canonicalUrl", "clickThroughUrl"):
         nested = content.get(key) or {}
@@ -48,7 +53,7 @@ def article_from_item(item: Any, symbol: Optional[str] = None) -> dict:
             publish_time = ""
         article = {
             "title": content.get("title") or "No title",
-            "summary": content.get("summary") or content.get("description") or "",
+            "summary": _summary_text(content.get("summary"), content.get("description")),
             "url": _url_from_content(content),
             "publish_time": publish_time,
             "provider": provider.get("displayName") or DEFAULT_PROVIDER,
@@ -68,7 +73,7 @@ def article_from_item(item: Any, symbol: Optional[str] = None) -> dict:
                 pass
         article = {
             "title": item.get("title") or "No title",
-            "summary": item.get("summary") or "",
+            "summary": _summary_text(item.get("summary")),
             "url": next(
                 (url.strip() for url in (item.get("link"), item.get("url"))
                  if isinstance(url, str) and url.strip()),

@@ -56,6 +56,32 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_malformed_summaries_keep_text_fallbacks_and_headlines(self):
+        for summary in (None, True, 42, 1.5, [], ["text"], {}, {"text": "summary"}):
+            with self.subTest(summary=summary):
+                ticker = MagicMock()
+                ticker.news = [
+                    {"content": {"title": "Fallback", "summary": summary,
+                                 "description": "Provider description"}},
+                    {"content": {"title": "No text", "summary": summary,
+                                 "description": {"text": "invalid"}}},
+                    {"title": "Legacy", "summary": summary},
+                    {"content": {"title": "Valid", "summary": "Provider summary",
+                                 "description": "Unused description"}},
+                    {"title": "Valid legacy", "summary": "Legacy summary"},
+                ]
+                factory = lambda symbol: ticker
+                watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+                symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+                self.assertEqual(status, 200)
+                self.assertNotIn("errors", watchlist)
+                for result in (watchlist, symbol):
+                    self.assertEqual(result["article_count"], 5)
+                    self.assertEqual(
+                        [article["summary"] for article in result["articles"]],
+                        ["Provider description", "", "", "Provider summary", "Legacy summary"],
+                    )
+
     def test_non_string_modern_dates_preserve_headlines_without_publication_dates(self):
         invalid_dates = [True, False, 1724000000, 1.5, [], ["2026-08-21"], {},
                          {"date": "2026-08-21"}, None]
