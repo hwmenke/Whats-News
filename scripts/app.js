@@ -1106,14 +1106,25 @@ async function openBookNews() {
         if (typeof renderNewsArticles === 'function') {
             renderNewsArticles(deduped);
         } else if (listEl) {
+            const escapeText = value => String(value ?? '').replace(/[&<>"']/g,
+                char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
+            const articleUrl = value => {
+                if (typeof value !== 'string') return '#';
+                try {
+                    const url = new URL(value.trim());
+                    return ['http:', 'https:'].includes(url.protocol) ? value.trim() : '#';
+                } catch {
+                    return '#';
+                }
+            };
             listEl.innerHTML = deduped.slice(0, 40).map(a => `
                 <article class="news-item" style="padding:12px 0;border-bottom:1px solid var(--border);">
-                  <div style="font-size:11px;color:var(--accent-bright);font-family:var(--font-mono);">${a.symbol || ''}</div>
-                  <a href="${a.url || '#'}" target="_blank" rel="noopener" style="color:var(--text-primary);font-weight:600;text-decoration:none;">
-                    ${a.title || 'Untitled'}
+                  <div style="font-size:11px;color:var(--accent-bright);font-family:var(--font-mono);">${escapeText(a.symbol || '')}</div>
+                  <a href="${escapeText(articleUrl(a.url))}" target="_blank" rel="noopener" style="color:var(--text-primary);font-weight:600;text-decoration:none;">
+                    ${escapeText(a.title || 'Untitled')}
                   </a>
                   <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">
-                    via ${a.provider || 'Yahoo Finance'} · ${a.publish_time || ''}
+                    via ${escapeText(a.provider || 'Yahoo Finance')} · ${escapeText(a.publish_time || '')}
                   </div>
                 </article>
             `).join('');

@@ -68,7 +68,7 @@ const articles = [
 let rendered;
 const ctx = {
     state: {portfolioMeta: {news_focus: ['AAPL', 'MSFT']}},
-    API: '/api', switchTab() {}, toast() {},
+    URL, API: '/api', switchTab() {}, toast() {},
     document: {getElementById() {return null;}},
     apiFetch: async url => ({articles: url.endsWith('AAPL') ? articles : [articles[2]]}),
     renderNewsArticles(value) {rendered = value;}
@@ -83,6 +83,25 @@ vm.runInContext(source.slice(source.indexOf('async function openBookNews()'),
     ]);
     assert.strictEqual(rendered[0].publish_time, articles[2].publish_time);
     assert.strictEqual(rendered[0].symbol, 'AAPL');
+    delete ctx.renderNewsArticles;
+    const list = {innerHTML: ''};
+    ctx.document.getElementById = id => id === 'news-list' ? list : null;
+    const attack = '<img src=x onerror="alert(1)">&';
+    ctx.state.portfolioMeta.news_focus = [attack];
+    const article = {title: attack, provider: attack, publish_time: attack};
+    ctx.apiFetch = async () => ({articles: [article]});
+    for (const url of ['javascript:alert(1)', 'data:text/html,evil', '/relative',
+                       {}, null, '" onmouseover="alert(1)']) {
+        article.url = url;
+        await ctx.openBookNews();
+        assert.ok(!list.innerHTML.includes('<img'));
+        assert.ok(list.innerHTML.includes('href="#"'));
+        assert.strictEqual(list.innerHTML.split('&lt;img').length - 1, 4);
+    }
+    article.url = ' https://example.com/news?a=1&b=2 ';
+    await ctx.openBookNews();
+    assert.ok(list.innerHTML.includes('href="https://example.com/news?a=1&amp;b=2"'));
+
 })().catch(error => {console.error(error); process.exitCode = 1;});
 '''
         result = subprocess.run([node, '-e', script], cwd=ROOT,
