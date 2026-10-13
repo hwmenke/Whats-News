@@ -135,6 +135,25 @@ class ConditionEvalTests(unittest.TestCase):
 
 
 class ForwardReturnTests(unittest.TestCase):
+    def test_missing_endpoints_do_not_manufacture_forward_returns(self):
+        for missing in (np.nan, np.inf, -np.inf):
+            with self.subTest(missing=missing):
+                close = pd.Series([10, missing, 12, 15, 18], dtype=float)
+                fr = cd.forward_returns(close, 1)
+                self.assertTrue(fr.iloc[:2].isna().all())
+                self.assertAlmostEqual(fr.iloc[2], 15 / 12 - 1)
+                self.assertTrue(pd.isna(fr.iloc[-1]))
+                # Only endpoints matter for a multi-day return.
+                self.assertAlmostEqual(cd.forward_returns(close, 2).iloc[0], 0.2)
+
+    def test_zero_baselines_and_overflow_returns_are_unavailable(self):
+        close = pd.Series([0, 10, 0, 1e-308, 1e308], dtype=float)
+        fr = cd.forward_returns(close, 1)
+        self.assertTrue(pd.isna(fr.iloc[0]))
+        self.assertEqual(fr.iloc[1], -1.0)
+        self.assertTrue(pd.isna(fr.iloc[3]))
+        self.assertTrue(pd.isna(fr.iloc[4]))
+
     def test_no_lookahead_and_tail_is_nan(self):
         close = pd.Series([10, 11, 12, 13, 14, 15], dtype=float)
         fr = cd.forward_returns(close, 2)
@@ -148,6 +167,17 @@ class ForwardReturnTests(unittest.TestCase):
 
 
 class DistributionTests(unittest.TestCase):
+    @patch("conditional_dist.db.get_ohlcv_df")
+    def test_invalid_endpoints_are_excluded_from_statistics_and_histograms(self, mock_df):
+        mock_df.return_value = _frame([10, np.nan, 12, np.inf, 15, 0, 18, 21])
+        result = cd.compute_conditional_distribution("AAPL", [], horizons=[1])
+        block = result["by_horizon"]["1"]
+        for name in ("conditional", "baseline"):
+            self.assertEqual(block[name]["count"], 2)
+            self.assertAlmostEqual(block[name]["mean"], (-1 + 21 / 18 - 1) / 2)
+        self.assertEqual(sum(block["hist"]["conditional"]), 2)
+        self.assertEqual(sum(block["hist"]["baseline"]), 2)
+
     def setUp(self):
         rng = np.random.default_rng(7)
         steps = rng.normal(0.0005, 0.02, 900)

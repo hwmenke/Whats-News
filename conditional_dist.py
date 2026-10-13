@@ -161,7 +161,9 @@ def forward_returns(close: pd.Series, horizon: int) -> pd.Series:
 
     value[t] = close[t + horizon] / close[t] - 1. The last `horizon` bars are NaN.
     """
-    return close.pct_change(horizon).shift(-horizon)
+    valid_close = close.replace([np.inf, -np.inf], np.nan)
+    returns = valid_close.pct_change(horizon, fill_method=None).shift(-horizon)
+    return returns.replace([np.inf, -np.inf], np.nan)
 
 
 def _describe(returns: pd.Series) -> dict:
