@@ -183,7 +183,7 @@ def compute_indicators(symbol: str, freq: str = "daily", kama_periods: list = No
         macd_score = np.where(macd_ref > 0, 1, -1)
 
         total_score = rsi_score + cci_score + macd_score
-        mask = rsi_ref.isna() | cci_ref.isna() | macd_ref.isna()
+        mask = ~np.isfinite(rsi_ref) | ~np.isfinite(cci_ref) | ~np.isfinite(macd_ref)
         total_score = np.where(mask, np.nan, total_score)
         result["trend_score"] = _series_to_list(pd.Series(total_score, index=close.index))
     except Exception:

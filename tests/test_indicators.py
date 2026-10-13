@@ -10,6 +10,32 @@ import pandas as pd
 from indicators import _kama, _macd, _rsi, _series_to_list, compute_indicators
 
 
+class TrendScoreTests(unittest.TestCase):
+    @patch("indicators.db.get_ohlcv_df")
+    def test_non_finite_components_leave_trend_score_unavailable(self, mock_data):
+        index = pd.date_range("2026-01-01", periods=4)
+        mock_data.return_value = pd.DataFrame(
+            {"close": [100.0] * 4, "high": [101.0] * 4, "low": [99.0] * 4},
+            index=index,
+        )
+        for component in ("rsi", "cci", "macd"):
+            with self.subTest(component=component):
+                rsi = pd.Series([60.0] * 4, index=index)
+                cci = pd.Series([10.0] * 4, index=index)
+                macd = pd.Series([1.0] * 4, index=index)
+                target = {"rsi": rsi, "cci": cci, "macd": macd}[component]
+                target.iloc[:3] = [np.nan, np.inf, -np.inf]
+                with patch("indicators._rsi", return_value=rsi), \
+                     patch("indicators._cci", return_value=cci), \
+                     patch("indicators._macd", return_value=(macd, macd, macd)):
+                    result = compute_indicators("TEST")
+                self.assertEqual(
+                    [point["value"] for point in result["trend_score"]],
+                    [None, None, None, 3.0],
+                )
+                json.dumps(result, allow_nan=False)
+
+
 class EmaTests(unittest.TestCase):
     @patch("indicators.db.get_ohlcv_df")
     def test_missing_quotes_leave_ema_gaps_and_recover(self, mock_data):
