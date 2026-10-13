@@ -56,6 +56,29 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_symbol_news_deduplicates_urls_but_keeps_unlinked_headlines(self):
+        ticker = MagicMock()
+        ticker.news = [
+            {"content": {"title": "Modern story", "canonicalUrl": {
+                "url": "https://example.com/story"},
+                "pubDate": "2026-08-21T10:00:00Z"}},
+            {"title": "Duplicate legacy story", "link": " https://example.com/story "},
+            {"title": "Unlinked headline one"},
+            {"title": "Unlinked headline two"},
+            {"title": "Distinct story", "link": "https://example.com/other"},
+        ]
+        result, status = yahoo_news.symbol_news(
+            "aapl", ticker_factory=lambda symbol: ticker
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["symbol"], "AAPL")
+        self.assertEqual(result["article_count"], 4)
+        self.assertEqual(
+            [article["title"] for article in result["articles"]],
+            ["Modern story", "Unlinked headline one", "Unlinked headline two",
+             "Distinct story"],
+        )
+
     def test_malformed_headline_metadata_uses_string_defaults(self):
         for value in (None, True, False, 42, 1.5, [], ["text"], {}, {"text": "value"}, ""):
             with self.subTest(value=value):
