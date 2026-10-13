@@ -30,6 +30,35 @@ class LastSmaTests(unittest.TestCase):
 
 
 class PortfolioSnapshotTests(unittest.TestCase):
+    def test_rsi_quote_gaps_are_unavailable_and_recover(self):
+        for missing in (np.nan, np.inf, -np.inf):
+            for prices in (np.arange(100.0, 140.0),
+                           np.array([100.0 + i % 7 for i in range(40)])):
+                with self.subTest(missing=missing, prices=prices):
+                    close = pd.Series(prices.copy(), index=pd.date_range("2024-01-01", periods=40))
+                    close.iloc[30] = missing
+                    readings = portfolio._rsi(close)
+                    self.assertTrue(np.isfinite(readings.iloc[29]))
+                    self.assertTrue(pd.isna(readings.iloc[30]))
+                    self.assertTrue(np.isfinite(readings.iloc[32]))
+                    pd.testing.assert_series_equal(
+                        readings, portfolio._rsi(close.replace([np.inf, -np.inf], np.nan))
+                    )
+                    daily = pd.DataFrame({
+                        "open": close, "high": close + 1, "low": close - 1,
+                        "close": close, "volume": 1000.0,
+                    })
+                    for count, expected in ((31, None), (33, readings.iloc[32])):
+                        with patch.object(portfolio.md, "get_ohlcv_df", side_effect=[
+                            daily.iloc[:count], pd.DataFrame()
+                        ]):
+                            snap = portfolio.snapshot_symbol("AAPL")
+                        if expected is None:
+                            self.assertIsNone(snap["rsi14"])
+                            self.assertEqual(snap["rsi_zone"], "n/a")
+                        else:
+                            self.assertEqual(snap["rsi14"], round(expected, 1))
+
     def test_period_returns_omit_invalid_endpoints_and_preserve_total_loss(self):
         for baseline, latest, expected in (
             (0.0, 100.0, None),

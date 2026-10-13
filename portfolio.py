@@ -682,6 +682,7 @@ def _last_valid(series: pd.Series):
 
 
 def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
+    close = close.replace([np.inf, -np.inf], np.nan)
     delta = close.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
@@ -690,7 +691,7 @@ def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     rs = avg_gain / avg_loss.replace(0, np.nan)
     rsi = 100 - (100 / (1 + rs))
     # Preserve warmup/flat missing values, but gains without losses mean RSI 100.
-    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0)
+    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0).where(close.notna())
 
 
 def _atr(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 14) -> pd.Series:
@@ -795,7 +796,10 @@ def snapshot_symbol(symbol: str) -> dict:
         + (1 if is_ep else 0)
     )
 
-    rsi14 = _last_valid(_rsi(close, 14))
+    # The snapshot describes the latest bar, so do not reuse an older RSI
+    # when that bar's quote is unavailable.
+    latest_rsi = _rsi(close, 14).iloc[-1]
+    rsi14 = float(latest_rsi) if np.isfinite(latest_rsi) else None
     kama20 = _last_valid(_kama(close, 20))
     atr14 = _last_valid(_atr(high, low, close, 14))
     sma200 = last_sma(close, SMA200_BARS)
