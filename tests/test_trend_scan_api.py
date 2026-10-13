@@ -13,6 +13,37 @@ class TrendScanApiTests(unittest.TestCase):
 
     @patch("app.md.list_symbol_codes")
     @patch("app.md.list_desk_symbols")
+    def test_invalid_frequency_and_method_return_json_400_before_scanning(self, desk, symbols):
+        for parameter, error in (
+            ("freq", "freq must be 'daily' or 'weekly'"),
+            ("method", "method must be 'kama' or 'adma'"),
+        ):
+            for value in ("", "unknown", "DAILY", "KAMA"):
+                for desk_mode in ("0", "1"):
+                    with self.subTest(parameter=parameter, value=value, desk=desk_mode):
+                        response = self.client.get(
+                            "/api/trend-scan",
+                            query_string={parameter: value, "desk": desk_mode},
+                        )
+                        self.assertEqual(response.status_code, 400)
+                        self.assertEqual(response.get_json(), {"error": error})
+        symbols.assert_not_called()
+        desk.assert_not_called()
+
+    @patch("app.md.list_symbol_codes", return_value=[])
+    def test_supported_frequencies_and_methods_preserve_empty_scan(self, symbols):
+        for freq in ("daily", "weekly"):
+            for method in ("kama", "adma"):
+                with self.subTest(freq=freq, method=method):
+                    response = self.client.get(
+                        "/api/trend-scan", query_string={"freq": freq, "method": method},
+                    )
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.get_json(), [])
+        self.assertEqual(symbols.call_count, 4)
+
+    @patch("app.md.list_symbol_codes")
+    @patch("app.md.list_desk_symbols")
     def test_invalid_rsi_periods_return_json_400_before_scanning(self, desk, symbols):
         for value in ("abc", "", "1.5", "0", "-1", "nan", "inf"):
             for desk_mode in ("0", "1"):

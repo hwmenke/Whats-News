@@ -1154,6 +1154,10 @@ def trend_scan():
 
     freq       = request.args.get("freq",   "daily")
     method     = request.args.get("method", "kama")
+    if freq not in ("daily", "weekly"):
+        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if method not in ("kama", "adma"):
+        return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
     try:
         rsi_period = int(request.args.get("rsi_period", 14))
     except (TypeError, ValueError):
