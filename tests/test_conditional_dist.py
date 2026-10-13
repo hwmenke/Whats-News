@@ -123,6 +123,33 @@ class DescribeTests(unittest.TestCase):
 
 
 class ConditionEvalTests(unittest.TestCase):
+    def test_nonfinite_features_never_match_comparisons(self):
+        df = _frame([np.nan, np.inf, -np.inf, 0, 10])
+        for feature in ("price", "open", "high", "low", "volume"):
+            df["volume"] = df["close"]
+            for op in cd.OPS:
+                for left, right in ((feature, 5), (5, feature)):
+                    with self.subTest(feature=feature, op=op, left=left):
+                        mask = cd.evaluate_condition(
+                            df, {"left": left, "op": op, "right": right}
+                        )
+                        self.assertFalse(mask.iloc[:3].any())
+                        expected = cd.OPS[op](
+                            cd._operand(left, df), cd._operand(right, df)
+                        )
+                        pd.testing.assert_series_equal(mask.iloc[3:], expected.iloc[3:])
+
+    def test_nonfinite_constants_never_match(self):
+        df = _frame([0, 10])
+        for value in (np.nan, np.inf, -np.inf, "NaN", "Infinity", "-Infinity"):
+            for left, right in (("price", value), (value, "price"), (value, 5)):
+                for op in cd.OPS:
+                    with self.subTest(value=value, left=left, op=op):
+                        mask = cd.evaluate_condition(
+                            df, {"left": left, "op": op, "right": right}
+                        )
+                        self.assertEqual(mask.tolist(), [False, False])
+
     def test_constant_threshold_and_nan_excluded(self):
         df = _frame([10, 11, 9, 8, 12, 7])
         mask = cd.evaluate_condition(df, {"left": "price", "op": "<", "right": 10})

@@ -140,11 +140,11 @@ def _normalize_condition(cond: dict) -> dict:
 
 
 def evaluate_condition(df: pd.DataFrame, cond: dict) -> pd.Series:
-    """Boolean mask for one condition. NaN comparisons resolve to False."""
+    """Boolean mask for one condition. Non-finite operands never match."""
     norm = _normalize_condition(cond)
     left = _operand(norm["left"], df)
     right = _operand(norm["right"], df)
-    mask = OPS[norm["op"]](left, right)
+    mask = OPS[norm["op"]](left, right) & np.isfinite(left) & np.isfinite(right)
     if np.isscalar(mask):
         mask = pd.Series(bool(mask), index=df.index)
     return mask.reindex(df.index).fillna(False).astype(bool)
