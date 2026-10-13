@@ -56,6 +56,34 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_whitespace_metadata_uses_fallbacks_without_trimming_real_text(self):
+        ticker = MagicMock()
+        ticker.news = [
+            {"content": {"title": " \t\n", "summary": " \t",
+                         "description": " Provider description ",
+                         "provider": {"displayName": "\n", "url": " \t"}}},
+            {"title": " \n", "summary": "\t", "publisher": " "},
+            {"content": {"title": " Real headline ", "summary": " Summary ",
+                         "provider": {"displayName": " Reuters ",
+                                      "url": "https://reuters.com/"}}},
+        ]
+        factory = lambda symbol: ticker
+        watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+        symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+        self.assertEqual(status, 200)
+        self.assertNotIn("errors", watchlist)
+        for result in (watchlist, symbol):
+            self.assertEqual(result["article_count"], 3)
+            for article in result["articles"][:2]:
+                self.assertEqual(article["title"], "No title")
+                self.assertEqual(article["provider"], yahoo_news.DEFAULT_PROVIDER)
+                self.assertEqual(article["provider_url"], yahoo_news.DEFAULT_PROVIDER_URL)
+            self.assertEqual(result["articles"][0]["summary"], " Provider description ")
+            self.assertEqual(result["articles"][1]["summary"], "")
+            self.assertEqual(result["articles"][2]["title"], " Real headline ")
+            self.assertEqual(result["articles"][2]["summary"], " Summary ")
+            self.assertEqual(result["articles"][2]["provider"], " Reuters ")
+
     def test_symbol_news_deduplicates_urls_but_keeps_unlinked_headlines(self):
         ticker = MagicMock()
         ticker.news = [

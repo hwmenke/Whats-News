@@ -19,7 +19,7 @@ DEFAULT_PROVIDER_URL = "https://finance.yahoo.com/"
 
 def _text_value(*values: Any) -> str:
     """Keep provider text without coercing malformed payloads into strings."""
-    return next((value for value in values if isinstance(value, str) and value), "")
+    return next((value for value in values if isinstance(value, str) and value.strip()), "")
 
 
 def _url_from_content(content: dict) -> str:
