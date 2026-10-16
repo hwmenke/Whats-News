@@ -383,9 +383,14 @@ def book_add_position():
 @app.route("/api/book/positions/<int:pid>", methods=["PUT"])
 def book_update_position(pid):
     import paper_book
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
     ensure_local_schema()
-    body = request.get_json(silent=True) or {}
-    row = paper_book.update_position(pid, **body)
+    try:
+        row = paper_book.update_position(pid, **body)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     if row is None:
         return jsonify({"error": "not found"}), 404
     return jsonify(row)
