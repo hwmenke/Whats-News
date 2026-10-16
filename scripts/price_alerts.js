@@ -60,7 +60,10 @@ function _alertsForSymbol(sym) {
     if (!sym) return [];
     const list = _readAlertStore()[sym];
     if (!Array.isArray(list)) return [];
-    return list.map(Number).filter(n => Number.isFinite(n));
+    return list.filter(value =>
+        typeof value === 'number' ||
+        (typeof value === 'string' && value.trim() !== '')
+    ).map(Number).filter(n => Number.isFinite(n));
 }
 
 function getPriceAlertsOn() {
@@ -88,16 +91,20 @@ function _clickIsModifier(param) {
 }
 
 function _priceFromClickParam(param) {
+    const validPrice = value =>
+        (typeof value === 'number' ||
+         (typeof value === 'string' && value.trim() !== '')) &&
+        Number.isFinite(Number(value));
     const s = (typeof series !== 'undefined' && series.daily) ? series.daily.candle : null;
     const y = param && param.point ? param.point.y : null;
     if (s && y != null && typeof s.coordinateToPrice === 'function') {
         const px = s.coordinateToPrice(y);
-        if (px != null && Number.isFinite(Number(px))) return Number(px);
+        if (validPrice(px)) return Number(px);
     }
     // Fallback: library only gave bar time — use that bar's close.
     if (s && param && param.seriesData && typeof param.seriesData.get === 'function') {
         const bar = param.seriesData.get(s);
-        if (bar && typeof bar === 'object' && bar.close != null && Number.isFinite(Number(bar.close))) {
+        if (bar && typeof bar === 'object' && validPrice(bar.close)) {
             return Number(bar.close);
         }
         if (typeof bar === 'number' && Number.isFinite(bar)) return bar;
@@ -106,7 +113,7 @@ function _priceFromClickParam(param) {
     const rows = (typeof rawRows !== 'undefined' && rawRows.daily) ? rawRows.daily : [];
     if (key && rows.length) {
         const row = rows.find(r => String(r.date).slice(0, 10) === key);
-        if (row && row.close != null && Number.isFinite(Number(row.close))) return Number(row.close);
+        if (row && validPrice(row.close)) return Number(row.close);
     }
     return null;
 }
@@ -219,7 +226,12 @@ function removePriceAlert(price) {
     const sym = _alertSymbol();
     if (!sym || !Number.isFinite(snap)) return;
     const store = _readAlertStore();
-    const next = _alertsForSymbol(sym).filter(p => !_alertPricesNear(p, snap));
+    const next = _alertsForSymbol(sym);
+    // Match the chip label, whose toFixed rounding can differ from Math.round
+    // for legacy prices with more than two decimal places (e.g. 2.675).
+    const idx = next.findIndex(p => Number(p.toFixed(2)) === snap);
+    if (idx < 0) return;
+    next.splice(idx, 1);
     if (next.length) store[sym] = next;
     else delete store[sym];
     _writeAlertStore(store);

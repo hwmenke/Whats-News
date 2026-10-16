@@ -77,7 +77,17 @@ def get_symbol_codes():
 
 @app.route("/api/symbols", methods=["POST"])
 def add_symbol():
-    data = request.get_json(force=True) or {}
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    if "symbols" in data:
+        raw = data["symbols"]
+        if not isinstance(raw, list):
+            return jsonify({"error": "symbols must be a list"}), 400
+        if any(not isinstance(item, str) for item in raw):
+            return jsonify({"error": "symbols must contain only strings"}), 400
+    elif not isinstance(data.get("symbol", ""), str):
+        return jsonify({"error": "symbol must be a string"}), 400
 
     if "symbols" in data:
         raw = data.get("symbols") or []
@@ -129,7 +139,11 @@ def symbol_fresh(symbol):
 
 @app.route("/api/symbols/<string:symbol>/group", methods=["PUT"])
 def set_symbol_group(symbol):
-    data = request.get_json(force=True) or {}
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    if not isinstance(data.get("group_tag", ""), str):
+        return jsonify({"error": "group_tag must be a string"}), 400
     group_tag = data.get("group_tag", "").strip()
     db.set_symbol_group(symbol.upper(), group_tag)
     return jsonify({"message": "ok"})
@@ -152,6 +166,12 @@ def fetch_symbol(symbol):
 
 @app.route("/api/refresh", methods=["POST"])
 def refresh_all():
+    data = request.get_json(force=True, silent=True) if request.get_data() else {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    overlap_days = data.get("overlap_days", 3)
+    if isinstance(overlap_days, bool) or not isinstance(overlap_days, int) or overlap_days < 0:
+        return jsonify({"error": "overlap_days must be a nonnegative integer"}), 400
     if hasattr(db, "list_symbol_codes"):
         symbols = db.list_symbol_codes()
     else:
@@ -160,7 +180,7 @@ def refresh_all():
 
     def _fetch(sym):
         try:
-            return fetcher.fetch_and_store(sym)
+            return fetcher.fetch_and_store(sym, overlap_days=overlap_days)
         except Exception as exc:
             return {"symbol": sym, "error": str(exc)}
 
@@ -228,8 +248,17 @@ def get_ticker_lists():
 
 @app.route("/api/data-manager/fetch-batch", methods=["POST"])
 def fetch_batch():
-    body = request.get_json(force=True) or {}
-    tickers = [t.strip().upper() for t in body.get("tickers", []) if str(t).strip()]
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    raw_tickers = body.get("tickers", [])
+    if not isinstance(raw_tickers, list) or any(
+        not isinstance(ticker, str) for ticker in raw_tickers
+    ):
+        return jsonify({"error": "tickers must be a list of strings"}), 400
+    tickers = [ticker.strip().upper() for ticker in raw_tickers if ticker.strip()]
+    if not tickers:
+        return jsonify({"error": "tickers list is empty"}), 400
     start_date = body.get("start_date", "2000-01-01")
     delay = float(body.get("delay", 1.5))
     add_wl = bool(body.get("add_watchlist", True))

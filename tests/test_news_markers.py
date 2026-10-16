@@ -51,6 +51,12 @@ assert(weekend[0].text === 'N', 'headline letter');
 assert(weekend[0].color === '#c4b5fd', 'headline color');
 assert(weekend[0].color !== '#fde047', 'must not use EP yellow');
 
+const dateOnly = buildNewsPriceMarkers([
+    { title: 'Calendar date headline', publish_time: '2026-08-21' },
+], rows, true);
+assert(dateOnly.length === 1 && dateOnly[0].time === '2026-08-21',
+    'date-only headline must stay on its calendar date');
+
 const earn = buildNewsPriceMarkers([
     { title: 'Company reports quarterly earnings', publish_time: '2026-08-20T12:00:00Z' },
     { title: 'Street reacts to results', publish_time: '2026-08-20T18:00:00Z' },
@@ -151,6 +157,16 @@ const rows = [
 const key = newsDateKey('2026-08-21T14:00:00Z');
 assert(key === '2026-08-21', 'NY/UTC date key, got ' + key);
 assert(dailyBarIndexForDate(key, rows) === 3, 'matching bar index');
+
+assert(newsDateKey(' 2026-08-21 ') === '2026-08-21', 'preserve calendar date');
+assert(dailyBarIndexForDate(newsDateKey('2026-08-21'), rows) === 3,
+    'date-only headline jump must select the same day');
+assert(newsDateKey('2024-02-29') === '2024-02-29', 'valid leap day');
+for (const invalid of ['2026-02-29', '2026-02-30', '2026-13-01', '2026-08-00']) {
+    assert(newsDateKey(invalid) === null, 'invalid calendar date: ' + invalid);
+}
+assert(newsDateKey('2026-08-21T00:00:00Z') === '2026-08-20',
+    'timestamps must still convert to New York time');
 
 const weekend = newsDateKey('2026-08-22T15:00:00Z');
 assert(weekend === '2026-08-22', 'weekend key, got ' + weekend);

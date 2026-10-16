@@ -19,6 +19,7 @@ const PALETTE_COMMANDS = [
 let _paletteMode = 'jump';
 let _paletteItems = [];
 let _paletteIdx = 0;
+let _palettePreviousFocus = null;
 
 function isPaletteOpen() {
     const el = document.getElementById('desk-palette');
@@ -28,6 +29,10 @@ function isPaletteOpen() {
 function closeDeskPalette() {
     const el = document.getElementById('desk-palette');
     if (el) el.hidden = true;
+    document.getElementById('desk-palette-input')?.setAttribute?.('aria-expanded', 'false');
+    const previous = _palettePreviousFocus;
+    _palettePreviousFocus = null;
+    if (previous?.isConnected && typeof previous.focus === 'function') previous.focus();
 }
 
 function openDeskPalette(mode = 'jump') {
@@ -35,13 +40,16 @@ function openDeskPalette(mode = 'jump') {
     const input = document.getElementById('desk-palette-input');
     const title = document.getElementById('desk-palette-title');
     if (!el || !input) return;
+    if (el.hidden) _palettePreviousFocus = document.activeElement;
     _paletteMode = mode === 'command' ? 'command' : 'jump';
     if (title) title.textContent = _paletteMode === 'command' ? 'Commands' : 'Jump to symbol';
     input.placeholder = _paletteMode === 'command'
         ? 'Filter commands or type a ticker…'
         : 'Jump to ticker — does not add';
     el.hidden = false;
+    input.setAttribute?.('aria-expanded', 'true');
     input.value = '';
+    _paletteIdx = 0;
     renderPaletteResults('');
     requestAnimationFrame(() => input.focus());
 }
@@ -91,20 +99,29 @@ function paletteRows(query) {
     return rows.slice(0, 24);
 }
 
+function escapePaletteText(value) {
+    return String(value).replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[char]);
+}
+
 function renderPaletteResults(query) {
     const box = document.getElementById('desk-palette-results');
     if (!box) return;
+    const input = document.getElementById('desk-palette-input');
     _paletteItems = paletteRows(query);
-    if (_paletteIdx >= _paletteItems.length) _paletteIdx = 0;
+    if (_paletteIdx < 0 || _paletteIdx >= _paletteItems.length) _paletteIdx = 0;
     if (!_paletteItems.length) {
+        input?.removeAttribute?.('aria-activedescendant');
         box.innerHTML = '<div class="desk-palette-empty">No matches</div>';
         return;
     }
+    input?.setAttribute?.('aria-activedescendant', `desk-palette-option-${_paletteIdx}`);
     box.innerHTML = _paletteItems.map((item, i) => `
       <button type="button" class="desk-palette-row${i === _paletteIdx ? ' active' : ''}"
-              data-idx="${i}" role="option">
-        <span class="desk-palette-label">${item.label}</span>
-        <span class="desk-palette-meta">${item.hint || ''}</span>
+              id="desk-palette-option-${i}" data-idx="${i}" role="option" aria-selected="${i === _paletteIdx}">
+        <span class="desk-palette-label">${escapePaletteText(item.label)}</span>
+        <span class="desk-palette-meta">${escapePaletteText(item.hint || '')}</span>
       </button>
     `).join('');
     box.querySelectorAll('.desk-palette-row').forEach(btn => {
@@ -149,8 +166,22 @@ function initDeskPalette() {
     const input = document.getElementById('desk-palette-input');
     if (!overlay || !input) return;
     overlay.addEventListener('click', e => { if (e.target === overlay) closeDeskPalette(); });
+    overlay.addEventListener('keydown', e => {
+        if (e.key !== 'Tab' || !isPaletteOpen()) return;
+        const rows = [...overlay.querySelectorAll('.desk-palette-row')];
+        const first = input;
+        const last = rows[rows.length - 1] || input;
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    });
     input.addEventListener('input', () => { _paletteIdx = 0; renderPaletteResults(input.value); });
     input.addEventListener('keydown', e => {
+        if (e.isComposing || e.keyCode === 229) return;
         if (e.key === 'ArrowDown') {
             e.preventDefault();
             _paletteIdx = Math.min(_paletteItems.length - 1, _paletteIdx + 1);
@@ -168,6 +199,12 @@ function initDeskPalette() {
         }
     });
     document.addEventListener('keydown', e => {
+        if (e.isComposing || e.keyCode === 229) return;
+        if (e.key === 'Escape' && isPaletteOpen()) {
+            e.preventDefault();
+            closeDeskPalette();
+            return;
+        }
         const tag = (e.target && e.target.tagName) || '';
         const typing = tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable;
         if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {

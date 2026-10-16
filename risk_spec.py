@@ -105,23 +105,24 @@ def blank_stack(*, reason: str, n_names: int = 0, overlap: int = 0) -> dict:
     }
 
 
-def _closes_map(closes: list) -> dict[str, float]:
+def _closes_map(closes: list) -> dict[str, float | None]:
     out = {}
     for row in closes or []:
         if not row:
             continue
         date, px = row[0], _finite(row[1])
-        if date and px is not None and px > 0:
-            out[str(date)[:10]] = px
+        if date:
+            # Preserve missing quotes so adjacent daily returns cannot bridge gaps.
+            out[str(date)[:10]] = px if px is not None and px > 0 else None
     return out
 
 
-def _simple_returns(px_by_date: dict[str, float]) -> dict[str, float]:
+def _simple_returns(px_by_date: dict[str, float | None]) -> dict[str, float]:
     dates = sorted(px_by_date)
     out = {}
     for i in range(1, len(dates)):
         a, b = px_by_date[dates[i - 1]], px_by_date[dates[i]]
-        if a and a > 0:
+        if a is not None and b is not None and a > 0:
             r = b / a - 1.0
             if math.isfinite(r):
                 out[dates[i]] = r
@@ -205,10 +206,10 @@ def _sortino(rets: np.ndarray) -> float | None:
     if rets is None or len(rets) < MIN_OVERLAP:
         return None
     mu = float(np.mean(rets))
-    downside = rets[rets < 0.0]
-    if len(downside) < 2:
-        return None
-    dsig = float(np.std(downside, ddof=1))
+    # Downside deviation relative to rf=0 uses every observation, with
+    # non-negative returns contributing zero rather than being discarded.
+    downside = np.minimum(rets, 0.0)
+    dsig = float(np.sqrt(np.mean(np.square(downside))))
     if dsig <= 0 or not math.isfinite(dsig):
         return None
     return (mu / dsig) * ANN
@@ -220,7 +221,7 @@ def _perf_window(curve: list[dict], *, kind: str) -> float | None:
     last = curve[-1]
     last_nav = _finite(last.get("nav"))
     last_d = str(last.get("date") or "")[:10]
-    if last_nav is None or abs(last_nav) <= 1e-12 or not last_d:
+    if last_nav is None or not last_d:
         return None
     if kind == "day":
         prev = _finite(curve[-2].get("nav"))
@@ -246,10 +247,13 @@ def _perf_window(curve: list[dict], *, kind: str) -> float | None:
     else:
         return None
     base = None
-    for pt in curve:
+    for i, pt in enumerate(curve):
         d = str(pt.get("date") or "")
         if d.startswith(want):
-            base = _finite(pt.get("nav"))
+            # Period returns include the first trading day's move, measured
+            # from the preceding close. A partial-period curve has no baseline.
+            if i > 0:
+                base = _finite(curve[i - 1].get("nav"))
             break
     if base is None or abs(base) <= 1e-12:
         return None
@@ -302,7 +306,7 @@ def evaluate(ready: list[dict], *, curve: list[dict] | None = None,
             "side": m.get("side") or ("short" if (m.get("qty") or 0) < 0 else "long"),
             "mv": mv,
             "rets": rets,
-            "bars": len(cmap),
+            "bars": sum(px is not None for px in cmap.values()),
         })
     n = len(names)
     if n < MIN_NAMES:
@@ -508,10 +512,17 @@ def evaluate(ready: list[dict], *, curve: list[dict] | None = None,
     curve_kind = "synthetic_nav_from_stored_closes" if syn else None
     nav_arr = np.asarray([_finite(p.get("nav")) for p in syn if _finite(p.get("nav")) is not None], dtype=float)
     syn_rets = None
-    if len(nav_arr) >= 2:
-        prev = nav_arr[:-1]
-        ok = np.abs(prev) > 1e-12
-        syn_rets = ((nav_arr[1:] - prev) / np.abs(prev))[ok]
+    if len(syn) >= 2:
+        # Keep missing dates in place so a gap cannot become a daily return.
+        daily_nav = np.asarray([
+            value if (value := _finite(p.get("nav"))) is not None else np.nan
+            for p in syn
+        ], dtype=float)
+        prev, current = daily_nav[:-1], daily_nav[1:]
+        ok = np.isfinite(prev) & np.isfinite(current) & (np.abs(prev) > 1e-12)
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            syn_rets = (current[ok] - prev[ok]) / np.abs(prev[ok])
+        syn_rets = syn_rets[np.isfinite(syn_rets)]
 
     perf = {
         "day": _round(_perf_window(syn, kind="day"), 3),

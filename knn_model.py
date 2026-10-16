@@ -21,9 +21,18 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
 
     fast_sc = 2.0 / (fast + 1)
     slow_sc = 2.0 / (slow + 1)
-    kama_vals[window - 1] = prices[window - 1]
-
-    for i in range(window, len(prices)):
+    # Restart the recursive estimate after gaps, with a fresh full warmup.
+    valid_run = 0
+    for i in range(len(prices)):
+        if not np.isfinite(prices[i]):
+            valid_run = 0
+            continue
+        valid_run += 1
+        if valid_run < window:
+            continue
+        if valid_run == window:
+            kama_vals[i] = prices[i]
+            continue
         direction = abs(prices[i] - prices[i - window])
         volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
         er = direction / volatility if volatility != 0 else 0
@@ -34,11 +43,10 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
 
 
 def _safe_float(val):
-    """Convert to Python float or None."""
+    """Convert finite values to Python float; leave invalid values unavailable."""
     try:
-        if val is None or (isinstance(val, float) and np.isnan(val)):
-            return None
-        return float(val)
+        value = float(val)
+        return value if np.isfinite(value) else None
     except Exception:
         return None
 
@@ -73,7 +81,7 @@ def compute_knn_lookalike(symbol: str, k: int = 15) -> dict:
     # ── Build feature matrix ──────────────────────────────────────────────────
     df["rsi14"] = ta.momentum.RSIIndicator(close, window=14).rsi()
 
-    ret_1d = close.pct_change()
+    ret_1d = close.pct_change(fill_method=None)
     df["vol20_ann"] = ret_1d.rolling(20).std() * np.sqrt(252)
 
     macd_ind     = ta.trend.MACD(close, window_slow=26, window_fast=12, window_sign=9)
@@ -90,17 +98,20 @@ def compute_knn_lookalike(symbol: str, k: int = 15) -> dict:
         df[f"kama_dist_{period}"] = (close / kama_s.replace(0, np.nan)) - 1.0
 
     # Forward returns (for labelling neighbours)
-    df["fwd_1d"]  = close.pct_change(1).shift(-1)
-    df["fwd_5d"]  = close.pct_change(5).shift(-5)
-    df["fwd_20d"] = close.pct_change(20).shift(-20)
+    df["fwd_1d"]  = close.pct_change(1, fill_method=None).shift(-1)
+    df["fwd_5d"]  = close.pct_change(5, fill_method=None).shift(-5)
+    df["fwd_20d"] = close.pct_change(20, fill_method=None).shift(-20)
 
     FEATURE_COLS = [
         "rsi14", "vol20_ann", "macd_hist", "cci_norm",
         "vol_ratio", "kama_dist_10", "kama_dist_20", "kama_dist_50",
     ]
 
-    # Drop rows where any feature is NaN
-    df_feat = df[FEATURE_COLS + ["fwd_1d", "fwd_5d", "fwd_20d"]].dropna(subset=FEATURE_COLS)
+    # Only finite features can be scaled and compared by nearest neighbors.
+    finite_features = np.isfinite(df[FEATURE_COLS]).all(axis=1)
+    df_feat = df.loc[finite_features, FEATURE_COLS + ["fwd_1d", "fwd_5d", "fwd_20d"]]
+    if df.index[-1] not in df_feat.index:
+        return {"error": f"Latest bar has incomplete features for {symbol}"}
     if len(df_feat) < k + 1:
         return {"error": f"Not enough valid feature rows for {symbol}"}
 

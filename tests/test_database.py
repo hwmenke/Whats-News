@@ -62,6 +62,28 @@ class DatabaseScaleTests(unittest.TestCase):
             idx[-1].strftime("%Y-%m-%d"),
         )
 
+    def test_upsert_ohlcv_skips_nonfinite_values_in_every_column(self):
+        columns = ["open", "high", "low", "close", "volume"]
+        for column in columns:
+            for invalid in (np.inf, -np.inf, np.nan, "inf", "-inf", "nan"):
+                with self.subTest(column=column, invalid=invalid):
+                    db.remove_symbol("FINITE")
+                    frame = pd.DataFrame(
+                        [[10.0, 11.0, 9.0, 10.5, 0.0]] * 2,
+                        columns=columns,
+                        index=pd.date_range("2024-01-01", periods=2),
+                    )
+                    frame[column] = frame[column].astype(object)
+                    frame.loc[frame.index[1], column] = invalid
+                    self.assertEqual(db.upsert_ohlcv("FINITE", "daily", frame), 1)
+                    rows = db.get_ohlcv("FINITE", "daily")
+                    self.assertEqual(len(rows), 1)
+                    self.assertEqual(rows[0]["date"], "2024-01-01")
+                    self.assertEqual(rows[0]["volume"], 0.0)
+                    self.assertEqual(
+                        db.upsert_ohlcv("FINITE", "daily", frame.iloc[1:]), 0
+                    )
+
     def test_many_tickers_roundtrip(self):
         tickers = [f"T{i:04d}" for i in range(200)]
         result = db.add_symbols(tickers)

@@ -39,7 +39,11 @@ function writeDeskPrefs(patch) {
 let _deskRefreshTimer = null;
 
 function applyDeskRefreshInterval(sec) {
-    const n = Number(sec) || 0;
+    // Browser timers overflow above a signed 32-bit millisecond delay.
+    const value = (typeof sec === 'number' ||
+        (typeof sec === 'string' && sec.trim() !== '')) ? Number(sec) : NaN;
+    const n = Number.isFinite(value) && value >= 15 && value <= 2147483647 / 1000
+        ? value : 0;
     writeDeskPrefs({ refreshSec: n });
     if (_deskRefreshTimer) {
         clearInterval(_deskRefreshTimer);

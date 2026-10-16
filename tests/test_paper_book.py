@@ -102,6 +102,30 @@ class PaperBookTests(unittest.TestCase):
         symbols = {p["symbol"] for p in self.client.get("/api/book/positions").get_json()["positions"]}
         self.assertNotIn("SPY", symbols)
 
+    def test_invalid_position_updates_leave_book_unchanged(self):
+        position = pb.upsert_position(symbol="AAPL", qty=10)
+        url = f"/api/book/positions/{position['id']}"
+        for raw in ('{', '', 'null', '[]', '[1]', 'true', '42', '"text"'):
+            with self.subTest(body=raw):
+                response = self.client.put(url, data=raw, content_type="application/json")
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("error", response.get_json())
+                self.assertEqual(pb.list_positions(), [position])
+        for qty in (0, None, "invalid"):
+            with self.subTest(qty=qty):
+                response = self.client.put(url, json={"qty": qty})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("error", response.get_json())
+                self.assertEqual(pb.list_positions(), [position])
+        unchanged = self.client.put(url, json={})
+        self.assertEqual(unchanged.status_code, 200)
+        self.assertEqual(unchanged.get_json()["qty"], position["qty"])
+        self.assertEqual(unchanged.get_json()["id"], position["id"])
+        updated = self.client.put(url, json={"qty": 5})
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.get_json()["qty"], 5)
+        self.assertEqual(self.client.put("/api/book/positions/999999", json={}).status_code, 404)
+
     def test_var_on_synthetic_book(self):
         aapl = _gbm(260, 1)
         spy = _gbm(260, 2)

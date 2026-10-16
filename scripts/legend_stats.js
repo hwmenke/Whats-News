@@ -39,7 +39,8 @@ function _adrBarRangePct(bar) {
     const low = _legendStatNum(bar.low);
     const close = _legendStatNum(bar.close);
     if (!(high > 0 && low > 0 && close > 0)) return null;
-    return ((high - low) / close) * 100;
+    const pct = ((high - low) / close) * 100;
+    return Number.isFinite(pct) ? pct : null;
 }
 
 function computeAdrPct(rows, lookback, minBars) {
@@ -55,23 +56,29 @@ function computeAdrPct(rows, lookback, minBars) {
     if (ranges.length < nMin) return null;
     let sum = 0;
     for (let i = 0; i < ranges.length; i++) sum += ranges[i];
-    return sum / ranges.length;
+    const mean = sum / ranges.length;
+    return Number.isFinite(mean) ? mean : null;
 }
 
 function distToSma200Pct(close, sma200) {
     const c = _legendStatNum(close);
     const s = _legendStatNum(sma200);
     if (!(c > 0 && s > 0)) return null;
-    return (c / s - 1) * 100;
+    const pct = (c / s - 1) * 100;
+    return Number.isFinite(pct) ? pct : null;
 }
 
 // Same formula as _avg20Vol in charts.js: mean of prior 20 bars' volume
 // (slice [i-20, i), not including bar i). Missing volume counts as 0.
 function _legendAvg20Vol(rows, i) {
     if (!rows || i == null || i < 0) return null;
-    const windowVols = rows.slice(Math.max(0, i - 20), i).map(r => r.volume || 0);
+    const windowVols = rows.slice(Math.max(0, i - 20), i).map(r => {
+        const volume = _legendStatNum(r && r.volume);
+        return Number.isFinite(volume) ? volume : 0;
+    });
     if (!windowVols.length) return null;
-    return windowVols.reduce((a, b) => a + b, 0) / windowVols.length;
+    const avg = windowVols.reduce((a, b) => a + b, 0) / windowVols.length;
+    return Number.isFinite(avg) ? avg : null;
 }
 
 function computeRvol(rows, i) {
@@ -81,7 +88,8 @@ function computeRvol(rows, i) {
     if (bar == null || bar.volume == null || bar.volume === '') return null;
     const vol = _legendStatNum(bar.volume);
     if (!Number.isFinite(vol) || vol < 0) return null;
-    return vol / avg;
+    const ratio = vol / avg;
+    return Number.isFinite(ratio) ? ratio : null;
 }
 
 function high52AsOfBar(rows, i, lookback) {
@@ -101,7 +109,8 @@ function gapFrom52hPct(close, high52) {
     const c = _legendStatNum(close);
     const h = _legendStatNum(high52);
     if (!(c > 0 && h > 0)) return null;
-    return (c / h - 1) * 100;
+    const pct = (c / h - 1) * 100;
+    return Number.isFinite(pct) ? pct : null;
 }
 
 function formatAdrLegend(adr) {

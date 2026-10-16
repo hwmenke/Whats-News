@@ -13,6 +13,7 @@ Tests / single-process: DATA_SERVICE_MODE=embedded
 """
 
 import json
+import math
 import os
 import urllib.error
 import urllib.request
@@ -200,10 +201,16 @@ def market_moves_api():
 def market_moves_seed():
     """Add Market Moves Yahoo names to the desk. Bars arrive only via Fetch."""
     import market_moves as mm
-    body = request.get_json(force=True, silent=True) or {}
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
     groups = body.get("groups")
-    if groups is not None and not isinstance(groups, list):
-        return jsonify({"error": "groups must be a list"}), 400
+    valid_groups = {group["id"] for group in mm.GROUPS}
+    if groups is not None and (
+        not isinstance(groups, list)
+        or any(not isinstance(group, str) or group not in valid_groups for group in groups)
+    ):
+        return jsonify({"error": "groups must be a list of known group IDs"}), 400
     ensure_local_schema()
     try:
         return jsonify(mm.seed_symbols(groups)), 201
@@ -215,7 +222,9 @@ def market_moves_seed():
 def market_moves_fetch_core():
     """Seed + Fetch Yahoo for Indexes, Big Tech, and Sectors."""
     import market_moves as mm
-    body = request.get_json(force=True, silent=True) or {}
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
     try:
         delay = float(body.get("delay", 1.2))
     except (TypeError, ValueError):
@@ -374,9 +383,14 @@ def book_add_position():
 @app.route("/api/book/positions/<int:pid>", methods=["PUT"])
 def book_update_position(pid):
     import paper_book
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
     ensure_local_schema()
-    body = request.get_json(silent=True) or {}
-    row = paper_book.update_position(pid, **body)
+    try:
+        row = paper_book.update_position(pid, **body)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     if row is None:
         return jsonify({"error": "not found"}), 404
     return jsonify(row)
@@ -896,7 +910,17 @@ def promote_symbol_to_desk(symbol):
 
 @app.route("/api/symbols", methods=["POST"])
 def add_symbol():
-    data = request.get_json(force=True) or {}
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    if "symbols" in data:
+        raw = data["symbols"]
+        if not isinstance(raw, list):
+            return jsonify({"error": "symbols must be a list"}), 400
+        if any(not isinstance(item, str) for item in raw):
+            return jsonify({"error": "symbols must contain only strings"}), 400
+    elif not isinstance(data.get("symbol", ""), str):
+        return jsonify({"error": "symbol must be a string"}), 400
     try:
         if "symbols" in data:
             raw = data.get("symbols") or []
@@ -931,7 +955,11 @@ def delete_symbol(symbol):
 
 @app.route("/api/symbols/<string:symbol>/group", methods=["PUT"])
 def set_symbol_group(symbol):
-    data = request.get_json(force=True) or {}
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    if not isinstance(data.get("group_tag", ""), str):
+        return jsonify({"error": "group_tag must be a string"}), 400
     group_tag = data.get("group_tag", "").strip()
     try:
         return jsonify(md.set_symbol_group(symbol.upper(), group_tag))
@@ -978,12 +1006,13 @@ def fetch_symbol(symbol):
 
 @app.route("/api/refresh", methods=["POST"])
 def refresh_all():
+    body = request.get_json(force=True, silent=True) if request.get_data() else {}
+    if not isinstance(body, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    overlap = body.get("overlap_days", 3)
+    if isinstance(overlap, bool) or not isinstance(overlap, int) or overlap < 0:
+        return jsonify({"error": "overlap_days must be a nonnegative integer"}), 400
     try:
-        body = request.get_json(force=True, silent=True) or {}
-        try:
-            overlap = int(body.get("overlap_days", 3))
-        except (TypeError, ValueError):
-            overlap = 3
         return jsonify(md.refresh_all(overlap_days=overlap))
     except Exception as exc:
         return _data_error(exc)
@@ -1059,6 +1088,10 @@ def conditional_distribution(symbol):
         return jsonify({"error": "conditions must be a list"}), 400
 
     horizons = body.get("horizons", [5, 10])
+    if not isinstance(horizons, list) or any(
+        isinstance(h, bool) or not isinstance(h, (int, str)) for h in horizons
+    ):
+        return jsonify({"error": "horizons must be a list of integers"}), 400
     try:
         horizons = [int(h) for h in horizons]
     except (TypeError, ValueError):
@@ -1086,7 +1119,12 @@ def conditional_distribution(symbol):
 
 @app.route("/api/knn/<string:symbol>")
 def get_knn(symbol):
-    k = int(request.args.get("k", 15))
+    try:
+        k = int(request.args.get("k", 15))
+    except ValueError:
+        return jsonify({"error": "k must be an integer"}), 400
+    if k <= 0:
+        return jsonify({"error": "k must be a positive integer"}), 400
     result = knn_model.compute_knn_lookalike(symbol.upper(), k=k)
     if "error" in result:
         return jsonify(result), 404
@@ -1149,7 +1187,16 @@ def trend_scan():
 
     freq       = request.args.get("freq",   "daily")
     method     = request.args.get("method", "kama")
-    rsi_period = int(request.args.get("rsi_period", 14))
+    if freq not in ("daily", "weekly"):
+        return jsonify({"error": "freq must be 'daily' or 'weekly'"}), 400
+    if method not in ("kama", "adma"):
+        return jsonify({"error": "method must be 'kama' or 'adma'"}), 400
+    try:
+        rsi_period = int(request.args.get("rsi_period", 14))
+    except (TypeError, ValueError):
+        return jsonify({"error": "rsi_period must be a positive integer"}), 400
+    if rsi_period <= 0:
+        return jsonify({"error": "rsi_period must be a positive integer"}), 400
     desk = request.args.get("desk", "").lower() in ("1", "true", "yes")
     try:
         if desk:
@@ -1187,6 +1234,8 @@ def trend_scan():
 
             close = ohlcv["close"]
             price = float(close.iloc[-1])
+            if not math.isfinite(price):
+                return {"symbol": sym, "error": "Latest close is unavailable"}
             if price <= 0:
                 return {"symbol": sym, "error": "Zero price"}
 
@@ -1361,9 +1410,17 @@ def universe_registry():
 @app.route("/api/universe/sync", methods=["POST"])
 def universe_sync():
     """Register index constituents in DB (no Yahoo download)."""
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
+    indices = body.get("indices", ["all"])
+    if not isinstance(indices, list) or any(
+        not isinstance(idx, str) or
+        (idx != "all" and idx not in index_universe.INDEX_REGISTRY)
+        for idx in indices
+    ):
+        return jsonify({"error": "indices must be a list of supported index IDs"}), 400
     try:
-        body = request.get_json(force=True) or {}
-        indices = body.get("indices") or ["all"]
         merged = index_universe.merged_universe(indices)
         if data_client.use_embedded():
             import database as db
@@ -1386,7 +1443,9 @@ def universe_archive():
     SSE batch: full history download for symbols in DB (optionally only missing).
     Body: {start_date, delay, only_missing, limit}
     """
-    body = request.get_json(force=True) or {}
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
     start_date = body.get("start_date", "2000-01-01")
     delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
     only_missing = bool(body.get("only_missing", False))
@@ -1442,7 +1501,9 @@ def universe_archive():
 @app.route("/api/universe/refresh", methods=["POST"])
 def universe_refresh():
     """SSE incremental refresh for all symbols in DB."""
-    body = request.get_json(force=True) or {}
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
     delay = max(0.2, min(float(body.get("delay", 0.8)), 10.0))
     try:
         overlap = int(body.get("overlap_days", 5))
@@ -1547,14 +1608,23 @@ def fetch_batch():
     """
     Proxy SSE batch fetch to the data service (or run embedded for tests).
     """
-    body = request.get_json(force=True) or {}
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    raw_tickers = body.get("tickers", [])
+    if not isinstance(raw_tickers, list) or any(
+        not isinstance(ticker, str) for ticker in raw_tickers
+    ):
+        return jsonify({"error": "tickers must be a list of strings"}), 400
+    tickers = [ticker.strip().upper() for ticker in raw_tickers if ticker.strip()]
+    if not tickers:
+        return jsonify({"error": "tickers list is empty"}), 400
 
     if data_client.use_embedded():
         import time
         import database as db
         import data_fetcher as fetcher
 
-        tickers = [t.strip().upper() for t in body.get("tickers", []) if str(t).strip()]
         start_date = body.get("start_date", "2000-01-01")
         delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
         add_wl = bool(body.get("add_watchlist", True))

@@ -49,13 +49,18 @@ class ConditionError(ValueError):
 
 def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     """Wilder RSI via exponential moving average (matches indicators.py)."""
+    close = close.replace([np.inf, -np.inf], np.nan)
     delta = close.diff()
     gain = delta.clip(lower=0)
     loss = (-delta).clip(lower=0)
     avg_gain = gain.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
     rs = avg_gain / avg_loss.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    # Gains without losses are overbought; warmup and flat bars stay missing.
+    # Smoothing carries estimates across gaps; bars without quotes cannot
+    # supply an RSI signal, even when the previous estimate was valid.
+    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0).where(close.notna())
 
 
 def _macd_line(close: pd.Series) -> pd.Series:
@@ -82,7 +87,9 @@ def resolve_feature(name, df: pd.DataFrame) -> pd.Series:
     period = int(match.group(2)) if match.group(2) else None
 
     if base == "rsi":
-        return _rsi(close, period or 14)
+        if period == 0:
+            raise ConditionError("RSI period must be positive, e.g. RSI(14)")
+        return _rsi(close, 14 if period is None else period)
     if base in ("ma", "sma"):
         if not period:
             raise ConditionError("Moving average needs a period, e.g. MA(50)")
@@ -90,18 +97,27 @@ def resolve_feature(name, df: pd.DataFrame) -> pd.Series:
     if base == "roc":
         if not period:
             raise ConditionError("ROC needs a period, e.g. ROC(20)")
-        return close.pct_change(period) * 100.0  # percent momentum over `period` bars
+        valid_close = close.replace([np.inf, -np.inf], np.nan)
+        momentum = valid_close.pct_change(period, fill_method=None) * 100.0
+        return momentum.replace([np.inf, -np.inf], np.nan)
     if base == "ema":
         if not period:
             raise ConditionError("EMA needs a period, e.g. EMA(20)")
-        return close.ewm(span=period, adjust=False).mean()
-    if base in ("macd", "macd_line"):
-        return _macd_line(close)
-    if base == "macd_signal":
-        return _macd_line(close).ewm(span=9, adjust=False).mean()
-    if base == "macd_hist":
-        line = _macd_line(close)
-        return line - line.ewm(span=9, adjust=False).mean()
+        valid_close = close.replace([np.inf, -np.inf], np.nan)
+        # EWM carries the previous value across missing observations; that
+        # estimate must not turn a bar without a quote into a filter match.
+        return valid_close.ewm(span=period, adjust=False).mean().where(valid_close.notna())
+    if base in ("macd", "macd_line", "macd_signal", "macd_hist"):
+        valid_close = close.replace([np.inf, -np.inf], np.nan)
+        line = _macd_line(valid_close)
+        if base == "macd_signal":
+            result = line.ewm(span=9, adjust=False).mean()
+        elif base == "macd_hist":
+            result = line - line.ewm(span=9, adjust=False).mean()
+        else:
+            result = line
+        # Like EMA, MACD estimates across gaps must not match missing bars.
+        return result.where(valid_close.notna())
 
     raise ConditionError(f"Unknown feature: {name!r}")
 
@@ -130,17 +146,17 @@ def _normalize_condition(cond: dict) -> dict:
     right = cond.get("right", cond.get("value"))
     if left is None or op is None or right is None:
         raise ConditionError("Condition needs left, op and right")
-    if op not in OPS:
+    if not isinstance(op, str) or op not in OPS:
         raise ConditionError(f"Unsupported operator: {op!r}")
     return {"left": left, "op": op, "right": right}
 
 
 def evaluate_condition(df: pd.DataFrame, cond: dict) -> pd.Series:
-    """Boolean mask for one condition. NaN comparisons resolve to False."""
+    """Boolean mask for one condition. Non-finite operands never match."""
     norm = _normalize_condition(cond)
     left = _operand(norm["left"], df)
     right = _operand(norm["right"], df)
-    mask = OPS[norm["op"]](left, right)
+    mask = OPS[norm["op"]](left, right) & np.isfinite(left) & np.isfinite(right)
     if np.isscalar(mask):
         mask = pd.Series(bool(mask), index=df.index)
     return mask.reindex(df.index).fillna(False).astype(bool)
@@ -159,7 +175,9 @@ def forward_returns(close: pd.Series, horizon: int) -> pd.Series:
 
     value[t] = close[t + horizon] / close[t] - 1. The last `horizon` bars are NaN.
     """
-    return close.pct_change(horizon).shift(-horizon)
+    valid_close = close.replace([np.inf, -np.inf], np.nan)
+    returns = valid_close.pct_change(horizon, fill_method=None).shift(-horizon)
+    return returns.replace([np.inf, -np.inf], np.nan)
 
 
 def _describe(returns: pd.Series) -> dict:

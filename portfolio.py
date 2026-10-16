@@ -5,6 +5,7 @@ portfolio.py — Fast watchlist / PM-desk snapshots for technical analysis.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from math import isfinite
 
 import numpy as np
 import pandas as pd
@@ -62,7 +63,7 @@ def spy_rs_overlay(symbol_rows: list | None, spy_rows: list | None) -> dict:
             px = float(row.get("close"))
         except (TypeError, ValueError):
             continue
-        if day and px > 0:
+        if day and isfinite(px) and px > 0:
             spy_close[day] = px
 
     aligned: list[tuple[str, float, float]] = []
@@ -77,7 +78,7 @@ def spy_rs_overlay(symbol_rows: list | None, spy_rows: list | None) -> dict:
             px = float(row.get("close"))
         except (TypeError, ValueError):
             continue
-        if px <= 0:
+        if not isfinite(px) or px <= 0:
             continue
         aligned.append((day, px, px / spy_px))
 
@@ -148,7 +149,7 @@ def spy_rs_weekly_from_daily_points(
             ratio = float(point.get("ratio"))
         except (TypeError, ValueError):
             continue
-        if day and ratio > 0:
+        if day and isfinite(ratio) and ratio > 0:
             daily.append((day, ratio))
     daily.sort(key=lambda item: item[0])
 
@@ -161,7 +162,7 @@ def spy_rs_weekly_from_daily_points(
             px = float(row.get("close"))
         except (TypeError, ValueError):
             continue
-        if day and px > 0:
+        if day and isfinite(px) and px > 0:
             weeks.append((day, px))
 
     if not daily or not weeks:
@@ -222,25 +223,34 @@ def linked_ohlc_bar(
 
     Daily → first weekly bar with date >= daily (the covering Friday bar).
     Weekly → last daily bar with date <= weekly (that week's last print).
+    Missing covering weeks or daily prints in that week return None.
     Chart range sync is separate; this is bar readout only.
     """
     key = str(date_key or "")[:10]
     if not key:
+        return None
+    try:
+        source_date = date.fromisoformat(key)
+    except ValueError:
         return None
     freq = (source_freq or "").lower()
     if freq == "daily":
         rows = weekly_rows or []
         for row in rows:
             if _bar_date(row) >= key:
-                return row
-        return rows[-1] if rows else None
+                week_limit = (source_date + timedelta(days=6)).isoformat()
+                return row if _bar_date(row) <= week_limit else None
+        return None
     found = None
     for row in daily_rows or []:
         if _bar_date(row) <= key:
             found = row
         else:
             break
-    return found
+    week_start = (source_date - timedelta(days=6)).isoformat()
+    if found and _bar_date(found) >= week_start:
+        return found
+    return None
 
 
 ADR_LOOKBACK = 20
@@ -260,8 +270,9 @@ def _adr_bar_range_pct(row) -> float | None:
         close = float(row.get("close"))
     except (TypeError, ValueError):
         return None
-    if high > 0 and low > 0 and close > 0:
-        return ((high - low) / close) * 100
+    if all(isfinite(value) and value > 0 for value in (high, low, close)):
+        pct = ((high - low) / close) * 100
+        return pct if isfinite(pct) else None
     return None
 
 
@@ -285,18 +296,20 @@ def legend_adr_pct(
             break
     if len(ranges) < min_bars:
         return None
-    return sum(ranges) / len(ranges)
+    mean = sum(ranges) / len(ranges)
+    return mean if isfinite(mean) else None
 
 
 def legend_sma200_dist_pct(close, sma200) -> float | None:
-    """(close / sma200 - 1) * 100. Omit if either is missing or not > 0."""
+    """(close / sma200 - 1) * 100. Omit invalid inputs or non-finite results."""
     try:
         c = float(close)
         s = float(sma200)
     except (TypeError, ValueError):
         return None
-    if c > 0 and s > 0:
-        return (c / s - 1) * 100
+    if isfinite(c) and isfinite(s) and c > 0 and s > 0:
+        pct = (c / s - 1) * 100
+        return pct if isfinite(pct) else None
     return None
 
 
@@ -307,7 +320,7 @@ def format_legend_adr(adr) -> str:
         n = float(adr)
     except (TypeError, ValueError):
         return ""
-    if n != n:  # NaN
+    if not isfinite(n):
         return ""
     return f"ADR {n:.2f}%"
 
@@ -319,23 +332,24 @@ def format_legend_sma200_dist(pct) -> str:
         n = float(pct)
     except (TypeError, ValueError):
         return ""
-    if n != n:
+    if not isfinite(n):
         return ""
     sign = "+" if n >= 0 else LEGEND_MINUS
     return f"200 {sign}{abs(n):.1f}%"
 
 
 def tape_atr_pct(atr, close) -> float | None:
-    """ATR / close * 100. Omit if ATR or close is missing or not > 0."""
+    """ATR / close * 100. Omit missing, non-finite, or non-positive values."""
     try:
         a = float(atr)
         c = float(close)
     except (TypeError, ValueError):
         return None
-    if a != a or c != c:  # NaN
+    if not isfinite(a) or not isfinite(c):
         return None
     if a > 0 and c > 0:
-        return (a / c) * 100
+        pct = (a / c) * 100
+        return pct if isfinite(pct) else None
     return None
 
 
@@ -347,7 +361,7 @@ def format_tape_atr_pct(pct) -> str:
         n = float(pct)
     except (TypeError, ValueError):
         return ""
-    if n != n:
+    if not isfinite(n):
         return ""
     return f"ATR {n:.1f}%"
 
@@ -366,13 +380,13 @@ def last_sma(close: pd.Series, window: int = SMA200_BARS) -> float | None:
         val = float(s.iloc[-window:].astype(float).mean(skipna=False))
     except (TypeError, ValueError):
         return None
-    if val != val or not (val > 0):
+    if not isfinite(val) or not (val > 0):
         return None
     return val
 
 
 def _legend_bar_volume(row) -> float:
-    """Match JS `r.volume || 0`: missing / non-numeric / NaN volume counts as 0."""
+    """Missing, non-numeric, or non-finite prior volume counts as 0."""
     if not isinstance(row, dict):
         return 0.0
     raw = row.get("volume")
@@ -382,7 +396,7 @@ def _legend_bar_volume(row) -> float:
         vol = float(raw)
     except (TypeError, ValueError):
         return 0.0
-    if vol != vol:  # NaN
+    if not isfinite(vol):
         return 0.0
     return vol
 
@@ -403,7 +417,8 @@ def legend_avg20_vol(rows: list | None, i) -> float | None:
     window = rows[max(0, idx - LEGEND_RVOL_LOOKBACK) : idx]
     if not window:
         return None
-    return sum(_legend_bar_volume(r) for r in window) / len(window)
+    avg = sum(_legend_bar_volume(r) for r in window) / len(window)
+    return avg if isfinite(avg) else None
 
 
 def legend_rvol(rows: list | None, i) -> float | None:
@@ -421,9 +436,10 @@ def legend_rvol(rows: list | None, i) -> float | None:
         vol = float(rows[idx].get("volume"))
     except (TypeError, ValueError, AttributeError):
         return None
-    if vol != vol or vol < 0:
+    if not isfinite(vol) or vol < 0:
         return None
-    return vol / avg
+    ratio = vol / avg
+    return ratio if isfinite(ratio) else None
 
 
 def legend_high52(rows: list | None, i, lookback: int = LEGEND_52W_BARS) -> float | None:
@@ -448,7 +464,7 @@ def legend_high52(rows: list | None, i, lookback: int = LEGEND_52W_BARS) -> floa
             h = float(row.get("high"))
         except (TypeError, ValueError):
             continue
-        if h != h:
+        if not isfinite(h):
             continue
         hi = h if hi is None else max(hi, h)
     return hi
@@ -461,8 +477,9 @@ def legend_gap_from_52h_pct(close, high52) -> float | None:
         h = float(high52)
     except (TypeError, ValueError):
         return None
-    if c > 0 and h > 0:
-        return (c / h - 1) * 100
+    if isfinite(c) and isfinite(h) and c > 0 and h > 0:
+        pct = (c / h - 1) * 100
+        return pct if isfinite(pct) else None
     return None
 
 
@@ -485,7 +502,7 @@ def format_legend_52h_gap(pct) -> str:
         n = float(pct)
     except (TypeError, ValueError):
         return ""
-    if n != n:
+    if not isfinite(n):
         return ""
     mag = f"{abs(n):.1f}"
     if mag == "0.0":
@@ -546,7 +563,11 @@ def position_size(
     Prefer a user/structural stop (`stop_price`). Fall back to atr_mult×ATR
     when no stop is provided (Brandt / Neumann risk box).
     """
-    if not price or risk_dollars <= 0:
+    if (
+        not price or not isfinite(price) or price <= 0
+        or not isfinite(risk_dollars) or risk_dollars <= 0
+        or (stop_price is not None and not isfinite(float(stop_price)))
+    ):
         return {
             "shares": None,
             "risk_dollars": risk_dollars,
@@ -569,7 +590,24 @@ def position_size(
             "notional": None,
             "stop_source": None,
         }
-    shares = int(risk_dollars // stop_distance) if stop_distance > 0 else 0
+    if not isfinite(stop_distance) or stop_distance <= 0:
+        return {
+            "shares": None,
+            "risk_dollars": risk_dollars,
+            "stop_distance": None,
+            "notional": None,
+            "stop_source": None,
+        }
+    share_count = risk_dollars // stop_distance
+    if not isfinite(share_count):
+        return {
+            "shares": None,
+            "risk_dollars": risk_dollars,
+            "stop_distance": None,
+            "notional": None,
+            "stop_source": None,
+        }
+    shares = int(share_count)
     return {
         "shares": shares,
         "risk_dollars": risk_dollars,
@@ -644,13 +682,16 @@ def _last_valid(series: pd.Series):
 
 
 def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
+    close = close.replace([np.inf, -np.inf], np.nan)
     delta = close.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
     avg_gain = gain.ewm(alpha=1 / window, min_periods=window, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1 / window, min_periods=window, adjust=False).mean()
     rs = avg_gain / avg_loss.replace(0, np.nan)
-    return 100 - (100 / (1 + rs))
+    rsi = 100 - (100 / (1 + rs))
+    # Preserve warmup/flat missing values, but gains without losses mean RSI 100.
+    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0).where(close.notna())
 
 
 def _atr(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 14) -> pd.Series:
@@ -718,7 +759,9 @@ def snapshot_symbol(symbol: str) -> dict:
     last = float(close.iloc[-1])
     prev = float(close.iloc[-2]) if len(close) > 1 else last
     chg = last - prev
-    chg_pct = (chg / prev * 100) if prev else 0.0
+    chg_pct = (chg / prev * 100) if isfinite(last) and isfinite(prev) and prev != 0 else None
+    if chg_pct is not None and not isfinite(chg_pct):
+        chg_pct = None
 
     # ── Momentum / breakout metrics (Qullamaggie loop) ──────────────
     # Distance from N-day high, 0 = sitting at the high (near-high queue).
@@ -753,7 +796,10 @@ def snapshot_symbol(symbol: str) -> dict:
         + (1 if is_ep else 0)
     )
 
-    rsi14 = _last_valid(_rsi(close, 14))
+    # The snapshot describes the latest bar, so do not reuse an older RSI
+    # when that bar's quote is unavailable.
+    latest_rsi = _rsi(close, 14).iloc[-1]
+    rsi14 = float(latest_rsi) if np.isfinite(latest_rsi) else None
     kama20 = _last_valid(_kama(close, 20))
     atr14 = _last_valid(_atr(high, low, close, 14))
     sma200 = last_sma(close, SMA200_BARS)
@@ -776,8 +822,15 @@ def snapshot_symbol(symbol: str) -> dict:
 
     week_ago = close.iloc[-6] if len(close) >= 6 else close.iloc[0]
     month_ago = close.iloc[-22] if len(close) >= 22 else close.iloc[0]
-    ret_5d = (last / float(week_ago) - 1) * 100 if week_ago else None
-    ret_21d = (last / float(month_ago) - 1) * 100 if month_ago else None
+    def _period_return(baseline):
+        baseline = float(baseline)
+        if not isfinite(last) or not isfinite(baseline) or baseline == 0:
+            return None
+        result = (last / baseline - 1) * 100
+        return result if isfinite(result) else None
+
+    ret_5d = _period_return(week_ago)
+    ret_21d = _period_return(month_ago)
 
     # Weekly regime (same KAMA20 logic on weekly bars)
     w_df = md.get_ohlcv_df(sym, "weekly", limit=80)
@@ -801,7 +854,7 @@ def snapshot_symbol(symbol: str) -> dict:
         "ready": True,
         "price": round(last, 2),
         "change": round(chg, 2),
-        "change_pct": round(chg_pct, 2),
+        "change_pct": round(chg_pct, 2) if chg_pct is not None else None,
         "ret_5d_pct": round(ret_5d, 2) if ret_5d is not None else None,
         "ret_21d_pct": round(ret_21d, 2) if ret_21d is not None else None,
         "rsi14": round(rsi14, 1) if rsi14 is not None else None,
@@ -872,7 +925,10 @@ def portfolio_snapshot() -> dict:
     # Book RS only — not a published rating.
     ranked = sorted(
         ready,
-        key=lambda r: (r.get("ret_21d_pct") is not None, r.get("ret_21d_pct") or -1e9),
+        key=lambda r: (
+            r.get("ret_21d_pct") is not None,
+            r["ret_21d_pct"] if r.get("ret_21d_pct") is not None else 0,
+        ),
         reverse=True,
     )
     for i, row in enumerate(ranked, start=1):

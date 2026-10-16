@@ -8,6 +8,7 @@ yfinance's public Yahoo news payload (same source as the existing /news page).
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 import yfinance as yf
@@ -16,15 +17,20 @@ DEFAULT_PROVIDER = "Yahoo Finance"
 DEFAULT_PROVIDER_URL = "https://finance.yahoo.com/"
 
 
+def _text_value(*values: Any) -> str:
+    """Keep provider text without coercing malformed payloads into strings."""
+    return next((value for value in values if isinstance(value, str) and value.strip()), "")
+
+
 def _url_from_content(content: dict) -> str:
     for key in ("canonicalUrl", "clickThroughUrl"):
         nested = content.get(key) or {}
         if isinstance(nested, dict):
             url = nested.get("url") or ""
-            if url:
-                return url
-        elif isinstance(nested, str) and nested:
-            return nested
+            if isinstance(url, str) and url.strip():
+                return url.strip()
+        elif isinstance(nested, str) and nested.strip():
+            return nested.strip()
     return ""
 
 
@@ -40,30 +46,41 @@ def article_from_item(item: Any, symbol: Optional[str] = None) -> dict:
         provider = content.get("provider") or {}
         if not isinstance(provider, dict):
             provider = {}
+        # Modern Yahoo dates are ISO strings; malformed values can break
+        # client sorting or be interpreted as fabricated epoch dates.
+        publish_time = content.get("pubDate")
+        if not isinstance(publish_time, str):
+            publish_time = ""
         article = {
-            "title": content.get("title") or "No title",
-            "summary": content.get("summary") or content.get("description") or "",
+            "title": _text_value(content.get("title")) or "No title",
+            "summary": _text_value(content.get("summary"), content.get("description")),
             "url": _url_from_content(content),
-            "publish_time": content.get("pubDate") or "",
-            "provider": provider.get("displayName") or DEFAULT_PROVIDER,
-            "provider_url": provider.get("url") or DEFAULT_PROVIDER_URL,
+            "publish_time": publish_time,
+            "provider": _text_value(provider.get("displayName")) or DEFAULT_PROVIDER,
+            "provider_url": _text_value(provider.get("url")) or DEFAULT_PROVIDER_URL,
         }
     else:
         # Older yfinance shape (title/link at top level).
         ts = item.get("providerPublishTime")
         publish_time = ""
-        if isinstance(ts, (int, float)) and ts > 0:
-            from datetime import datetime, timezone
-
-            publish_time = datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
+        if isinstance(ts, (int, float)) and not isinstance(ts, bool) and ts > 0:
+            try:
+                publish_time = datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
+            except (OverflowError, OSError, ValueError):
+                # A malformed provider date should not discard the headline.
+                pass
         article = {
-            "title": item.get("title") or "No title",
-            "summary": item.get("summary") or "",
-            "url": item.get("link") or item.get("url") or "",
+            "title": _text_value(item.get("title")) or "No title",
+            "summary": _text_value(item.get("summary")),
+            "url": next(
+                (url.strip() for url in (item.get("link"), item.get("url"))
+                 if isinstance(url, str) and url.strip()),
+                "",
+            ),
             "publish_time": publish_time,
-            "provider": item.get("publisher") or DEFAULT_PROVIDER,
+            "provider": _text_value(item.get("publisher")) or DEFAULT_PROVIDER,
             "provider_url": DEFAULT_PROVIDER_URL,
         }
 
@@ -83,6 +100,10 @@ def articles_from_news_items(
     if not news_items:
         return articles
     for item in news_items:
+        # Malformed provider entries are not articles; do not manufacture
+        # placeholder headlines or include them in the article count.
+        if not isinstance(item, dict) or not item:
+            continue
         article = article_from_item(item, symbol=symbol)
         url = article.get("url") or ""
         if seen_urls is not None and url:
@@ -97,6 +118,17 @@ def _ticker_news(symbol: str, ticker_factory: Optional[Callable[[str], Any]] = N
     factory = ticker_factory or yf.Ticker
     ticker = factory(symbol)
     return list(ticker.news or [])
+
+
+def _publication_sort_key(article: dict) -> datetime:
+    """Compare publication instants; keep missing or malformed dates last."""
+    try:
+        published = datetime.fromisoformat(article.get("publish_time") or "")
+        if published.tzinfo is None:
+            published = published.replace(tzinfo=timezone.utc)
+        return published.astimezone(timezone.utc)
+    except (TypeError, ValueError, OverflowError):
+        return datetime.min.replace(tzinfo=timezone.utc)
 
 
 def watchlist_news(
@@ -121,7 +153,7 @@ def watchlist_news(
         except Exception as exc:
             errors.append({"symbol": symbol, "error": str(exc)})
 
-    all_articles.sort(key=lambda x: x.get("publish_time") or "", reverse=True)
+    all_articles.sort(key=_publication_sort_key, reverse=True)
 
     result: dict = {
         "articles": all_articles,
@@ -153,7 +185,8 @@ def symbol_news(
                 },
                 200,
             )
-        articles = articles_from_news_items(items)
+        articles = articles_from_news_items(items, seen_urls=set())
+        articles.sort(key=_publication_sort_key, reverse=True)
         return (
             {
                 "symbol": sym,

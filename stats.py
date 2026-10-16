@@ -11,13 +11,15 @@ KAMA_PERIODS = [10, 20, 50]
 
 def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     """Wilder RSI via exponential moving average."""
+    close = close.replace([np.inf, -np.inf], np.nan)
     delta    = close.diff()
     gain     = delta.clip(lower=0)
     loss     = (-delta).clip(lower=0)
     avg_gain = gain.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
     rs       = avg_gain / avg_loss.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0).where(close.notna())
 
 
 def _safe(val):
@@ -48,9 +50,19 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
 
     fast_sc = 2.0 / (fast + 1)
     slow_sc = 2.0 / (slow + 1)
-    kama_vals[window - 1] = prices[window - 1]
-
-    for i in range(window, len(prices)):
+    # A quote gap resets the recursive estimate. Seed again only after a
+    # complete warmup so later valid history can still inform the analysis.
+    valid_run = 0
+    for i in range(len(prices)):
+        if not np.isfinite(prices[i]):
+            valid_run = 0
+            continue
+        valid_run += 1
+        if valid_run < window:
+            continue
+        if valid_run == window:
+            kama_vals[i] = prices[i]
+            continue
         direction = abs(prices[i] - prices[i - window])
         volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
         er = direction / volatility if volatility != 0 else 0
@@ -66,10 +78,17 @@ def compute_stats(symbol: str) -> dict:
     if df.empty:
         return {"error": "No data found"}
 
+    # Invalid quotes must remain gaps, including when used as a baseline:
+    # dividing a finite close by infinity otherwise fabricates a total loss.
+    df = df.copy()
+    df['close'] = df['close'].replace([np.inf, -np.inf], np.nan)
+
     # 1. Base Returns
-    df['ret_1d'] = df['close'].pct_change()
+    # Missing closes must leave returns missing, rather than imply a flat
+    # session or a move measured across a gap in the price history.
+    df['ret_1d'] = df['close'].pct_change(fill_method=None).replace([np.inf, -np.inf], np.nan)
     df['fwd_ret_1d'] = df['ret_1d'].shift(-1)
-    df['fwd_ret_5d'] = df['close'].pct_change(5).shift(-5)
+    df['fwd_ret_5d'] = df['close'].pct_change(5, fill_method=None).shift(-5).replace([np.inf, -np.inf], np.nan)
 
     # 2. Key Metrics
     returns = df['ret_1d'].dropna()
@@ -84,7 +103,9 @@ def compute_stats(symbol: str) -> dict:
         vol_ann = ret_std * np.sqrt(252) if pd.notna(ret_std) else None
         sharpe = (ret_mean / ret_std * np.sqrt(252)) if pd.notna(ret_std) and ret_std != 0 else None
 
-        cumulative = (1 + returns).cumprod()
+        # Include the initial value so a loss on the first return counts
+        # toward drawdown rather than becoming the starting peak.
+        cumulative = pd.concat([pd.Series([1.0]), (1 + returns).cumprod()], ignore_index=True)
         peak = cumulative.cummax()
         drawdown = (cumulative - peak) / peak
         max_dd = drawdown.min()
@@ -133,8 +154,8 @@ def compute_stats(symbol: str) -> dict:
     for period in KAMA_PERIODS:
         kama_col = f'kama_{period}'
         gap_col = f'price_vs_kama_{period}'
-        df[kama_col] = _kama(df['close'], window=period)
-        df[gap_col] = (df['close'] / df[kama_col].replace(0, np.nan)) - 1.0
+        df[kama_col] = _kama(df['close'], window=period).replace([np.inf, -np.inf], np.nan)
+        df[gap_col] = ((df['close'] / df[kama_col].replace(0, np.nan)) - 1.0).replace([np.inf, -np.inf], np.nan)
 
         kama_distance_analysis["fwd_1d"][str(period)] = get_binned_performance(gap_col, 'fwd_ret_1d')
         kama_distance_analysis["fwd_5d"][str(period)] = get_binned_performance(gap_col, 'fwd_ret_5d')

@@ -23,6 +23,98 @@ def _gbm(n, seed, mu=0.0004, sigma=0.012):
     return 100.0 * np.exp(np.cumsum(r))
 
 
+class StoredCloseReturnsTests(unittest.TestCase):
+    def test_invalid_quotes_do_not_bridge_daily_returns(self):
+        for missing in (None, float("nan"), float("inf"), 0, -1, "invalid"):
+            with self.subTest(close=missing):
+                closes = risk_spec._closes_map([
+                    ("2026-09-01", 100),
+                    ("2026-09-02", missing),
+                    ("2026-09-03", 121),
+                    ("2026-09-04", 133.1),
+                ])
+                returns = risk_spec._simple_returns(closes)
+                self.assertEqual(set(returns), {"2026-09-04"})
+                self.assertAlmostEqual(returns["2026-09-04"], 0.1)
+
+    def test_missing_quotes_reduce_risk_overlap(self):
+        dates = pd.bdate_range("2026-01-01", periods=61).strftime("%Y-%m-%d")
+        names = []
+        for i, symbol in enumerate(("A", "B", "C")):
+            closes = list(zip(dates, _gbm(61, i)))
+            if i == 0:
+                closes[30] = (dates[30], None)
+            names.append({"ready": True, "symbol": symbol,
+                          "market_value": 1000, "_closes": closes})
+        result = risk_spec.evaluate(names)
+        self.assertFalse(result["ready"])
+        self.assertEqual(result["overlap_days"], 58)
+        self.assertIn("overlap", result["message"])
+
+
+class SortinoTests(unittest.TestCase):
+    def test_constant_losses_have_defined_downside_deviation(self):
+        self.assertAlmostEqual(
+            risk_spec._sortino(np.full(60, -0.01)), -np.sqrt(252.0)
+        )
+
+    def test_downside_deviation_includes_nonnegative_days(self):
+        returns = np.tile([-0.02, 0.0, 0.01, 0.03], 15)
+        expected = np.mean(returns) / 0.01 * np.sqrt(252.0)
+        self.assertAlmostEqual(risk_spec._sortino(returns), expected)
+        # A single losing day still supplies measurable downside risk.
+        returns = np.array([-0.02] + [0.01] * 59)
+        expected = np.mean(returns) / (0.02 / np.sqrt(60)) * np.sqrt(252.0)
+        self.assertAlmostEqual(risk_spec._sortino(returns), expected)
+
+    def test_short_or_no_downside_history_is_unavailable(self):
+        self.assertIsNone(risk_spec._sortino(np.full(59, -0.01)))
+        self.assertIsNone(risk_spec._sortino(np.full(60, 0.01)))
+        self.assertIsNone(risk_spec._sortino(np.zeros(60)))
+
+
+class PerfWindowTests(unittest.TestCase):
+    def test_zero_latest_nav_preserves_total_loss_return(self):
+        curve = [
+            {"date": "2025-12-31", "nav": 100.0},
+            {"date": "2026-01-02", "nav": 110.0},
+            {"date": "2026-01-05", "nav": 120.0},
+            {"date": "2026-01-06", "nav": 90.0},
+            {"date": "2026-01-07", "nav": 80.0},
+            {"date": "2026-01-08", "nav": 0.0},
+        ]
+        for kind in ("day", "week", "mtd", "ytd"):
+            with self.subTest(kind=kind):
+                self.assertEqual(risk_spec._perf_window(curve, kind=kind), -100.0)
+                zero_baselines = [dict(point, nav=0.0) for point in curve]
+                self.assertIsNone(risk_spec._perf_window(zero_baselines, kind=kind))
+
+    def test_period_returns_include_first_trading_day(self):
+        curve = [
+            {"date": "2025-12-31", "nav": 100.0},
+            {"date": "2026-01-02", "nav": 110.0},
+            {"date": "2026-01-30", "nav": 120.0},
+            {"date": "2026-02-02", "nav": 126.0},
+            {"date": "2026-02-03", "nav": 132.0},
+        ]
+        self.assertAlmostEqual(risk_spec._perf_window(curve, kind="mtd"), 10.0)
+        self.assertAlmostEqual(risk_spec._perf_window(curve, kind="ytd"), 32.0)
+        self.assertAlmostEqual(risk_spec._perf_window(curve[:2], kind="mtd"), 10.0)
+        self.assertAlmostEqual(risk_spec._perf_window(curve[:2], kind="ytd"), 10.0)
+
+    def test_period_returns_require_valid_preceding_close(self):
+        for kind in ("mtd", "ytd"):
+            for baseline in (None, 0.0, float("nan"), float("inf")):
+                with self.subTest(kind=kind, baseline=baseline):
+                    curve = [
+                        {"date": "2025-12-31", "nav": baseline},
+                        {"date": "2026-01-02", "nav": 110.0},
+                        {"date": "2026-01-05", "nav": 120.0},
+                    ]
+                    self.assertIsNone(risk_spec._perf_window(curve, kind=kind))
+                    self.assertIsNone(risk_spec._perf_window(curve[1:], kind=kind))
+
+
 class RiskSpecTests(unittest.TestCase):
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -130,6 +222,29 @@ class RiskSpecTests(unittest.TestCase):
         blob = str(risk).lower()
         self.assertNotIn("bloomberg", blob)
         self.assertNotIn("10.95b", blob)
+
+    def test_performance_daily_returns_do_not_bridge_missing_nav(self):
+        dates = pd.bdate_range("2026-01-01", periods=70).strftime("%Y-%m-%d")
+        ready = [
+            {"ready": True, "symbol": symbol, "market_value": 1000.0,
+             "_closes": list(zip(dates, _gbm(70, seed)))}
+            for seed, symbol in enumerate(("AAA", "BBB", "CCC"), start=1)
+        ]
+        nav = _gbm(70, 20)
+        expected = (nav[1:] - nav[:-1]) / nav[:-1]
+        expected = np.delete(expected, [29, 30])
+        for missing in (None, float("nan"), float("inf")):
+            with self.subTest(missing=missing):
+                curve = [{"date": date, "nav": value}
+                         for date, value in zip(dates, nav)]
+                curve[30]["nav"] = missing
+                result = risk_spec.evaluate(ready, curve=curve)
+                self.assertTrue(result["ready"], result.get("message"))
+                self.assertEqual(result["perf"]["n"], 67)
+                self.assertEqual(result["perf"]["sharpe"],
+                                 round(risk_spec._sharpe(expected), 3))
+                self.assertEqual(result["perf"]["sortino"],
+                                 round(risk_spec._sortino(expected), 3))
 
     def test_surface_no_scaffold_todo(self):
         blob = ""

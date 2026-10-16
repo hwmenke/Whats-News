@@ -22,9 +22,18 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
 
     fast_sc = 2.0 / (fast + 1)
     slow_sc = 2.0 / (slow + 1)
-    kama_vals[window - 1] = prices[window - 1]
-
-    for i in range(window, len(prices)):
+    # A missing quote breaks the recursive estimate; warm up again after gaps.
+    valid_run = 0
+    for i in range(len(prices)):
+        if not np.isfinite(prices[i]):
+            valid_run = 0
+            continue
+        valid_run += 1
+        if valid_run < window:
+            continue
+        if valid_run == window:
+            kama_vals[i] = prices[i]
+            continue
         direction = abs(prices[i] - prices[i - window])
         volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
         er = direction / volatility if volatility != 0 else 0
@@ -64,6 +73,12 @@ def _safe(val):
         return None
 
 
+def _daily_returns(close: pd.Series) -> pd.Series:
+    """Calculate returns only between adjacent finite quotes."""
+    finite_close = close.replace([np.inf, -np.inf], np.nan)
+    return finite_close.pct_change(fill_method=None).replace([np.inf, -np.inf], np.nan)
+
+
 def _run_strategy(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
                   trend_score: pd.Series = None, use_trend: bool = False) -> dict:
     """
@@ -84,12 +99,12 @@ def _run_strategy(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
     # Execute next bar
     position = signal_raw.shift(1).fillna(0)
 
-    daily_ret = close.pct_change()
+    daily_ret = _daily_returns(close)
     strat_ret = position * daily_ret
 
     # Drop leading NaNs
     strat_ret = strat_ret.dropna()
-    if strat_ret.empty or strat_ret.std() == 0:
+    if strat_ret.empty:
         return {
             "ann_ret": None, "ann_vol": None, "sharpe": None,
             "max_dd": None, "n_trades": 0, "win_rate": None,
@@ -98,11 +113,11 @@ def _run_strategy(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
     # Annualised return & vol
     ann_ret = strat_ret.mean() * 252
     ann_vol = strat_ret.std() * np.sqrt(252)
-    sharpe  = ann_ret / ann_vol if ann_vol != 0 else 0.0
+    sharpe  = ann_ret / ann_vol if ann_vol != 0 else None
 
     # Max drawdown
     equity   = (1 + strat_ret).cumprod()
-    peak     = equity.cummax()
+    peak     = equity.cummax().clip(lower=1.0)
     drawdown = (equity - peak) / peak
     max_dd   = drawdown.min()
 
@@ -141,7 +156,7 @@ def _weekly_equity(close: pd.Series, kama_fast: pd.Series, kama_slow: pd.Series,
         signal_raw = fast_above
 
     position  = signal_raw.shift(1).fillna(0)
-    daily_ret = close.pct_change().fillna(0)
+    daily_ret = _daily_returns(close).fillna(0)
 
     strat_equity = (1 + position * daily_ret).cumprod()
     bh_equity    = (1 + daily_ret).cumprod()
@@ -181,12 +196,12 @@ def run_optimization(symbol: str) -> dict:
         kama_cache[p] = _kama(close, window=p)
 
     # Buy-and-hold benchmark
-    daily_ret = close.pct_change().dropna()
+    daily_ret = _daily_returns(close).dropna()
     bh_ann_ret = daily_ret.mean() * 252
     bh_ann_vol = daily_ret.std() * np.sqrt(252)
-    bh_sharpe  = bh_ann_ret / bh_ann_vol if bh_ann_vol != 0 else 0.0
+    bh_sharpe  = bh_ann_ret / bh_ann_vol if bh_ann_vol != 0 else None
     equity_bh  = (1 + daily_ret).cumprod()
-    peak_bh    = equity_bh.cummax()
+    peak_bh    = equity_bh.cummax().clip(lower=1.0)
     bh_max_dd  = ((equity_bh - peak_bh) / peak_bh).min()
 
     benchmark = {

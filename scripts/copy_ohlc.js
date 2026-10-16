@@ -8,8 +8,10 @@
  * Example: AAPL 2026-08-27 O 226.10 H 228.40 L 225.00 C 227.55 +0.82%
  */
 function _copyOhlcPx(v) {
+    if (!(typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) ||
+        !Number.isFinite(Number(v))) return '—';
     if (typeof _fmtPx === 'function') return _fmtPx(v);
-    return (v == null || !Number.isFinite(Number(v))) ? '—' : Number(v).toFixed(2);
+    return Number(v).toFixed(2);
 }
 
 function _copyOhlcDailyRows() {
@@ -43,7 +45,12 @@ function paintedDailyOhlcIndex(rows, legend) {
 }
 
 function _copyOhlcChgPct(row, prev) {
-    if (!row || !prev || !prev.close) return '';
+    if (!row || !prev) return '';
+    const validClose = value => (
+        (typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''))
+        && Number.isFinite(Number(value))
+    );
+    if (!validClose(row.close) || !validClose(prev.close) || Number(prev.close) === 0) return '';
     const chg = (Number(row.close) / Number(prev.close) - 1) * 100;
     if (!Number.isFinite(chg)) return '';
     return ` ${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;

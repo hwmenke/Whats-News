@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -85,6 +86,71 @@ class DataServiceApiTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIsInstance(res.get_json(), list)
 
+    @patch("data_service.app.fetcher.fetch_and_store")
+    def test_refresh_passes_overlap_and_preserves_default(self, mock_fetch):
+        db.add_symbol("AAPL")
+        mock_fetch.return_value = {"symbol": "AAPL"}
+        for body, expected in ((None, 3), ({}, 3), ({"overlap_days": 0}, 0),
+                               ({"overlap_days": 7}, 7)):
+            with self.subTest(body=body):
+                mock_fetch.reset_mock()
+                response = self.client.post("/api/refresh", json=body)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json(), [{"symbol": "AAPL"}])
+                mock_fetch.assert_called_once_with("AAPL", overlap_days=expected)
+
+    @patch("data_service.app.fetcher.fetch_and_store")
+    def test_refresh_rejects_invalid_overlap_before_fetching(self, mock_fetch):
+        db.add_symbol("AAPL")
+        for value in (-1, True, False, None, "7", 1.5, [], {}):
+            with self.subTest(value=value):
+                response = self.client.post("/api/refresh", json={"overlap_days": value})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("error", response.get_json())
+        response = self.client.post("/api/refresh", json=[7])
+        self.assertEqual(response.status_code, 400)
+        mock_fetch.assert_not_called()
+
+    def test_refresh_validation_matches_across_services(self):
+        for application, target in (
+            (app_module.app, "app.md.refresh_all"),
+            (data_app, "data_service.app.fetcher.fetch_and_store"),
+        ):
+            client = application.test_client()
+            with patch(target) as refresh:
+                for raw in ('{', 'null', '[]', 'false', '0', '"AAPL"'):
+                    with self.subTest(service=application.name, raw=raw):
+                        response = client.post("/api/refresh", data=raw,
+                                               content_type="application/json")
+                        self.assertEqual(response.status_code, 400)
+                        self.assertIn("error", response.get_json())
+                for value in (-1, True, False, None, "7", 1.5, [], {}):
+                    with self.subTest(service=application.name, value=value):
+                        response = client.post("/api/refresh", json={"overlap_days": value})
+                        self.assertEqual(response.status_code, 400)
+                        self.assertIn("error", response.get_json())
+                refresh.assert_not_called()
+
+    @patch("app.md.refresh_all", return_value=[])
+    def test_analysis_refresh_preserves_defaults_and_valid_overlap(self, refresh):
+        client = app_module.app.test_client()
+        for body, expected in ((None, 3), ({}, 3), ({"overlap_days": 0}, 0),
+                               ({"overlap_days": 7}, 7)):
+            with self.subTest(body=body):
+                refresh.reset_mock()
+                response = client.post("/api/refresh", json=body)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json(), [])
+                refresh.assert_called_once_with(overlap_days=expected)
+
+    def test_http_refresh_sends_overlap_to_service(self):
+        with patch.object(data_client, "DATA_SERVICE_MODE", "http"), \
+                patch.object(data_client, "_request", return_value=[]) as request:
+            self.assertEqual(data_client.refresh_all(overlap_days=7), [])
+        request.assert_called_once_with(
+            "POST", "/api/refresh", body={"overlap_days": 7}, timeout=600.0
+        )
+
     def test_desk_query_hides_universe_archive(self):
         db.add_symbol("AAPL")
         db.add_universe_symbols({"ZZUNIV": ["sp500"]})
@@ -134,6 +200,143 @@ class DataServiceApiTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(data["symbol"], "AAPL")
         mock_ticker_class.assert_called_once_with("AAPL")
+
+
+class BatchFetchValidationTests(unittest.TestCase):
+    def test_invalid_batches_do_not_fetch_or_write(self):
+        for application in (app_module.app, data_app):
+            with patch("database.add_symbol") as write, patch("data_fetcher.fetch_full_history") as fetch:
+                bodies = [None, [], "AAPL", True, {}, {"tickers": []}, {"tickers": [" "]},
+                          *({"tickers": v} for v in (None, "AAPL", {}, True)),
+                          *({"tickers": ["AAPL", v]} for v in (None, 7, True, [], {}))]
+                for body in bodies:
+                    with self.subTest(app=application.name, body=body):
+                        response = application.test_client().post(
+                            "/api/data-manager/fetch-batch", data=json.dumps(body),
+                            content_type="application/json")
+                        self.assertEqual(response.status_code, 400)
+                        self.assertIn("error", response.get_json())
+                for body in ("", "{", '{"tickers": ["AAPL"],}'):
+                    response = application.test_client().post(
+                        "/api/data-manager/fetch-batch", data=body, content_type="application/json")
+                    self.assertEqual(response.status_code, 400)
+                    self.assertTrue(response.is_json)
+                write.assert_not_called()
+                fetch.assert_not_called()
+
+    def test_valid_tickers_are_normalized_before_streaming(self):
+        for application in (app_module.app, data_app):
+            with patch.object(data_client, "use_embedded", return_value=True), \
+                    patch("database.add_symbol") as write, \
+                    patch("data_fetcher.fetch_full_history", return_value={}) as fetch:
+                response = application.test_client().post(
+                    "/api/data-manager/fetch-batch", json={"tickers": ["", " aapl ", "  "]})
+                self.assertEqual(response.status_code, 200)
+                events = [json.loads(line[6:]) for line in response.get_data(as_text=True).splitlines()
+                          if line.startswith("data: ")]
+                self.assertEqual(events[0], {"type": "start", "total": 1})
+                self.assertEqual(events[1]["symbol"], "AAPL")
+                self.assertEqual(events[-1], {"type": "done", "ok": 1, "failed": 0})
+                write.assert_called_once_with("AAPL")
+                fetch.assert_called_once_with("AAPL", start="2000-01-01")
+
+
+class SymbolInputValidationTests(unittest.TestCase):
+    def test_malformed_json_returns_json_errors_without_watchlist_writes(self):
+        for application, target in ((app_module.app, "app.md"),
+                                    (data_app, "data_service.app.db")):
+            client = application.test_client()
+            with patch(f"{target}.add_symbol") as single, patch(f"{target}.add_symbols") as bulk:
+                for body in ('', '{', '{"symbol": "AAPL"',
+                             '{"symbols": ["AAPL"],}', 'null trailing'):
+                    with self.subTest(app=application.name, body=body):
+                        response = client.post("/api/symbols", data=body,
+                                               content_type="application/json")
+                        self.assertEqual(response.status_code, 400)
+                        self.assertTrue(response.is_json)
+                        self.assertIn("error", response.get_json())
+                single.assert_not_called()
+                bulk.assert_not_called()
+
+    def test_invalid_inputs_are_rejected_before_watchlist_writes(self):
+        for application, target in ((app_module.app, "app.md"),
+                                    (data_app, "data_service.app.db")):
+            client = application.test_client()
+            with patch(f"{target}.add_symbol") as single, patch(f"{target}.add_symbols") as bulk:
+                bodies = [None, [], ["AAPL"], "AAPL", 7, True,
+                          *({"symbol": value} for value in (None, 7, True, [], {})),
+                          *({"symbols": value} for value in (None, False, "AAPL", {})),
+                          *({"symbols": ["AAPL", value]} for value in (None, 7, True, [], {}))]
+                for body in bodies:
+                    with self.subTest(app=application.name, body=body):
+                        response = client.post("/api/symbols", data=json.dumps(body),
+                                               content_type="application/json")
+                        self.assertEqual(response.status_code, 400)
+                        self.assertIn("error", response.get_json())
+                single.assert_not_called()
+                bulk.assert_not_called()
+
+    def test_valid_bulk_strings_remain_normalized_and_deduplicated(self):
+        for application in (app_module.app, data_app):
+            with tempfile.TemporaryDirectory() as directory, patch.object(
+                db, "DB_PATH", os.path.join(directory, "symbols.db")
+            ), patch.object(data_client, "DATA_SERVICE_MODE", "embedded"):
+                db.init_db()
+                client = application.test_client()
+                response = client.post("/api/symbols", json={"symbols": [" aapl ", "AAPL", "", "msft"]})
+                self.assertEqual(response.status_code, 201)
+                self.assertEqual(response.get_json()["added"], ["AAPL", "MSFT"])
+                self.assertEqual(db.list_symbol_codes(), ["AAPL", "MSFT"])
+                response = client.post("/api/symbols", json={"symbols": []})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json()["added"], [])
+
+
+class SymbolGroupValidationTests(unittest.TestCase):
+    def test_malformed_json_returns_json_errors_without_group_writes(self):
+        for application, target in ((app_module.app, "app.md"),
+                                    (data_app, "data_service.app.db")):
+            client = application.test_client()
+            with patch(f"{target}.set_symbol_group") as write:
+                for body in ('', '{', '{"group_tag": "tech"',
+                             '{"group_tag": "tech",}', 'null trailing'):
+                    with self.subTest(app=application.name, body=body):
+                        response = client.put("/api/symbols/aapl/group", data=body,
+                                              content_type="application/json")
+                        self.assertEqual(response.status_code, 400)
+                        self.assertTrue(response.is_json)
+                        self.assertIn("error", response.get_json())
+                write.assert_not_called()
+
+    def test_invalid_inputs_are_rejected_before_group_writes(self):
+        for application, target in ((app_module.app, "app.md"),
+                                    (data_app, "data_service.app.db")):
+            client = application.test_client()
+            with patch(f"{target}.set_symbol_group") as write:
+                bodies = [None, [], ["tech"], "tech", 7, False,
+                          *({"group_tag": value} for value in (None, 7, True, [], {}))]
+                for body in bodies:
+                    with self.subTest(app=application.name, body=body):
+                        response = client.put("/api/symbols/aapl/group", data=json.dumps(body),
+                                              content_type="application/json")
+                        self.assertEqual(response.status_code, 400)
+                        self.assertIn("error", response.get_json())
+                write.assert_not_called()
+
+    def test_valid_tags_are_trimmed_and_can_be_cleared(self):
+        for application in (app_module.app, data_app):
+            with tempfile.TemporaryDirectory() as directory, patch.object(
+                db, "DB_PATH", os.path.join(directory, "groups.db")
+            ), patch.object(data_client, "DATA_SERVICE_MODE", "embedded"):
+                db.init_db()
+                db.add_symbol("AAPL")
+                client = application.test_client()
+                for body, expected in (({"group_tag": "  tech  "}, "tech"),
+                                       ({"group_tag": ""}, ""), ({}, "")):
+                    with self.subTest(app=application.name, body=body):
+                        response = client.put("/api/symbols/aapl/group", json=body)
+                        self.assertEqual(response.status_code, 200)
+                        self.assertEqual(db.list_symbols()[0]["group_tag"], expected)
 
 
 class AnalysisProxiesDataTests(unittest.TestCase):

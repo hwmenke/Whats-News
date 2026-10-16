@@ -258,7 +258,7 @@ def refresh_all(overlap_days: int = 3) -> list:
             except Exception as exc:
                 results.append({"symbol": s, "error": str(exc)})
         return results
-    return _request("POST", "/api/refresh", timeout=600.0) or []
+    return _request("POST", "/api/refresh", body={"overlap_days": overlap_days}, timeout=600.0) or []
 
 
 def list_desk_symbols() -> list[dict]:

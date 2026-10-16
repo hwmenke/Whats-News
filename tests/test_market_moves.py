@@ -49,6 +49,24 @@ class QuantLockZTests(unittest.TestCase):
         level = pd.Series(np.linspace(100, 110, 20))
         self.assertIsNone(mm.daily_z(level))
 
+    def test_daily_z_blank_when_latest_return_is_missing(self):
+        for kind in ("price", "yield"):
+            for missing_index in (-1, -2):
+                with self.subTest(kind=kind, missing_index=missing_index):
+                    level = pd.Series(100.0 + np.arange(50, dtype=float) ** 2 / 100.0)
+                    self.assertIsNotNone(mm.daily_z(level, kind=kind))
+                    level.iloc[missing_index] = np.nan
+                    self.assertIsNone(mm.daily_z(level, kind=kind))
+                    row = mm.move_row(level, kind=kind)
+                    self.assertFalse(row["ready"])
+                    self.assertIsNone(row["day_pct"])
+                    self.assertIsNone(row["z"])
+
+    def test_price_returns_do_not_fill_missing_closes(self):
+        returns = mm._series_returns(pd.Series([100.0, np.nan, 110.0, 121.0]), "price")
+        self.assertTrue(returns.iloc[:3].isna().all())
+        self.assertAlmostEqual(returns.iloc[3], 0.1)
+
     def test_z14_uses_rolling_14d_return_sigma_not_daily_sqrt(self):
         # 112 flats at 100, then 14 prints at 110 → R_14 = 0.10.
         # σ of rolling 14d returns ≠ σ_daily · √14.
@@ -145,6 +163,30 @@ class MarketMovesBoardTests(unittest.TestCase):
         blob = str(body).lower()
         self.assertNotIn("win rate", blob)
         self.assertNotIn("gamma strip", blob)
+
+    def test_fetch_core_rejects_invalid_bodies_before_side_effects(self):
+        with patch.object(app_module, "ensure_local_schema") as schema, patch.object(mm, "fetch_core") as fetch:
+            for body in ("{", "", "null", "[]", '["indexes"]', '"indexes"', "true", "0", "1"):
+                with self.subTest(body=body):
+                    response = self.client.post(
+                        "/api/market-moves/fetch-core", data=body,
+                        content_type="application/json",
+                    )
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(response.get_json(), {"error": "body must be a JSON object"})
+            schema.assert_not_called()
+            fetch.assert_not_called()
+
+    def test_fetch_core_accepts_defaults_and_explicit_options(self):
+        with patch.object(app_module, "ensure_local_schema") as schema, patch.object(mm, "fetch_core", return_value={"fetched": []}) as fetch:
+            for body, expected in (({}, {"delay": 1.2, "period": "1y"}),
+                                   ({"delay": 0.5, "period": "2y"}, {"delay": 0.5, "period": "2y"})):
+                with self.subTest(body=body):
+                    response = self.client.post("/api/market-moves/fetch-core", json=body)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.get_json(), {"fetched": []})
+                    fetch.assert_called_with(**expected)
+            self.assertEqual(schema.call_count, 2)
 
     def test_seed_adds_core_yahoo_names(self):
         res = self.client.post("/api/market-moves/seed", json={"groups": ["big_tech"]})

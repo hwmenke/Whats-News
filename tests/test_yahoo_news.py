@@ -56,6 +56,314 @@ class ArticleFromItemTests(unittest.TestCase):
 
 
 class WatchlistNewsTests(unittest.TestCase):
+    def test_whitespace_metadata_uses_fallbacks_without_trimming_real_text(self):
+        ticker = MagicMock()
+        ticker.news = [
+            {"content": {"title": " \t\n", "summary": " \t",
+                         "description": " Provider description ",
+                         "provider": {"displayName": "\n", "url": " \t"}}},
+            {"title": " \n", "summary": "\t", "publisher": " "},
+            {"content": {"title": " Real headline ", "summary": " Summary ",
+                         "provider": {"displayName": " Reuters ",
+                                      "url": "https://reuters.com/"}}},
+        ]
+        factory = lambda symbol: ticker
+        watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+        symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+        self.assertEqual(status, 200)
+        self.assertNotIn("errors", watchlist)
+        for result in (watchlist, symbol):
+            self.assertEqual(result["article_count"], 3)
+            for article in result["articles"][:2]:
+                self.assertEqual(article["title"], "No title")
+                self.assertEqual(article["provider"], yahoo_news.DEFAULT_PROVIDER)
+                self.assertEqual(article["provider_url"], yahoo_news.DEFAULT_PROVIDER_URL)
+            self.assertEqual(result["articles"][0]["summary"], " Provider description ")
+            self.assertEqual(result["articles"][1]["summary"], "")
+            self.assertEqual(result["articles"][2]["title"], " Real headline ")
+            self.assertEqual(result["articles"][2]["summary"], " Summary ")
+            self.assertEqual(result["articles"][2]["provider"], " Reuters ")
+
+    def test_symbol_news_deduplicates_urls_but_keeps_unlinked_headlines(self):
+        ticker = MagicMock()
+        ticker.news = [
+            {"content": {"title": "Modern story", "canonicalUrl": {
+                "url": "https://example.com/story"},
+                "pubDate": "2026-08-21T10:00:00Z"}},
+            {"title": "Duplicate legacy story", "link": " https://example.com/story "},
+            {"title": "Unlinked headline one"},
+            {"title": "Unlinked headline two"},
+            {"title": "Distinct story", "link": "https://example.com/other"},
+        ]
+        result, status = yahoo_news.symbol_news(
+            "aapl", ticker_factory=lambda symbol: ticker
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["symbol"], "AAPL")
+        self.assertEqual(result["article_count"], 4)
+        self.assertEqual(
+            [article["title"] for article in result["articles"]],
+            ["Modern story", "Unlinked headline one", "Unlinked headline two",
+             "Distinct story"],
+        )
+
+    def test_malformed_headline_metadata_uses_string_defaults(self):
+        for value in (None, True, False, 42, 1.5, [], ["text"], {}, {"text": "value"}, ""):
+            with self.subTest(value=value):
+                ticker = MagicMock()
+                ticker.news = [
+                    {"content": {"title": value, "provider": {
+                        "displayName": value, "url": value}}},
+                    {"title": value, "publisher": value},
+                    {"content": {"title": "Real headline", "provider": {
+                        "displayName": "Reuters", "url": "https://reuters.com/"}}},
+                    {"title": "Legacy headline", "publisher": "Reuters"},
+                ]
+                factory = lambda symbol: ticker
+                watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+                symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+                self.assertEqual(status, 200)
+                self.assertNotIn("errors", watchlist)
+                for result in (watchlist, symbol):
+                    self.assertEqual(result["article_count"], 4)
+                    for article in result["articles"][:2]:
+                        self.assertEqual(article["title"], "No title")
+                        self.assertEqual(article["provider"], yahoo_news.DEFAULT_PROVIDER)
+                        self.assertEqual(article["provider_url"], yahoo_news.DEFAULT_PROVIDER_URL)
+                    self.assertEqual(result["articles"][2]["title"], "Real headline")
+                    self.assertEqual(result["articles"][2]["provider"], "Reuters")
+                    self.assertEqual(result["articles"][2]["provider_url"], "https://reuters.com/")
+                    self.assertEqual(result["articles"][3]["title"], "Legacy headline")
+                    self.assertEqual(result["articles"][3]["provider"], "Reuters")
+
+    def test_malformed_summaries_keep_text_fallbacks_and_headlines(self):
+        for summary in (None, True, 42, 1.5, [], ["text"], {}, {"text": "summary"}):
+            with self.subTest(summary=summary):
+                ticker = MagicMock()
+                ticker.news = [
+                    {"content": {"title": "Fallback", "summary": summary,
+                                 "description": "Provider description"}},
+                    {"content": {"title": "No text", "summary": summary,
+                                 "description": {"text": "invalid"}}},
+                    {"title": "Legacy", "summary": summary},
+                    {"content": {"title": "Valid", "summary": "Provider summary",
+                                 "description": "Unused description"}},
+                    {"title": "Valid legacy", "summary": "Legacy summary"},
+                ]
+                factory = lambda symbol: ticker
+                watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+                symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+                self.assertEqual(status, 200)
+                self.assertNotIn("errors", watchlist)
+                for result in (watchlist, symbol):
+                    self.assertEqual(result["article_count"], 5)
+                    self.assertEqual(
+                        [article["summary"] for article in result["articles"]],
+                        ["Provider description", "", "", "Provider summary", "Legacy summary"],
+                    )
+
+    def test_non_string_modern_dates_preserve_headlines_without_publication_dates(self):
+        invalid_dates = [True, False, 1724000000, 1.5, [], ["2026-08-21"], {},
+                         {"date": "2026-08-21"}, None]
+        ticker = MagicMock()
+        ticker.news = [
+            {"content": {"title": f"Headline {index}", "pubDate": date}}
+            for index, date in enumerate(invalid_dates)
+        ] + [{"content": {"title": "Valid date", "pubDate": "2026-08-21T10:00:00Z"}}]
+        factory = lambda symbol: ticker
+        watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+        symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+        self.assertEqual(status, 200)
+        self.assertNotIn("errors", watchlist)
+        for result in (watchlist, symbol):
+            self.assertEqual(result["article_count"], len(invalid_dates) + 1)
+            self.assertEqual(result["articles"][0]["publish_time"], "2026-08-21T10:00:00Z")
+            self.assertEqual(
+                [article["publish_time"] for article in result["articles"][1:]],
+                [""] * len(invalid_dates),
+            )
+            self.assertEqual(
+                [article["title"] for article in result["articles"][1:]],
+                [f"Headline {index}" for index in range(len(invalid_dates))],
+            )
+
+    def test_url_whitespace_is_trimmed_before_watchlist_deduplication(self):
+        url = "https://example.com/article?source=yahoo#news"
+        items = [
+            {"content": {"title": "Canonical", "canonicalUrl": {"url": f"  {url}\n"}}},
+            {"content": {"title": "Clickthrough", "clickThroughUrl": {"url": f"\t{url} "}}},
+            {"content": {"title": "Direct", "canonicalUrl": f" {url} "}},
+            {"title": "Legacy link", "link": f" {url}\t"},
+            {"title": "Legacy fallback", "url": f"\n{url} "},
+        ]
+        for item in items:
+            with self.subTest(item=item):
+                self.assertEqual(yahoo_news.article_from_item(item)["url"], url)
+
+        def factory(symbol):
+            ticker = MagicMock()
+            ticker.news = items if symbol == "AAPL" else [
+                {"title": "Same article", "link": url},
+                {"title": "Different article", "link": url + "2"},
+            ]
+            return ticker
+
+        result = yahoo_news.watchlist_news(["AAPL", "MSFT"], ticker_factory=factory)
+        self.assertNotIn("errors", result)
+        self.assertEqual(result["article_count"], 2)
+        self.assertEqual([a["url"] for a in result["articles"]], [url, url + "2"])
+        self.assertEqual(result["articles"][0]["symbol"], "AAPL")
+
+    def test_boolean_legacy_timestamps_remain_unavailable(self):
+        ticker = MagicMock()
+        ticker.news = [
+            {"title": "Boolean date", "providerPublishTime": True},
+            {"title": "False date", "providerPublishTime": False},
+            {"title": "Valid date", "providerPublishTime": 1_724_000_000},
+        ]
+        factory = lambda symbol: ticker
+        watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+        symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+        self.assertEqual(status, 200)
+        self.assertNotIn("errors", watchlist)
+        for result in (watchlist, symbol):
+            self.assertEqual(result["article_count"], 3)
+            self.assertEqual(result["articles"][0]["title"], "Valid date")
+            self.assertTrue(result["articles"][0]["publish_time"].startswith("2024-08-18"))
+            self.assertEqual(
+                [article["publish_time"] for article in result["articles"][1:]],
+                ["", ""],
+            )
+
+    def test_symbol_news_sorts_publication_instants_and_keeps_missing_dates_last(self):
+        dates = [
+            "2026-08-21T10:00:00+02:00",
+            "invalid",
+            "2026-08-21T09:30:00Z",
+            "2026-08-21T05:00:00-04:00",
+            "",
+            "2026-08-21T09:15:00",
+        ]
+        ticker = MagicMock()
+        ticker.news = [
+            {"content": {"title": f"Headline {index}", "pubDate": date}}
+            for index, date in enumerate(dates)
+        ]
+        result, status = yahoo_news.symbol_news(
+            "aapl", ticker_factory=lambda symbol: ticker
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["symbol"], "AAPL")
+        self.assertEqual(result["article_count"], len(dates))
+        self.assertEqual(
+            [article["publish_time"] for article in result["articles"]],
+            [dates[2], dates[5], dates[3], dates[0], dates[1], dates[4]],
+        )
+        self.assertEqual(
+            [article["title"] for article in result["articles"]],
+            ["Headline 2", "Headline 5", "Headline 3", "Headline 0",
+             "Headline 1", "Headline 4"],
+        )
+
+    def test_malformed_urls_preserve_headlines_and_valid_fallbacks(self):
+        for malformed in ([], {"unexpected": "value"}, 42, True, "   "):
+            with self.subTest(url=malformed):
+                ticker = MagicMock()
+                ticker.news = [
+                    {"content": {
+                        "title": "Modern fallback",
+                        "canonicalUrl": {"url": malformed},
+                        "clickThroughUrl": {"url": "https://example.com/modern"},
+                    }},
+                    {"title": "Legacy fallback", "link": malformed,
+                     "url": "https://example.com/legacy"},
+                    {"title": "No valid URL", "link": malformed},
+                    {"title": "Valid headline", "link": "https://example.com/valid"},
+                ]
+                factory = lambda symbol: ticker
+                watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+                symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+                self.assertEqual(status, 200)
+                self.assertNotIn("errors", watchlist)
+                for result in (watchlist, symbol):
+                    self.assertEqual(result["article_count"], 4)
+                    self.assertEqual(
+                        [article["url"] for article in result["articles"]],
+                        ["https://example.com/modern", "https://example.com/legacy",
+                         "", "https://example.com/valid"],
+                    )
+
+    def test_malformed_entries_are_skipped_without_losing_real_headlines(self):
+        ticker = MagicMock()
+        ticker.news = [
+            None,
+            "invalid entry",
+            42,
+            [],
+            {},
+            {"title": "Real headline", "link": "https://example.com/real"},
+        ]
+        factory = lambda symbol: ticker
+        watchlist = yahoo_news.watchlist_news(["AAPL"], ticker_factory=factory)
+        symbol, status = yahoo_news.symbol_news("AAPL", ticker_factory=factory)
+        self.assertEqual(status, 200)
+        self.assertNotIn("errors", watchlist)
+        for result in (watchlist, symbol):
+            self.assertEqual(result["article_count"], 1)
+            self.assertEqual(result["articles"][0]["title"], "Real headline")
+            self.assertEqual(result["articles"][0]["url"], "https://example.com/real")
+
+    def test_sorts_publication_instants_across_timezones(self):
+        dates = [
+            "2026-08-21T10:00:00+02:00",
+            "invalid",
+            "2026-08-21T09:30:00Z",
+            "2026-08-21T05:00:00-04:00",
+            "",
+            "2026-08-21T09:15:00",
+        ]
+        ticker = MagicMock()
+        ticker.news = [
+            {"content": {"title": "Headline", "pubDate": date}}
+            for date in dates
+        ]
+        result = yahoo_news.watchlist_news(
+            ["AAPL"], ticker_factory=lambda symbol: ticker
+        )
+        self.assertNotIn("errors", result)
+        self.assertEqual(result["article_count"], len(dates))
+        self.assertEqual(
+            [article["publish_time"] for article in result["articles"]],
+            [dates[2], dates[5], dates[3], dates[0], dates[1], dates[4]],
+        )
+
+    def test_invalid_legacy_timestamp_preserves_ticker_headlines(self):
+        for timestamp in (float("inf"), 10**100, "invalid", -1, None):
+            with self.subTest(timestamp=timestamp):
+                ticker = MagicMock()
+                ticker.news = [
+                    {
+                        "title": "Headline with invalid date",
+                        "link": "https://example.com/invalid-date",
+                        "providerPublishTime": timestamp,
+                    },
+                    {
+                        "title": "Headline with valid date",
+                        "link": "https://example.com/valid-date",
+                        "providerPublishTime": 1_724_000_000,
+                    },
+                ]
+                result = yahoo_news.watchlist_news(
+                    ["AAPL"], ticker_factory=lambda symbol: ticker
+                )
+                self.assertNotIn("errors", result)
+                self.assertEqual(result["article_count"], 2)
+                self.assertEqual(result["articles"][0]["title"], "Headline with valid date")
+                self.assertEqual(result["articles"][1]["publish_time"], "")
+                self.assertEqual(
+                    result["articles"][1]["title"], "Headline with invalid date"
+                )
+
     def test_empty_watchlist(self):
         result = yahoo_news.watchlist_news([])
         self.assertEqual(result["articles"], [])

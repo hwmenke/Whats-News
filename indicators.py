@@ -10,11 +10,11 @@ import market_data as db
 
 
 def _safe(val):
-    """Convert NaN / numpy types to Python-native for JSON."""
+    """Convert non-finite numbers / numpy types to Python-native for JSON."""
     if val is None:
         return None
     try:
-        if np.isnan(val):
+        if not np.isfinite(val):
             return None
     except (TypeError, ValueError):
         pass
@@ -36,8 +36,19 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
     slow_sc = 2.0 / (slow + 1)
     prices = close.values
     kama_vals = np.full(len(prices), np.nan)
-    kama_vals[window - 1] = prices[window - 1]
-    for i in range(window, len(prices)):
+    # Restart warmup after a quote gap; recursive NaNs would otherwise
+    # suppress every later reading, even once a complete window is available.
+    valid_run = 0
+    for i in range(len(prices)):
+        if not np.isfinite(prices[i]):
+            valid_run = 0
+            continue
+        valid_run += 1
+        if valid_run < window:
+            continue
+        if valid_run == window:
+            kama_vals[i] = prices[i]
+            continue
         direction  = abs(prices[i] - prices[i - window])
         volatility = np.sum(np.abs(np.diff(prices[i - window: i + 1])))
         er  = direction / volatility if volatility != 0 else 0
@@ -48,13 +59,19 @@ def _kama(close: pd.Series, window: int = 10, fast: int = 2, slow: int = 30) -> 
 
 def _rsi(close: pd.Series, window: int = 14) -> pd.Series:
     """Wilder RSI via exponential moving average."""
+    close = close.replace([np.inf, -np.inf], np.nan)
     delta = close.diff()
     gain  = delta.clip(lower=0)
     loss  = (-delta).clip(lower=0)
     avg_gain = gain.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1.0 / window, min_periods=window, adjust=False).mean()
     rs = avg_gain / avg_loss.replace(0, np.nan)
-    return 100.0 - (100.0 / (1.0 + rs))
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    # Gains without losses have RSI 100; retain missing values during warmup
+    # and when both averages are zero (an undefined relative strength).
+    # Smoothing can carry an estimate across gaps, but a bar without a
+    # finite close cannot supply an RSI reading.
+    return rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0).where(close.notna())
 
 
 def _bollinger(close: pd.Series, window: int = 20, num_std: float = 2.0):
@@ -68,12 +85,15 @@ def _bollinger(close: pd.Series, window: int = 20, num_std: float = 2.0):
 
 def _macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
     """Returns (macd_line, signal_line, histogram) series."""
+    close = close.replace([np.inf, -np.inf], np.nan)
     ema_fast    = close.ewm(span=fast,   adjust=False).mean()
     ema_slow    = close.ewm(span=slow,   adjust=False).mean()
     macd_line   = ema_fast - ema_slow
     signal_line = macd_line.ewm(span=signal, adjust=False).mean()
     hist        = macd_line - signal_line
-    return macd_line, signal_line, hist
+    # Keep smoothing across gaps, but do not chart estimates for missing bars.
+    valid = close.notna()
+    return macd_line.where(valid), signal_line.where(valid), hist.where(valid)
 
 
 def _cci(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 20) -> pd.Series:
@@ -107,8 +127,10 @@ def compute_indicators(symbol: str, freq: str = "daily", kama_periods: list = No
 
     # ── EMA 10 / 20 (stored close — Qulla-style moving-average respect) ──
     try:
-        result["ema_10"] = _series_to_list(close.ewm(span=10, adjust=False).mean())
-        result["ema_20"] = _series_to_list(close.ewm(span=20, adjust=False).mean())
+        finite_close = close.replace([np.inf, -np.inf], np.nan)
+        for period in (10, 20):
+            ema = finite_close.ewm(span=period, adjust=False).mean()
+            result[f"ema_{period}"] = _series_to_list(ema.where(finite_close.notna()))
     except Exception:
         result["ema_10"] = result["ema_20"] = []
 
@@ -161,7 +183,7 @@ def compute_indicators(symbol: str, freq: str = "daily", kama_periods: list = No
         macd_score = np.where(macd_ref > 0, 1, -1)
 
         total_score = rsi_score + cci_score + macd_score
-        mask = rsi_ref.isna() | cci_ref.isna() | macd_ref.isna()
+        mask = ~np.isfinite(rsi_ref) | ~np.isfinite(cci_ref) | ~np.isfinite(macd_ref)
         total_score = np.where(mask, np.nan, total_score)
         result["trend_score"] = _series_to_list(pd.Series(total_score, index=close.index))
     except Exception:

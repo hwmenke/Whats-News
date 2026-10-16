@@ -331,9 +331,10 @@
   }
 
   function stripHtml(html) {
-    const tmp = document.createElement('div');
-    tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || '';
+    // Parse provider markup in an inert document so event handlers cannot run
+    // while extracting the summary text.
+    const parsed = new DOMParser().parseFromString(String(html ?? ''), 'text/html');
+    return parsed.body.textContent || '';
   }
 
   function showStatus(message, type = 'loading') {
@@ -354,30 +355,51 @@
     document.getElementById('news-status').style.display = 'none';
   }
 
+  function escapeNewsHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char]);
+  }
+
+  function safeNewsUrl(value) {
+    if (typeof value !== 'string') return '';
+    try {
+      const url = new URL(value.trim());
+      return ['http:', 'https:'].includes(url.protocol) ? escapeNewsHtml(url.href) : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
   function renderArticle(article) {
     const summary = stripHtml(article.summary || '').substring(0, 200) + 
                    (article.summary && article.summary.length > 200 ? '...' : '');
     
+    const url = safeNewsUrl(article.url);
+    const providerUrl = safeNewsUrl(article.provider_url);
+    const title = escapeNewsHtml(article.title);
+    const provider = escapeNewsHtml(article.provider);
+
     return `
       <article class="news-article">
-        <div class="article-symbol">${article.symbol}</div>
+        <div class="article-symbol">${escapeNewsHtml(article.symbol)}</div>
         <h2 class="article-title">
-          ${article.url ? 
-            `<a href="${article.url}" target="_blank" rel="noopener">${article.title}</a>` : 
-            article.title
+          ${url ?
+            `<a href="${url}" target="_blank" rel="noopener">${title}</a>` :
+            title
           }
         </h2>
-        ${summary ? `<p class="article-summary">${summary}</p>` : ''}
+        ${summary ? `<p class="article-summary">${escapeNewsHtml(summary)}</p>` : ''}
         <div class="article-meta">
           <span class="article-provider">
             <span>via</span>
-            ${article.provider_url ? 
-              `<a href="${article.provider_url}" target="_blank" rel="noopener">${article.provider}</a>` : 
-              article.provider
+            ${providerUrl ?
+              `<a href="${providerUrl}" target="_blank" rel="noopener">${provider}</a>` :
+              provider
             }
           </span>
           <span>•</span>
-          <span class="article-time">${formatTime(article.publish_time)}</span>
+          <span class="article-time">${escapeNewsHtml(formatTime(article.publish_time))}</span>
         </div>
       </article>
     `;
@@ -388,7 +410,7 @@
       <div class="empty-state">
         <div class="empty-state-icon">📭</div>
         <h3>No News Available</h3>
-        <p>${message}</p>
+        <p>${escapeNewsHtml(message)}</p>
     `;
 
     if (linkDashboard) {
@@ -396,7 +418,7 @@
     }
 
     if (detail) {
-      html += `<div class="error-detail">${detail}</div>`;
+      html += `<div class="error-detail">${escapeNewsHtml(detail)}</div>`;
     }
 
     html += `</div>`;

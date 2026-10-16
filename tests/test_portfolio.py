@@ -14,7 +14,115 @@ import database as db
 import portfolio
 
 
+class LastSmaTests(unittest.TestCase):
+    def test_non_finite_averages_are_omitted(self):
+        for value in (np.inf, -np.inf, np.nan):
+            with self.subTest(value=value):
+                close = pd.Series([100.0] * 199 + [value])
+                self.assertIsNone(portfolio.last_sma(close))
+        with np.errstate(over="ignore"):
+            self.assertIsNone(portfolio.last_sma(pd.Series([1e308] * 200)))
+
+    def test_valid_average_uses_only_last_200_closes(self):
+        close = pd.Series([np.inf] + [100.0] * 199 + [200.0])
+        self.assertEqual(portfolio.last_sma(close), 100.5)
+        self.assertIsNone(portfolio.last_sma(close.iloc[-199:]))
+
+
 class PortfolioSnapshotTests(unittest.TestCase):
+    def test_rsi_quote_gaps_are_unavailable_and_recover(self):
+        for missing in (np.nan, np.inf, -np.inf):
+            for prices in (np.arange(100.0, 140.0),
+                           np.array([100.0 + i % 7 for i in range(40)])):
+                with self.subTest(missing=missing, prices=prices):
+                    close = pd.Series(prices.copy(), index=pd.date_range("2024-01-01", periods=40))
+                    close.iloc[30] = missing
+                    readings = portfolio._rsi(close)
+                    self.assertTrue(np.isfinite(readings.iloc[29]))
+                    self.assertTrue(pd.isna(readings.iloc[30]))
+                    self.assertTrue(np.isfinite(readings.iloc[32]))
+                    pd.testing.assert_series_equal(
+                        readings, portfolio._rsi(close.replace([np.inf, -np.inf], np.nan))
+                    )
+                    daily = pd.DataFrame({
+                        "open": close, "high": close + 1, "low": close - 1,
+                        "close": close, "volume": 1000.0,
+                    })
+                    for count, expected in ((31, None), (33, readings.iloc[32])):
+                        with patch.object(portfolio.md, "get_ohlcv_df", side_effect=[
+                            daily.iloc[:count], pd.DataFrame()
+                        ]):
+                            snap = portfolio.snapshot_symbol("AAPL")
+                        if expected is None:
+                            self.assertIsNone(snap["rsi14"])
+                            self.assertEqual(snap["rsi_zone"], "n/a")
+                        else:
+                            self.assertEqual(snap["rsi14"], round(expected, 1))
+
+    def test_period_returns_omit_invalid_endpoints_and_preserve_total_loss(self):
+        for baseline, latest, expected in (
+            (0.0, 100.0, None),
+            (np.nan, 100.0, None),
+            (np.inf, 100.0, None),
+            (-np.inf, 100.0, None),
+            (100.0, np.nan, None),
+            (100.0, np.inf, None),
+            (1e-308, 100.0, None),
+            (100.0, 0.0, -100.0),
+            (100.0, 105.0, 5.0),
+        ):
+            with self.subTest(baseline=baseline, latest=latest):
+                close = np.full(30, 100.0)
+                close[-6] = close[-22] = baseline
+                close[-1] = latest
+                daily = pd.DataFrame(
+                    {"open": close, "high": close, "low": close,
+                     "close": close, "volume": np.full(len(close), 1000.0)},
+                    index=pd.date_range("2024-01-01", periods=len(close)),
+                )
+                with patch.object(portfolio.md, "get_ohlcv_df", side_effect=[daily, pd.DataFrame()]):
+                    snap = portfolio.snapshot_symbol("AAPL")
+                self.assertEqual(snap["ret_5d_pct"], expected)
+                self.assertEqual(snap["ret_21d_pct"], expected)
+
+    def test_daily_change_omits_invalid_baselines_and_preserves_total_loss(self):
+        for previous, latest, expected in (
+            (0.0, 100.0, None),
+            (np.nan, 100.0, None),
+            (np.inf, 100.0, None),
+            (100.0, np.inf, None),
+            (1e-308, 100.0, None),
+            (100.0, 0.0, -100.0),
+            (100.0, 105.0, 5.0),
+        ):
+            with self.subTest(previous=previous, latest=latest):
+                close = np.array([100.0] * 28 + [previous, latest])
+                daily = pd.DataFrame(
+                    {"open": close, "high": close, "low": close,
+                     "close": close, "volume": np.full(len(close), 1000.0)},
+                    index=pd.date_range("2024-01-01", periods=len(close)),
+                )
+                with patch.object(portfolio.md, "get_ohlcv_df", side_effect=[daily, pd.DataFrame()]):
+                    snap = portfolio.snapshot_symbol("AAPL")
+                self.assertEqual(snap["change_pct"], expected)
+
+    def test_relative_strength_ranks_zero_above_losses_and_missing_returns(self):
+        returns = {"GAIN": 5.0, "FLAT": 0.0, "LOSS": -5.0, "MISSING": None}
+        rows = [
+            {"symbol": symbol, "ready": True, "ret_21d_pct": value}
+            for symbol, value in returns.items()
+        ]
+        with patch.object(portfolio.md, "list_symbols", return_value=[
+            {"symbol": row["symbol"]} for row in rows
+        ]), patch.object(portfolio, "snapshot_symbol", side_effect=rows):
+            snapshot = portfolio.portfolio_snapshot()
+
+        ranks = {row["symbol"]: row["rs_rank_21d"] for row in snapshot["symbols"]}
+        self.assertEqual(ranks, {"GAIN": 1, "FLAT": 2, "LOSS": 3, "MISSING": 4})
+        self.assertEqual(snapshot["strongest_rs"]["symbol"], "GAIN")
+        self.assertEqual(snapshot["weakest_rs"]["symbol"], "MISSING")
+        self.assertEqual(snapshot["news_focus"], ["GAIN", "FLAT", "LOSS"])
+
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self._tmpdir.name, "p.db")
@@ -70,6 +178,22 @@ class PortfolioSnapshotTests(unittest.TestCase):
         self.assertIn(snap["regime"], ("uptrend", "downtrend", "range"))
         self.assertIsNotNone(snap["rsi14"])
         self.assertIsNotNone(snap["stop_long_1_5atr"])
+
+    def test_snapshot_rising_prices_have_overbought_rsi(self):
+        close = np.arange(100.0, 130.0)
+        daily = pd.DataFrame(
+            {"open": close, "high": close + 1, "low": close - 1,
+             "close": close, "volume": np.full(len(close), 1_000_000.0)},
+            index=pd.date_range("2024-01-01", periods=len(close)),
+        )
+        with patch.object(portfolio.md, "get_ohlcv_df", side_effect=[daily, pd.DataFrame()]):
+            snap = portfolio.snapshot_symbol("AAPL")
+        self.assertEqual(snap["rsi14"], 100.0)
+        self.assertEqual(snap["rsi_zone"], "overbought")
+        rsi = portfolio._rsi(daily["close"])
+        self.assertTrue(rsi.iloc[:14].isna().all())
+        self.assertTrue((rsi.iloc[14:] == 100.0).all())
+        self.assertTrue(portfolio._rsi(pd.Series([100.0] * 30)).isna().all())
 
     def test_snapshot_breakout_fields(self):
         self._seed_breakout()
@@ -146,6 +270,40 @@ class PortfolioSnapshotTests(unittest.TestCase):
         self.assertEqual(user["stop_distance"], 2.0)
         self.assertEqual(atr["stop_distance"], 3.0)
         self.assertGreater(user["shares"], atr["shares"])
+
+    def test_position_size_requires_positive_stop_distance(self):
+        for kwargs in ({"stop_price": 100}, {"atr_mult": 0}, {"atr_mult": -1}):
+            with self.subTest(kwargs=kwargs):
+                size = portfolio.position_size(100, 2, 100, **kwargs)
+                self.assertEqual(size, {
+                    "shares": None, "risk_dollars": 100,
+                    "stop_distance": None, "notional": None, "stop_source": None,
+                })
+        # A valid stop wider than the budget still produces a real zero-share size.
+        size = portfolio.position_size(100, 2, 1, stop_price=98)
+        self.assertEqual(size["shares"], 0)
+        self.assertEqual(size["stop_distance"], 2)
+        self.assertEqual(size["stop_source"], "user_stop")
+
+    def test_position_size_omits_non_finite_inputs_and_overflow(self):
+        for value in (np.nan, np.inf, -np.inf):
+            for kwargs in (
+                {"price": value}, {"risk_dollars": value},
+                {"atr": value}, {"atr_mult": value},
+                {"stop_price": value},
+            ):
+                with self.subTest(kwargs=kwargs):
+                    args = {"price": 100, "atr": 2, "risk_dollars": 100}
+                    args.update(kwargs)
+                    size = portfolio.position_size(**args)
+                    self.assertIsNone(size["shares"])
+                    self.assertIsNone(size["notional"])
+        for args in (
+            {"price": 100, "atr": 1e308, "atr_mult": 2},
+            {"price": 100, "atr": 1e-308, "risk_dollars": 100},
+        ):
+            with self.subTest(args=args):
+                self.assertIsNone(portfolio.position_size(**args)["shares"])
 
     def test_darvas_box_and_endpoint(self):
         self._seed("BOXA", n=80)
@@ -630,7 +788,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function formatRvolLegend", stats)
         self.assertIn("function format52hGapLegend", stats)
         self.assertIn("function _legendAvg20Vol", stats)
-        self.assertIn("rows.slice(Math.max(0, i - 20), i).map(r => r.volume || 0)", stats)
+        self.assertIn("rows.slice(Math.max(0, i - 20), i)", stats)
         self.assertIn("rows.slice(Math.max(0, i - 20), i).map(r => r.volume || 0)", charts)
         self.assertIn("const FIFTY_TWO_WEEK_BARS = 252", charts)
         self.assertIn("evaluated per hovered index", stats)
@@ -699,6 +857,19 @@ class FrontendContractTests(unittest.TestCase):
 
 class LegendStatsMathTests(unittest.TestCase):
     """ADR%, RVOL, 52H gap, and dist-to-SMA200 — same formulas as scripts/legend_stats.js."""
+
+    def test_adr_skips_non_finite_prices_and_overflow_ranges(self):
+        valid = {"high": 102.0, "low": 100.0, "close": 100.0}
+        invalid = [dict(valid, **{column: value})
+                   for column in ("high", "low", "close")
+                   for value in (float("nan"), float("inf"), float("-inf"))]
+        invalid.append({"high": 1e308, "low": 1, "close": 1e-308})
+        self.assertEqual(portfolio.legend_adr_pct([valid] * 5 + invalid), 2.0)
+        self.assertIsNone(portfolio.legend_adr_pct([valid] * 4 + invalid))
+        for value in (float("nan"), float("inf"), float("-inf")):
+            self.assertEqual(portfolio.format_legend_adr(value), "")
+        huge = {"high": 1e306, "low": 1, "close": 1}
+        self.assertIsNone(portfolio.legend_adr_pct([huge] * 5))
 
     def test_adr_mean_last_20_valid_daily_bars(self):
         bar = {"high": 102.41, "low": 100.0, "close": 100.0}
@@ -896,6 +1067,22 @@ class SpyRsOverlayTests(unittest.TestCase):
         self._path_patch.stop()
         self._tmpdir.cleanup()
 
+    def test_overlay_skips_nonfinite_closes(self):
+        valid = {"date": "2024-01-01", "close": 100.0}
+        finite = {"date": "2024-01-02", "close": 200.0}
+        expected = [{"date": "2024-01-01", "ratio": 1.0, "value": 100.0}]
+        for invalid in (float("nan"), float("inf"), float("-inf")):
+            bad = {"date": "2024-01-02", "close": invalid}
+            for symbol, spy in (([valid, bad], [valid, finite]),
+                                ([valid, finite], [valid, bad])):
+                with self.subTest(invalid=invalid, symbol=symbol):
+                    out = portfolio.spy_rs_overlay(symbol, spy)
+                    self.assertTrue(out["ready"])
+                    self.assertEqual(out["points"], expected)
+                    self.assertEqual(out["n"], 1)
+                    self.assertEqual(out["last_ratio"], 1.0)
+            self.assertFalse(portfolio.spy_rs_overlay([bad], [bad])["ready"])
+
     def test_overlay_is_close_ratio_rebased_to_last_print(self):
         symbol = [
             {"date": "2024-01-02", "close": 100},
@@ -1004,6 +1191,24 @@ class SpyRsOverlayTests(unittest.TestCase):
 
 class SpyRsWeeklyOverlayTests(unittest.TestCase):
     """Weekly vs-SPY line — same daily SPY series, W-FRI align, not a rating."""
+
+    def test_weekly_overlay_skips_nonfinite_inputs(self):
+        daily = [{"date": "2024-01-05", "ratio": 1.0}]
+        weekly = [{"date": "2024-01-05", "close": 100.0}]
+        expected = [{"date": "2024-01-05", "ratio": 1.0, "value": 100.0}]
+        for invalid in (float("nan"), float("inf"), float("-inf")):
+            for points, rows in (
+                (daily + [{"date": "2024-01-12", "ratio": invalid}],
+                 weekly + [{"date": "2024-01-12", "close": 200.0}]),
+                (daily + [{"date": "2024-01-12", "ratio": 2.0}],
+                 weekly + [{"date": "2024-01-12", "close": invalid}]),
+            ):
+                with self.subTest(invalid=invalid, rows=rows):
+                    out = portfolio.spy_rs_weekly_from_daily_points(points, rows)
+                    self.assertTrue(out["ready"])
+                    self.assertEqual(out["points"], expected)
+                    self.assertEqual(out["n"], 1)
+                    self.assertEqual(out["last_ratio"], 1.0)
 
     def test_weekly_hook_contract(self):
         with open("scripts/spy_rs.js", encoding="utf-8") as fh:
@@ -1427,6 +1632,17 @@ class TapeSma200ChipTests(unittest.TestCase):
 
 class TapeAtrPctChipTests(unittest.TestCase):
     """Compact ATR% on tape/watchlist rows when ATR and price exist on the snapshot."""
+
+    def test_non_finite_atr_percentages_are_omitted(self):
+        for invalid in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(invalid=invalid):
+                self.assertIsNone(portfolio.tape_atr_pct(invalid, 100))
+                self.assertIsNone(portfolio.tape_atr_pct(2, invalid))
+                self.assertEqual(portfolio.format_tape_atr_pct(invalid), "")
+        self.assertIsNone(portfolio.tape_atr_pct(1e308, 1e-308))
+        self.assertIsNone(portfolio.tape_atr_pct(1e308, 1))
+        self.assertEqual(portfolio.tape_atr_pct(2, 100), 2)
+        self.assertEqual(portfolio.format_tape_atr_pct(2), "ATR 2.0%")
 
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()
