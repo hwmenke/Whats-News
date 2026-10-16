@@ -1438,7 +1438,9 @@ def universe_archive():
     SSE batch: full history download for symbols in DB (optionally only missing).
     Body: {start_date, delay, only_missing, limit}
     """
-    body = request.get_json(force=True) or {}
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
     start_date = body.get("start_date", "2000-01-01")
     delay = max(0.3, min(float(body.get("delay", 1.5)), 10.0))
     only_missing = bool(body.get("only_missing", False))
@@ -1494,7 +1496,9 @@ def universe_archive():
 @app.route("/api/universe/refresh", methods=["POST"])
 def universe_refresh():
     """SSE incremental refresh for all symbols in DB."""
-    body = request.get_json(force=True) or {}
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
     delay = max(0.2, min(float(body.get("delay", 0.8)), 10.0))
     try:
         overlap = int(body.get("overlap_days", 5))
