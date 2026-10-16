@@ -164,6 +164,30 @@ class MarketMovesBoardTests(unittest.TestCase):
         self.assertNotIn("win rate", blob)
         self.assertNotIn("gamma strip", blob)
 
+    def test_fetch_core_rejects_invalid_bodies_before_side_effects(self):
+        with patch.object(app_module, "ensure_local_schema") as schema, patch.object(mm, "fetch_core") as fetch:
+            for body in ("{", "", "null", "[]", '["indexes"]', '"indexes"', "true", "0", "1"):
+                with self.subTest(body=body):
+                    response = self.client.post(
+                        "/api/market-moves/fetch-core", data=body,
+                        content_type="application/json",
+                    )
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(response.get_json(), {"error": "body must be a JSON object"})
+            schema.assert_not_called()
+            fetch.assert_not_called()
+
+    def test_fetch_core_accepts_defaults_and_explicit_options(self):
+        with patch.object(app_module, "ensure_local_schema") as schema, patch.object(mm, "fetch_core", return_value={"fetched": []}) as fetch:
+            for body, expected in (({}, {"delay": 1.2, "period": "1y"}),
+                                   ({"delay": 0.5, "period": "2y"}, {"delay": 0.5, "period": "2y"})):
+                with self.subTest(body=body):
+                    response = self.client.post("/api/market-moves/fetch-core", json=body)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.get_json(), {"fetched": []})
+                    fetch.assert_called_with(**expected)
+            self.assertEqual(schema.call_count, 2)
+
     def test_seed_adds_core_yahoo_names(self):
         res = self.client.post("/api/market-moves/seed", json={"groups": ["big_tech"]})
         self.assertIn(res.status_code, (200, 201))

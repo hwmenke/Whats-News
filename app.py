@@ -222,7 +222,9 @@ def market_moves_seed():
 def market_moves_fetch_core():
     """Seed + Fetch Yahoo for Indexes, Big Tech, and Sectors."""
     import market_moves as mm
-    body = request.get_json(force=True, silent=True) or {}
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
     try:
         delay = float(body.get("delay", 1.2))
     except (TypeError, ValueError):
