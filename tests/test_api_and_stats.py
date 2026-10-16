@@ -14,6 +14,40 @@ class ApiValidationTests(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
 
+    def test_universe_sync_rejects_invalid_input_before_work(self):
+        with patch.object(app_module.index_universe, "merged_universe") as merge, patch(
+            "database.add_universe_symbols"
+        ) as write:
+            for raw in ("{", "", "null", "[]", '"all"', "true", "42"):
+                with self.subTest(raw=raw):
+                    response = self.client.post(
+                        "/api/universe/sync", data=raw, content_type="application/json"
+                    )
+                    self.assertEqual(response.status_code, 400)
+                    self.assertIn("error", response.get_json())
+            for indices in (None, "all", "sp500", 1, {}, [None], [[]], ["unknown"], ["all", False]):
+                with self.subTest(indices=indices):
+                    response = self.client.post("/api/universe/sync", json={"indices": indices})
+                    self.assertEqual(response.status_code, 400)
+                    self.assertIn("error", response.get_json())
+            merge.assert_not_called()
+            write.assert_not_called()
+
+    def test_universe_sync_preserves_default_and_valid_indices(self):
+        merged = {"symbol_indices": {"TEST": ["sp500"]}, "total_unique": 1}
+        with patch.object(app_module.index_universe, "merged_universe", return_value=merged) as merge, patch(
+            "database.add_universe_symbols", return_value={"added": 1}
+        ) as write, patch.object(app_module.data_client, "use_embedded", return_value=True):
+            for body, expected in (({}, ["all"]), ({"indices": []}, []),
+                                   ({"indices": ["all"]}, ["all"]),
+                                   ({"indices": ["sp500", "sp400"]}, ["sp500", "sp400"])):
+                with self.subTest(body=body):
+                    response = self.client.post("/api/universe/sync", json=body)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.get_json()["total_unique"], 1)
+                    merge.assert_called_with(expected)
+                    write.assert_called_with(merged["symbol_indices"])
+
     def test_ohlcv_limit_must_be_integer(self):
         response = self.client.get("/api/ohlcv/AAPL?limit=abc")
 

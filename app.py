@@ -1396,9 +1396,17 @@ def universe_registry():
 @app.route("/api/universe/sync", methods=["POST"])
 def universe_sync():
     """Register index constituents in DB (no Yahoo download)."""
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
+    indices = body.get("indices", ["all"])
+    if not isinstance(indices, list) or any(
+        not isinstance(idx, str) or
+        (idx != "all" and idx not in index_universe.INDEX_REGISTRY)
+        for idx in indices
+    ):
+        return jsonify({"error": "indices must be a list of supported index IDs"}), 400
     try:
-        body = request.get_json(force=True) or {}
-        indices = body.get("indices") or ["all"]
         merged = index_universe.merged_universe(indices)
         if data_client.use_embedded():
             import database as db
