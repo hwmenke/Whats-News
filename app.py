@@ -1001,12 +1001,13 @@ def fetch_symbol(symbol):
 
 @app.route("/api/refresh", methods=["POST"])
 def refresh_all():
+    body = request.get_json(force=True, silent=True) if request.get_data() else {}
+    if not isinstance(body, dict):
+        return jsonify({"error": "request body must be an object"}), 400
+    overlap = body.get("overlap_days", 3)
+    if isinstance(overlap, bool) or not isinstance(overlap, int) or overlap < 0:
+        return jsonify({"error": "overlap_days must be a nonnegative integer"}), 400
     try:
-        body = request.get_json(force=True, silent=True) or {}
-        try:
-            overlap = int(body.get("overlap_days", 3))
-        except (TypeError, ValueError):
-            overlap = 3
         return jsonify(md.refresh_all(overlap_days=overlap))
     except Exception as exc:
         return _data_error(exc)

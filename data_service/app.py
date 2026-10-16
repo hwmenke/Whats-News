@@ -166,9 +166,7 @@ def fetch_symbol(symbol):
 
 @app.route("/api/refresh", methods=["POST"])
 def refresh_all():
-    data = request.get_json(silent=True)
-    if data is None:
-        data = {}
+    data = request.get_json(force=True, silent=True) if request.get_data() else {}
     if not isinstance(data, dict):
         return jsonify({"error": "request body must be an object"}), 400
     overlap_days = data.get("overlap_days", 3)

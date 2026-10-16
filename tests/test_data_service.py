@@ -111,6 +111,38 @@ class DataServiceApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         mock_fetch.assert_not_called()
 
+    def test_refresh_validation_matches_across_services(self):
+        for application, target in (
+            (app_module.app, "app.md.refresh_all"),
+            (data_app, "data_service.app.fetcher.fetch_and_store"),
+        ):
+            client = application.test_client()
+            with patch(target) as refresh:
+                for raw in ('{', 'null', '[]', 'false', '0', '"AAPL"'):
+                    with self.subTest(service=application.name, raw=raw):
+                        response = client.post("/api/refresh", data=raw,
+                                               content_type="application/json")
+                        self.assertEqual(response.status_code, 400)
+                        self.assertIn("error", response.get_json())
+                for value in (-1, True, False, None, "7", 1.5, [], {}):
+                    with self.subTest(service=application.name, value=value):
+                        response = client.post("/api/refresh", json={"overlap_days": value})
+                        self.assertEqual(response.status_code, 400)
+                        self.assertIn("error", response.get_json())
+                refresh.assert_not_called()
+
+    @patch("app.md.refresh_all", return_value=[])
+    def test_analysis_refresh_preserves_defaults_and_valid_overlap(self, refresh):
+        client = app_module.app.test_client()
+        for body, expected in ((None, 3), ({}, 3), ({"overlap_days": 0}, 0),
+                               ({"overlap_days": 7}, 7)):
+            with self.subTest(body=body):
+                refresh.reset_mock()
+                response = client.post("/api/refresh", json=body)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json(), [])
+                refresh.assert_called_once_with(overlap_days=expected)
+
     def test_http_refresh_sends_overlap_to_service(self):
         with patch.object(data_client, "DATA_SERVICE_MODE", "http"), \
                 patch.object(data_client, "_request", return_value=[]) as request:
