@@ -14,6 +14,31 @@ class ApiValidationTests(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
 
+    def test_market_moves_seed_validates_before_writes(self):
+        with patch("market_moves.seed_symbols", return_value={"tickers": []}) as seed, patch.object(
+            app_module, "ensure_local_schema"
+        ) as schema:
+            for raw in ("{", "", "null", "[]", '"all"', "true", "42"):
+                with self.subTest(raw=raw):
+                    response = self.client.post(
+                        "/api/market-moves/seed", data=raw, content_type="application/json"
+                    )
+                    self.assertEqual(response.status_code, 400)
+                    self.assertIn("error", response.get_json())
+            for groups in ("indexes", {}, 1, [None], [False], [[]], ["unknown"], ["indexes", ""]):
+                with self.subTest(groups=groups):
+                    response = self.client.post("/api/market-moves/seed", json={"groups": groups})
+                    self.assertEqual(response.status_code, 400)
+                    self.assertIn("error", response.get_json())
+            seed.assert_not_called()
+            schema.assert_not_called()
+            for body, expected in (({}, None), ({"groups": None}, None),
+                                   ({"groups": []}, []), ({"groups": ["indexes"]}, ["indexes"])):
+                with self.subTest(body=body):
+                    response = self.client.post("/api/market-moves/seed", json=body)
+                    self.assertEqual(response.status_code, 201)
+                    seed.assert_called_with(expected)
+
     def test_universe_sync_rejects_invalid_input_before_work(self):
         with patch.object(app_module.index_universe, "merged_universe") as merge, patch(
             "database.add_universe_symbols"

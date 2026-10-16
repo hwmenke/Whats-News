@@ -201,10 +201,16 @@ def market_moves_api():
 def market_moves_seed():
     """Add Market Moves Yahoo names to the desk. Bars arrive only via Fetch."""
     import market_moves as mm
-    body = request.get_json(force=True, silent=True) or {}
+    body = request.get_json(force=True, silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
     groups = body.get("groups")
-    if groups is not None and not isinstance(groups, list):
-        return jsonify({"error": "groups must be a list"}), 400
+    valid_groups = {group["id"] for group in mm.GROUPS}
+    if groups is not None and (
+        not isinstance(groups, list)
+        or any(not isinstance(group, str) or group not in valid_groups for group in groups)
+    ):
+        return jsonify({"error": "groups must be a list of known group IDs"}), 400
     ensure_local_schema()
     try:
         return jsonify(mm.seed_symbols(groups)), 201
