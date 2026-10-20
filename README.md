@@ -35,6 +35,19 @@ export DATA_SERVICE_MODE=embedded
 python3 app.py
 ```
 
+The analysis server serves only the explicitly listed frontend files in
+`app.py` (`PUBLIC_ASSETS`). Add new public assets to that list when needed.
+CORS defaults to `http://localhost:8050` and `http://127.0.0.1:8050` (using
+`PORT` when set). To replace these origins, set a comma-separated allowlist
+before starting the app, for example:
+
+```bash
+export ALLOWED_ORIGINS="https://dashboard.example.com,http://localhost:8050"
+```
+
+Origins match literally, including scheme and port; wildcards are not supported.
+An empty `ALLOWED_ORIGINS` disables cross-origin access.
+
 ### Optional: separate data service
 
 ```bash

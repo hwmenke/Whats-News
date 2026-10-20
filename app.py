@@ -14,10 +14,11 @@ Tests / single-process: DATA_SERVICE_MODE=embedded
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 
-from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
+from flask import Flask, Response, abort, jsonify, request, send_from_directory, stream_with_context
 from flask_cors import CORS
 
 import data_client
@@ -34,8 +35,41 @@ import portfolio
 import setup_scanner
 import index_universe
 
-app = Flask(__name__, static_folder=".", static_url_path="")
-CORS(app)
+# Never expose the project root through Flask's automatic static route.
+app = Flask(__name__, static_folder=None)
+_port = os.environ.get("PORT", "8050")
+_origins = os.environ.get(
+    "ALLOWED_ORIGINS", f"http://localhost:{_port},http://127.0.0.1:{_port}"
+)
+CORS(
+    app,
+    # flask-cors accepts regexes; escape entries to enforce literal origins.
+    origins=[re.compile(r"\A" + re.escape(origin.strip()) + r"\Z")
+             for origin in _origins.split(",") if origin.strip()],
+    always_send=False,
+)
+
+# Explicit files, not directory or extension rules: scripts/ also holds Python.
+PUBLIC_ASSETS = frozenset({
+    "index.html",
+    "news.html",
+    "styles/main.css",
+    "scripts/app.js",
+    "scripts/charts.js",
+    "scripts/copy_ohlc.js",
+    "scripts/darvas_fill.js",
+    "scripts/data_manager.js",
+    "scripts/desk_palette.js",
+    "scripts/legend_stats.js",
+    "scripts/linked_ohlc.js",
+    "scripts/news_markers.js",
+    "scripts/price_alerts.js",
+    "scripts/scanner.js",
+    "scripts/setup_scanner.js",
+    "scripts/spy_rs.js",
+    "scripts/trend_chart.js",
+    "scripts/vwap.js",
+})
 
 
 def _data_error(exc):
@@ -52,12 +86,19 @@ def _data_error(exc):
 
 @app.route("/")
 def index():
-    return send_from_directory(".", "index.html")
+    return public_asset("index.html")
 
 
 @app.route("/news")
 def news_page():
-    return send_from_directory(".", "news.html")
+    return public_asset("news.html")
+
+
+@app.route("/<path:filename>")
+def public_asset(filename):
+    if filename not in PUBLIC_ASSETS:
+        abort(404)
+    return send_from_directory(app.root_path, filename)
 
 
 @app.route("/api/health")
