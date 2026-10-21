@@ -27,3 +27,6 @@ finance.db-shm
 # Logs
 server.log
 *.log
+
+# Flutter build crumbs if someone runs from repo root
+.dart_tool/

@@ -85,6 +85,56 @@ class DataServiceApiTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIsInstance(res.get_json(), list)
 
+    def test_desk_query_hides_universe_archive(self):
+        db.add_symbol("AAPL")
+        db.add_universe_symbols({"ZZUNIV": ["sp500"]})
+        all_syms = {s["symbol"] for s in self.client.get("/api/symbols").get_json()}
+        desk = {s["symbol"] for s in self.client.get("/api/symbols?desk=1").get_json()}
+        self.assertIn("AAPL", all_syms)
+        self.assertIn("ZZUNIV", all_syms)
+        self.assertIn("AAPL", desk)
+        self.assertNotIn("ZZUNIV", desk)
+
+    def test_news_empty_watchlist(self):
+        res = self.client.get("/api/news")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.get_json()["articles"], [])
+        self.assertEqual(res.get_json()["message"], "No symbols in watchlist")
+
+    @patch("yahoo_news.yf.Ticker")
+    def test_news_matches_analysis_contract(self, mock_ticker_class):
+        db.add_symbol("AAPL")
+        mock_ticker = MagicMock()
+        mock_ticker.news = [
+            {
+                "content": {
+                    "title": "Apple hits new high",
+                    "summary": "Apple stock reaches record",
+                    "pubDate": "2026-08-21T10:00:00Z",
+                    "canonicalUrl": {"url": "https://example.com/apple1"},
+                    "provider": {"displayName": "Test News", "url": "https://test.com"},
+                }
+            }
+        ]
+        mock_ticker_class.return_value = mock_ticker
+        res = self.client.get("/api/news")
+        data = res.get_json()
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(data["source"], "Yahoo Finance")
+        self.assertEqual(data["articles"][0]["symbol"], "AAPL")
+        self.assertEqual(data["articles"][0]["title"], "Apple hits new high")
+
+    @patch("yahoo_news.yf.Ticker")
+    def test_symbol_news(self, mock_ticker_class):
+        mock_ticker = MagicMock()
+        mock_ticker.news = []
+        mock_ticker_class.return_value = mock_ticker
+        res = self.client.get("/api/news/aapl")
+        data = res.get_json()
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(data["symbol"], "AAPL")
+        mock_ticker_class.assert_called_once_with("AAPL")
+
 
 class AnalysisProxiesDataTests(unittest.TestCase):
     def setUp(self):
