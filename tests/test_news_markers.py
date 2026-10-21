@@ -281,3 +281,39 @@ class NewsHeadlineJumpBarTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["key"], "2026-08-21")
         self.assertEqual(payload["weekend"], "2026-08-22")
+
+
+class DashboardNewsSurfaceTests(unittest.TestCase):
+    """Book news, `n` shortcut and ?symbol=&tab=news deep link in app.js."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(ROOT, "scripts", "app.js"), encoding="utf-8") as fh:
+            cls.app_js = fh.read()
+
+    def test_book_news_uses_safe_render_news(self):
+        js = self.app_js
+        start = js.index("async function openBookNews")
+        body = js[start:js.index("function readWatchlistFilter", start)]
+        self.assertIn("renderNews(", body)
+        self.assertIn("showSymbol: true", body)
+        self.assertNotIn("renderNewsArticles", body)
+        self.assertNotIn("innerHTML = deduped", body)
+        self.assertIn("symbol: sym", body)
+
+    def test_render_news_symbol_chip_and_tags_use_text_content(self):
+        js = self.app_js
+        start = js.index("function renderNews")
+        render = js[start:js.index("function _newsJumpMiss", start)]
+        self.assertIn("news-item-symbol", render)
+        self.assertIn("chipEl.textContent = article.symbol", render)
+        self.assertIn("tagEl.textContent = tag", render)
+        self.assertNotIn("innerHTML +=", render)
+
+    def test_n_shortcut_and_deep_link(self):
+        js = self.app_js
+        self.assertIn("function openThisTickerNews", js)
+        self.assertIn("e.key === 'n'", js)
+        self.assertIn("URLSearchParams(window.location.search)", js)
+        self.assertIn("link.tab === 'news'", js)
+        self.assertIn("function syncNewsSurfaceLabels", js)
